@@ -7,7 +7,7 @@ across the QRL execution and consensus stack.
 
 ```bash
 go test ./...
-make e2e-compile
+go test -tags=e2e -run '^$' ./endtoend/...
 make e2e-run
 ```
 
