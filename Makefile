@@ -1,4 +1,4 @@
-.PHONY: e2e-compile network-preflight network-start network-stop e2e e2e-run e2e-all
+.PHONY: e2e-compile network-preflight network-start network-stop e2e e2e-run
 
 DEVNET_BACKEND ?= docker
 DEVNET_EXECUTION_IMAGE ?= local/go-qrl:devnet
@@ -46,6 +46,3 @@ e2e:
 
 e2e-run: network-preflight
 	go run ./cmd/qrltest run $(E2E_SUITE_ARGS) "$(E2E_LANE)"
-
-e2e-all: network-preflight
-	go run ./cmd/qrltest run-all
