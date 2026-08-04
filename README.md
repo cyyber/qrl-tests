@@ -1,7 +1,7 @@
 # QRL Tests
 
-`qrl-tests` provisions a pinned Kurtosis network and runs the QRL execution ABI
-suite through public RPC and WebSocket interfaces.
+`qrl-tests` provisions pinned Kurtosis networks and runs end-to-end test suites
+across the QRL execution and consensus stack.
 
 ## Run
 
