@@ -97,9 +97,6 @@ func (runner *Runner) runLane(ctx context.Context, planned laneRun) (result erro
 	defer cancelLane()
 	fmt.Fprintf(stdout, "=== RUN lane=%s profile=%s ===\n", lane.Name, lane.Profile)
 	environment := append(os.Environ(), runenv.PathEnv+"="+planned.manifestPath)
-	if planned.workspace != "" {
-		environment = setEnvironment(environment, "GOWORK", planned.workspace)
-	}
 	if err := runner.runCommand(laneCtx, commandSpec{
 		Path:   "go",
 		Args:   planned.arguments,

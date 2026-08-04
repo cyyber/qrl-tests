@@ -22,7 +22,6 @@ import (
 const DefaultReportDir = "reports"
 
 type Config struct {
-	SourceDir    string
 	TestsDir     string
 	BaseName     string
 	ReportDir    string
@@ -205,13 +204,6 @@ func (runner *Runner) run(ctx context.Context, selected []lanes.Lane, mode runMo
 	}
 	if err := os.MkdirAll(plan.reportRoot, 0o755); err != nil {
 		return fmt.Errorf("create report directory: %w", err)
-	}
-	workspace, err := prepareWorkspace(plan.reportRoot, plan.testsDir, runner.configuration.SourceDir)
-	if err != nil {
-		return err
-	}
-	for index := range plan.lanes {
-		plan.lanes[index].workspace = workspace
 	}
 	return runner.runLanes(ctx, plan.lanes)
 }

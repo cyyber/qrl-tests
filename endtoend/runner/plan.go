@@ -18,7 +18,6 @@ type laneRun struct {
 	manifestPath string
 	arguments    []string
 	provision    bool
-	workspace    string
 	testsDir     string
 }
 

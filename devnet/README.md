@@ -14,12 +14,6 @@ make network-stop
 `network-start` uses the configured existing images, runs the pinned qrl-package,
 and waits for readiness. It does not build images or run the test suites.
 
-Build local execution and Clef images explicitly when needed:
-
-```bash
-GO_QRL_SOURCE_DIR=/path/to/go-qrl make network-image clef-image
-```
-
 For Kubernetes, select the Kurtosis cluster and run its gateway:
 
 ```bash

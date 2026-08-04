@@ -64,7 +64,6 @@ func laneCommand(name, usage string, requiresLane bool, action runnerAction) *cl
 
 func runnerFlags() []cli.Flag {
 	flags := []cli.Flag{
-		&cli.StringFlag{Name: "source-dir", Usage: "go-qrl source checkout", EnvVars: []string{"GO_QRL_SOURCE_DIR"}},
 		&cli.StringFlag{Name: "tests-dir", Usage: "qrl-tests source checkout", Value: ".", EnvVars: []string{"QRL_TESTS_SOURCE_DIR"}},
 		enclaveNameFlag(),
 		parametersFileFlag(),
@@ -90,7 +89,6 @@ func runnerConfig(command *cli.Context) (runner.Config, error) {
 		return runner.Config{}, err
 	}
 	return runner.Config{
-		SourceDir:    command.String("source-dir"),
 		TestsDir:     command.String("tests-dir"),
 		BaseName:     command.String("enclave-name"),
 		ReportDir:    command.String("report-dir"),

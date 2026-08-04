@@ -1,7 +1,6 @@
-.PHONY: test fmt e2e-compile network-image clef-image network-preflight network-start network-stop e2e e2e-run e2e-all
+.PHONY: test fmt e2e-compile network-preflight network-start network-stop e2e e2e-run e2e-all
 
 GO ?= go
-GO_QRL_SOURCE_DIR ?=
 DEVNET_BACKEND ?= docker
 DEVNET_EXECUTION_IMAGE ?= local/go-qrl:devnet
 DEVNET_CLEF_IMAGE ?= local/go-qrl-clef:devnet
@@ -18,7 +17,7 @@ E2E_REPORT_DIR ?= reports
 E2E_MAX_PARALLEL ?= 1
 E2E_SUITE_ARGS := $(foreach suite,$(E2E_SUITE),--suite "$(suite)")
 
-export GO_QRL_SOURCE_DIR DEVNET_BACKEND DEVNET_EXECUTION_IMAGE DEVNET_CLEF_IMAGE
+export DEVNET_BACKEND DEVNET_EXECUTION_IMAGE DEVNET_CLEF_IMAGE
 export DEVNET_CONSENSUS_IMAGE DEVNET_VALIDATOR_IMAGE DEVNET_GENESIS_IMAGE
 export DEVNET_ENCLAVE_NAME DEVNET_PROFILE DEVNET_START_TIMEOUT DEVNET_PARAMS_FILE
 export E2E_REPORT_DIR E2E_MAX_PARALLEL
@@ -31,18 +30,6 @@ fmt:
 
 e2e-compile:
 	$(GO) test -tags=e2e -run '^$$' ./endtoend/...
-
-network-image:
-	@test -n "$(strip $(GO_QRL_SOURCE_DIR))" || { echo "GO_QRL_SOURCE_DIR must point to a go-qrl checkout" >&2; exit 2; }
-	docker build --tag "$(DEVNET_EXECUTION_IMAGE)" "$(GO_QRL_SOURCE_DIR)"
-
-clef-image:
-	@test -n "$(strip $(GO_QRL_SOURCE_DIR))" || { echo "GO_QRL_SOURCE_DIR must point to a go-qrl checkout" >&2; exit 2; }
-	docker build \
-		--file devnet/Dockerfile.clef \
-		--build-context go-qrl-source="$(GO_QRL_SOURCE_DIR)" \
-		--tag "$(DEVNET_CLEF_IMAGE)" \
-		.
 
 network-preflight:
 	@case "$(DEVNET_BACKEND)" in \

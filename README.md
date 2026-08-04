@@ -12,17 +12,11 @@ make e2e-run
 ```
 
 The configured client images must already be available to the selected Kurtosis
-backend. To compile the suites against a local go-qrl checkout, set
-`GO_QRL_SOURCE_DIR=/path/to/go-qrl`; otherwise the module dependency is used.
+backend. Suite binaries compile against the client dependencies pinned in
+`go.mod`.
 
 `e2e-run` provisions the single-participant network, runs the ABI suite, and
 removes the network.
-
-Image builds are separate, explicit operations for local development:
-
-```bash
-GO_QRL_SOURCE_DIR=/path/to/go-qrl make network-image clef-image
-```
 
 For iterative work, keep a network running:
 
