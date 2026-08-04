@@ -3,6 +3,15 @@
 
 package devnet
 
+import (
+	"encoding/json"
+	"errors"
+	"fmt"
+	"strconv"
+
+	"go.yaml.in/yaml/v3"
+)
+
 const (
 	packageLocator   = "github.com/rgeraldes24/qrl-package@3892c3d2596403c080424d9e8fc99ff172483fe0"
 	defaultNetworkID = "1337"
@@ -88,4 +97,217 @@ type account struct {
 
 type generatorParams struct {
 	Image string `json:"image"`
+}
+
+func effectiveParametersForProfile(address string, images Images, custom []byte, profile Profile) (string, error) {
+	images = images.withDefaults()
+	if custom != nil {
+		return renderCustomParameters(custom, address, images)
+	}
+	profile, err := normalizeProfile(profile)
+	if err != nil {
+		return "", err
+	}
+	spec := profileSpecs[profile]
+	participants := make([]participant, len(spec.participants))
+	for index := range participants {
+		configuration := spec.participants[index]
+		labels := map[string]string{
+			"qrl-tests.participant": strconv.Itoa(index + 1),
+			"qrl-tests.partition":   strconv.Itoa(index%2 + 1),
+		}
+		participants[index] = participant{
+			ELImage:           images.Execution,
+			ELExtraParams:     participantParameters(configuration.elExtraParams, "--graphql", "--graphql.vhosts=*"),
+			CLImage:           images.Consensus,
+			CLExtraParams:     participantParameters(configuration.clExtraParams, "--min-sync-peers=0", "--minimum-peers-per-subnet=0"),
+			VCImage:           images.Validator,
+			VCExtraParams:     participantParameters(configuration.vcExtraParams),
+			UseRemoteSigner:   true,
+			RemoteSignerType:  "clef",
+			RemoteSignerImage: images.Clef,
+			ValidatorCount:    configuration.validatorCount,
+			ELExtraLabels:     labels,
+			CLExtraLabels:     labels,
+			VCExtraLabels:     labels,
+		}
+	}
+	payload, err := json.Marshal(packageParameters{
+		Participants: participants,
+		NetworkParams: networkParams{
+			NetworkID:               defaultNetworkID,
+			PreregisteredValidators: spec.preregisteredValidators,
+			SecondsPerSlot:          5,
+			SlotsPerEpoch:           8,
+			ExecutionFollowDistance: 8,
+			WithdrawabilityDelay:    2,
+			ShardCommitteePeriod:    2,
+			PrefundedAccounts:       map[string]account{address: {Balance: prefundBalance}},
+			WithdrawalAddress:       address,
+			LightKDFEnabled:         true,
+		},
+		GenesisParams: generatorParams{Image: images.Genesis},
+	})
+	if err != nil {
+		return "", err
+	}
+	return string(payload), nil
+}
+
+func participantParameters(configured []string, defaults ...string) []string {
+	if configured != nil {
+		return configured
+	}
+	return append([]string{}, defaults...)
+}
+
+func renderCustomParameters(payload []byte, address string, images Images) (string, error) {
+	var document yaml.Node
+	if err := yaml.Unmarshal(payload, &document); err != nil {
+		return "", errors.New("parameters file must contain one YAML mapping")
+	}
+	shape, err := decodeParameterShape(&document)
+	if err != nil {
+		return "", err
+	}
+	if len(shape.Participants) == 0 || shape.Participants[0].ExecutionImage != executionImagePlaceholder {
+		return "", fmt.Errorf(
+			"first participant el_image must be %q",
+			executionImagePlaceholder,
+		)
+	}
+	if _, ok := shape.Network.PrefundedAccounts[walletAddressPlaceholder]; !ok {
+		return "", fmt.Errorf(
+			"network_params.prefunded_accounts must contain %q",
+			walletAddressPlaceholder,
+		)
+	}
+
+	replaceParameterTokens(&document, map[string]string{
+		executionImagePlaceholder: images.Execution,
+		clefImagePlaceholder:      images.Clef,
+		consensusImagePlaceholder: images.Consensus,
+		validatorImagePlaceholder: images.Validator,
+		genesisImagePlaceholder:   images.Genesis,
+		walletAddressPlaceholder:  address,
+	})
+	rendered, err := yaml.Marshal(&document)
+	if err != nil {
+		return "", fmt.Errorf("encode rendered parameters: %w", err)
+	}
+	return string(rendered), nil
+}
+
+func decodeParameterShape(document *yaml.Node) (parameterShape, error) {
+	if len(document.Content) != 1 || document.Content[0].Kind != yaml.MappingNode {
+		return parameterShape{}, errors.New("parameters file must contain one YAML mapping")
+	}
+	var shape parameterShape
+	if err := document.Decode(&shape); err != nil {
+		return parameterShape{}, errors.New("parameters file must contain one YAML mapping")
+	}
+	return shape, nil
+}
+
+func replaceParameterTokens(node *yaml.Node, replacements map[string]string) {
+	if node.Kind == yaml.ScalarNode {
+		if replacement, ok := replacements[node.Value]; ok {
+			node.Value = replacement
+		}
+	}
+	for _, child := range node.Content {
+		replaceParameterTokens(child, replacements)
+	}
+}
+
+type Profile string
+
+const (
+	ProfileSingle        Profile = "single"
+	ProfileMulti         Profile = "multi"
+	ProfileChaos         Profile = "chaos"
+	ProfileSync          Profile = "sync"
+	ProfileOperations    Profile = "operations"
+	ProfileCold          Profile = "cold"
+	ProfileOptimistic    Profile = "optimistic"
+	ProfileExecutionSync Profile = "execution-sync"
+)
+
+type profileSpec struct {
+	participants            []participantSpec
+	preregisteredValidators int
+}
+
+type participantSpec struct {
+	validatorCount int
+	elExtraParams  []string
+	clExtraParams  []string
+	vcExtraParams  []string
+}
+
+var profileSpecs = map[Profile]profileSpec{
+	ProfileSingle: {participants: []participantSpec{{validatorCount: 64}}},
+	ProfileMulti:  {participants: []participantSpec{{validatorCount: 16}, {validatorCount: 16}, {validatorCount: 16}, {validatorCount: 16}}},
+	ProfileChaos: {
+		participants: []participantSpec{
+			{validatorCount: 16, clExtraParams: []string{}},
+			{validatorCount: 16, clExtraParams: []string{}},
+			{validatorCount: 16, clExtraParams: []string{}},
+			{validatorCount: 16, clExtraParams: []string{}},
+		},
+	},
+	ProfileSync: {
+		participants: []participantSpec{
+			{validatorCount: 32},
+			{
+				validatorCount: 32,
+				clExtraParams:  []string{"--min-sync-peers=0", "--minimum-peers-per-subnet=0", "--force-clear-db"},
+				vcExtraParams:  []string{"--enable-doppelganger", "--force-clear-db"},
+			},
+		},
+	},
+	ProfileOperations: {
+		participants: []participantSpec{
+			{validatorCount: 128},
+			{validatorCount: 128},
+			{validatorCount: 128},
+			{validatorCount: 128},
+			{validatorCount: 300},
+		},
+		preregisteredValidators: 512,
+	},
+	ProfileCold: {
+		participants: []participantSpec{{
+			validatorCount: 64,
+			clExtraParams:  []string{"--min-sync-peers=0", "--minimum-peers-per-subnet=0", "--slots-per-archive-point=16"},
+		}},
+	},
+	ProfileOptimistic: {
+		participants: []participantSpec{
+			{validatorCount: 32},
+			{
+				validatorCount: 32,
+				clExtraParams:  []string{"--min-sync-peers=0", "--minimum-peers-per-subnet=0", "--startup-optimistic"},
+			},
+		},
+	},
+	ProfileExecutionSync: {
+		participants: []participantSpec{
+			{validatorCount: 64},
+			{
+				validatorCount: 0,
+				elExtraParams:  []string{"--graphql", "--graphql.vhosts=*", "--nodiscover", "--bootnodes="},
+			},
+		},
+	},
+}
+
+func normalizeProfile(profile Profile) (Profile, error) {
+	if profile == "" {
+		return ProfileSingle, nil
+	}
+	if _, exists := profileSpecs[profile]; !exists {
+		return "", fmt.Errorf("unknown development-network profile %q", profile)
+	}
+	return profile, nil
 }

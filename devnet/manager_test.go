@@ -5,10 +5,15 @@ package devnet
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/cyyber/qrl-tests/devnet/internal/kurtosis"
+	"github.com/cyyber/qrl-tests/internal/fixture"
 	"github.com/stretchr/testify/require"
 )
 
@@ -128,4 +133,57 @@ func service(name, clientType string, rpc, ws, engine, validator uint16, metrics
 		UUID: name + "-id", PrivateIP: "10.0.0." + name[3:4], PublicIP: "127.0.0.1", PublicPorts: ports,
 		Labels: map[string]string{"qrl-package.client-type": clientType},
 	}
+}
+
+func TestParseBackend(t *testing.T) {
+	backend, err := ParseBackend("")
+	require.NoError(t, err)
+	require.Equal(t, BackendDocker, backend)
+
+	backend, err = ParseBackend("kubernetes")
+	require.NoError(t, err)
+	require.Equal(t, BackendKubernetes, backend)
+
+	_, err = ParseBackend("unknown")
+	require.Error(t, err)
+}
+
+func TestKubernetesImagesUseRegistry(t *testing.T) {
+	images := Images{
+		Execution: "registry.example/go-qrl:test",
+		Clef:      "registry.example/go-qrl-clef:test",
+		Consensus: "registry.example/qrysm-beacon:test",
+		Validator: "registry.example/qrysm-validator:test",
+		Genesis:   "registry.example/qrl-genesis:test",
+	}
+	require.NoError(t, images.validate(BackendKubernetes))
+
+	images.Execution = DefaultExecutionImage
+	require.ErrorContains(t, images.validate(BackendKubernetes), "not available to Kubernetes")
+	require.NoError(t, images.validate(BackendDocker))
+}
+
+func TestProbeNetwork(t *testing.T) {
+	blockCalls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		var payload struct {
+			Method string   `json:"method"`
+			Params []string `json:"params"`
+		}
+		require.NoError(t, json.NewDecoder(request.Body).Decode(&payload))
+		switch payload.Method {
+		case "qrl_blockNumber":
+			blockCalls++
+			fmt.Fprintf(writer, `{"jsonrpc":"2.0","id":1,"result":"0x%x"}`, blockCalls)
+		case "qrl_getBalance":
+			require.Equal(t, []string{fixture.DevelopmentWalletAddress, "latest"}, payload.Params)
+			fmt.Fprint(writer, `{"jsonrpc":"2.0","id":1,"result":"0x1"}`)
+		default:
+			t.Fatalf("unexpected RPC method %q", payload.Method)
+		}
+	}))
+	defer server.Close()
+
+	require.NoError(t, probeNetwork(context.Background(), server.URL, fixture.DevelopmentWalletAddress))
+	require.GreaterOrEqual(t, blockCalls, 2)
 }
