@@ -5,23 +5,24 @@ across the QRL execution and consensus stack.
 
 ## Run
 
-Point the harness at the go-qrl checkout used to build the execution image and
-helper binaries:
-
 ```bash
-export GO_QRL_SOURCE_DIR=/path/to/go-qrl
-
 make test
 make e2e-compile
 make e2e-run
 ```
 
-The runner creates a temporary Go workspace containing this checkout and
-`GO_QRL_SOURCE_DIR`. Suite binaries therefore compile against the exact local
-go-qrl tree, including uncommitted changes.
+The configured client images must already be available to the selected Kurtosis
+backend. To compile the suites against a local go-qrl checkout, set
+`GO_QRL_SOURCE_DIR=/path/to/go-qrl`; otherwise the module dependency is used.
 
 `e2e-run` provisions the single-participant network, runs the ABI suite, and
 removes the network.
+
+Image builds are separate, explicit operations for local development:
+
+```bash
+GO_QRL_SOURCE_DIR=/path/to/go-qrl make network-image clef-image
+```
 
 For iterative work, keep a network running:
 

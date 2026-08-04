@@ -11,8 +11,14 @@ make network-start
 make network-stop
 ```
 
-`network-start` builds the local go-qrl and Clef images, runs the pinned
-qrl-package, and waits for readiness. It does not run the test suites.
+`network-start` uses the configured existing images, runs the pinned qrl-package,
+and waits for readiness. It does not build images or run the test suites.
+
+Build local execution and Clef images explicitly when needed:
+
+```bash
+GO_QRL_SOURCE_DIR=/path/to/go-qrl make network-image clef-image
+```
 
 For Kubernetes, select the Kurtosis cluster and run its gateway:
 
@@ -42,7 +48,7 @@ as Docker.
 | --- | --- | --- |
 | `DEVNET_BACKEND` | `docker` | Kurtosis backend: `docker` or `kubernetes` |
 | `DEVNET_ENCLAVE_NAME` | `go-qrl-devnet` (CLI default) | Kurtosis enclave |
-| `DEVNET_EXECUTION_IMAGE` | `local/go-qrl:devnet` | Tag for the locally built execution image |
+| `DEVNET_EXECUTION_IMAGE` | `local/go-qrl:devnet` | Existing execution image reference |
 | `DEVNET_CLEF_IMAGE` | `local/go-qrl-clef:devnet` | Clef image |
 | `DEVNET_CONSENSUS_IMAGE` | pinned Qrysm beacon image | Consensus client image |
 | `DEVNET_VALIDATOR_IMAGE` | pinned Qrysm validator image | Validator client image |
@@ -61,8 +67,8 @@ DEVNET_ENCLAVE_NAME=my-devnet make network-stop
 ```
 
 Kurtosis restricts enclave names to letters, digits, and dashes. Operations using the same name
-must run serially. Concurrent networks need different names; concurrent builds
-from different source trees also need different `DEVNET_EXECUTION_IMAGE` tags.
+must run serially. Concurrent networks need different names. Networks testing
+different client builds also need different image references.
 
 ## Custom parameters
 

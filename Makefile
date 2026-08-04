@@ -16,7 +16,6 @@ E2E_LANE ?= single
 E2E_SUITE ?=
 E2E_REPORT_DIR ?= reports
 E2E_MAX_PARALLEL ?= 1
-NETWORK_IMAGE_TARGETS := $(if $(filter docker,$(DEVNET_BACKEND)),network-image clef-image)
 E2E_SUITE_ARGS := $(foreach suite,$(E2E_SUITE),--suite "$(suite)")
 
 export GO_QRL_SOURCE_DIR DEVNET_BACKEND DEVNET_EXECUTION_IMAGE DEVNET_CLEF_IMAGE
@@ -57,7 +56,7 @@ network-preflight:
 	}
 	kurtosis engine start
 
-network-start: $(NETWORK_IMAGE_TARGETS) network-preflight
+network-start: network-preflight
 	$(GO) run ./cmd/qrltest network start
 
 network-stop:
@@ -66,8 +65,8 @@ network-stop:
 e2e:
 	$(GO) run ./cmd/qrltest test $(E2E_SUITE_ARGS) "$(E2E_LANE)"
 
-e2e-run: $(NETWORK_IMAGE_TARGETS) network-preflight
+e2e-run: network-preflight
 	$(GO) run ./cmd/qrltest run $(E2E_SUITE_ARGS) "$(E2E_LANE)"
 
-e2e-all: $(NETWORK_IMAGE_TARGETS) network-preflight
+e2e-all: network-preflight
 	$(GO) run ./cmd/qrltest run-all
