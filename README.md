@@ -6,7 +6,7 @@ across the QRL execution and consensus stack.
 ## Run
 
 ```bash
-make test
+go test ./...
 make e2e-compile
 make e2e-run
 ```

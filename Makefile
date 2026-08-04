@@ -1,4 +1,4 @@
-.PHONY: test fmt e2e-compile network-preflight network-start network-stop e2e e2e-run e2e-all
+.PHONY: e2e-compile network-preflight network-start network-stop e2e e2e-run e2e-all
 
 DEVNET_BACKEND ?= docker
 DEVNET_EXECUTION_IMAGE ?= local/go-qrl:devnet
@@ -20,12 +20,6 @@ export DEVNET_BACKEND DEVNET_EXECUTION_IMAGE DEVNET_CLEF_IMAGE
 export DEVNET_CONSENSUS_IMAGE DEVNET_VALIDATOR_IMAGE DEVNET_GENESIS_IMAGE
 export DEVNET_ENCLAVE_NAME DEVNET_PROFILE DEVNET_START_TIMEOUT DEVNET_PARAMS_FILE
 export E2E_REPORT_DIR E2E_MAX_PARALLEL
-
-test:
-	go test ./...
-
-fmt:
-	gofmt -s -w $$(git ls-files -- '*.go')
 
 e2e-compile:
 	go test -tags=e2e -run '^$$' ./endtoend/...
