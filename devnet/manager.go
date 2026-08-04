@@ -25,7 +25,7 @@ type kurtosisClient interface {
 
 const (
 	DefaultEnclaveName  = "go-qrl-devnet"
-	DefaultStartTimeout = 30 * time.Minute
+	DefaultStartTimeout = 5 * time.Minute
 
 	destroyConfirmationTimeout = 2 * time.Minute
 	retryInterval              = 500 * time.Millisecond

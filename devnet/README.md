@@ -48,7 +48,7 @@ as Docker.
 | `DEVNET_VALIDATOR_IMAGE` | pinned Qrysm validator image | Validator client image |
 | `DEVNET_GENESIS_IMAGE` | pinned QRL genesis image | Genesis generator image |
 | `DEVNET_PROFILE` | `single` | Built-in network profile |
-| `DEVNET_START_TIMEOUT` | `30m` (CLI default) | Network startup budget |
+| `DEVNET_START_TIMEOUT` | `5m` (CLI default) | Network startup budget |
 | `DEVNET_PARAMS_FILE` | unset | Complete qrl-package YAML parameters |
 
 `DEVNET_ENCLAVE_NAME` is optional. Without it, every command uses
