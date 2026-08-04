@@ -1,6 +1,5 @@
 .PHONY: test fmt e2e-compile network-preflight network-start network-stop e2e e2e-run e2e-all
 
-GO ?= go
 DEVNET_BACKEND ?= docker
 DEVNET_EXECUTION_IMAGE ?= local/go-qrl:devnet
 DEVNET_CLEF_IMAGE ?= local/go-qrl-clef:devnet
@@ -23,13 +22,13 @@ export DEVNET_ENCLAVE_NAME DEVNET_PROFILE DEVNET_START_TIMEOUT DEVNET_PARAMS_FIL
 export E2E_REPORT_DIR E2E_MAX_PARALLEL
 
 test:
-	$(GO) test ./...
+	go test ./...
 
 fmt:
 	gofmt -s -w $$(git ls-files -- '*.go')
 
 e2e-compile:
-	$(GO) test -tags=e2e -run '^$$' ./endtoend/...
+	go test -tags=e2e -run '^$$' ./endtoend/...
 
 network-preflight:
 	@case "$(DEVNET_BACKEND)" in \
@@ -44,16 +43,16 @@ network-preflight:
 	kurtosis engine start
 
 network-start: network-preflight
-	$(GO) run ./cmd/qrltest network start
+	go run ./cmd/qrltest network start
 
 network-stop:
-	$(GO) run ./cmd/qrltest network stop
+	go run ./cmd/qrltest network stop
 
 e2e:
-	$(GO) run ./cmd/qrltest test $(E2E_SUITE_ARGS) "$(E2E_LANE)"
+	go run ./cmd/qrltest test $(E2E_SUITE_ARGS) "$(E2E_LANE)"
 
 e2e-run: network-preflight
-	$(GO) run ./cmd/qrltest run $(E2E_SUITE_ARGS) "$(E2E_LANE)"
+	go run ./cmd/qrltest run $(E2E_SUITE_ARGS) "$(E2E_LANE)"
 
 e2e-all: network-preflight
-	$(GO) run ./cmd/qrltest run-all
+	go run ./cmd/qrltest run-all
