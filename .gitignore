@@ -1,5 +1,1 @@
-.runtime/
-/build/
 reports/
-go.work
-go.work.sum
