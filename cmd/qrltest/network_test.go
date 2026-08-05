@@ -29,8 +29,8 @@ func (controller *recordingController) Stop(_ context.Context, name string) erro
 func TestNetworkStart(t *testing.T) {
 	const enclaveName = "go-qrl-devnet-test"
 
-	paramsFile := filepath.Join(t.TempDir(), "params.json")
-	parameters := []byte(`{"custom":true}`)
+	paramsFile := filepath.Join(t.TempDir(), "params.yaml")
+	parameters := []byte("custom: true\n")
 	require.NoError(t, os.WriteFile(paramsFile, parameters, 0o600))
 
 	controller := new(recordingController)
