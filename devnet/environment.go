@@ -197,6 +197,7 @@ func ParseBackend(value string) (Backend, error) {
 
 type Images struct {
 	Execution string
+	Clef      string
 	Consensus string
 	Validator string
 	Genesis   string
@@ -205,6 +206,7 @@ type Images struct {
 func DefaultImages() Images {
 	return Images{
 		Execution: DefaultExecutionImage,
+		Clef:      DefaultClefImage,
 		Consensus: DefaultConsensusImage,
 		Validator: DefaultValidatorImage,
 		Genesis:   DefaultGenesisImage,
@@ -215,6 +217,9 @@ func (images Images) withDefaults() Images {
 	defaults := DefaultImages()
 	if images.Execution == "" {
 		images.Execution = defaults.Execution
+	}
+	if images.Clef == "" {
+		images.Clef = defaults.Clef
 	}
 	if images.Consensus == "" {
 		images.Consensus = defaults.Consensus
@@ -233,6 +238,7 @@ func (images Images) validate(backend Backend) error {
 		name, image string
 	}{
 		{"execution", images.Execution},
+		{"Clef", images.Clef},
 		{"consensus", images.Consensus},
 		{"validator", images.Validator},
 		{"genesis", images.Genesis},

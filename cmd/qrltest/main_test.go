@@ -83,6 +83,7 @@ func TestRun(t *testing.T) {
 					Backend:     devnet.BackendDocker,
 					Images: devnet.Images{
 						Execution: "local/go-qrl:test",
+						Clef:      devnet.DefaultClefImage,
 						Consensus: devnet.DefaultConsensusImage,
 						Validator: devnet.DefaultValidatorImage,
 						Genesis:   devnet.DefaultGenesisImage,

@@ -37,6 +37,7 @@ must use registry-backed images and an active Kurtosis gateway:
 ```bash
 DEVNET_BACKEND=kubernetes \
 DEVNET_EXECUTION_IMAGE=registry.example/go-qrl:test \
+DEVNET_CLEF_IMAGE=registry.example/go-qrl-clef:test \
 make e2e-run
 ```
 

@@ -19,6 +19,7 @@ const (
 	engineJWTSecret  = "0xdc49981516e8e72b401a63e6405495a32dafc3939b5d6d83cc319ac0388bca1b"
 
 	executionImagePlaceholder = "__DEVNET_EXECUTION_IMAGE__"
+	clefImagePlaceholder      = "__DEVNET_CLEF_IMAGE__"
 	consensusImagePlaceholder = "__DEVNET_CONSENSUS_IMAGE__"
 	validatorImagePlaceholder = "__DEVNET_VALIDATOR_IMAGE__"
 	genesisImagePlaceholder   = "__DEVNET_GENESIS_IMAGE__"
@@ -33,6 +34,7 @@ const (
 
 const (
 	DefaultExecutionImage = "local/go-qrl:devnet"
+	DefaultClefImage      = "local/go-qrl-clef:devnet"
 	DefaultConsensusImage = "qrledger/qrysm:beacon-chain-8b80fa0c3f5a"
 	DefaultValidatorImage = "qrledger/qrysm:validator-8b80fa0c3f5a"
 	DefaultGenesisImage   = "qrledger/qrysm:qrl-genesis-generator-360410c72353-8b80fa0c3f5a"
@@ -40,9 +42,10 @@ const (
 
 type parameterShape struct {
 	Participants []struct {
-		ExecutionImage string `json:"el_image" yaml:"el_image"`
-		ConsensusImage string `json:"cl_image" yaml:"cl_image"`
-		ValidatorImage string `json:"vc_image" yaml:"vc_image"`
+		ExecutionImage    string `json:"el_image" yaml:"el_image"`
+		ConsensusImage    string `json:"cl_image" yaml:"cl_image"`
+		ValidatorImage    string `json:"vc_image" yaml:"vc_image"`
+		RemoteSignerImage string `json:"remote_signer_image" yaml:"remote_signer_image"`
 	} `json:"participants" yaml:"participants"`
 	Network struct {
 		PrefundedAccounts map[string]any `json:"prefunded_accounts" yaml:"prefunded_accounts"`
@@ -60,16 +63,19 @@ type packageParameters struct {
 }
 
 type participant struct {
-	ELImage        string            `json:"el_image"`
-	ELExtraParams  []string          `json:"el_extra_params"`
-	CLImage        string            `json:"cl_image"`
-	CLExtraParams  []string          `json:"cl_extra_params"`
-	VCImage        string            `json:"vc_image"`
-	VCExtraParams  []string          `json:"vc_extra_params"`
-	ValidatorCount int               `json:"validator_count"`
-	ELExtraLabels  map[string]string `json:"el_extra_labels,omitempty"`
-	CLExtraLabels  map[string]string `json:"cl_extra_labels,omitempty"`
-	VCExtraLabels  map[string]string `json:"vc_extra_labels,omitempty"`
+	ELImage           string            `json:"el_image"`
+	ELExtraParams     []string          `json:"el_extra_params"`
+	CLImage           string            `json:"cl_image"`
+	CLExtraParams     []string          `json:"cl_extra_params"`
+	VCImage           string            `json:"vc_image"`
+	VCExtraParams     []string          `json:"vc_extra_params"`
+	UseRemoteSigner   bool              `json:"use_remote_signer"`
+	RemoteSignerType  string            `json:"remote_signer_type"`
+	RemoteSignerImage string            `json:"remote_signer_image"`
+	ValidatorCount    int               `json:"validator_count"`
+	ELExtraLabels     map[string]string `json:"el_extra_labels,omitempty"`
+	CLExtraLabels     map[string]string `json:"cl_extra_labels,omitempty"`
+	VCExtraLabels     map[string]string `json:"vc_extra_labels,omitempty"`
 }
 
 type networkParams struct {
@@ -111,16 +117,19 @@ func effectiveParametersForProfile(address string, images Images, custom []byte,
 			"qrl-tests.partition":   strconv.Itoa(index%2 + 1),
 		}
 		participants[index] = participant{
-			ELImage:        images.Execution,
-			ELExtraParams:  participantParameters(configuration.elExtraParams, "--graphql", "--graphql.vhosts=*"),
-			CLImage:        images.Consensus,
-			CLExtraParams:  participantParameters(configuration.clExtraParams, "--min-sync-peers=0", "--minimum-peers-per-subnet=0"),
-			VCImage:        images.Validator,
-			VCExtraParams:  participantParameters(configuration.vcExtraParams),
-			ValidatorCount: configuration.validatorCount,
-			ELExtraLabels:  labels,
-			CLExtraLabels:  labels,
-			VCExtraLabels:  labels,
+			ELImage:           images.Execution,
+			ELExtraParams:     participantParameters(configuration.elExtraParams, "--graphql", "--graphql.vhosts=*"),
+			CLImage:           images.Consensus,
+			CLExtraParams:     participantParameters(configuration.clExtraParams, "--min-sync-peers=0", "--minimum-peers-per-subnet=0"),
+			VCImage:           images.Validator,
+			VCExtraParams:     participantParameters(configuration.vcExtraParams),
+			UseRemoteSigner:   true,
+			RemoteSignerType:  "clef",
+			RemoteSignerImage: images.Clef,
+			ValidatorCount:    configuration.validatorCount,
+			ELExtraLabels:     labels,
+			CLExtraLabels:     labels,
+			VCExtraLabels:     labels,
 		}
 	}
 	payload, err := json.Marshal(packageParameters{
@@ -176,6 +185,7 @@ func renderCustomParameters(payload []byte, address string, images Images) (stri
 
 	replaceParameterTokens(&document, map[string]string{
 		executionImagePlaceholder: images.Execution,
+		clefImagePlaceholder:      images.Clef,
 		consensusImagePlaceholder: images.Consensus,
 		validatorImagePlaceholder: images.Validator,
 		genesisImagePlaceholder:   images.Genesis,

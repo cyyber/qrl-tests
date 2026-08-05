@@ -2,6 +2,7 @@
 
 DEVNET_BACKEND ?= docker
 DEVNET_EXECUTION_IMAGE ?= local/go-qrl:devnet
+DEVNET_CLEF_IMAGE ?= local/go-qrl-clef:devnet
 DEVNET_CONSENSUS_IMAGE ?=
 DEVNET_VALIDATOR_IMAGE ?=
 DEVNET_GENESIS_IMAGE ?=
@@ -13,7 +14,7 @@ E2E_SUITE ?=
 E2E_REPORT_DIR ?= reports
 E2E_SUITE_ARGS := $(foreach suite,$(E2E_SUITE),--suite "$(suite)")
 
-export DEVNET_BACKEND DEVNET_EXECUTION_IMAGE
+export DEVNET_BACKEND DEVNET_EXECUTION_IMAGE DEVNET_CLEF_IMAGE
 export DEVNET_CONSENSUS_IMAGE DEVNET_VALIDATOR_IMAGE DEVNET_GENESIS_IMAGE
 export DEVNET_ENCLAVE_NAME DEVNET_START_TIMEOUT DEVNET_PARAMS_FILE
 export E2E_REPORT_DIR
@@ -21,7 +22,7 @@ export E2E_REPORT_DIR
 network-preflight:
 	@case "$(DEVNET_BACKEND)" in \
 		docker) docker info >/dev/null 2>&1 || { echo "Docker is required and its daemon must be running" >&2; exit 1; } ;; \
-		kubernetes) case "$(DEVNET_EXECUTION_IMAGE) $(DEVNET_CONSENSUS_IMAGE) $(DEVNET_VALIDATOR_IMAGE) $(DEVNET_GENESIS_IMAGE)" in *local/*) echo "Kubernetes requires registry image references; override all local DEVNET_*_IMAGE values" >&2; exit 1 ;; esac ;; \
+		kubernetes) case "$(DEVNET_EXECUTION_IMAGE) $(DEVNET_CLEF_IMAGE) $(DEVNET_CONSENSUS_IMAGE) $(DEVNET_VALIDATOR_IMAGE) $(DEVNET_GENESIS_IMAGE)" in *local/*) echo "Kubernetes requires registry image references; override all local DEVNET_*_IMAGE values" >&2; exit 1 ;; esac ;; \
 		*) echo "DEVNET_BACKEND must be docker or kubernetes" >&2; exit 2 ;; \
 	esac
 	@kurtosis version 2>/dev/null | grep -Eq '^CLI Version:[[:space:]]+1\.20\.' || { \

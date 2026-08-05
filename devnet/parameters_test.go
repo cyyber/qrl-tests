@@ -28,6 +28,9 @@ func TestDefaultParameters(t *testing.T) {
 	require.Equal(t, executionImage, participant["el_image"])
 	require.Equal(t, DefaultConsensusImage, participant["cl_image"])
 	require.Equal(t, DefaultValidatorImage, participant["vc_image"])
+	require.Equal(t, true, participant["use_remote_signer"])
+	require.Equal(t, "clef", participant["remote_signer_type"])
+	require.Equal(t, DefaultClefImage, participant["remote_signer_image"])
 	require.Equal(t, DefaultGenesisImage, parameters["qrl_genesis_generator_params"].(map[string]any)["image"])
 	require.Equal(t, "1337", network["network_id"])
 	require.Equal(t, address, network["withdrawal_address"])
@@ -41,6 +44,7 @@ func TestCustomParameterTokens(t *testing.T) {
   - el_image: __DEVNET_EXECUTION_IMAGE__
     cl_image: __DEVNET_CONSENSUS_IMAGE__
     vc_image: __DEVNET_VALIDATOR_IMAGE__
+    remote_signer_image: __DEVNET_CLEF_IMAGE__
     custom: 9007199254740993
 network_params:
   prefunded_accounts:
@@ -58,6 +62,7 @@ qrl_genesis_generator_params:
 	require.Contains(t, rendered, `untouched: prefix-__DEVNET_EXECUTION_IMAGE__`)
 	shape := decodedParameterShape(t, rendered)
 	require.Equal(t, "registry.example/qrl:test", shape.Participants[0].ExecutionImage)
+	require.Equal(t, DefaultClefImage, shape.Participants[0].RemoteSignerImage)
 	require.Equal(t, DefaultConsensusImage, shape.Participants[0].ConsensusImage)
 	require.Equal(t, DefaultValidatorImage, shape.Participants[0].ValidatorImage)
 	require.Equal(t, DefaultGenesisImage, shape.Genesis.Image)
@@ -86,6 +91,7 @@ func TestNetworkParametersTemplate(t *testing.T) {
 	require.NoError(t, err)
 	shape := decodedParameterShape(t, rendered)
 	require.Equal(t, "local/go-qrl:test", shape.Participants[0].ExecutionImage)
+	require.Equal(t, DefaultClefImage, shape.Participants[0].RemoteSignerImage)
 	require.Contains(t, shape.Network.PrefundedAccounts, address)
 }
 

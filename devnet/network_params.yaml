@@ -8,6 +8,9 @@ participants:
       - --min-sync-peers=0
       - --minimum-peers-per-subnet=0
     vc_image: __DEVNET_VALIDATOR_IMAGE__
+    use_remote_signer: true
+    remote_signer_type: clef
+    remote_signer_image: __DEVNET_CLEF_IMAGE__
     validator_count: 64
 network_params:
   network_id: "1337"
