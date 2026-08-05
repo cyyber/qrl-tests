@@ -78,7 +78,7 @@ set.
 
 The checked-in [`network_params.yaml`](network_params.yaml) is a complete
 single-participant example. Kubernetes configurations must use registry-backed
-images instead of the Docker-local execution and Clef defaults. Custom files
+images instead of the Docker-local image defaults. Custom files
 must pre-fund the checked-in development wallet used by readiness checks and
 the E2E suites.
 
@@ -93,25 +93,3 @@ The provisioned E2E runner accepts the same file:
 ```bash
 DEVNET_PARAMS_FILE=devnet/network_params.yaml make e2e-run
 ```
-
-## Go API
-
-Go code can import `github.com/cyyber/qrl-tests/devnet` and call
-`devnet.NewManager().Inspect(ctx, enclaveName, backend)` to discover the live
-execution RPC, GraphQL, WebSocket, and consensus REST endpoints.
-
-Inspection discovers every execution, consensus, and validator participant from
-qrl-package service labels. Use `Environment.Primary` for the primary
-participant and `Environment.Participants` for multi-node suites. The GraphQL
-URL is available only when the selected profile enables GraphQL. Readiness
-requires advancing blocks and a funded development wallet.
-
-## Safety
-
-The built-in profile funds a published development address used by readiness
-checks and the migrated live suites. Its matching test seed is maintained by
-the suite that signs transactions. Never fund or use this account outside
-disposable local development networks.
-
-Failed provisioning removes the enclave created by that start attempt. It does
-not remove a pre-existing enclave with the requested name.
