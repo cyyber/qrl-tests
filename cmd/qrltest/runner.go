@@ -19,18 +19,35 @@ func runnerCommands() []*cli.Command {
 				if err := rejectPositional(command); err != nil {
 					return err
 				}
-				return runner.New(runner.Config{}, command.App.Writer, command.App.ErrWriter).List()
+
+				testRunner := runner.New(runner.Config{}, command.App.Writer, command.App.ErrWriter)
+				return testRunner.List()
 			},
 		},
-		laneCommand("test", "run a lane against an existing network", true, func(tests *runner.Runner, command *cli.Context, lane string) error {
-			return tests.Test(command.Context, lane)
-		}),
-		laneCommand("run", "provision, execute, and stop one E2E lane", true, func(tests *runner.Runner, command *cli.Context, lane string) error {
-			return tests.Run(command.Context, lane)
-		}),
-		laneCommand("run-all", "provision and execute all supported E2E lanes", false, func(tests *runner.Runner, command *cli.Context, _ string) error {
-			return tests.RunAll(command.Context)
-		}),
+		laneCommand(
+			"test",
+			"run a lane against an existing network",
+			true,
+			func(testRunner *runner.Runner, command *cli.Context, lane string) error {
+				return testRunner.Test(command.Context, lane)
+			},
+		),
+		laneCommand(
+			"run",
+			"provision, execute, and stop one E2E lane",
+			true,
+			func(testRunner *runner.Runner, command *cli.Context, lane string) error {
+				return testRunner.Run(command.Context, lane)
+			},
+		),
+		laneCommand(
+			"run-all",
+			"provision and execute all supported E2E lanes",
+			false,
+			func(testRunner *runner.Runner, command *cli.Context, _ string) error {
+				return testRunner.RunAll(command.Context)
+			},
+		),
 	}
 }
 
@@ -49,27 +66,53 @@ func laneCommand(name, usage string, requiresLane bool, action runnerAction) *cl
 			} else if err := rejectPositional(command); err != nil {
 				return err
 			}
+
 			configuration, err := runnerConfig(command)
 			if err != nil {
 				return err
 			}
-			tests := runner.New(configuration, command.App.Writer, command.App.ErrWriter)
-			return action(tests, command, lane)
+
+			testRunner := runner.New(configuration, command.App.Writer, command.App.ErrWriter)
+			return action(testRunner, command, lane)
 		},
 	}
 }
 
 func runnerFlags() []cli.Flag {
 	flags := []cli.Flag{
-		&cli.StringFlag{Name: "tests-dir", Usage: "qrl-tests source checkout", Value: ".", EnvVars: []string{"QRL_TESTS_SOURCE_DIR"}},
+		&cli.StringFlag{
+			Name:    "tests-dir",
+			Usage:   "qrl-tests source checkout",
+			Value:   ".",
+			EnvVars: []string{"QRL_TESTS_SOURCE_DIR"},
+		},
 		enclaveNameFlag(),
 		parametersFileFlag(),
-		&cli.StringSliceFlag{Name: "suite", Usage: "run only the named suite within the selected lane"},
-		&cli.StringFlag{Name: "report-dir", Usage: "E2E report directory", Value: runner.DefaultReportDir, EnvVars: []string{"E2E_REPORT_DIR"}},
-		&cli.IntFlag{Name: "max-parallel", Usage: "maximum concurrently provisioned E2E lanes", Value: 1, EnvVars: []string{"E2E_MAX_PARALLEL"}},
+		&cli.StringSliceFlag{
+			Name:  "suite",
+			Usage: "run only the named suite within the selected lane",
+		},
+		&cli.StringFlag{
+			Name:    "report-dir",
+			Usage:   "E2E report directory",
+			Value:   runner.DefaultReportDir,
+			EnvVars: []string{"E2E_REPORT_DIR"},
+		},
+		&cli.IntFlag{
+			Name:    "max-parallel",
+			Usage:   "maximum concurrently provisioned E2E lanes",
+			Value:   1,
+			EnvVars: []string{"E2E_MAX_PARALLEL"},
+		},
 		backendFlag(),
-		&cli.DurationFlag{Name: "start-timeout", Usage: "network start budget", Value: devnet.DefaultStartTimeout, EnvVars: []string{"DEVNET_START_TIMEOUT"}},
+		&cli.DurationFlag{
+			Name:    "start-timeout",
+			Usage:   "network start budget",
+			Value:   devnet.DefaultStartTimeout,
+			EnvVars: []string{"DEVNET_START_TIMEOUT"},
+		},
 	}
+
 	return append(flags, imageFlags()...)
 }
 
@@ -78,13 +121,17 @@ func runnerConfig(command *cli.Context) (runner.Config, error) {
 	if err != nil {
 		return runner.Config{}, err
 	}
-	if command.Int("max-parallel") < 1 {
+
+	maxParallel := command.Int("max-parallel")
+	if maxParallel < 1 {
 		return runner.Config{}, fmt.Errorf("max-parallel must be at least 1")
 	}
+
 	parameters, err := readParametersFile(command)
 	if err != nil {
 		return runner.Config{}, err
 	}
+
 	return runner.Config{
 		TestsDir:     command.String("tests-dir"),
 		BaseName:     command.String("enclave-name"),
@@ -93,7 +140,7 @@ func runnerConfig(command *cli.Context) (runner.Config, error) {
 		Parameters:   parameters,
 		Suites:       command.StringSlice("suite"),
 		StartTimeout: command.Duration("start-timeout"),
-		MaxParallel:  command.Int("max-parallel"),
+		MaxParallel:  maxParallel,
 		Images:       imagesFromFlags(command),
 	}, nil
 }
