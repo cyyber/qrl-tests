@@ -26,9 +26,9 @@ const (
 const (
 	DefaultExecutionImage = "local/go-qrl:devnet"
 	DefaultClefImage      = "local/go-qrl-clef:devnet"
-	DefaultConsensusImage = "qrledger/qrysm:beacon-chain-8b80fa0c3f5a"
-	DefaultValidatorImage = "qrledger/qrysm:validator-8b80fa0c3f5a"
-	DefaultGenesisImage   = "qrledger/qrysm:qrl-genesis-generator-360410c72353-8b80fa0c3f5a"
+	DefaultConsensusImage = "local/qrysm-beacon:devnet"
+	DefaultValidatorImage = "local/qrysm-validator:devnet"
+	DefaultGenesisImage   = "local/qrl-genesis-generator:devnet"
 )
 
 type parameterShape struct {

@@ -3,11 +3,11 @@ participants:
     el_extra_params:
       - --graphql
       - --graphql.vhosts=*
-    cl_image: qrledger/qrysm:beacon-chain-8b80fa0c3f5a
+    cl_image: local/qrysm-beacon:devnet
     cl_extra_params:
       - --min-sync-peers=0
       - --minimum-peers-per-subnet=0
-    vc_image: qrledger/qrysm:validator-8b80fa0c3f5a
+    vc_image: local/qrysm-validator:devnet
     use_remote_signer: true
     remote_signer_type: clef
     remote_signer_image: local/go-qrl-clef:devnet
@@ -22,4 +22,4 @@ network_params:
   withdrawal_address: QBb81a0496aa34a64f96c2bCd28793165e1e6C08af0605b119cc768764901d2E4B48b5b9c049C57469CcA8a0421D2E31DF5C637a9cee8f3DA83964261B6CF9a22
   light_kdf_enabled: true
 qrl_genesis_generator_params:
-  image: qrledger/qrysm:qrl-genesis-generator-360410c72353-8b80fa0c3f5a
+  image: local/qrl-genesis-generator:devnet
