@@ -57,15 +57,15 @@ func laneCommand(name, usage string, requiresLane bool, action runnerAction) *cl
 		Usage: usage,
 		Flags: runnerFlags(),
 		Action: func(command *cli.Context) error {
-			lane := ""
-			if requiresLane {
-				if command.NArg() != 1 {
-					return fmt.Errorf("%s requires one lane name", name)
-				}
-				lane = command.Args().First()
-			} else if err := rejectPositional(command); err != nil {
-				return err
+			if requiresLane && command.NArg() != 1 {
+				return fmt.Errorf("%s requires one lane name", name)
 			}
+			if !requiresLane {
+				if err := rejectPositional(command); err != nil {
+					return err
+				}
+			}
+			lane := command.Args().First()
 
 			configuration, err := runnerConfig(command)
 			if err != nil {
