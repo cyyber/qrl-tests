@@ -84,7 +84,7 @@ func runnerConfig(command *cli.Context) (runner.Config, error) {
 	if command.Int("max-parallel") < 1 {
 		return runner.Config{}, fmt.Errorf("max-parallel must be at least 1")
 	}
-	parameters, err := parametersFrom(command)
+	parameters, err := readParametersFile(command)
 	if err != nil {
 		return runner.Config{}, err
 	}

@@ -29,16 +29,16 @@ func backendFlag() *cli.StringFlag {
 	}
 }
 
-func parametersFileFlag() *cli.StringFlag {
-	return &cli.StringFlag{
+func parametersFileFlag() *cli.PathFlag {
+	return &cli.PathFlag{
 		Name:    "params-file",
 		Usage:   "complete YAML or JSON qrl-package parameters",
 		EnvVars: []string{"DEVNET_PARAMS_FILE"},
 	}
 }
 
-func parametersFrom(command *cli.Context) ([]byte, error) {
-	file := command.String("params-file")
+func readParametersFile(command *cli.Context) ([]byte, error) {
+	file := command.Path("params-file")
 	if file == "" {
 		return nil, nil
 	}
@@ -52,11 +52,36 @@ func parametersFrom(command *cli.Context) ([]byte, error) {
 func imageFlags() []cli.Flag {
 	images := devnet.DefaultImages()
 	return []cli.Flag{
-		&cli.StringFlag{Name: "execution-image", Usage: "execution image reference", Value: images.Execution, EnvVars: []string{"DEVNET_EXECUTION_IMAGE"}},
-		&cli.StringFlag{Name: "clef-image", Usage: "Clef image reference", Value: images.Clef, EnvVars: []string{"DEVNET_CLEF_IMAGE"}},
-		&cli.StringFlag{Name: "consensus-image", Usage: "consensus client image reference", Value: images.Consensus, EnvVars: []string{"DEVNET_CONSENSUS_IMAGE"}},
-		&cli.StringFlag{Name: "validator-image", Usage: "validator client image reference", Value: images.Validator, EnvVars: []string{"DEVNET_VALIDATOR_IMAGE"}},
-		&cli.StringFlag{Name: "genesis-image", Usage: "genesis generator image reference", Value: images.Genesis, EnvVars: []string{"DEVNET_GENESIS_IMAGE"}},
+		&cli.StringFlag{
+			Name:    "execution-image",
+			Usage:   "execution image reference",
+			Value:   images.Execution,
+			EnvVars: []string{"DEVNET_EXECUTION_IMAGE"},
+		},
+		&cli.StringFlag{
+			Name:    "clef-image",
+			Usage:   "Clef image reference",
+			Value:   images.Clef,
+			EnvVars: []string{"DEVNET_CLEF_IMAGE"},
+		},
+		&cli.StringFlag{
+			Name:    "consensus-image",
+			Usage:   "consensus client image reference",
+			Value:   images.Consensus,
+			EnvVars: []string{"DEVNET_CONSENSUS_IMAGE"},
+		},
+		&cli.StringFlag{
+			Name:    "validator-image",
+			Usage:   "validator client image reference",
+			Value:   images.Validator,
+			EnvVars: []string{"DEVNET_VALIDATOR_IMAGE"},
+		},
+		&cli.StringFlag{
+			Name:    "genesis-image",
+			Usage:   "genesis generator image reference",
+			Value:   images.Genesis,
+			EnvVars: []string{"DEVNET_GENESIS_IMAGE"},
+		},
 	}
 }
 

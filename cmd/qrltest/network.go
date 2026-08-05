@@ -37,7 +37,7 @@ func networkCommand(networks controller) *cli.Command {
 					if err := rejectPositional(command); err != nil {
 						return err
 					}
-					parameters, err := parametersFrom(command)
+					parameters, err := readParametersFile(command)
 					if err != nil {
 						return err
 					}
