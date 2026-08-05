@@ -1,6 +1,3 @@
-// Copyright 2026 The qrl-tests Authors
-// This file is part of qrl-tests.
-
 // Command qrltest controls development networks and executes E2E lanes.
 package main
 
