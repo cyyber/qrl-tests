@@ -91,15 +91,12 @@ func (manager *Manager) Start(ctx context.Context, options StartOptions) (Enviro
 	if err != nil {
 		return Environment{}, err
 	}
-	images := options.Images.withDefaults()
-	if err := images.validate(backend); err != nil {
-		return Environment{}, err
-	}
 	parameters, err := effectiveParametersForProfile(
 		fixture.DevelopmentWalletAddress,
-		images,
+		options.Images,
 		options.Parameters,
 		options.Profile,
+		backend,
 	)
 	if err != nil {
 		return Environment{}, fmt.Errorf("prepare qrl-package parameters: %w", err)

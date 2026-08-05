@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 
 	"go.yaml.in/yaml/v3"
 )
@@ -14,13 +15,6 @@ const (
 	defaultNetworkID = "1337"
 	prefundBalance   = "2000000QRL"
 	engineJWTSecret  = "0xdc49981516e8e72b401a63e6405495a32dafc3939b5d6d83cc319ac0388bca1b"
-
-	executionImagePlaceholder = "__DEVNET_EXECUTION_IMAGE__"
-	clefImagePlaceholder      = "__DEVNET_CLEF_IMAGE__"
-	consensusImagePlaceholder = "__DEVNET_CONSENSUS_IMAGE__"
-	validatorImagePlaceholder = "__DEVNET_VALIDATOR_IMAGE__"
-	genesisImagePlaceholder   = "__DEVNET_GENESIS_IMAGE__"
-	walletAddressPlaceholder  = "__DEVNET_WALLET_ADDRESS__"
 
 	rpcPortID           = "rpc"
 	webSocketPortID     = "ws"
@@ -96,10 +90,13 @@ type generatorParams struct {
 	Image string `json:"image"`
 }
 
-func effectiveParametersForProfile(address string, images Images, custom []byte, profile Profile) (string, error) {
-	images = images.withDefaults()
+func effectiveParametersForProfile(address string, images Images, custom []byte, profile Profile, backend Backend) (string, error) {
 	if custom != nil {
-		return renderCustomParameters(custom, address, images)
+		return customParameters(custom, address, backend)
+	}
+	images = images.withDefaults()
+	if err := images.validate(backend); err != nil {
+		return "", err
 	}
 	profile, err := normalizeProfile(profile)
 	if err != nil {
@@ -158,7 +155,7 @@ func participantParameters(configured []string, defaults ...string) []string {
 	return append([]string{}, defaults...)
 }
 
-func renderCustomParameters(payload []byte, address string, images Images) (string, error) {
+func customParameters(payload []byte, address string, backend Backend) (string, error) {
 	var document yaml.Node
 	if err := yaml.Unmarshal(payload, &document); err != nil {
 		return "", errors.New("parameters file must contain one YAML mapping")
@@ -167,32 +164,16 @@ func renderCustomParameters(payload []byte, address string, images Images) (stri
 	if err != nil {
 		return "", err
 	}
-	if len(shape.Participants) == 0 || shape.Participants[0].ExecutionImage != executionImagePlaceholder {
-		return "", fmt.Errorf(
-			"first participant el_image must be %q",
-			executionImagePlaceholder,
-		)
+	if len(shape.Participants) == 0 || strings.TrimSpace(shape.Participants[0].ExecutionImage) == "" {
+		return "", errors.New("first participant el_image must be set")
 	}
-	if _, ok := shape.Network.PrefundedAccounts[walletAddressPlaceholder]; !ok {
-		return "", fmt.Errorf(
-			"network_params.prefunded_accounts must contain %q",
-			walletAddressPlaceholder,
-		)
+	if _, ok := shape.Network.PrefundedAccounts[address]; !ok {
+		return "", fmt.Errorf("network_params.prefunded_accounts must contain development wallet %q", address)
 	}
-
-	replaceParameterTokens(&document, map[string]string{
-		executionImagePlaceholder: images.Execution,
-		clefImagePlaceholder:      images.Clef,
-		consensusImagePlaceholder: images.Consensus,
-		validatorImagePlaceholder: images.Validator,
-		genesisImagePlaceholder:   images.Genesis,
-		walletAddressPlaceholder:  address,
-	})
-	rendered, err := yaml.Marshal(&document)
-	if err != nil {
-		return "", fmt.Errorf("encode rendered parameters: %w", err)
+	if err := shape.validateImages(backend); err != nil {
+		return "", err
 	}
-	return string(rendered), nil
+	return string(payload), nil
 }
 
 func decodeParameterShape(document *yaml.Node) (parameterShape, error) {
@@ -206,15 +187,28 @@ func decodeParameterShape(document *yaml.Node) (parameterShape, error) {
 	return shape, nil
 }
 
-func replaceParameterTokens(node *yaml.Node, replacements map[string]string) {
-	if node.Kind == yaml.ScalarNode {
-		if replacement, ok := replacements[node.Value]; ok {
-			node.Value = replacement
+func (shape parameterShape) validateImages(backend Backend) error {
+	if backend != BackendKubernetes {
+		return nil
+	}
+	for index, participant := range shape.Participants {
+		for _, item := range []struct {
+			name, image string
+		}{
+			{"execution", participant.ExecutionImage},
+			{"Clef", participant.RemoteSignerImage},
+			{"consensus", participant.ConsensusImage},
+			{"validator", participant.ValidatorImage},
+		} {
+			if strings.HasPrefix(strings.TrimSpace(item.image), "local/") {
+				return fmt.Errorf("participant %d %s image %q is not available to Kubernetes; use a registry image", index+1, item.name, item.image)
+			}
 		}
 	}
-	for _, child := range node.Content {
-		replaceParameterTokens(child, replacements)
+	if strings.HasPrefix(strings.TrimSpace(shape.Genesis.Image), "local/") {
+		return fmt.Errorf("genesis image %q is not available to Kubernetes; use a registry image", shape.Genesis.Image)
 	}
+	return nil
 }
 
 type Profile string

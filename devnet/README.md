@@ -43,11 +43,11 @@ cluster. The commands use the currently selected Kurtosis context.
 | --- | --- | --- |
 | `DEVNET_BACKEND` | `docker` | Kurtosis backend: `docker` or `kubernetes` |
 | `DEVNET_ENCLAVE_NAME` | `go-qrl-devnet` | Kurtosis enclave |
-| `DEVNET_EXECUTION_IMAGE` | `local/go-qrl:devnet` | Existing execution image reference |
-| `DEVNET_CLEF_IMAGE` | `local/go-qrl-clef:devnet` | Clef image |
-| `DEVNET_CONSENSUS_IMAGE` | pinned Qrysm beacon image | Consensus client image |
-| `DEVNET_VALIDATOR_IMAGE` | pinned Qrysm validator image | Validator client image |
-| `DEVNET_GENESIS_IMAGE` | pinned QRL genesis image | Genesis generator image |
+| `DEVNET_EXECUTION_IMAGE` | `local/go-qrl:devnet` | Execution client image reference |
+| `DEVNET_CLEF_IMAGE` | `local/go-qrl-clef:devnet` | Clef signer image reference |
+| `DEVNET_CONSENSUS_IMAGE` | pinned Qrysm beacon image | Consensus client image reference |
+| `DEVNET_VALIDATOR_IMAGE` | pinned Qrysm validator image | Validator client image reference |
+| `DEVNET_GENESIS_IMAGE` | pinned QRL genesis image | Genesis generator image reference |
 | `DEVNET_PROFILE` | `single` | Built-in profile used by `network-start` |
 | `DEVNET_START_TIMEOUT` | `5m` | Network startup budget |
 | `DEVNET_PARAMS_FILE` | unset | Complete qrl-package YAML parameters |
@@ -71,26 +71,16 @@ Networks testing different client builds also need different image references.
 ## Custom parameters
 
 `DEVNET_PARAMS_FILE` replaces the selected built-in profile with a complete
-qrl-package YAML argument object. Existing JSON parameter files remain
-supported. Exact scalar tokens are substituted:
-
-```text
-__DEVNET_EXECUTION_IMAGE__
-__DEVNET_CLEF_IMAGE__
-__DEVNET_CONSENSUS_IMAGE__
-__DEVNET_VALIDATOR_IMAGE__
-__DEVNET_GENESIS_IMAGE__
-__DEVNET_WALLET_ADDRESS__
-```
-
-The first participant's `el_image` must use the execution-image token. The
-other image tokens are optional and allow the same parameter file to select
-Docker-local or registry images.
-`network_params.prefunded_accounts` must contain the wallet token as a key; the
-wallet token may also be used as a value, such as `withdrawal_address`.
+qrl-package YAML argument object. The file is used unchanged, including its
+image references and development wallet address. Existing JSON parameter files
+remain supported. Image flags and `DEVNET_PROFILE` are ignored when the file is
+set.
 
 The checked-in [`network_params.yaml`](network_params.yaml) is a complete
-single-participant example using all tokens.
+single-participant example. Kubernetes configurations must use registry-backed
+images instead of the Docker-local execution and Clef defaults. Custom files
+must pre-fund the checked-in development wallet used by readiness checks and
+the E2E suites.
 
 Start the network with the custom parameters:
 

@@ -2,10 +2,12 @@ package devnet
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"strings"
 	"testing"
 
+	"github.com/cyyber/qrl-tests/internal/fixture"
 	"github.com/stretchr/testify/require"
 	"go.yaml.in/yaml/v3"
 )
@@ -35,69 +37,82 @@ func TestDefaultParameters(t *testing.T) {
 	require.Regexp(t, `^github\.com/rgeraldes24/qrl-package@[0-9a-f]{40}$`, packageLocator)
 }
 
-func TestCustomParameterTokens(t *testing.T) {
+func TestCustomParametersAreUsedUnchanged(t *testing.T) {
 	address := "Q" + strings.Repeat("b", 128)
-	custom := []byte(`participants:
-  - el_image: __DEVNET_EXECUTION_IMAGE__
-    cl_image: __DEVNET_CONSENSUS_IMAGE__
-    vc_image: __DEVNET_VALIDATOR_IMAGE__
-    remote_signer_image: __DEVNET_CLEF_IMAGE__
+	custom := []byte(fmt.Sprintf(`participants:
+  - el_image: registry.example/go-qrl:custom
+    cl_image: registry.example/qrysm-beacon:custom
+    vc_image: registry.example/qrysm-validator:custom
+    remote_signer_image: registry.example/clef:custom
     custom: 9007199254740993
 network_params:
   prefunded_accounts:
-    __DEVNET_WALLET_ADDRESS__:
+    %s:
       balance: 1QRL
-  withdrawal_address: __DEVNET_WALLET_ADDRESS__
-untouched: prefix-__DEVNET_EXECUTION_IMAGE__
+  withdrawal_address: %s
 qrl_genesis_generator_params:
-  image: __DEVNET_GENESIS_IMAGE__
-`)
-	rendered, err := testParameters(address, "registry.example/qrl:test", custom)
+  image: registry.example/qrl-genesis:custom
+`, address, address))
+	rendered, err := effectiveParametersForProfile(address, Images{}, custom, ProfileSingle, BackendKubernetes)
 	require.NoError(t, err)
-	require.Contains(t, rendered, `custom: 9007199254740993`)
-	require.Contains(t, rendered, `el_image: registry.example/qrl:test`)
-	require.Contains(t, rendered, `untouched: prefix-__DEVNET_EXECUTION_IMAGE__`)
+	require.Equal(t, string(custom), rendered)
+
 	shape := decodedParameterShape(t, rendered)
-	require.Equal(t, "registry.example/qrl:test", shape.Participants[0].ExecutionImage)
-	require.Equal(t, DefaultClefImage, shape.Participants[0].RemoteSignerImage)
-	require.Equal(t, DefaultConsensusImage, shape.Participants[0].ConsensusImage)
-	require.Equal(t, DefaultValidatorImage, shape.Participants[0].ValidatorImage)
-	require.Equal(t, DefaultGenesisImage, shape.Genesis.Image)
+	require.Equal(t, "registry.example/go-qrl:custom", shape.Participants[0].ExecutionImage)
+	require.Equal(t, "registry.example/clef:custom", shape.Participants[0].RemoteSignerImage)
+	require.Equal(t, "registry.example/qrysm-beacon:custom", shape.Participants[0].ConsensusImage)
+	require.Equal(t, "registry.example/qrysm-validator:custom", shape.Participants[0].ValidatorImage)
+	require.Equal(t, "registry.example/qrl-genesis:custom", shape.Genesis.Image)
 	require.Contains(t, shape.Network.PrefundedAccounts, address)
 }
 
 func TestCustomJSONParametersRemainSupported(t *testing.T) {
 	address := "Q" + strings.Repeat("e", 128)
-	custom := []byte(`{
-		"participants":[{"el_image":"__DEVNET_EXECUTION_IMAGE__"}],
-		"network_params":{"prefunded_accounts":{"__DEVNET_WALLET_ADDRESS__":{}}}
-	}`)
-	rendered, err := testParameters(address, "image", custom)
+	custom := []byte(fmt.Sprintf(`{
+		"participants":[{"el_image":"registry.example/go-qrl:test"}],
+		"network_params":{"prefunded_accounts":{"%s":{}}}
+	}`, address))
+	rendered, err := testParameters(address, "ignored", custom)
 	require.NoError(t, err)
+	require.Equal(t, string(custom), rendered)
+
 	shape := decodedParameterShape(t, rendered)
-	require.Equal(t, "image", shape.Participants[0].ExecutionImage)
+	require.Equal(t, "registry.example/go-qrl:test", shape.Participants[0].ExecutionImage)
 	require.Contains(t, shape.Network.PrefundedAccounts, address)
 }
 
 func TestNetworkParametersTemplate(t *testing.T) {
-	address := "Q" + strings.Repeat("f", 128)
 	payload, err := os.ReadFile("network_params.yaml")
 	require.NoError(t, err)
 
-	rendered, err := testParameters(address, "local/go-qrl:test", payload)
+	rendered, err := testParameters(fixture.DevelopmentWalletAddress, "ignored", payload)
 	require.NoError(t, err)
+	require.Equal(t, string(payload), rendered)
+
 	shape := decodedParameterShape(t, rendered)
-	require.Equal(t, "local/go-qrl:test", shape.Participants[0].ExecutionImage)
+	require.Equal(t, DefaultExecutionImage, shape.Participants[0].ExecutionImage)
 	require.Equal(t, DefaultClefImage, shape.Participants[0].RemoteSignerImage)
-	require.Contains(t, shape.Network.PrefundedAccounts, address)
+	require.Equal(t, DefaultConsensusImage, shape.Participants[0].ConsensusImage)
+	require.Equal(t, DefaultValidatorImage, shape.Participants[0].ValidatorImage)
+	require.Equal(t, DefaultGenesisImage, shape.Genesis.Image)
+	require.Contains(t, shape.Network.PrefundedAccounts, fixture.DevelopmentWalletAddress)
+
+	_, err = effectiveParametersForProfile(
+		fixture.DevelopmentWalletAddress,
+		Images{},
+		payload,
+		ProfileSingle,
+		BackendKubernetes,
+	)
+	require.ErrorContains(t, err, "not available to Kubernetes")
 }
 
 func TestInvalidCustomParameters(t *testing.T) {
 	address := "Q" + strings.Repeat("c", 128)
 	for name, custom := range map[string][]byte{
 		"malformed":       []byte(`participants: [`),
-		"missing image":   []byte("participants:\n  - el_image: image\nnetwork_params:\n  prefunded_accounts:\n    __DEVNET_WALLET_ADDRESS__: {}\n"),
-		"missing wallet":  []byte("participants:\n  - el_image: __DEVNET_EXECUTION_IMAGE__\nnetwork_params:\n  prefunded_accounts: {}\n"),
+		"missing image":   []byte(fmt.Sprintf("participants:\n  - el_image: \"\"\nnetwork_params:\n  prefunded_accounts:\n    %s: {}\n", address)),
+		"missing wallet":  []byte("participants:\n  - el_image: image\nnetwork_params:\n  prefunded_accounts: {}\n"),
 		"top-level array": []byte(`[]`),
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -110,7 +125,7 @@ func TestInvalidCustomParameters(t *testing.T) {
 func testParameters(address, executionImage string, custom []byte) (string, error) {
 	images := DefaultImages()
 	images.Execution = executionImage
-	return effectiveParametersForProfile(address, images, custom, ProfileSingle)
+	return effectiveParametersForProfile(address, images, custom, ProfileSingle, BackendDocker)
 }
 
 func decodedParameterShape(t *testing.T, payload string) parameterShape {
@@ -138,7 +153,7 @@ func TestBuiltInProfiles(t *testing.T) {
 		{ProfileOptimistic, 2, 64},
 		{ProfileExecutionSync, 2, 64},
 	} {
-		payload, err := effectiveParametersForProfile(address, Images{Execution: "image"}.withDefaults(), nil, test.profile)
+		payload, err := effectiveParametersForProfile(address, Images{Execution: "image"}, nil, test.profile, BackendDocker)
 		require.NoError(t, err)
 		var parameters struct {
 			Participants []struct {
