@@ -20,7 +20,7 @@ func main() {
 	}
 }
 
-func newApp(network controller) *cli.App {
+func newApp(network networkController) *cli.App {
 	return &cli.App{
 		Name:            "qrltest",
 		Usage:           "control QRL test networks and execute E2E lanes",

@@ -8,18 +8,28 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
-type controller interface {
+type networkController interface {
 	Start(context.Context, devnet.StartOptions) (devnet.Environment, error)
 	Stop(context.Context, string) error
 }
 
-func networkCommand(networks controller) *cli.Command {
+func networkCommand(network networkController) *cli.Command {
 	startFlags := []cli.Flag{
 		enclaveNameFlag(),
 		backendFlag(),
-		&cli.StringFlag{Name: "profile", Usage: "built-in network profile", Value: string(devnet.ProfileSingle), EnvVars: []string{"DEVNET_PROFILE"}},
+		&cli.StringFlag{
+			Name:    "profile",
+			Usage:   "built-in network profile",
+			Value:   string(devnet.ProfileSingle),
+			EnvVars: []string{"DEVNET_PROFILE"},
+		},
 		parametersFileFlag(),
-		&cli.DurationFlag{Name: "timeout", Usage: "network start budget", Value: devnet.DefaultStartTimeout, EnvVars: []string{"DEVNET_START_TIMEOUT"}},
+		&cli.DurationFlag{
+			Name:    "timeout",
+			Usage:   "network start budget",
+			Value:   devnet.DefaultStartTimeout,
+			EnvVars: []string{"DEVNET_START_TIMEOUT"},
+		},
 	}
 	startFlags = append(startFlags, imageFlags()...)
 	return &cli.Command{
@@ -40,7 +50,7 @@ func networkCommand(networks controller) *cli.Command {
 					}
 					ctx, cancel := context.WithTimeout(command.Context, command.Duration("timeout"))
 					defer cancel()
-					if _, err := networks.Start(ctx, devnet.StartOptions{
+					if _, err := network.Start(ctx, devnet.StartOptions{
 						EnclaveName: command.String("enclave-name"),
 						Backend:     devnet.Backend(command.String("backend")),
 						Images:      imagesFromFlags(command),
@@ -61,7 +71,7 @@ func networkCommand(networks controller) *cli.Command {
 					if err := rejectPositional(command); err != nil {
 						return err
 					}
-					if err := networks.Stop(command.Context, command.String("enclave-name")); err != nil {
+					if err := network.Stop(command.Context, command.String("enclave-name")); err != nil {
 						return err
 					}
 					_, err := fmt.Fprintln(command.App.Writer, "network stopped")

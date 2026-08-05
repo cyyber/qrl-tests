@@ -66,7 +66,7 @@ func TestNetworkStop(t *testing.T) {
 	require.Equal(t, enclaveName, controller.stoppedEnclave)
 }
 
-func runCommand(t *testing.T, network controller, arguments ...string) string {
+func runCommand(t *testing.T, network networkController, arguments ...string) string {
 	t.Helper()
 
 	var stdout, stderr bytes.Buffer
