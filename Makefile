@@ -3,7 +3,6 @@
 GOLANGCI_LINT_VERSION ?= v2.12.2
 DEVNET_BACKEND ?= docker
 E2E_LANE ?= single
-E2E_SUITE ?=
 E2E_SUITE_ARGS := $(foreach suite,$(E2E_SUITE),--suite "$(suite)")
 
 lint:
