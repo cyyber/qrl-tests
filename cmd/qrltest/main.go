@@ -22,14 +22,15 @@ func main() {
 }
 
 func newApp(networks controller) *cli.App {
-	commands := []*cli.Command{networkCommand(networks)}
-	commands = append(commands, runnerCommands()...)
 	return &cli.App{
 		Name:            "qrltest",
 		Usage:           "control QRL test networks and execute E2E lanes",
 		HideHelpCommand: true,
 		Action:          rootAction,
-		Commands:        commands,
+		Commands: append(
+			[]*cli.Command{networkCommand(networks)},
+			runnerCommands()...,
+		),
 	}
 }
 
