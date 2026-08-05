@@ -1,6 +1,3 @@
-// Copyright 2026 The qrl-tests Authors
-// This file is part of qrl-tests.
-
 // Package live opens the shared clients and wallet used by live E2E suites.
 package live
 

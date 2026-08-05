@@ -1,6 +1,3 @@
-// Copyright 2026 The qrl-tests Authors
-// This file is part of qrl-tests.
-
 // Package runner executes the registered end-to-end test lanes.
 package runner
 

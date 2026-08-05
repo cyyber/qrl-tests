@@ -1,6 +1,3 @@
-// Copyright 2026 The qrl-tests Authors
-// This file is part of qrl-tests.
-
 // Package lanes defines the live E2E execution matrix.
 package lanes
 

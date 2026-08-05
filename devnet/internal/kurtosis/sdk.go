@@ -1,6 +1,3 @@
-// Copyright 2026 The qrl-tests Authors
-// This file is part of qrl-tests.
-
 // Package kurtosis provides the narrow Kurtosis API used by the development
 // network controller. Raw SDK types deliberately do not escape this package.
 package kurtosis

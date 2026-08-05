@@ -1,6 +1,3 @@
-// Copyright 2026 The qrl-tests Authors
-// This file is part of qrl-tests.
-
 // Package abifixture contains the generated binding used by the execution ABI
 // end-to-end suite.
 package abifixture

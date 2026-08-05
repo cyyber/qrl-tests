@@ -1,6 +1,3 @@
-// Copyright 2026 The qrl-tests Authors
-// This file is part of qrl-tests.
-
 // Package runenv defines the environment contract passed from the E2E runner
 // to live test suites.
 package runenv
