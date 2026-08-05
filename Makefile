@@ -1,5 +1,6 @@
-.PHONY: network-preflight network-start network-stop e2e e2e-run
+.PHONY: lint network-preflight network-start network-stop e2e e2e-run
 
+GOLANGCI_LINT_VERSION ?= v2.12.2
 DEVNET_BACKEND ?= docker
 DEVNET_EXECUTION_IMAGE ?= local/go-qrl:devnet
 DEVNET_CLEF_IMAGE ?= local/go-qrl-clef:devnet
@@ -18,6 +19,9 @@ export DEVNET_BACKEND DEVNET_EXECUTION_IMAGE DEVNET_CLEF_IMAGE
 export DEVNET_CONSENSUS_IMAGE DEVNET_VALIDATOR_IMAGE DEVNET_GENESIS_IMAGE
 export DEVNET_ENCLAVE_NAME DEVNET_START_TIMEOUT DEVNET_PARAMS_FILE
 export E2E_REPORT_DIR
+
+lint:
+	go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION) run
 
 network-preflight:
 	@case "$(DEVNET_BACKEND)" in \

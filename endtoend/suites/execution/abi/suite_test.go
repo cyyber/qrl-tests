@@ -59,7 +59,6 @@ var _ = ginkgo.Describe(
 		})
 
 		for _, test := range integerEdgeCases() {
-			test := test
 			ginkgo.It("round-trips integer edges: "+test.name, func(ctx ginkgo.SpecContext) {
 				fixture.assertIntegerEdge(ctx, test)
 			})
