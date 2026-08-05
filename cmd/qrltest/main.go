@@ -1,4 +1,3 @@
-// Command qrltest controls development networks and executes E2E lanes.
 package main
 
 import (
@@ -21,14 +20,14 @@ func main() {
 	}
 }
 
-func newApp(networks controller) *cli.App {
+func newApp(network controller) *cli.App {
 	return &cli.App{
 		Name:            "qrltest",
 		Usage:           "control QRL test networks and execute E2E lanes",
 		HideHelpCommand: true,
 		Action:          rootAction,
 		Commands: append(
-			[]*cli.Command{networkCommand(networks)},
+			[]*cli.Command{networkCommand(network)},
 			runnerCommands()...,
 		),
 	}
