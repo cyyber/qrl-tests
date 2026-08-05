@@ -9,7 +9,7 @@ import (
 
 	"github.com/cyyber/qrl-tests/devnet"
 	"github.com/cyyber/qrl-tests/endtoend/internal/runenv"
-	"github.com/cyyber/qrl-tests/internal/fixture"
+	"github.com/cyyber/qrl-tests/internal/devwallet"
 	"github.com/theQRL/go-qrl/common"
 	qrlwallet "github.com/theQRL/go-qrl/crypto/pqcrypto/wallet"
 	"github.com/theQRL/go-qrl/qrlclient"
@@ -42,7 +42,7 @@ func Load() (*Runtime, error) {
 	if err != nil {
 		return nil, err
 	}
-	wallet, err := fixture.DevelopmentWallet()
+	wallet, err := devwallet.Restore()
 	if err != nil {
 		return nil, fmt.Errorf("restore development wallet: %w", err)
 	}

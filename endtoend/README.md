@@ -8,7 +8,7 @@ endpoints and prebuilt helper binaries; suites do not provision infrastructure.
 
 | Lane | Profile | Coverage |
 | --- | --- | --- |
-| `single` | `single` | Execution ABI calls, events, errors, and WebSocket filters |
+| `execution-abi` | `single` | Execution ABI calls, events, errors, and WebSocket filters |
 
 Run one lane with a fresh network:
 
@@ -25,7 +25,7 @@ make network-stop
 ```
 
 The Ginkgo runner writes JUnit, JSON, logs, and the resolved environment
-manifest under `reports/single/`. Inspect the registered lane and suite with
+manifest under `reports/execution-abi/`. Inspect the registered lane and suite with
 `go run ./cmd/qrltest list`.
 
 Files that register or execute live scenarios use the `e2e` build tag.

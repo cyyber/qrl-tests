@@ -41,14 +41,14 @@ func TestRegistry(t *testing.T) {
 }
 
 func TestLaneSelect(t *testing.T) {
-	single, err := Named("single")
+	executionABI, err := Named("execution-abi")
 	require.NoError(t, err)
 
-	selected, err := single.Select([]string{"execution-abi", "execution-abi"})
+	selected, err := executionABI.Select([]string{"execution-abi", "execution-abi"})
 	require.NoError(t, err)
 	require.Equal(t, []SuiteID{SuiteExecutionABI}, selected.Suites)
 
-	_, err = single.Select([]string{"unknown"})
+	_, err = executionABI.Select([]string{"unknown"})
 	require.ErrorContains(t, err, "unknown E2E suite")
 }
 

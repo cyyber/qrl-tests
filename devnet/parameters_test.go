@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cyyber/qrl-tests/internal/fixture"
+	"github.com/cyyber/qrl-tests/internal/devwallet"
 	"github.com/stretchr/testify/require"
 	"go.yaml.in/yaml/v3"
 )
@@ -85,7 +85,7 @@ func TestNetworkParametersTemplate(t *testing.T) {
 	payload, err := os.ReadFile("network_params.yaml")
 	require.NoError(t, err)
 
-	rendered, err := testParameters(fixture.DevelopmentWalletAddress, "ignored", payload)
+	rendered, err := testParameters(devwallet.Address, "ignored", payload)
 	require.NoError(t, err)
 	require.Equal(t, string(payload), rendered)
 
@@ -95,10 +95,10 @@ func TestNetworkParametersTemplate(t *testing.T) {
 	require.Equal(t, DefaultConsensusImage, shape.Participants[0].ConsensusImage)
 	require.Equal(t, DefaultValidatorImage, shape.Participants[0].ValidatorImage)
 	require.Equal(t, DefaultGenesisImage, shape.Genesis.Image)
-	require.Contains(t, shape.Network.PrefundedAccounts, fixture.DevelopmentWalletAddress)
+	require.Contains(t, shape.Network.PrefundedAccounts, devwallet.Address)
 
 	_, err = effectiveParametersForProfile(
-		fixture.DevelopmentWalletAddress,
+		devwallet.Address,
 		Images{},
 		payload,
 		ProfileSingle,

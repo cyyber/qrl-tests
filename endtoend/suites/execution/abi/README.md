@@ -8,7 +8,7 @@ go test -tags=e2e -run '^$' ./endtoend/suites/execution/abi
 go generate ./endtoend/internal/contracts/abifixture
 
 # Run against an already-running development network.
-make e2e E2E_LANE=single
+make e2e E2E_LANE=execution-abi
 ```
 
 ## Coverage contract

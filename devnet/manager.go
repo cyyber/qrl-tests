@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/cyyber/qrl-tests/devnet/internal/kurtosis"
-	"github.com/cyyber/qrl-tests/internal/fixture"
+	"github.com/cyyber/qrl-tests/internal/devwallet"
 	"github.com/theQRL/go-qrl/common"
 	"github.com/theQRL/go-qrl/qrlclient"
 )
@@ -80,7 +80,7 @@ func (manager *Manager) Inspect(ctx context.Context, name string, backend Backen
 	if err != nil {
 		return Environment{}, err
 	}
-	if err := manager.probe(ctx, primary.Execution.RPCURL, fixture.DevelopmentWalletAddress); err != nil {
+	if err := manager.probe(ctx, primary.Execution.RPCURL, devwallet.Address); err != nil {
 		return Environment{}, err
 	}
 	return environment, nil
@@ -92,7 +92,7 @@ func (manager *Manager) Start(ctx context.Context, options StartOptions) (Enviro
 		return Environment{}, err
 	}
 	parameters, err := effectiveParametersForProfile(
-		fixture.DevelopmentWalletAddress,
+		devwallet.Address,
 		options.Images,
 		options.Parameters,
 		options.Profile,
@@ -131,7 +131,7 @@ func (manager *Manager) Start(ctx context.Context, options StartOptions) (Enviro
 		return Environment{}, manager.startFailure(client, options.EnclaveName, true, "resolve primary participant", err)
 	}
 	if err := retryUntil(ctx, func() error {
-		return manager.probe(ctx, primary.Execution.RPCURL, fixture.DevelopmentWalletAddress)
+		return manager.probe(ctx, primary.Execution.RPCURL, devwallet.Address)
 	}); err != nil {
 		return Environment{}, manager.startFailure(client, options.EnclaveName, true, "wait for network readiness", err)
 	}

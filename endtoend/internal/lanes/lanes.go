@@ -36,7 +36,7 @@ var suites = map[SuiteID]Suite{
 
 var registry = []Lane{
 	{
-		Name:    "single",
+		Name:    "execution-abi",
 		Profile: devnet.ProfileSingle,
 		Suites:  []SuiteID{SuiteExecutionABI},
 		Timeout: 90 * time.Minute,

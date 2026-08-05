@@ -53,7 +53,7 @@ func TestRunBuildsCommandAndCleansUp(t *testing.T) {
 		return nil
 	}
 
-	require.NoError(t, tests.Run(t.Context(), "single"))
+	require.NoError(t, tests.Run(t.Context(), "execution-abi"))
 	require.Equal(t, "qrl-tests", networks.started.EnclaveName)
 	require.Equal(t, devnet.ProfileSingle, networks.started.Profile)
 	require.Equal(t, []byte(`{"custom":true}`), networks.started.Parameters)
@@ -61,13 +61,13 @@ func TestRunBuildsCommandAndCleansUp(t *testing.T) {
 	require.Equal(t, "go", command.Path)
 	require.Contains(t, command.Args, "./endtoend/suites/execution/abi")
 
-	manifestPath := filepath.Join(reports, "single", "environment.json")
+	manifestPath := filepath.Join(reports, "execution-abi", "environment.json")
 	manifest, err := runenv.Read(manifestPath)
 	require.NoError(t, err)
-	require.Equal(t, "single", manifest.Lane)
+	require.Equal(t, "execution-abi", manifest.Lane)
 	require.Equal(t, devnet.ProfileSingle, manifest.Profile)
 	require.Contains(t, command.Env, runenv.PathEnv+"="+manifestPath)
-	logs, err := filepath.Glob(filepath.Join(reports, "single", "output.log"))
+	logs, err := filepath.Glob(filepath.Join(reports, "execution-abi", "output.log"))
 	require.NoError(t, err)
 	require.Len(t, logs, 1)
 }
@@ -76,8 +76,8 @@ func TestListDescribesLanesAndSuites(t *testing.T) {
 	var output bytes.Buffer
 	tests := New(Config{}, &output, &output)
 	require.NoError(t, tests.List())
-	require.Contains(t, output.String(), "single")
 	require.Contains(t, output.String(), "execution-abi")
+	require.Contains(t, output.String(), "profile=single")
 }
 
 func TestRunAllRejectsOverrides(t *testing.T) {
@@ -103,20 +103,20 @@ func TestRunReturnsCleanupFailure(t *testing.T) {
 	tests.networks = networks
 	tests.runCommand = func(context.Context, commandSpec) error { return nil }
 
-	err := tests.Run(t.Context(), "single")
+	err := tests.Run(t.Context(), "execution-abi")
 	require.ErrorContains(t, err, "stop failed")
 }
 
 func TestRunPlanDescribesEachLane(t *testing.T) {
 	reports := t.TempDir()
-	single, err := lanes.Named("single")
+	executionABI, err := lanes.Named("execution-abi")
 	require.NoError(t, err)
-	selected := []lanes.Lane{single}
+	selected := []lanes.Lane{executionABI}
 	plan, err := newRunPlan(Config{BaseName: "qrl-tests", ReportDir: reports}, selected, provisionPerLane)
 	require.NoError(t, err)
 	require.Len(t, plan.lanes, 1)
-	require.Equal(t, "qrl-tests-single", plan.lanes[0].enclaveName)
-	require.Equal(t, filepath.Join(reports, "single", "environment.json"), plan.lanes[0].manifestPath)
+	require.Equal(t, "qrl-tests-execution-abi", plan.lanes[0].enclaveName)
+	require.Equal(t, filepath.Join(reports, "execution-abi", "environment.json"), plan.lanes[0].manifestPath)
 	require.Contains(t, plan.lanes[0].arguments, "./endtoend/suites/execution/abi")
 	require.True(t, plan.lanes[0].provision)
 }
