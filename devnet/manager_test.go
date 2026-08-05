@@ -151,7 +151,6 @@ func TestParseBackend(t *testing.T) {
 func TestKubernetesImagesUseRegistry(t *testing.T) {
 	images := Images{
 		Execution: "registry.example/go-qrl:test",
-		Clef:      "registry.example/go-qrl-clef:test",
 		Consensus: "registry.example/qrysm-beacon:test",
 		Validator: "registry.example/qrysm-validator:test",
 		Genesis:   "registry.example/qrl-genesis:test",
