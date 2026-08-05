@@ -23,12 +23,13 @@ kurtosis cluster set <cluster>
 kurtosis gateway
 ```
 
-In another terminal, start the network using images available to the cluster:
+In another terminal, start the network with a parameters file containing image
+references available to the cluster:
 
 ```bash
-DEVNET_EXECUTION_IMAGE=registry.example/go-qrl:test \
-DEVNET_CLEF_IMAGE=registry.example/go-qrl-clef:test \
-DEVNET_BACKEND=kubernetes make network-start
+DEVNET_BACKEND=kubernetes \
+DEVNET_PARAMS_FILE=/path/to/network_params.yaml \
+make network-start
 
 DEVNET_BACKEND=kubernetes make e2e
 make network-stop
