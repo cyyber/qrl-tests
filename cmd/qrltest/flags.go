@@ -85,7 +85,7 @@ func imageFlags() []cli.Flag {
 	}
 }
 
-func imagesFrom(command *cli.Context) devnet.Images {
+func imagesFromFlags(command *cli.Context) devnet.Images {
 	return devnet.Images{
 		Execution: command.String("execution-image"),
 		Clef:      command.String("clef-image"),

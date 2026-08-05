@@ -46,7 +46,7 @@ func networkCommand(networks controller) *cli.Command {
 					if _, err := networks.Start(ctx, devnet.StartOptions{
 						EnclaveName: command.String("enclave-name"),
 						Backend:     devnet.Backend(command.String("backend")),
-						Images:      imagesFrom(command),
+						Images:      imagesFromFlags(command),
 						Parameters:  parameters,
 						Profile:     devnet.Profile(command.String("profile")),
 					}); err != nil {

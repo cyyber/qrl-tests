@@ -97,6 +97,6 @@ func runnerConfig(command *cli.Context) (runner.Config, error) {
 		Suites:       command.StringSlice("suite"),
 		StartTimeout: command.Duration("start-timeout"),
 		MaxParallel:  command.Int("max-parallel"),
-		Images:       imagesFrom(command),
+		Images:       imagesFromFlags(command),
 	}, nil
 }
