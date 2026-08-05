@@ -32,6 +32,7 @@ func networkCommand(network networkController) *cli.Command {
 		},
 	}
 	startFlags = append(startFlags, imageFlags()...)
+
 	return &cli.Command{
 		Name:  "network",
 		Usage: "control a separately managed development network",
