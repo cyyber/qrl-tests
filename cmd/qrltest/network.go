@@ -45,12 +45,15 @@ func networkCommand(network networkController) *cli.Command {
 					if err := rejectPositional(command); err != nil {
 						return err
 					}
+
 					parameters, err := readParametersFile(command)
 					if err != nil {
 						return err
 					}
+
 					ctx, cancel := context.WithTimeout(command.Context, command.Duration("timeout"))
 					defer cancel()
+
 					if _, err := network.Start(ctx, devnet.StartOptions{
 						EnclaveName: command.String("enclave-name"),
 						Backend:     devnet.Backend(command.String("backend")),
@@ -60,6 +63,7 @@ func networkCommand(network networkController) *cli.Command {
 					}); err != nil {
 						return err
 					}
+
 					_, err = fmt.Fprintln(command.App.Writer, "network ready")
 					return err
 				},
