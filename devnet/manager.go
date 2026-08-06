@@ -1,4 +1,6 @@
-// Package devnet controls separately managed QRL development networks.
+// Package devnet starts, inspects and stops Kurtosis-backed QRL development
+// networks. Networks outlive the processes that use them: one qrltest
+// invocation can provision a network and later ones attach to it.
 package devnet
 
 import (
