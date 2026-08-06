@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"math/big"
-	"sync"
 
 	"github.com/cyyber/qrl-tests/devnet"
 	"github.com/cyyber/qrl-tests/e2e/internal/runenv"
@@ -29,8 +28,6 @@ type Node struct {
 	*Runtime
 	Execution          *qrlclient.Client
 	ExecutionWebSocket *qrlclient.Client
-
-	closeOnce sync.Once
 }
 
 // Load resolves the configured test environment and restores the disposable
@@ -94,12 +91,10 @@ func (runtime *Runtime) Close() {
 }
 
 func (node *Node) Close() {
-	node.closeOnce.Do(func() {
-		if node.ExecutionWebSocket != nil {
-			node.ExecutionWebSocket.Close()
-		}
-		if node.Execution != nil {
-			node.Execution.Close()
-		}
-	})
+	if node.ExecutionWebSocket != nil {
+		node.ExecutionWebSocket.Close()
+	}
+	if node.Execution != nil {
+		node.Execution.Close()
+	}
 }
