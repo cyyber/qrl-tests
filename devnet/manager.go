@@ -16,7 +16,8 @@ const (
 	DefaultEnclaveName  = "go-qrl-devnet"
 	DefaultStartTimeout = 5 * time.Minute
 
-	destroyConfirmationTimeout = time.Minute
+	startCleanupTimeout        = time.Minute // destroy call after a failed start
+	destroyConfirmationTimeout = time.Minute // confirm loop in destroyAndConfirm
 	retryInterval              = 500 * time.Millisecond
 
 	// packageLocator pins the qrl-package revision run for every network.
@@ -146,7 +147,7 @@ func (manager *Manager) startFailure(client kurtosisClient, name string, operati
 
 	// Clean up on a fresh context: the start context is typically already
 	// canceled or expired by the time the failure reaches here.
-	cleanupCtx, cancel := context.WithTimeout(context.Background(), destroyConfirmationTimeout)
+	cleanupCtx, cancel := context.WithTimeout(context.Background(), startCleanupTimeout)
 	defer cancel()
 	if err := manager.destroyAndConfirm(cleanupCtx, client, name); err != nil {
 		return errors.Join(result, fmt.Errorf("clean up failed network: %w", err))
