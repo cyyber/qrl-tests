@@ -15,14 +15,18 @@ import (
 )
 
 type startClient struct {
-	createErr error
-	runErr    error
-	destroyed bool
+	createErr   error
+	runErr      error
+	createdName string
+	destroyed   bool
 }
 
 func (*startClient) EnclaveExists(context.Context, string) (bool, error) { return false, nil }
 
-func (client *startClient) CreateEnclave(context.Context, string) error { return client.createErr }
+func (client *startClient) CreateEnclave(_ context.Context, name string) error {
+	client.createdName = name
+	return client.createErr
+}
 
 func (client *startClient) RunRemotePackage(context.Context, string, string, string) error {
 	return client.runErr
@@ -66,6 +70,17 @@ func TestStartCreateFailureSkipsCleanup(t *testing.T) {
 	_, err := startManager(client).Start(t.Context(), startOptions())
 	require.ErrorContains(t, err, "create failed")
 	require.False(t, client.destroyed)
+	require.Equal(t, "failed-start", client.createdName)
+}
+
+func TestStartDefaultsEnclaveName(t *testing.T) {
+	client := &startClient{createErr: errors.New("create failed")}
+	options := startOptions()
+	options.EnclaveName = ""
+
+	_, err := startManager(client).Start(t.Context(), options)
+	require.ErrorContains(t, err, "create failed")
+	require.Equal(t, DefaultEnclaveName, client.createdName)
 }
 
 func TestParticipantsFromServices(t *testing.T) {

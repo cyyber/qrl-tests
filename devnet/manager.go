@@ -13,11 +13,11 @@ import (
 )
 
 type kurtosisClient interface {
-	EnclaveExists(context.Context, string) (bool, error)
-	CreateEnclave(context.Context, string) error
-	RunRemotePackage(context.Context, string, string, string) error
-	Services(context.Context, string) (map[string]kurtosis.Service, error)
-	DestroyEnclave(context.Context, string) error
+	EnclaveExists(ctx context.Context, name string) (bool, error)
+	CreateEnclave(ctx context.Context, name string) error
+	RunRemotePackage(ctx context.Context, enclaveName, locator, serializedParams string) error
+	Services(ctx context.Context, enclaveName string) (map[string]kurtosis.Service, error)
+	DestroyEnclave(ctx context.Context, name string) error
 }
 
 const (
@@ -92,6 +92,9 @@ func (manager *Manager) Inspect(ctx context.Context, name string, backend Backen
 }
 
 func (manager *Manager) Start(ctx context.Context, options StartOptions) (Environment, error) {
+	if options.EnclaveName == "" {
+		options.EnclaveName = DefaultEnclaveName
+	}
 	backend, err := ParseBackend(string(options.Backend))
 	if err != nil {
 		return Environment{}, err
@@ -144,6 +147,8 @@ func (manager *Manager) Start(ctx context.Context, options StartOptions) (Enviro
 func (manager *Manager) startFailure(client kurtosisClient, name string, operation string, failure error) error {
 	result := fmt.Errorf("%s: %w", operation, failure)
 
+	// Clean up on a fresh context: the start context is typically already
+	// canceled or expired by the time the failure reaches here.
 	cleanupCtx, cancel := context.WithTimeout(context.Background(), destroyConfirmationTimeout)
 	defer cancel()
 	if err := manager.destroyAndConfirm(cleanupCtx, client, name); err != nil {
