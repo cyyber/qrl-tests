@@ -59,13 +59,13 @@ qrl_genesis_generator_params:
 	require.NoError(t, err)
 	require.Equal(t, string(custom), rendered)
 
-	shape := decodedCustomFile(t, rendered)
-	require.Equal(t, "registry.example/go-qrl:custom", shape.Participants[0].ExecutionImage)
-	require.Equal(t, "registry.example/clef:custom", shape.Participants[0].RemoteSignerImage)
-	require.Equal(t, "registry.example/qrysm-beacon:custom", shape.Participants[0].ConsensusImage)
-	require.Equal(t, "registry.example/qrysm-validator:custom", shape.Participants[0].ValidatorImage)
-	require.Equal(t, "registry.example/qrl-genesis:custom", shape.Genesis.Image)
-	require.Contains(t, shape.Network.PrefundedAccounts, address)
+	view := decodedCustomFile(t, rendered)
+	require.Equal(t, "registry.example/go-qrl:custom", view.Participants[0].ExecutionImage)
+	require.Equal(t, "registry.example/clef:custom", view.Participants[0].RemoteSignerImage)
+	require.Equal(t, "registry.example/qrysm-beacon:custom", view.Participants[0].ConsensusImage)
+	require.Equal(t, "registry.example/qrysm-validator:custom", view.Participants[0].ValidatorImage)
+	require.Equal(t, "registry.example/qrl-genesis:custom", view.Genesis.Image)
+	require.Contains(t, view.Network.PrefundedAccounts, address)
 }
 
 func TestCustomJSONParametersRemainSupported(t *testing.T) {
@@ -78,9 +78,9 @@ func TestCustomJSONParametersRemainSupported(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, string(custom), rendered)
 
-	shape := decodedCustomFile(t, rendered)
-	require.Equal(t, "registry.example/go-qrl:test", shape.Participants[0].ExecutionImage)
-	require.Contains(t, shape.Network.PrefundedAccounts, address)
+	view := decodedCustomFile(t, rendered)
+	require.Equal(t, "registry.example/go-qrl:test", view.Participants[0].ExecutionImage)
+	require.Contains(t, view.Network.PrefundedAccounts, address)
 }
 
 func TestNetworkParametersTemplate(t *testing.T) {
@@ -91,13 +91,13 @@ func TestNetworkParametersTemplate(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, string(payload), rendered)
 
-	shape := decodedCustomFile(t, rendered)
-	require.Equal(t, DefaultExecutionImage, shape.Participants[0].ExecutionImage)
-	require.Equal(t, DefaultClefImage, shape.Participants[0].RemoteSignerImage)
-	require.Equal(t, DefaultConsensusImage, shape.Participants[0].ConsensusImage)
-	require.Equal(t, DefaultValidatorImage, shape.Participants[0].ValidatorImage)
-	require.Equal(t, DefaultGenesisImage, shape.Genesis.Image)
-	require.Contains(t, shape.Network.PrefundedAccounts, devwallet.Address)
+	view := decodedCustomFile(t, rendered)
+	require.Equal(t, DefaultExecutionImage, view.Participants[0].ExecutionImage)
+	require.Equal(t, DefaultClefImage, view.Participants[0].RemoteSignerImage)
+	require.Equal(t, DefaultConsensusImage, view.Participants[0].ConsensusImage)
+	require.Equal(t, DefaultValidatorImage, view.Participants[0].ValidatorImage)
+	require.Equal(t, DefaultGenesisImage, view.Genesis.Image)
+	require.Contains(t, view.Network.PrefundedAccounts, devwallet.Address)
 }
 
 func TestInvalidCustomParameters(t *testing.T) {
@@ -130,56 +130,58 @@ func TestBuiltInProfiles(t *testing.T) {
 		{ProfileOptimistic, 2, 64},
 		{ProfileExecutionSync, 2, 64},
 	} {
-		payload, err := resolveParameters(address, StartOptions{
-			Images:  Images{Execution: "image"},
-			Profile: test.profile,
+		t.Run(string(test.profile), func(t *testing.T) {
+			payload, err := resolveParameters(address, StartOptions{
+				Images:  Images{Execution: "image"},
+				Profile: test.profile,
+			})
+			require.NoError(t, err)
+			var parameters struct {
+				Participants []struct {
+					ValidatorCount int      `json:"validator_count"`
+					ELExtraParams  []string `json:"el_extra_params"`
+					CLExtraParams  []string `json:"cl_extra_params"`
+					VCExtraParams  []string `json:"vc_extra_params"`
+				} `json:"participants"`
+				Network struct {
+					PreregisteredValidators int `json:"preregistered_validator_count"`
+				} `json:"network_params"`
+			}
+			require.NoError(t, json.Unmarshal([]byte(payload), &parameters))
+			require.Len(t, parameters.Participants, test.participants)
+			totalValidators := 0
+			for _, participant := range parameters.Participants {
+				totalValidators += participant.ValidatorCount
+				require.NotNil(t, participant.ELExtraParams)
+				require.NotNil(t, participant.CLExtraParams)
+				require.NotNil(t, participant.VCExtraParams)
+			}
+			require.Equal(t, test.validators, totalValidators)
+			if test.profile == ProfileSync {
+				require.Contains(t, parameters.Participants[1].CLExtraParams, "--force-clear-db")
+				require.Equal(t, []string{"--enable-doppelganger", "--force-clear-db"}, parameters.Participants[1].VCExtraParams)
+			}
+			if test.profile == ProfileChaos {
+				require.Empty(t, parameters.Participants[0].CLExtraParams)
+				require.NotNil(t, parameters.Participants[0].CLExtraParams)
+			}
+			if test.profile == ProfileCold {
+				require.Contains(t, parameters.Participants[0].CLExtraParams, "--slots-per-archive-point=16")
+			}
+			if test.profile == ProfileOptimistic {
+				require.Contains(t, parameters.Participants[1].CLExtraParams, "--startup-optimistic")
+			}
+			if test.profile == ProfileOperations {
+				require.Equal(t, 512, parameters.Network.PreregisteredValidators)
+				require.Equal(t, 300, parameters.Participants[4].ValidatorCount)
+			}
+			if test.profile == ProfileExecutionSync {
+				require.Zero(t, parameters.Participants[1].ValidatorCount)
+				require.Contains(t, parameters.Participants[1].ELExtraParams, "--nodiscover")
+				require.Contains(t, parameters.Participants[1].ELExtraParams, "--bootnodes=")
+				require.Contains(t, parameters.Participants[1].CLExtraParams, "--min-sync-peers=0")
+			}
 		})
-		require.NoError(t, err)
-		var parameters struct {
-			Participants []struct {
-				ValidatorCount int      `json:"validator_count"`
-				ELExtraParams  []string `json:"el_extra_params"`
-				CLExtraParams  []string `json:"cl_extra_params"`
-				VCExtraParams  []string `json:"vc_extra_params"`
-			} `json:"participants"`
-			Network struct {
-				PreregisteredValidators int `json:"preregistered_validator_count"`
-			} `json:"network_params"`
-		}
-		require.NoError(t, json.Unmarshal([]byte(payload), &parameters))
-		require.Len(t, parameters.Participants, test.participants)
-		totalValidators := 0
-		for _, participant := range parameters.Participants {
-			totalValidators += participant.ValidatorCount
-			require.NotNil(t, participant.ELExtraParams)
-			require.NotNil(t, participant.CLExtraParams)
-			require.NotNil(t, participant.VCExtraParams)
-		}
-		require.Equal(t, test.validators, totalValidators)
-		if test.profile == ProfileSync {
-			require.Contains(t, parameters.Participants[1].CLExtraParams, "--force-clear-db")
-			require.Equal(t, []string{"--enable-doppelganger", "--force-clear-db"}, parameters.Participants[1].VCExtraParams)
-		}
-		if test.profile == ProfileChaos {
-			require.Empty(t, parameters.Participants[0].CLExtraParams)
-			require.NotNil(t, parameters.Participants[0].CLExtraParams)
-		}
-		if test.profile == ProfileCold {
-			require.Contains(t, parameters.Participants[0].CLExtraParams, "--slots-per-archive-point=16")
-		}
-		if test.profile == ProfileOptimistic {
-			require.Contains(t, parameters.Participants[1].CLExtraParams, "--startup-optimistic")
-		}
-		if test.profile == ProfileOperations {
-			require.Equal(t, 512, parameters.Network.PreregisteredValidators)
-			require.Equal(t, 300, parameters.Participants[4].ValidatorCount)
-		}
-		if test.profile == ProfileExecutionSync {
-			require.Zero(t, parameters.Participants[1].ValidatorCount)
-			require.Contains(t, parameters.Participants[1].ELExtraParams, "--nodiscover")
-			require.Contains(t, parameters.Participants[1].ELExtraParams, "--bootnodes=")
-			require.Contains(t, parameters.Participants[1].CLExtraParams, "--min-sync-peers=0")
-		}
 	}
 }
 
