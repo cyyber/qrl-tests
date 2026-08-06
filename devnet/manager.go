@@ -103,9 +103,11 @@ func (manager *Manager) Start(ctx context.Context, options StartOptions) (Enviro
 	if err != nil {
 		return Environment{}, err
 	}
-	if found, err := client.EnclaveExists(ctx, options.EnclaveName); err != nil {
+	found, err := client.EnclaveExists(ctx, options.EnclaveName)
+	if err != nil {
 		return Environment{}, err
-	} else if found {
+	}
+	if found {
 		return Environment{}, fmt.Errorf("network %q already exists or provisioning is incomplete; stop it before retrying", options.EnclaveName)
 	}
 
