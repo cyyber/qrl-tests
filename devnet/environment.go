@@ -63,10 +63,12 @@ func resolveEnvironment(ctx context.Context, client kurtosisClient, name string,
 	if err != nil {
 		return Environment{}, err
 	}
+
 	participants, err := participantsFromServices(services)
 	if err != nil {
 		return Environment{}, err
 	}
+
 	return Environment{
 		EnclaveName:     name,
 		Backend:         backend,

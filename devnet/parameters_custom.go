@@ -17,12 +17,14 @@ func customParameters(payload []byte, address string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+
 	if len(shape.Participants) == 0 || strings.TrimSpace(shape.Participants[0].ExecutionImage) == "" {
 		return "", errors.New("first participant el_image must be set")
 	}
 	if _, ok := shape.Network.PrefundedAccounts[address]; !ok {
 		return "", fmt.Errorf("network_params.prefunded_accounts must contain development wallet %q", address)
 	}
+
 	return string(payload), nil
 }
 

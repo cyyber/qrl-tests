@@ -57,6 +57,7 @@ func (manager *Manager) Inspect(ctx context.Context, name string, backend Backen
 	if err != nil {
 		return Environment{}, err
 	}
+
 	client, err := manager.newClient()
 	if err != nil {
 		return Environment{}, err
@@ -68,10 +69,12 @@ func (manager *Manager) Inspect(ctx context.Context, name string, backend Backen
 	if !found {
 		return Environment{}, errors.New("network is not running")
 	}
+
 	environment, err := resolveEnvironment(ctx, client, name, backend)
 	if err != nil {
 		return Environment{}, err
 	}
+
 	primary, err := environment.Primary()
 	if err != nil {
 		return Environment{}, err
@@ -79,6 +82,7 @@ func (manager *Manager) Inspect(ctx context.Context, name string, backend Backen
 	if err := manager.probe(ctx, primary.Execution.RPCURL, devwallet.Address); err != nil {
 		return Environment{}, err
 	}
+
 	return environment, nil
 }
 
@@ -87,10 +91,12 @@ func (manager *Manager) Start(ctx context.Context, options StartOptions) (Enviro
 	if err != nil {
 		return Environment{}, err
 	}
+
 	parameters, err := effectiveParameters(devwallet.Address, options)
 	if err != nil {
 		return Environment{}, fmt.Errorf("prepare qrl-package parameters: %w", err)
 	}
+
 	client, err := manager.newClient()
 	if err != nil {
 		return Environment{}, err
@@ -100,6 +106,7 @@ func (manager *Manager) Start(ctx context.Context, options StartOptions) (Enviro
 	} else if found {
 		return Environment{}, errors.New("network already exists or provisioning is incomplete; stop it before retrying")
 	}
+
 	created, err := client.CreateAndRunRemotePackage(
 		ctx,
 		options.EnclaveName,
@@ -116,6 +123,7 @@ func (manager *Manager) Start(ctx context.Context, options StartOptions) (Enviro
 	if err != nil {
 		return Environment{}, manager.startFailure(client, options.EnclaveName, true, "resolve network endpoints", err)
 	}
+
 	primary, err := environment.Primary()
 	if err != nil {
 		return Environment{}, manager.startFailure(client, options.EnclaveName, true, "resolve primary participant", err)
@@ -125,6 +133,7 @@ func (manager *Manager) Start(ctx context.Context, options StartOptions) (Enviro
 	}); err != nil {
 		return Environment{}, manager.startFailure(client, options.EnclaveName, true, "wait for network readiness", err)
 	}
+
 	return environment, nil
 }
 

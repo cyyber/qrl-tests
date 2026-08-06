@@ -9,14 +9,17 @@ func effectiveParameters(address string, options StartOptions) (string, error) {
 	if options.Parameters != nil {
 		return customParameters(options.Parameters, address)
 	}
+
 	images := options.Images.withDefaults()
 	if err := images.validate(); err != nil {
 		return "", err
 	}
+
 	profile, err := normalizeProfile(options.Profile)
 	if err != nil {
 		return "", err
 	}
+
 	spec := profileSpecs[profile]
 	participants := make([]participant, len(spec.participants))
 	for index := range participants {
@@ -41,6 +44,7 @@ func effectiveParameters(address string, options StartOptions) (string, error) {
 			VCExtraLabels:     labels,
 		}
 	}
+
 	payload, err := json.Marshal(packageParameters{
 		Participants: participants,
 		NetworkParams: networkParams{
@@ -60,6 +64,7 @@ func effectiveParameters(address string, options StartOptions) (string, error) {
 	if err != nil {
 		return "", err
 	}
+
 	return string(payload), nil
 }
 
