@@ -33,7 +33,7 @@ var registry = []Lane{
 		Name:    "execution-abi",
 		Profile: devnet.ProfileSingle,
 		Suites:  []SuiteID{SuiteExecutionABI},
-		Timeout: 90 * time.Minute,
+		Timeout: 15 * time.Minute,
 	},
 }
 
