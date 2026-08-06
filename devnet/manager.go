@@ -94,6 +94,9 @@ func (manager *Manager) Start(ctx context.Context, options StartOptions) (Enviro
 	if options.Backend == "" {
 		options.Backend = BackendDocker
 	}
+	if options.Profile == "" {
+		options.Profile = ProfileSingle
+	}
 
 	parameters, err := effectiveParameters(devwallet.Address, options)
 	if err != nil {

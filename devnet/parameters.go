@@ -78,12 +78,10 @@ func effectiveParameters(address string, options StartOptions) (string, error) {
 		return "", err
 	}
 
-	profile, err := normalizeProfile(options.Profile)
-	if err != nil {
-		return "", err
+	spec, ok := profileSpecs[options.Profile]
+	if !ok {
+		return "", fmt.Errorf("unknown development-network profile %q", options.Profile)
 	}
-
-	spec := profileSpecs[profile]
 	participants := make([]participant, len(spec.participants))
 	for index := range participants {
 		configuration := spec.participants[index]

@@ -54,6 +54,10 @@ func networkCommand(network networkController) *cli.Command {
 					if err != nil {
 						return err
 					}
+					profile, err := devnet.ParseProfile(command.String("profile"))
+					if err != nil {
+						return err
+					}
 
 					ctx, cancel := context.WithTimeout(command.Context, command.Duration("timeout"))
 					defer cancel()
@@ -63,7 +67,7 @@ func networkCommand(network networkController) *cli.Command {
 						Backend:     backend,
 						Images:      imagesFromFlags(command),
 						Parameters:  parameters,
-						Profile:     devnet.Profile(command.String("profile")),
+						Profile:     profile,
 					}); err != nil {
 						return err
 					}

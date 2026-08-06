@@ -1,6 +1,9 @@
 package devnet
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 type Profile string
 
@@ -86,12 +89,15 @@ var profileSpecs = map[Profile]profileSpec{
 	},
 }
 
-func normalizeProfile(profile Profile) (Profile, error) {
-	if profile == "" {
+// ParseProfile validates the raw value, resolving the empty value to the
+// default single-participant profile; only a verified value becomes a Profile.
+func ParseProfile(value string) (Profile, error) {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
 		return ProfileSingle, nil
 	}
-	if _, exists := profileSpecs[profile]; !exists {
-		return "", fmt.Errorf("unknown development-network profile %q", profile)
+	if _, exists := profileSpecs[Profile(trimmed)]; !exists {
+		return "", fmt.Errorf("unknown development-network profile %q", value)
 	}
-	return profile, nil
+	return Profile(trimmed), nil
 }
