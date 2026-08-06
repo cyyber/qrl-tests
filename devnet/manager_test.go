@@ -121,14 +121,12 @@ func TestInspect(t *testing.T) {
 	require.Len(t, environment.Participants, 1)
 }
 
-func TestStopIsIdempotent(t *testing.T) {
-	client := new(fakeClient)
-	require.NoError(t, testManager(client).Stop(t.Context(), "missing"))
-	require.False(t, client.destroyed)
-}
+func TestStop(t *testing.T) {
+	missing := new(fakeClient)
+	require.NoError(t, testManager(missing).Stop(t.Context(), "missing"))
+	require.False(t, missing.destroyed, "stopping an absent network must be a no-op")
 
-func TestStopDestroysRunningNetwork(t *testing.T) {
-	client := &fakeClient{exists: true}
-	require.NoError(t, testManager(client).Stop(t.Context(), "running"))
-	require.True(t, client.destroyed)
+	running := &fakeClient{exists: true}
+	require.NoError(t, testManager(running).Stop(t.Context(), "running"))
+	require.True(t, running.destroyed)
 }
