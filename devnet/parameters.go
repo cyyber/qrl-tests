@@ -34,7 +34,6 @@ type participant struct {
 
 type networkParams struct {
 	NetworkID               string             `json:"network_id"`
-	PreregisteredValidators int                `json:"preregistered_validator_count,omitempty"`
 	SecondsPerSlot          int                `json:"seconds_per_slot"`
 	SlotsPerEpoch           int                `json:"slots_per_epoch"`
 	ExecutionFollowDistance int                `json:"execution_follow_distance"`
@@ -75,7 +74,6 @@ func profileParameters(address string, options StartOptions) (string, error) {
 	spec := profileSpecs[options.Profile]
 	participants := make([]participant, len(spec.participants))
 	for index := range participants {
-		configuration := spec.participants[index]
 		labels := map[string]string{
 			participantLabel: strconv.Itoa(index + 1),
 			// Alternate halves for the network-partition lanes.
@@ -83,15 +81,15 @@ func profileParameters(address string, options StartOptions) (string, error) {
 		}
 		participants[index] = participant{
 			ELImage:           images.Execution,
-			ELExtraParams:     participantParameters(configuration.elExtraParams, "--graphql", "--graphql.vhosts=*"),
+			ELExtraParams:     []string{"--graphql", "--graphql.vhosts=*"},
 			CLImage:           images.Consensus,
-			CLExtraParams:     participantParameters(configuration.clExtraParams, "--min-sync-peers=0", "--minimum-peers-per-subnet=0"),
+			CLExtraParams:     []string{"--min-sync-peers=0", "--minimum-peers-per-subnet=0"},
 			VCImage:           images.Validator,
-			VCExtraParams:     participantParameters(configuration.vcExtraParams),
+			VCExtraParams:     []string{},
 			UseRemoteSigner:   true,
 			RemoteSignerType:  "clef",
 			RemoteSignerImage: images.Clef,
-			ValidatorCount:    configuration.validatorCount,
+			ValidatorCount:    spec.participants[index].validatorCount,
 			ELExtraLabels:     labels,
 			CLExtraLabels:     labels,
 			VCExtraLabels:     labels,
@@ -102,7 +100,6 @@ func profileParameters(address string, options StartOptions) (string, error) {
 		Participants: participants,
 		NetworkParams: networkParams{
 			NetworkID:               "1337",
-			PreregisteredValidators: spec.preregisteredValidators,
 			SecondsPerSlot:          5,
 			SlotsPerEpoch:           8,
 			ExecutionFollowDistance: 8,
@@ -119,13 +116,6 @@ func profileParameters(address string, options StartOptions) (string, error) {
 	}
 
 	return string(payload), nil
-}
-
-func participantParameters(configured []string, defaults ...string) []string {
-	if configured != nil {
-		return configured
-	}
-	return append([]string{}, defaults...)
 }
 
 func fileParameters(payload []byte, address string) (string, error) {

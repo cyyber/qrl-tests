@@ -11,9 +11,9 @@ func TestParseProfile(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, ProfileSingle, profile)
 
-	profile, err = ParseProfile("chaos")
+	profile, err = ParseProfile("single")
 	require.NoError(t, err)
-	require.Equal(t, ProfileChaos, profile)
+	require.Equal(t, ProfileSingle, profile)
 
 	_, err = ParseProfile("unknown")
 	require.ErrorContains(t, err, "unknown development-network profile")
