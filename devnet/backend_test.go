@@ -19,10 +19,9 @@ func TestParseBackend(t *testing.T) {
 	require.Error(t, err)
 }
 
-func TestImagesValidate(t *testing.T) {
-	require.NoError(t, DefaultImages().validate())
-
-	images := DefaultImages()
-	images.Execution = " "
-	require.ErrorContains(t, images.validate(), "execution image is empty")
+func TestImagesWithDefaults(t *testing.T) {
+	images := Images{Execution: " registry.example/go-qrl:test ", Clef: "  "}.withDefaults()
+	require.Equal(t, "registry.example/go-qrl:test", images.Execution)
+	require.Equal(t, DefaultClefImage, images.Clef)
+	require.Equal(t, DefaultImages(), Images{}.withDefaults())
 }

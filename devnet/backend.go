@@ -51,39 +51,20 @@ func DefaultImages() Images {
 	}
 }
 
+// withDefaults trims every reference and resolves blank ones to the local
+// development defaults.
 func (images Images) withDefaults() Images {
-	defaults := DefaultImages()
-	if images.Execution == "" {
-		images.Execution = defaults.Execution
-	}
-	if images.Clef == "" {
-		images.Clef = defaults.Clef
-	}
-	if images.Consensus == "" {
-		images.Consensus = defaults.Consensus
-	}
-	if images.Validator == "" {
-		images.Validator = defaults.Validator
-	}
-	if images.Genesis == "" {
-		images.Genesis = defaults.Genesis
-	}
-	return images
-}
-
-func (images Images) validate() error {
-	for _, item := range []struct {
-		name, image string
-	}{
-		{"execution", images.Execution},
-		{"Clef", images.Clef},
-		{"consensus", images.Consensus},
-		{"validator", images.Validator},
-		{"genesis", images.Genesis},
-	} {
-		if strings.TrimSpace(item.image) == "" {
-			return fmt.Errorf("%s image is empty", item.name)
+	normalize := func(value, fallback string) string {
+		if trimmed := strings.TrimSpace(value); trimmed != "" {
+			return trimmed
 		}
+		return fallback
 	}
-	return nil
+	return Images{
+		Execution: normalize(images.Execution, DefaultExecutionImage),
+		Clef:      normalize(images.Clef, DefaultClefImage),
+		Consensus: normalize(images.Consensus, DefaultConsensusImage),
+		Validator: normalize(images.Validator, DefaultValidatorImage),
+		Genesis:   normalize(images.Genesis, DefaultGenesisImage),
+	}
 }

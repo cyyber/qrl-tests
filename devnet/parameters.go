@@ -74,10 +74,6 @@ func resolveParameters(address string, options StartOptions) (string, error) {
 	}
 
 	images := options.Images.withDefaults()
-	if err := images.validate(); err != nil {
-		return "", err
-	}
-
 	spec, ok := profileSpecs[options.Profile]
 	if !ok {
 		return "", fmt.Errorf("unknown development-network profile %q", options.Profile)
