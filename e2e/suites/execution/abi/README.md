@@ -22,16 +22,17 @@ statement coverage.
 Covered:
 
 - Deployment: dynamic constructor strings, bytes, tuples, and arrays, verified
-  through the emitted constructor event.
+  through the emitted constructor event, and value accepted by the payable
+  constructor.
 - Calls: VM integer transition widths and extrema, booleans, 64-byte addresses,
   fixed bytes across the 32- and 64-byte boundaries, dynamic bytes and strings
   around 64-byte length boundaries, fixed and dynamic arrays, nested tuples,
   views, and overloaded methods.
-- Errors: a complex custom error, `Error(string)`, `Panic(uint256)`, RPC revert
-  data, and failed transaction receipts.
+- Errors: complex and zero-argument custom errors, `Error(string)`,
+  `Panic(uint256)`, RPC revert data, and failed transaction receipts.
 - Events and filters: successful transactions, scalar and composite events,
-  supported indexed topics, overloaded events, and positive, negative,
-  wildcard, and OR filters.
+  supported indexed topics, indexed struct hashing, anonymous emission,
+  overloaded events, and positive, negative, wildcard, and OR filters.
 - Function values: two-word 68-byte values, dynamic offsets, callback
   execution, generated calls and events, and indexed hashing and filtering.
 - Payable entrypoints: a named payable method plus distinct receive and
@@ -41,8 +42,13 @@ Covered:
 
 Not currently supported and excluded from this target:
 
-- Anonymous-event binding decoding and filtering.
-- Composite indexed-topic construction and tuple reconstruction.
+- Anonymous-event binding decoding and filtering: go-qrl's `bind.UnpackLog`
+  rejects logs without a signature topic and abigen generates no filter,
+  watch, or parse bindings for anonymous events, so their emission is
+  asserted on raw logs only.
+- Indexed-tuple reconstruction and filtering: topics carry only the
+  Keccak-256 hash of the canonical encoding, and the generated filters type
+  the tuple itself, so the hashing is asserted on raw logs only.
 - Overloaded custom errors and generic `ABI.Unpack` error-name decoding.
 - Anonymous tuple fields and unused fixed-point and hash ABI types.
 - The upstream v2 binding API.

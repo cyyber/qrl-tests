@@ -165,6 +165,28 @@ func (fixture *liveFixture) assertPayableEntrypoints(ctx context.Context) {
 	ginkgo.GinkgoHelper()
 
 	// Hyperion:
+	// constructor(...) payable { ... }
+	// Goal: a payable constructor accepts value at deployment and the balance
+	// lands on the freshly deployed contract.
+	ginkgo.By("deploying with value through the payable constructor")
+	deployAuth := fixture.transactOpts(ctx)
+	deployAuth.Value = big.NewInt(23)
+	address, deployTx, _, err := abifixture.DeployEventEmitter(
+		deployAuth,
+		fixture.client,
+		big.NewInt(1),
+		"paid deployment",
+		[]byte{0x01},
+		abifixture.EventEmitterRecord{Amount: big.NewInt(1), Recipient: fixture.from, Tag: fixture.inputs.tag},
+		[]uint16{1},
+	)
+	gomega.Expect(err).NotTo(gomega.HaveOccurred())
+	fixture.waitSuccessfulTransaction(ctx, deployTx)
+	deployedBalance, err := fixture.client.BalanceAt(ctx, address, nil)
+	gomega.Expect(err).NotTo(gomega.HaveOccurred())
+	gomega.Expect(deployedBalance).To(gomega.Equal(big.NewInt(23)))
+
+	// Hyperion:
 	// event Received(uint256 amount);
 	// receive() external payable { emit Received(msg.value); }
 	// Goal: the generated receive entrypoint sends the requested value with

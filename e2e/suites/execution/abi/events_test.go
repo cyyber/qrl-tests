@@ -312,6 +312,33 @@ func (fixture *liveFixture) assertRecordSeenEvent(ctx context.Context) {
 	gomega.Expect(log.Data).To(gomega.BeEmpty(), "every RecordSeen value is indexed")
 }
 
+func (fixture *liveFixture) assertAnonymousEvent(ctx context.Context) {
+	ginkgo.GinkgoHelper()
+
+	// Hyperion:
+	// event Pinged(uint16 indexed marker, uint512 value) anonymous;
+	// function emitPinged(uint16 marker, uint512 value) external {
+	//     emit Pinged(marker, value);
+	// }
+	// Goal: an anonymous event carries no signature topic — only its indexed
+	// values. The binding layer generates no watcher or parser for anonymous
+	// events, so the node-side encoding is asserted on the raw log.
+	ginkgo.By("emitting an anonymous event without a signature topic")
+	marker, value := uint16(0x1234), fixture.inputs.amount
+	tx, err := fixture.binding.EmitPinged(fixture.transactOpts(ctx), marker, value)
+	gomega.Expect(err).NotTo(gomega.HaveOccurred())
+	receipt := fixture.waitSuccessfulTransaction(ctx, tx)
+	gomega.Expect(receipt.Logs).To(gomega.HaveLen(1))
+
+	log := receipt.Logs[0]
+	gomega.Expect(log.Topics).To(gomega.Equal([]common.LogTopic{
+		common.BytesToRightAlignedLogTopic(qrlmath.U512Bytes(big.NewInt(int64(marker)))),
+	}))
+	data, err := fixture.contractABI.Events["Pinged"].Inputs.NonIndexed().Pack(value)
+	gomega.Expect(err).NotTo(gomega.HaveOccurred(), "pack Pinged value")
+	gomega.Expect(log.Data).To(gomega.Equal(data))
+}
+
 func (fixture *liveFixture) assertIndexedScalarEvent(ctx context.Context) {
 	ginkgo.GinkgoHelper()
 

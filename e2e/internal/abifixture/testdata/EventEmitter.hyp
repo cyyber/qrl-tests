@@ -93,6 +93,7 @@ contract EventEmitter {
     );
     event IndexedScalars(bool indexed flag, bytes5 indexed code, int16 indexed delta);
     event RecordSeen(Record indexed record);
+    event Pinged(uint16 indexed marker, uint512 value) anonymous;
     event Transformed(uint16 value);
     event Transformed(string value);
     event Paid(address indexed sender, uint16 indexed marker, uint256 amount);
@@ -105,7 +106,7 @@ contract EventEmitter {
         bytes memory payload,
         Record memory record,
         uint16[] memory numbers
-    ) {
+    ) payable {
         observed = initial;
         emit Deployed(initial, note, payload, record, numbers);
     }
@@ -314,6 +315,10 @@ contract EventEmitter {
 
     function emitRecordSeen(Record calldata record) external {
         emit RecordSeen(record);
+    }
+
+    function emitPinged(uint16 marker, uint512 value) external {
+        emit Pinged(marker, value);
     }
 
     function transform(uint16 value) external pure returns (uint16) {
