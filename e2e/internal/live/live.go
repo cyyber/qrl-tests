@@ -37,10 +37,12 @@ func Load() (*Runtime, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	wallet, err := devwallet.Restore()
 	if err != nil {
 		return nil, err
 	}
+
 	runtime := &Runtime{
 		Wallet:      wallet,
 		environment: manifest.Environment,
