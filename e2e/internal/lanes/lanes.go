@@ -64,6 +64,8 @@ func (lane Lane) Select(names []string) (Lane, error) {
 		}
 	}
 
+	// Filter the lane's own list so the selection keeps the registered
+	// execution order regardless of flag order.
 	selected := make([]SuiteID, 0, len(requested))
 	for _, id := range lane.Suites {
 		if slices.Contains(requested, id) {
