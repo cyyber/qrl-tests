@@ -5,12 +5,12 @@ import (
 	"strings"
 )
 
-type Backend string
-
 const (
 	BackendDocker     Backend = "docker"
 	BackendKubernetes Backend = "kubernetes"
 )
+
+type Backend string
 
 // ParseBackend validates the raw value, resolving the empty value to the
 // default Docker backend; only a verified value becomes a Backend.
