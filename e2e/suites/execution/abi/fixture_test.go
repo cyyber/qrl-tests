@@ -30,10 +30,10 @@ func setupLiveSuite(ctx context.Context) *liveSuite {
 	ginkgo.GinkgoHelper()
 
 	runtime := testsuite.LoadRuntime()
-	session, err := runtime.PrimaryWithWebSocket(ctx)
+	node, err := runtime.PrimaryWithWebSocket(ctx)
 	gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-	transactor, err := bind.NewKeyedTransactorWithChainID(session.Wallet, session.ChainID)
+	transactor, err := bind.NewKeyedTransactorWithChainID(node.Wallet, node.ChainID)
 	gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 	inputs := scenarioInputs{
@@ -54,8 +54,8 @@ func setupLiveSuite(ctx context.Context) *liveSuite {
 	gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 	return &liveSuite{
-		client:      session.Execution,
-		wsClient:    session.ExecutionWebSocket,
+		client:      node.Execution,
+		wsClient:    node.ExecutionWebSocket,
 		from:        transactor.From,
 		signer:      transactor.Signer,
 		contractABI: *parsed,

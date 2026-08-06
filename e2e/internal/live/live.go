@@ -20,12 +20,12 @@ type Runtime struct {
 	ChainID *big.Int
 
 	environment devnet.Environment
-	sessions    []*Session
+	nodes       []*Node
 }
 
-// Session bundles one participant's open execution clients with the shared
-// suite Runtime.
-type Session struct {
+// Node is an open handle to one network participant: its execution clients
+// plus the shared suite Runtime.
+type Node struct {
 	*Runtime
 	Execution          *qrlclient.Client
 	ExecutionWebSocket *qrlclient.Client
@@ -51,7 +51,7 @@ func Load() (*Runtime, error) {
 	return runtime, nil
 }
 
-func (runtime *Runtime) PrimaryWithWebSocket(ctx context.Context) (*Session, error) {
+func (runtime *Runtime) PrimaryWithWebSocket(ctx context.Context) (*Node, error) {
 	participant, err := runtime.environment.Primary()
 	if err != nil {
 		return nil, err
@@ -59,7 +59,7 @@ func (runtime *Runtime) PrimaryWithWebSocket(ctx context.Context) (*Session, err
 	return runtime.open(ctx, participant, true)
 }
 
-func (runtime *Runtime) open(ctx context.Context, participant devnet.Participant, withWebSocket bool) (*Session, error) {
+func (runtime *Runtime) open(ctx context.Context, participant devnet.Participant, withWebSocket bool) (*Node, error) {
 	client, err := qrlclient.DialContext(ctx, participant.Execution.RPCURL)
 	if err != nil {
 		return nil, fmt.Errorf("open participant %d HTTP RPC: %w", participant.Index, err)
@@ -71,32 +71,32 @@ func (runtime *Runtime) open(ctx context.Context, participant devnet.Participant
 			return nil, fmt.Errorf("read participant %d chain ID: %w", participant.Index, err)
 		}
 	}
-	session := &Session{Runtime: runtime, Execution: client}
+	node := &Node{Runtime: runtime, Execution: client}
 	if withWebSocket {
-		session.ExecutionWebSocket, err = qrlclient.DialContext(ctx, participant.Execution.WebSocketURL)
+		node.ExecutionWebSocket, err = qrlclient.DialContext(ctx, participant.Execution.WebSocketURL)
 		if err != nil {
-			session.Close()
+			node.Close()
 			return nil, fmt.Errorf("open participant %d WebSocket RPC: %w", participant.Index, err)
 		}
 	}
-	runtime.sessions = append(runtime.sessions, session)
-	return session, nil
+	runtime.nodes = append(runtime.nodes, node)
+	return node, nil
 }
 
 func (runtime *Runtime) Close() {
-	for _, session := range runtime.sessions {
-		session.Close()
+	for _, node := range runtime.nodes {
+		node.Close()
 	}
-	runtime.sessions = nil
+	runtime.nodes = nil
 }
 
-func (session *Session) Close() {
-	session.closeOnce.Do(func() {
-		if session.ExecutionWebSocket != nil {
-			session.ExecutionWebSocket.Close()
+func (node *Node) Close() {
+	node.closeOnce.Do(func() {
+		if node.ExecutionWebSocket != nil {
+			node.ExecutionWebSocket.Close()
 		}
-		if session.Execution != nil {
-			session.Execution.Close()
+		if node.Execution != nil {
+			node.Execution.Close()
 		}
 	})
 }
