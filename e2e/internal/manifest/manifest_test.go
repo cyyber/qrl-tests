@@ -42,7 +42,7 @@ func TestManifestRequiresParticipant(t *testing.T) {
 
 	require.NoError(t, os.WriteFile(path, []byte(`{"environment":{}}`), 0o600))
 	_, err := Read(path)
-	require.Error(t, err)
+	require.ErrorContains(t, err, path)
 }
 
 func TestFromEnvReportsMissingConfiguration(t *testing.T) {
