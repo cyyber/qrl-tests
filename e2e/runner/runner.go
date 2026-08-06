@@ -95,6 +95,17 @@ func execute(ctx context.Context, specification commandSpec) error {
 	return command.Run()
 }
 
+type lockedWriter struct {
+	lock   *sync.Mutex
+	writer io.Writer
+}
+
+func (writer *lockedWriter) Write(payload []byte) (int, error) {
+	writer.lock.Lock()
+	defer writer.lock.Unlock()
+	return writer.writer.Write(payload)
+}
+
 func (runner *Runner) List() error {
 	for _, lane := range lanes.All() {
 		if _, err := fmt.Fprintf(
