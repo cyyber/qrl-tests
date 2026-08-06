@@ -111,12 +111,12 @@ func (runner *Runner) List() error {
 	if _, err := fmt.Fprintln(runner.stdout, "\nRegistered suites:"); err != nil {
 		return err
 	}
-	for _, suite := range lanes.RegisteredSuites() {
+	for _, id := range lanes.RegisteredSuites() {
 		if _, err := fmt.Fprintf(
 			runner.stdout,
 			"%-24s package=%s\n",
-			suite.ID,
-			suite.Package,
+			id,
+			id.Package(),
 		); err != nil {
 			return err
 		}

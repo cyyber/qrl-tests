@@ -11,7 +11,37 @@ import (
 	gomega "github.com/onsi/gomega"
 	"github.com/theQRL/go-qrl/accounts/abi/bind"
 	"github.com/theQRL/go-qrl/crypto"
+	"github.com/theQRL/go-qrl/event"
 )
+
+const watchDeliveryTimeout = 90 * time.Second
+
+// awaitEvent waits for one delivery on a generated watcher channel and hands
+// it to assert, failing on subscription errors, timeout, or spec cancellation.
+func awaitEvent[Event any](
+	ctx context.Context,
+	what string,
+	events <-chan *Event,
+	subscription event.Subscription,
+	assert func(*Event),
+) {
+	ginkgo.GinkgoHelper()
+
+	select {
+	case received, open := <-events:
+		gomega.Expect(open).To(gomega.BeTrue(), "%s event channel closed", what)
+		gomega.Expect(received).NotTo(gomega.BeNil())
+		assert(received)
+	case err, open := <-subscription.Err():
+		gomega.Expect(open).To(gomega.BeTrue(), "%s subscription closed", what)
+		gomega.Expect(err).NotTo(gomega.BeNil(), "%s subscription closed without an error", what)
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
+	case <-time.After(watchDeliveryTimeout):
+		ginkgo.Fail("timed out waiting for filtered " + what + " event")
+	case <-ctx.Done():
+		gomega.Expect(ctx.Err()).NotTo(gomega.HaveOccurred())
+	}
+}
 
 func (fixture *liveFixture) assertWebSocketWatcher(ctx context.Context) {
 	ginkgo.GinkgoHelper()
@@ -51,24 +81,13 @@ func (fixture *liveFixture) assertWebSocketWatcher(ctx context.Context) {
 	gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	receipt := fixture.waitSuccessfulTransaction(ctx, matchingTx)
 
-	select {
-	case event, open := <-events:
-		gomega.Expect(open).To(gomega.BeTrue(), "generated IndexedScalars event channel closed")
-		gomega.Expect(event).NotTo(gomega.BeNil())
-		gomega.Expect(event.Raw.TxHash).To(gomega.Equal(receipt.TxHash))
-		gomega.Expect(event.Raw.Address).To(gomega.Equal(fixture.address))
-		gomega.Expect(event.Flag).To(gomega.BeFalse())
-		gomega.Expect(event.Code).To(gomega.Equal(code))
-		gomega.Expect(event.Delta).To(gomega.Equal(delta))
-	case err, open := <-subscription.Err():
-		gomega.Expect(open).To(gomega.BeTrue(), "generated IndexedScalars subscription closed")
-		gomega.Expect(err).NotTo(gomega.BeNil(), "generated IndexedScalars subscription closed without an error")
-		gomega.Expect(err).NotTo(gomega.HaveOccurred())
-	case <-time.After(90 * time.Second):
-		ginkgo.Fail("timed out waiting for generated filtered IndexedScalars event")
-	case <-ctx.Done():
-		gomega.Expect(ctx.Err()).NotTo(gomega.HaveOccurred())
-	}
+	awaitEvent(ctx, "generated IndexedScalars", events, subscription, func(received *abifixture.EventEmitterIndexedScalars) {
+		gomega.Expect(received.Raw.TxHash).To(gomega.Equal(receipt.TxHash))
+		gomega.Expect(received.Raw.Address).To(gomega.Equal(fixture.address))
+		gomega.Expect(received.Flag).To(gomega.BeFalse())
+		gomega.Expect(received.Code).To(gomega.Equal(code))
+		gomega.Expect(received.Delta).To(gomega.Equal(delta))
+	})
 
 	// Hyperion:
 	// event Dynamic(bytes indexed payload, string indexed note, uint512 amount);
@@ -114,22 +133,11 @@ func (fixture *liveFixture) assertWebSocketWatcher(ctx context.Context) {
 	payloadHash := crypto.Keccak256Hash(fixture.inputs.payload)
 	noteHash := crypto.Keccak256Hash([]byte(fixture.inputs.note))
 
-	select {
-	case event, open := <-dynamicEvents:
-		gomega.Expect(open).To(gomega.BeTrue(), "generated Dynamic event channel closed")
-		gomega.Expect(event).NotTo(gomega.BeNil())
-		gomega.Expect(event.Raw.TxHash).To(gomega.Equal(dynamicReceipt.TxHash))
-		gomega.Expect(event.Raw.Address).To(gomega.Equal(fixture.address))
-		gomega.Expect(event.Payload).To(gomega.Equal(payloadHash))
-		gomega.Expect(event.Note).To(gomega.Equal(noteHash))
-		gomega.Expect(event.Amount).To(gomega.Equal(fixture.inputs.amount))
-	case err, open := <-dynamicSubscription.Err():
-		gomega.Expect(open).To(gomega.BeTrue(), "generated Dynamic subscription closed")
-		gomega.Expect(err).NotTo(gomega.BeNil(), "generated Dynamic subscription closed without an error")
-		gomega.Expect(err).NotTo(gomega.HaveOccurred())
-	case <-time.After(90 * time.Second):
-		ginkgo.Fail("timed out waiting for generated filtered Dynamic event")
-	case <-ctx.Done():
-		gomega.Expect(ctx.Err()).NotTo(gomega.HaveOccurred())
-	}
+	awaitEvent(ctx, "generated Dynamic", dynamicEvents, dynamicSubscription, func(received *abifixture.EventEmitterDynamic) {
+		gomega.Expect(received.Raw.TxHash).To(gomega.Equal(dynamicReceipt.TxHash))
+		gomega.Expect(received.Raw.Address).To(gomega.Equal(fixture.address))
+		gomega.Expect(received.Payload).To(gomega.Equal(payloadHash))
+		gomega.Expect(received.Note).To(gomega.Equal(noteHash))
+		gomega.Expect(received.Amount).To(gomega.Equal(fixture.inputs.amount))
+	})
 }

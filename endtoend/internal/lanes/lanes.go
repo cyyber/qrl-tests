@@ -3,6 +3,7 @@ package lanes
 
 import (
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 	"time"
@@ -23,13 +24,12 @@ const (
 	SuiteExecutionABI SuiteID = "execution-abi"
 )
 
-type Suite struct {
-	ID      SuiteID
-	Package string
+var suitePackages = map[SuiteID]string{
+	SuiteExecutionABI: "./endtoend/suites/execution/abi",
 }
 
-var suites = map[SuiteID]Suite{
-	SuiteExecutionABI: {ID: SuiteExecutionABI, Package: "./endtoend/suites/execution/abi"},
+func (id SuiteID) Package() string {
+	return suitePackages[id]
 }
 
 var registry = []Lane{
@@ -52,7 +52,7 @@ func (lane Lane) Select(names []string) (Lane, error) {
 	wanted := make(map[SuiteID]struct{}, len(names))
 	for _, name := range names {
 		id := SuiteID(strings.TrimSpace(name))
-		if _, exists := suites[id]; !exists {
+		if _, exists := suitePackages[id]; !exists {
 			return Lane{}, fmt.Errorf("unknown E2E suite %q", name)
 		}
 		wanted[id] = struct{}{}
@@ -79,20 +79,13 @@ func (lane Lane) Select(names []string) (Lane, error) {
 func (lane Lane) Packages() []string {
 	result := make([]string, len(lane.Suites))
 	for index, id := range lane.Suites {
-		result[index] = suites[id].Package
+		result[index] = id.Package()
 	}
 	return result
 }
 
-func RegisteredSuites() []Suite {
-	result := make([]Suite, 0, len(suites))
-	for _, suite := range suites {
-		result = append(result, suite)
-	}
-	slices.SortFunc(result, func(left, right Suite) int {
-		return strings.Compare(string(left.ID), string(right.ID))
-	})
-	return result
+func RegisteredSuites() []SuiteID {
+	return slices.Sorted(maps.Keys(suitePackages))
 }
 
 func Named(name string) (Lane, error) {

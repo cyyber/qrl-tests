@@ -12,13 +12,11 @@ import (
 
 func TestRegistry(t *testing.T) {
 	root := repositoryRoot(t)
-	registered := make(map[SuiteID]Suite)
-	for _, suite := range RegisteredSuites() {
-		require.NotEmpty(t, suite.ID)
-		require.NotEmpty(t, suite.Package)
-		_, duplicate := registered[suite.ID]
-		require.Falsef(t, duplicate, "duplicate suite %q", suite.ID)
-		registered[suite.ID] = suite
+	registered := make(map[SuiteID]struct{})
+	for _, id := range RegisteredSuites() {
+		require.NotEmpty(t, id)
+		require.NotEmpty(t, id.Package())
+		registered[id] = struct{}{}
 	}
 	seen := make(map[string]struct{})
 	for _, lane := range All() {
