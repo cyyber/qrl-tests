@@ -87,13 +87,8 @@ func (manager *Manager) Start(ctx context.Context, options StartOptions) (Enviro
 	if err != nil {
 		return Environment{}, err
 	}
-	parameters, err := effectiveParametersForProfile(
-		devwallet.Address,
-		options.Images,
-		options.Parameters,
-		options.Profile,
-		backend,
-	)
+	options.Backend = backend
+	parameters, err := effectiveParameters(devwallet.Address, options)
 	if err != nil {
 		return Environment{}, fmt.Errorf("prepare qrl-package parameters: %w", err)
 	}

@@ -5,15 +5,15 @@ import (
 	"strconv"
 )
 
-func effectiveParametersForProfile(address string, images Images, custom []byte, profile Profile, backend Backend) (string, error) {
-	if custom != nil {
-		return customParameters(custom, address, backend)
+func effectiveParameters(address string, options StartOptions) (string, error) {
+	if options.Parameters != nil {
+		return customParameters(options.Parameters, address, options.Backend)
 	}
-	images = images.withDefaults()
-	if err := images.validate(backend); err != nil {
+	images := options.Images.withDefaults()
+	if err := images.validate(options.Backend); err != nil {
 		return "", err
 	}
-	profile, err := normalizeProfile(profile)
+	profile, err := normalizeProfile(options.Profile)
 	if err != nil {
 		return "", err
 	}

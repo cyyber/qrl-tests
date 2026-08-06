@@ -90,6 +90,8 @@ func (runner *Runner) runLane(ctx context.Context, planned laneRun) (result erro
 		return fmt.Errorf("lane %s: %w", lane.Name, err)
 	}
 
+	// Give ginkgo slack past its own --timeout so it can report and clean up
+	// before the context kills the process.
 	laneCtx, cancelLane := context.WithTimeout(ctx, lane.Timeout+5*time.Minute)
 	defer cancelLane()
 	fmt.Fprintf(stdout, "=== RUN lane=%s profile=%s ===\n", lane.Name, lane.Profile)
