@@ -139,6 +139,7 @@ func TestBuiltInProfiles(t *testing.T) {
 				Profile: test.profile,
 			})
 			require.NoError(t, err)
+
 			var parameters struct {
 				Participants []struct {
 					ValidatorCount int      `json:"validator_count"`
@@ -151,6 +152,7 @@ func TestBuiltInProfiles(t *testing.T) {
 				} `json:"network_params"`
 			}
 			require.NoError(t, json.Unmarshal([]byte(payload), &parameters))
+
 			require.Len(t, parameters.Participants, test.participants)
 			totalValidators := 0
 			for _, participant := range parameters.Participants {
@@ -160,6 +162,7 @@ func TestBuiltInProfiles(t *testing.T) {
 				require.NotNil(t, participant.VCExtraParams)
 			}
 			require.Equal(t, test.validators, totalValidators)
+
 			if test.profile == ProfileSync {
 				require.Contains(t, parameters.Participants[1].CLExtraParams, "--force-clear-db")
 				require.Equal(t, []string{"--enable-doppelganger", "--force-clear-db"}, parameters.Participants[1].VCExtraParams)
