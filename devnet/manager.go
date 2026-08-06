@@ -72,7 +72,7 @@ func (manager *Manager) Inspect(ctx context.Context, name string, backend Backen
 		return Environment{}, err
 	}
 	if !found {
-		return Environment{}, errors.New("network is not running")
+		return Environment{}, fmt.Errorf("network %q is not running", name)
 	}
 
 	environment, err := resolveEnvironment(ctx, client, name, backend)
@@ -112,7 +112,7 @@ func (manager *Manager) Start(ctx context.Context, options StartOptions) (Enviro
 	if found, err := client.EnclaveExists(ctx, options.EnclaveName); err != nil {
 		return Environment{}, err
 	} else if found {
-		return Environment{}, errors.New("network already exists or provisioning is incomplete; stop it before retrying")
+		return Environment{}, fmt.Errorf("network %q already exists or provisioning is incomplete; stop it before retrying", options.EnclaveName)
 	}
 
 	if err := client.CreateEnclave(ctx, options.EnclaveName); err != nil {
