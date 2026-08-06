@@ -12,7 +12,7 @@ import (
 
 	"github.com/cyyber/qrl-tests/devnet"
 	"github.com/cyyber/qrl-tests/e2e/internal/lanes"
-	"github.com/cyyber/qrl-tests/e2e/internal/runenv"
+	"github.com/cyyber/qrl-tests/e2e/internal/manifest"
 	"github.com/stretchr/testify/require"
 )
 
@@ -72,12 +72,12 @@ func TestRunBuildsCommandAndCleansUp(t *testing.T) {
 	require.Equal(t, "go", command.Path)
 	require.Contains(t, command.Args, "./e2e/suites/execution/abi")
 
-	manifestPath := filepath.Join(reports, "execution-abi", "environment.json")
-	manifest, err := runenv.Read(manifestPath)
+	manifestPath := filepath.Join(reports, "execution-abi", "manifest.json")
+	written, err := manifest.Read(manifestPath)
 	require.NoError(t, err)
-	require.Equal(t, "execution-abi", manifest.Lane)
-	require.Equal(t, devnet.ProfileSingle, manifest.Profile)
-	require.Contains(t, command.Env, runenv.PathEnv+"="+manifestPath)
+	require.Equal(t, "execution-abi", written.Lane)
+	require.Equal(t, devnet.ProfileSingle, written.Profile)
+	require.Contains(t, command.Env, manifest.PathEnv+"="+manifestPath)
 	logs, err := filepath.Glob(filepath.Join(reports, "execution-abi", "output.log"))
 	require.NoError(t, err)
 	require.Len(t, logs, 1)
@@ -157,7 +157,7 @@ func testLaneRuns(t *testing.T, reports string, count int) []laneRun {
 			lane:         lane,
 			enclaveName:  name,
 			reportDir:    reportDir,
-			manifestPath: filepath.Join(reportDir, "environment.json"),
+			manifestPath: filepath.Join(reportDir, "manifest.json"),
 			provision:    true,
 		}
 	}
@@ -209,7 +209,7 @@ func TestRunPlanDescribesEachLane(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, plan.lanes, 1)
 	require.Equal(t, "qrl-tests-execution-abi", plan.lanes[0].enclaveName)
-	require.Equal(t, filepath.Join(reports, "execution-abi", "environment.json"), plan.lanes[0].manifestPath)
+	require.Equal(t, filepath.Join(reports, "execution-abi", "manifest.json"), plan.lanes[0].manifestPath)
 	require.Contains(t, plan.lanes[0].arguments, "./e2e/suites/execution/abi")
 	require.True(t, plan.lanes[0].provision)
 }

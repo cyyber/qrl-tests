@@ -1,7 +1,7 @@
 # End-to-end suites
 
 The suites run against a [development network](../devnet/README.md). The
-runner passes a generated environment manifest containing the participant
+runner passes a generated manifest containing the participant
 endpoints; suites do not provision infrastructure.
 
 ## Lanes

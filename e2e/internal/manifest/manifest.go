@@ -1,6 +1,6 @@
-// Package runenv defines the environment contract passed from the E2E runner
+// Package manifest defines the environment contract passed from the E2E runner
 // to live test suites.
-package runenv
+package manifest
 
 import (
 	"encoding/json"

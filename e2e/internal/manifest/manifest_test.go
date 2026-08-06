@@ -1,4 +1,4 @@
-package runenv
+package manifest
 
 import (
 	"path/filepath"
@@ -9,7 +9,7 @@ import (
 )
 
 func TestManifestRoundTrip(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "environment.json")
+	path := filepath.Join(t.TempDir(), "manifest.json")
 	want := Manifest{
 		Lane:    "execution-abi",
 		Profile: devnet.ProfileSingle,
@@ -36,6 +36,6 @@ func TestManifestRoundTrip(t *testing.T) {
 }
 
 func TestManifestRequiresParticipant(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "environment.json")
+	path := filepath.Join(t.TempDir(), "manifest.json")
 	require.Error(t, Write(path, Manifest{}))
 }

@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/cyyber/qrl-tests/devnet"
-	"github.com/cyyber/qrl-tests/e2e/internal/runenv"
+	"github.com/cyyber/qrl-tests/e2e/internal/manifest"
 )
 
 const laneCleanupTimeout = 2 * time.Minute
@@ -82,7 +82,7 @@ func (runner *Runner) runLane(ctx context.Context, planned laneRun) (result erro
 	}
 	defer func() { result = errors.Join(result, lease.close()) }()
 
-	if err := runenv.Write(planned.manifestPath, runenv.Manifest{
+	if err := manifest.Write(planned.manifestPath, manifest.Manifest{
 		Lane:        lane.Name,
 		Profile:     lane.Profile,
 		Environment: lease.environment,
@@ -95,7 +95,7 @@ func (runner *Runner) runLane(ctx context.Context, planned laneRun) (result erro
 	laneCtx, cancelLane := context.WithTimeout(ctx, lane.Timeout+5*time.Minute)
 	defer cancelLane()
 	fmt.Fprintf(stdout, "=== RUN lane=%s profile=%s ===\n", lane.Name, lane.Profile)
-	environment := append(os.Environ(), runenv.PathEnv+"="+planned.manifestPath)
+	environment := append(os.Environ(), manifest.PathEnv+"="+planned.manifestPath)
 	if err := runner.runCommand(laneCtx, commandSpec{
 		Path:   "go",
 		Args:   planned.arguments,

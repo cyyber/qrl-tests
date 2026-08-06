@@ -56,7 +56,7 @@ func newRunPlan(configuration Config, selected []lanes.Lane, mode runMode) (runP
 			lane:         lane,
 			enclaveName:  enclaveName,
 			reportDir:    reportDir,
-			manifestPath: filepath.Join(reportDir, "environment.json"),
+			manifestPath: filepath.Join(reportDir, "manifest.json"),
 			arguments:    ginkgoArguments(lane, reportDir),
 			provision:    mode.provisions(),
 			testsDir:     testsDir,

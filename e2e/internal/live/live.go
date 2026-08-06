@@ -7,7 +7,7 @@ import (
 	"math/big"
 
 	"github.com/cyyber/qrl-tests/devnet"
-	"github.com/cyyber/qrl-tests/e2e/internal/runenv"
+	"github.com/cyyber/qrl-tests/e2e/internal/manifest"
 	"github.com/cyyber/qrl-tests/internal/devwallet"
 	qrlwallet "github.com/theQRL/go-qrl/crypto/pqcrypto/wallet"
 	"github.com/theQRL/go-qrl/qrlclient"
@@ -33,7 +33,7 @@ type Node struct {
 // Load resolves the configured test environment and restores the disposable
 // development wallet once for the suite.
 func Load() (*Runtime, error) {
-	manifest, err := runenv.Required()
+	handoff, err := manifest.Required()
 	if err != nil {
 		return nil, err
 	}
@@ -45,7 +45,7 @@ func Load() (*Runtime, error) {
 
 	runtime := &Runtime{
 		Wallet:      wallet,
-		environment: manifest.Environment,
+		environment: handoff.Environment,
 	}
 	return runtime, nil
 }
