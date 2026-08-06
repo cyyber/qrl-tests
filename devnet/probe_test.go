@@ -11,8 +11,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// probeHandler serves the execution RPC surface the probe uses: an advancing
-// block number and a wallet balance.
 func probeHandler(t *testing.T, balanceResult string) http.HandlerFunc {
 	t.Helper()
 	blockCalls := 0
