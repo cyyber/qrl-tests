@@ -234,5 +234,7 @@ func ginkgoArguments(lane lanes.Lane, reportDir string) []string {
 		"--json-report=report.json",
 	}
 	arguments = append(arguments, lane.Packages()...)
+	// Every suite package defines exactly one Go test entrypoint named TestE2E;
+	// --fail-on-empty turns a misnamed entrypoint into a failed lane.
 	return append(arguments, "--", "-test.run=^TestE2E$")
 }
