@@ -11,8 +11,10 @@ import (
 	"github.com/cyyber/qrl-tests/devnet/internal/kurtosis"
 )
 
-// Port identifiers and the fixed engine secret published by qrl-package runs.
+// Port identifiers published by qrl-package runs.
 const (
+	// engineJWTSecret mirrors static_files/jwt/jwtsecret in the qrl-package
+	// revision pinned by packageLocator; re-verify it when bumping the pin.
 	engineJWTSecret = "0xdc49981516e8e72b401a63e6405495a32dafc3939b5d6d83cc319ac0388bca1b"
 
 	rpcPortID           = "rpc"
