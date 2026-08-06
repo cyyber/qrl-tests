@@ -12,14 +12,6 @@ import (
 	"github.com/cyyber/qrl-tests/internal/devwallet"
 )
 
-type kurtosisClient interface {
-	EnclaveExists(ctx context.Context, name string) (bool, error)
-	CreateEnclave(ctx context.Context, name string) error
-	RunRemotePackage(ctx context.Context, enclaveName, locator, serializedParams string) error
-	Services(ctx context.Context, enclaveName string) (map[string]kurtosis.Service, error)
-	DestroyEnclave(ctx context.Context, name string) error
-}
-
 const (
 	DefaultEnclaveName  = "go-qrl-devnet"
 	DefaultStartTimeout = 5 * time.Minute
@@ -30,6 +22,14 @@ const (
 	// packageLocator pins the qrl-package revision run for every network.
 	packageLocator = "github.com/rgeraldes24/qrl-package@3892c3d2596403c080424d9e8fc99ff172483fe0"
 )
+
+type kurtosisClient interface {
+	EnclaveExists(ctx context.Context, name string) (bool, error)
+	CreateEnclave(ctx context.Context, name string) error
+	RunRemotePackage(ctx context.Context, enclaveName, locator, serializedParams string) error
+	Services(ctx context.Context, enclaveName string) (map[string]kurtosis.Service, error)
+	DestroyEnclave(ctx context.Context, name string) error
+}
 
 type StartOptions struct {
 	EnclaveName string
