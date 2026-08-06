@@ -1,4 +1,4 @@
-// Package manifest defines the handoff the E2E runner writes for live test
+// Package manifest defines the file the E2E runner writes for live test
 // suites: which lane ran, under which profile, against which network.
 package manifest
 
