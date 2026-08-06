@@ -49,28 +49,26 @@ func (lane Lane) Select(names []string) (Lane, error) {
 	if len(names) == 0 {
 		return lane, nil
 	}
-	wanted := make(map[SuiteID]struct{}, len(names))
+
+	requested := make([]SuiteID, 0, len(names))
 	for _, name := range names {
 		id := SuiteID(strings.TrimSpace(name))
 		if _, exists := suitePackages[id]; !exists {
 			return Lane{}, fmt.Errorf("unknown E2E suite %q", name)
 		}
-		wanted[id] = struct{}{}
+		if !slices.Contains(lane.Suites, id) {
+			return Lane{}, fmt.Errorf("suite %q is not available in lane %q", name, lane.Name)
+		}
+		if !slices.Contains(requested, id) {
+			requested = append(requested, id)
+		}
 	}
-	selected := make([]SuiteID, 0, len(wanted))
+
+	selected := make([]SuiteID, 0, len(requested))
 	for _, id := range lane.Suites {
-		if _, exists := wanted[id]; exists {
+		if slices.Contains(requested, id) {
 			selected = append(selected, id)
-			delete(wanted, id)
 		}
-	}
-	if len(wanted) != 0 {
-		missing := make([]string, 0, len(wanted))
-		for id := range wanted {
-			missing = append(missing, string(id))
-		}
-		slices.Sort(missing)
-		return Lane{}, fmt.Errorf("suites %s are not available in lane %q", strings.Join(missing, ", "), lane.Name)
 	}
 	lane.Suites = selected
 	return lane, nil
