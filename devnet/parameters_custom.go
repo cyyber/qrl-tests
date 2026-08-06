@@ -3,7 +3,6 @@ package devnet
 import (
 	"errors"
 	"fmt"
-	"strings"
 
 	"go.yaml.in/yaml/v3"
 )
@@ -18,14 +17,21 @@ func customParameters(payload []byte, address string) (string, error) {
 		return "", err
 	}
 
-	if len(required.Participants) == 0 || strings.TrimSpace(required.Participants[0].ExecutionImage) == "" {
-		return "", errors.New("first participant el_image must be set")
-	}
 	if _, ok := required.Network.PrefundedAccounts[address]; !ok {
 		return "", fmt.Errorf("network_params.prefunded_accounts must contain development wallet %q", address)
 	}
 
 	return string(payload), nil
+}
+
+// The invariant every custom parameter file must satisfy: the development
+// wallet driving readiness probes and suites must be prefunded. The rest of
+// the file passes through to qrl-package unvalidated; JSON files decode
+// through the same YAML path.
+type requiredParameters struct {
+	Network struct {
+		PrefundedAccounts map[string]any `yaml:"prefunded_accounts"`
+	} `yaml:"network_params"`
 }
 
 func decodeRequiredParameters(document *yaml.Node) (requiredParameters, error) {

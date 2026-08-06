@@ -102,7 +102,6 @@ func TestInvalidCustomParameters(t *testing.T) {
 	address := "Q" + strings.Repeat("c", 128)
 	for name, custom := range map[string][]byte{
 		"malformed":       []byte(`participants: [`),
-		"missing image":   []byte(fmt.Sprintf("participants:\n  - el_image: \"\"\nnetwork_params:\n  prefunded_accounts:\n    %s: {}\n", address)),
 		"missing wallet":  []byte("participants:\n  - el_image: image\nnetwork_params:\n  prefunded_accounts: {}\n"),
 		"top-level array": []byte(`[]`),
 	} {
