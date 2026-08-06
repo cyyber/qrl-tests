@@ -31,6 +31,9 @@ type Environment struct {
 	Participants    []Participant `json:"participants"`
 }
 
+// Primary returns the lowest-indexed participant. Readiness probes and
+// single-participant suites target it by convention; every resolved
+// environment must have one.
 func (environment Environment) Primary() (Participant, error) {
 	if len(environment.Participants) == 0 {
 		return Participant{}, errors.New("environment has no participants")
