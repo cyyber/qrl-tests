@@ -84,6 +84,7 @@ func participantsFromServices(services map[string]kurtosis.Service) ([]Participa
 		if clientType != "execution" && clientType != "beacon" && clientType != "validator" {
 			continue
 		}
+
 		index, err := participantIndex(name, service.Labels)
 		if err != nil {
 			return nil, err
@@ -93,6 +94,7 @@ func participantsFromServices(services map[string]kurtosis.Service) ([]Participa
 			participant = &Participant{Index: index}
 			byIndex[index] = participant
 		}
+
 		switch clientType {
 		case "execution":
 			participant.Execution.ServiceInfo = ServiceInfo{Name: name, ID: service.UUID, PrivateIP: service.PrivateIP}
@@ -122,6 +124,7 @@ func participantsFromServices(services map[string]kurtosis.Service) ([]Participa
 	if len(byIndex) == 0 {
 		return nil, errors.New("no qrl-package participants found")
 	}
+
 	participants := make([]Participant, 0, len(byIndex))
 	for _, participant := range byIndex {
 		if participant.Execution.RPCURL == "" || participant.Consensus.URL == "" {
@@ -129,6 +132,7 @@ func participantsFromServices(services map[string]kurtosis.Service) ([]Participa
 		}
 		participants = append(participants, *participant)
 	}
+
 	slices.SortFunc(participants, func(left, right Participant) int { return left.Index - right.Index })
 	return participants, nil
 }
