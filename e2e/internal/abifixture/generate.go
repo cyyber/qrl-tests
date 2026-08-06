@@ -2,7 +2,8 @@
 // end-to-end suite.
 package abifixture
 
-// Regenerate the source-controlled Hyperion artifacts and generated binding.
+// Regenerate the Hyperion artifacts and the Go binding; the ABI is
+// source-controlled, the bytecode stays ephemeral and embedded.
 // The compiler must be cyyber/hyperion@2b9a0f1d.
 //
 //go:generate sh -c "hypc --version 2>&1 | grep -Fq commit.2b9a0f1d || { echo 'hypc from cyyber/hyperion@2b9a0f1d is required; found:' >&2; hypc --version >&2; exit 1; }"
