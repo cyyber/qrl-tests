@@ -27,7 +27,6 @@ func runnerCommands() []*cli.Command {
 		laneCommand(
 			"test",
 			"run a lane against an existing network",
-			true,
 			func(testRunner *runner.Runner, command *cli.Context, lane string) error {
 				return testRunner.Test(command.Context, lane)
 			},
@@ -35,37 +34,40 @@ func runnerCommands() []*cli.Command {
 		laneCommand(
 			"run",
 			"provision, execute, and stop one E2E lane",
-			true,
 			func(testRunner *runner.Runner, command *cli.Context, lane string) error {
 				return testRunner.Run(command.Context, lane)
 			},
 		),
-		laneCommand(
-			"run-all",
-			"provision and execute all supported E2E lanes",
-			false,
-			func(testRunner *runner.Runner, command *cli.Context, _ string) error {
+		{
+			Name:  "run-all",
+			Usage: "provision and execute all supported E2E lanes",
+			Flags: runnerFlags(),
+			Action: func(command *cli.Context) error {
+				if err := rejectPositional(command); err != nil {
+					return err
+				}
+
+				configuration, err := runnerConfig(command)
+				if err != nil {
+					return err
+				}
+
+				testRunner := runner.New(configuration, command.App.Writer, command.App.ErrWriter)
 				return testRunner.RunAll(command.Context)
 			},
-		),
+		},
 	}
 }
 
-func laneCommand(name, usage string, requiresLane bool, action runnerAction) *cli.Command {
+func laneCommand(name, usage string, action runnerAction) *cli.Command {
 	return &cli.Command{
 		Name:  name,
 		Usage: usage,
 		Flags: runnerFlags(),
 		Action: func(command *cli.Context) error {
-			if requiresLane && command.NArg() != 1 {
+			if command.NArg() != 1 {
 				return fmt.Errorf("%s requires one lane name", name)
 			}
-			if !requiresLane {
-				if err := rejectPositional(command); err != nil {
-					return err
-				}
-			}
-			lane := command.Args().First()
 
 			configuration, err := runnerConfig(command)
 			if err != nil {
@@ -73,7 +75,7 @@ func laneCommand(name, usage string, requiresLane bool, action runnerAction) *cl
 			}
 
 			testRunner := runner.New(configuration, command.App.Writer, command.App.ErrWriter)
-			return action(testRunner, command, lane)
+			return action(testRunner, command, command.Args().First())
 		},
 	}
 }

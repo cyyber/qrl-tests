@@ -1,8 +1,9 @@
 # Development network
 
-This directory provides a reusable package and CLI for a separately managed,
-Kurtosis-backed QRL development network. It supports Docker and Kubernetes
-backends with Kurtosis CLI 1.20.x.
+This directory provides a reusable package for a Kurtosis-backed QRL
+development network, driven by the `qrltest` CLI in
+[`cmd/qrltest`](../cmd/qrltest). It supports Docker and Kubernetes backends
+with Kurtosis CLI 1.20.x.
 
 ## Run
 

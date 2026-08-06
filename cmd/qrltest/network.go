@@ -9,8 +9,8 @@ import (
 )
 
 type networkController interface {
-	Start(context.Context, devnet.StartOptions) (devnet.Environment, error)
-	Stop(context.Context, string) error
+	Start(ctx context.Context, options devnet.StartOptions) (devnet.Environment, error)
+	Stop(ctx context.Context, name string) error
 }
 
 func networkCommand(network networkController) *cli.Command {
@@ -35,7 +35,7 @@ func networkCommand(network networkController) *cli.Command {
 
 	return &cli.Command{
 		Name:  "network",
-		Usage: "control a separately managed development network",
+		Usage: "control the development network",
 		Subcommands: []*cli.Command{
 			{
 				Name:  "start",
