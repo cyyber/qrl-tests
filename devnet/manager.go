@@ -57,12 +57,7 @@ func NewManager() *Manager {
 	}
 }
 
-func (manager *Manager) Inspect(ctx context.Context, name string, backend Backend) (Environment, error) {
-	backend, err := ParseBackend(string(backend))
-	if err != nil {
-		return Environment{}, err
-	}
-
+func (manager *Manager) Inspect(ctx context.Context, name string) (Environment, error) {
 	client, err := manager.newClient()
 	if err != nil {
 		return Environment{}, err
@@ -75,7 +70,7 @@ func (manager *Manager) Inspect(ctx context.Context, name string, backend Backen
 		return Environment{}, fmt.Errorf("network %q is not running", name)
 	}
 
-	environment, err := resolveEnvironment(ctx, client, name, backend)
+	environment, err := resolveEnvironment(ctx, client, name)
 	if err != nil {
 		return Environment{}, err
 	}
@@ -124,10 +119,11 @@ func (manager *Manager) Start(ctx context.Context, options StartOptions) (Enviro
 
 	// Endpoints are fixed once the package run completes; only the probe has to
 	// wait for the chain to come up.
-	environment, err := resolveEnvironment(ctx, client, options.EnclaveName, backend)
+	environment, err := resolveEnvironment(ctx, client, options.EnclaveName)
 	if err != nil {
 		return Environment{}, manager.startFailure(client, options.EnclaveName, "resolve network endpoints", err)
 	}
+	environment.Backend = backend
 
 	primary, err := environment.Primary()
 	if err != nil {

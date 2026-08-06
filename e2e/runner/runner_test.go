@@ -31,11 +31,11 @@ func (networks *recordingNetworks) Start(_ context.Context, options devnet.Start
 	return testEnvironment(options.EnclaveName, options.Backend), nil
 }
 
-func (networks *recordingNetworks) Inspect(_ context.Context, name string, backend devnet.Backend) (devnet.Environment, error) {
+func (networks *recordingNetworks) Inspect(_ context.Context, name string) (devnet.Environment, error) {
 	networks.mutex.Lock()
 	defer networks.mutex.Unlock()
 	networks.inspected = name
-	return testEnvironment(name, backend), nil
+	return testEnvironment(name, ""), nil
 }
 
 func (networks *recordingNetworks) Stop(_ context.Context, name string) error {

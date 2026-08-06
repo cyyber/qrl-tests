@@ -31,9 +31,9 @@ type Config struct {
 }
 
 type networkManager interface {
-	Start(context.Context, devnet.StartOptions) (devnet.Environment, error)
-	Inspect(context.Context, string, devnet.Backend) (devnet.Environment, error)
-	Stop(context.Context, string) error
+	Start(ctx context.Context, options devnet.StartOptions) (devnet.Environment, error)
+	Inspect(ctx context.Context, name string) (devnet.Environment, error)
+	Stop(ctx context.Context, name string) error
 }
 
 type commandSpec struct {

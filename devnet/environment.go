@@ -35,8 +35,11 @@ const (
 )
 
 type Environment struct {
-	EnclaveName     string        `json:"enclave_name"`
-	Backend         Backend       `json:"backend"`
+	EnclaveName string `json:"enclave_name"`
+	// Backend records the backend declared when the network was started;
+	// inspected networks leave it empty because Kurtosis does not expose the
+	// cluster type.
+	Backend         Backend       `json:"backend,omitempty"`
 	EngineJWTSecret string        `json:"engine_jwt_secret"`
 	Participants    []Participant `json:"participants"`
 }
@@ -84,7 +87,7 @@ type ValidatorService struct {
 	MetricsURL string `json:"metrics_url"`
 }
 
-func resolveEnvironment(ctx context.Context, client kurtosisClient, name string, backend Backend) (Environment, error) {
+func resolveEnvironment(ctx context.Context, client kurtosisClient, name string) (Environment, error) {
 	services, err := client.Services(ctx, name)
 	if err != nil {
 		return Environment{}, err
@@ -97,7 +100,6 @@ func resolveEnvironment(ctx context.Context, client kurtosisClient, name string,
 
 	return Environment{
 		EnclaveName:     name,
-		Backend:         backend,
 		EngineJWTSecret: engineJWTSecret,
 		Participants:    participants,
 	}, nil
