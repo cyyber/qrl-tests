@@ -11,11 +11,15 @@ type Profile string
 const ProfileSingle Profile = "single"
 
 type profileSpec struct {
-	participants []participantSpec
+	participants            []participantSpec
+	preregisteredValidators int
 }
 
 type participantSpec struct {
 	validatorCount int
+	elExtraParams  []string
+	clExtraParams  []string
+	vcExtraParams  []string
 }
 
 var profileSpecs = map[Profile]profileSpec{
