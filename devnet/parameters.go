@@ -8,19 +8,21 @@ const (
 	DefaultGenesisImage   = "local/qrl-genesis-generator:devnet"
 )
 
+// The subset of the schema custom parameter files are validated against;
+// JSON files decode through the same YAML path.
 type parameterShape struct {
 	Participants []struct {
-		ExecutionImage    string `json:"el_image" yaml:"el_image"`
-		ConsensusImage    string `json:"cl_image" yaml:"cl_image"`
-		ValidatorImage    string `json:"vc_image" yaml:"vc_image"`
-		RemoteSignerImage string `json:"remote_signer_image" yaml:"remote_signer_image"`
-	} `json:"participants" yaml:"participants"`
+		ExecutionImage    string `yaml:"el_image"`
+		ConsensusImage    string `yaml:"cl_image"`
+		ValidatorImage    string `yaml:"vc_image"`
+		RemoteSignerImage string `yaml:"remote_signer_image"`
+	} `yaml:"participants"`
 	Network struct {
-		PrefundedAccounts map[string]any `json:"prefunded_accounts" yaml:"prefunded_accounts"`
-	} `json:"network_params" yaml:"network_params"`
+		PrefundedAccounts map[string]any `yaml:"prefunded_accounts"`
+	} `yaml:"network_params"`
 	Genesis struct {
-		Image string `json:"image" yaml:"image"`
-	} `json:"qrl_genesis_generator_params" yaml:"qrl_genesis_generator_params"`
+		Image string `yaml:"image"`
+	} `yaml:"qrl_genesis_generator_params"`
 }
 
 // The qrl-package parameter schema, as far as the built-in profile uses it.
