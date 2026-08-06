@@ -30,8 +30,8 @@ func effectiveParameters(address string, options StartOptions) (string, error) {
 	for index := range participants {
 		configuration := spec.participants[index]
 		labels := map[string]string{
-			"qrl-tests.participant": strconv.Itoa(index + 1),
-			"qrl-tests.partition":   strconv.Itoa(index%2 + 1),
+			participantLabel: strconv.Itoa(index + 1),
+			partitionLabel:   strconv.Itoa(index%2 + 1),
 		}
 		participants[index] = participant{
 			ELImage:           images.Execution,

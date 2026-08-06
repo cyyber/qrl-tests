@@ -1,6 +1,7 @@
 package devnet
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -11,7 +12,8 @@ import (
 	"github.com/cyyber/qrl-tests/devnet/internal/kurtosis"
 )
 
-// Port identifiers published by qrl-package runs.
+// Contracts shared with qrl-package runs: the pinned engine secret, service
+// port identifiers, and service labels.
 const (
 	// engineJWTSecret mirrors static_files/jwt/jwtsecret in the qrl-package
 	// revision pinned by packageLocator; re-verify it when bumping the pin.
@@ -24,6 +26,12 @@ const (
 	validatorHTTPPortID = "http-validator"
 	metricsPortID       = "metrics"
 	graphQLPath         = "/graphql"
+
+	// clientTypeLabel is stamped by qrl-package itself; the qrl-tests labels
+	// are stamped by the built-in parameter renderer and read back here.
+	clientTypeLabel  = "qrl-package.client-type"
+	participantLabel = "qrl-tests.participant"
+	partitionLabel   = "qrl-tests.partition"
 )
 
 type Environment struct {
@@ -98,7 +106,7 @@ func resolveEnvironment(ctx context.Context, client kurtosisClient, name string,
 func participantsFromServices(services map[string]kurtosis.Service) ([]Participant, error) {
 	byIndex := make(map[int]*Participant)
 	for name, service := range services {
-		clientType := service.Labels["qrl-package.client-type"]
+		clientType := service.Labels[clientTypeLabel]
 		if clientType != "execution" && clientType != "beacon" && clientType != "validator" {
 			continue
 		}
@@ -152,12 +160,12 @@ func participantsFromServices(services map[string]kurtosis.Service) ([]Participa
 		participants = append(participants, *participant)
 	}
 
-	slices.SortFunc(participants, func(left, right Participant) int { return left.Index - right.Index })
+	slices.SortFunc(participants, func(left, right Participant) int { return cmp.Compare(left.Index, right.Index) })
 	return participants, nil
 }
 
 func participantIndex(name string, labels map[string]string) (int, error) {
-	if value := labels["qrl-tests.participant"]; value != "" {
+	if value := labels[participantLabel]; value != "" {
 		index, err := strconv.Atoi(value)
 		if err != nil || index < 1 {
 			return 0, fmt.Errorf("qrl-package service %q has invalid participant label %q", name, value)
@@ -167,6 +175,8 @@ func participantIndex(name string, labels map[string]string) (int, error) {
 	return serviceIndex(name)
 }
 
+// serviceIndex falls back to qrl-package's naming convention — services are
+// named like "el-1-go-qrl", with the participant index as the second segment.
 func serviceIndex(name string) (int, error) {
 	parts := strings.Split(name, "-")
 	if len(parts) < 2 {
