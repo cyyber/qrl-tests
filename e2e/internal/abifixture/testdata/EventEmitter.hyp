@@ -59,6 +59,7 @@ contract EventEmitter {
         Record record,
         uint16[][] nested
     );
+    error Halted();
 
     uint512 private observed;
 
@@ -91,6 +92,7 @@ contract EventEmitter {
         uint16[][2] mixed
     );
     event IndexedScalars(bool indexed flag, bytes5 indexed code, int16 indexed delta);
+    event RecordSeen(Record indexed record);
     event Transformed(uint16 value);
     event Transformed(string value);
     event Paid(address indexed sender, uint16 indexed marker, uint256 amount);
@@ -275,6 +277,10 @@ contract EventEmitter {
         assert(false);
     }
 
+    function failHalted() external pure {
+        revert Halted();
+    }
+
     function observe() external view returns (uint512 value, address caller) {
         return (observed, msg.sender);
     }
@@ -304,6 +310,10 @@ contract EventEmitter {
 
     function emitIndexedScalars(bool flag, bytes5 code, int16 delta) external {
         emit IndexedScalars(flag, code, delta);
+    }
+
+    function emitRecordSeen(Record calldata record) external {
+        emit RecordSeen(record);
     }
 
     function transform(uint16 value) external pure returns (uint16) {

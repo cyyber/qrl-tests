@@ -108,6 +108,25 @@ func (fixture *liveFixture) assertErrors(ctx context.Context) {
 	)
 
 	// Hyperion:
+	// error Halted();
+	// function failHalted() external pure { revert Halted(); }
+	// Goal: a zero-argument custom error reverts with the bare four-byte
+	// selector, which still resolves and decodes through the ABI.
+	ginkgo.By("decoding a zero-argument custom error from its bare selector")
+	halted, ok := fixture.contractABI.Errors["Halted"]
+	gomega.Expect(ok).To(gomega.BeTrue(), "ABI has no Halted error")
+	haltedData := fixture.callRevertData(ctx, "failHalted")
+	gomega.Expect(haltedData).To(gomega.Equal(halted.ID[:4]), "Halted compiler revert")
+
+	copy(errorSelector[:], haltedData)
+	resolvedHalted, err := fixture.contractABI.ErrorByID(errorSelector)
+	gomega.Expect(err).NotTo(gomega.HaveOccurred(), "ErrorByID(Halted())")
+	gomega.Expect(resolvedHalted.Sig).To(gomega.Equal("Halted()"))
+	decodedHalted, err := resolvedHalted.Unpack(haltedData)
+	gomega.Expect(err).NotTo(gomega.HaveOccurred(), "decode Halted()")
+	gomega.Expect(decodedHalted).To(gomega.BeEmpty(), "Halted() carries no arguments")
+
+	// Hyperion:
 	// function failReason() external pure { revert("VM standard revert reason"); }
 	// function failPanic() external pure { assert(false); }
 	// Goal: standard Error(string) and Panic(uint256) payloads decode to their

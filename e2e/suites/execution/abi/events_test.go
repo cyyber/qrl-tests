@@ -280,6 +280,38 @@ func (fixture *liveFixture) assertCompositeEvent(ctx context.Context) {
 	gomega.Expect(composite.Mixed).To(gomega.Equal(mixed))
 }
 
+func (fixture *liveFixture) assertRecordSeenEvent(ctx context.Context) {
+	ginkgo.GinkgoHelper()
+
+	// Hyperion:
+	// event RecordSeen(Record indexed record);
+	// function emitRecordSeen(Record calldata record) external {
+	//     emit RecordSeen(record);
+	// }
+	// Goal: an indexed struct is hashed into its topic as the Keccak-256 of
+	// the canonical VM encoding, like indexed dynamic values.
+	ginkgo.By("hashing an indexed struct into its event topic")
+	record := abifixture.EventEmitterRecord{
+		Amount:    fixture.inputs.amount,
+		Recipient: fixture.from,
+		Tag:       fixture.inputs.tag,
+	}
+	tx, err := fixture.binding.EmitRecordSeen(fixture.transactOpts(ctx), record)
+	gomega.Expect(err).NotTo(gomega.HaveOccurred())
+	receipt := fixture.waitSuccessfulTransaction(ctx, tx)
+	gomega.Expect(receipt.Logs).To(gomega.HaveLen(1))
+
+	definition := fixture.contractABI.Events["RecordSeen"]
+	encoded, err := definition.Inputs.Pack(record)
+	gomega.Expect(err).NotTo(gomega.HaveOccurred(), "pack RecordSeen record")
+	log := receipt.Logs[0]
+	gomega.Expect(log.Topics).To(gomega.Equal([]common.LogTopic{
+		common.HashToLogTopic(definition.ID),
+		common.HashToLogTopic(crypto.Keccak256Hash(encoded)),
+	}))
+	gomega.Expect(log.Data).To(gomega.BeEmpty(), "every RecordSeen value is indexed")
+}
+
 func (fixture *liveFixture) assertIndexedScalarEvent(ctx context.Context) {
 	ginkgo.GinkgoHelper()
 

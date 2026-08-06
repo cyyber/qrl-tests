@@ -88,6 +88,10 @@ var _ = ginkgo.Describe(
 			fixture.assertIndexedScalarEvent(ctx)
 		})
 
+		ginkgo.It("hashes an indexed struct into its event topic", func(ctx ginkgo.SpecContext) {
+			fixture.assertRecordSeenEvent(ctx)
+		})
+
 		ginkgo.It("resolves and decodes overloaded events", func(ctx ginkgo.SpecContext) {
 			fixture.assertOverloadedEvents(ctx)
 		})
