@@ -112,6 +112,10 @@ func (client *Client) Services(ctx context.Context, enclaveName string) (map[str
 	return result, nil
 }
 
+func (client *Client) DestroyEnclave(ctx context.Context, name string) error {
+	return client.engine.DestroyEnclave(ctx, name)
+}
+
 type serviceContext interface {
 	GetServiceUUID() services.ServiceUUID
 	GetPrivateIPAddress() string
@@ -132,10 +136,6 @@ func newService(source serviceContext) Service {
 		PublicPorts: publicPorts,
 		Labels:      maps.Clone(source.GetLabels()),
 	}
-}
-
-func (client *Client) DestroyEnclave(ctx context.Context, name string) error {
-	return client.engine.DestroyEnclave(ctx, name)
 }
 
 func consumeStarlarkCompletion(stream <-chan *kurtosis_core_rpc_api_bindings.StarlarkRunResponseLine) error {
