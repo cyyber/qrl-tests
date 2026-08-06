@@ -67,7 +67,10 @@ func resolveParameters(address string, options StartOptions) (string, error) {
 	if options.Parameters != nil {
 		return fileParameters(options.Parameters, address)
 	}
+	return profileParameters(address, options)
+}
 
+func profileParameters(address string, options StartOptions) (string, error) {
 	images := options.Images.withDefaults()
 	spec := profileSpecs[options.Profile]
 	participants := make([]participant, len(spec.participants))
