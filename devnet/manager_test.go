@@ -12,6 +12,7 @@ import (
 type startClient struct {
 	createErr   error
 	runErr      error
+	services    map[string]kurtosis.Service
 	createdName string
 	destroyed   bool
 }
@@ -27,8 +28,8 @@ func (client *startClient) RunRemotePackage(context.Context, string, string, str
 	return client.runErr
 }
 
-func (*startClient) Services(context.Context, string) (map[string]kurtosis.Service, error) {
-	return nil, nil
+func (client *startClient) Services(context.Context, string) (map[string]kurtosis.Service, error) {
+	return client.services, nil
 }
 
 func (client *startClient) DestroyEnclave(context.Context, string) error {
@@ -68,14 +69,21 @@ func TestStartCreateFailureSkipsCleanup(t *testing.T) {
 	require.Equal(t, "failed-start", client.createdName)
 }
 
-func TestStartDefaultsEnclaveName(t *testing.T) {
-	client := &startClient{createErr: errors.New("create failed")}
+func TestStartDefaults(t *testing.T) {
+	client := &startClient{services: map[string]kurtosis.Service{
+		"el-1-gqrl-qrysm": service("el-1-gqrl-qrysm", "execution", map[string]uint16{"rpc": 3201, "ws": 3301}),
+		"cl-1-qrysm-gqrl": service("cl-1-qrysm-gqrl", "beacon", map[string]uint16{"http": 4201}),
+	}}
 	options := startOptions()
 	options.EnclaveName = ""
+	options.Backend = ""
 
-	_, err := startManager(client).Start(t.Context(), options)
-	require.ErrorContains(t, err, "create failed")
+	environment, err := startManager(client).Start(t.Context(), options)
+	require.NoError(t, err)
 	require.Equal(t, DefaultEnclaveName, client.createdName)
+	require.Equal(t, DefaultEnclaveName, environment.EnclaveName)
+	require.Equal(t, BackendDocker, environment.Backend)
+	require.False(t, client.destroyed)
 }
 
 func TestStopIsIdempotent(t *testing.T) {
