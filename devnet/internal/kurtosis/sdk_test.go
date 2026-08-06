@@ -46,26 +46,110 @@ func TestNewServiceCopiesContext(t *testing.T) {
 	require.Equal(t, "execution", converted.Labels["qrl-package.client-type"])
 }
 
-func TestConsumeStarlarkCompletionReturnsStructuredError(t *testing.T) {
-	stream := make(chan *kurtosis_core_rpc_api_bindings.StarlarkRunResponseLine, 2)
-	stream <- &kurtosis_core_rpc_api_bindings.StarlarkRunResponseLine{
+func errorLine(message string) *kurtosis_core_rpc_api_bindings.StarlarkRunResponseLine {
+	return &kurtosis_core_rpc_api_bindings.StarlarkRunResponseLine{
 		RunResponseLine: &kurtosis_core_rpc_api_bindings.StarlarkRunResponseLine_Error{
 			Error: &kurtosis_core_rpc_api_bindings.StarlarkError{
 				Error: &kurtosis_core_rpc_api_bindings.StarlarkError_ExecutionError{
-					ExecutionError: &kurtosis_core_rpc_api_bindings.StarlarkExecutionError{
-						ErrorMessage: "vc_extra_params must be a list",
-					},
+					ExecutionError: &kurtosis_core_rpc_api_bindings.StarlarkExecutionError{ErrorMessage: message},
 				},
 			},
 		},
 	}
-	stream <- &kurtosis_core_rpc_api_bindings.StarlarkRunResponseLine{
+}
+
+func finishLine(successful bool) *kurtosis_core_rpc_api_bindings.StarlarkRunResponseLine {
+	return &kurtosis_core_rpc_api_bindings.StarlarkRunResponseLine{
 		RunResponseLine: &kurtosis_core_rpc_api_bindings.StarlarkRunResponseLine_RunFinishedEvent{
-			RunFinishedEvent: &kurtosis_core_rpc_api_bindings.StarlarkRunFinishedEvent{},
+			RunFinishedEvent: &kurtosis_core_rpc_api_bindings.StarlarkRunFinishedEvent{IsRunSuccessful: successful},
 		},
 	}
-	close(stream)
+}
 
-	err := consumeStarlarkCompletion(stream)
-	require.EqualError(t, err, "Kurtosis Starlark execution failed: vc_extra_params must be a list")
+func TestConsumeStarlarkCompletion(t *testing.T) {
+	for name, test := range map[string]struct {
+		lines   []*kurtosis_core_rpc_api_bindings.StarlarkRunResponseLine
+		wantErr string
+	}{
+		"successful run": {
+			lines: []*kurtosis_core_rpc_api_bindings.StarlarkRunResponseLine{finishLine(true)},
+		},
+		"structured failure": {
+			lines: []*kurtosis_core_rpc_api_bindings.StarlarkRunResponseLine{
+				errorLine("vc_extra_params must be a list"),
+				finishLine(false),
+			},
+			wantErr: "Kurtosis Starlark execution failed: vc_extra_params must be a list",
+		},
+		"failure without a structured error": {
+			lines:   []*kurtosis_core_rpc_api_bindings.StarlarkRunResponseLine{finishLine(false)},
+			wantErr: "Kurtosis Starlark package run failed without a structured error",
+		},
+		"truncated stream after an error": {
+			lines:   []*kurtosis_core_rpc_api_bindings.StarlarkRunResponseLine{errorLine("boom")},
+			wantErr: "Kurtosis Starlark execution failed: boom",
+		},
+		"truncated stream without an error": {
+			wantErr: "Kurtosis Starlark response stream closed without a terminal event",
+		},
+		"accumulates every error": {
+			lines: []*kurtosis_core_rpc_api_bindings.StarlarkRunResponseLine{
+				errorLine("first"),
+				errorLine("second"),
+				finishLine(false),
+			},
+			wantErr: "Kurtosis Starlark execution failed: first\nKurtosis Starlark execution failed: second",
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			stream := make(chan *kurtosis_core_rpc_api_bindings.StarlarkRunResponseLine, len(test.lines))
+			for _, line := range test.lines {
+				stream <- line
+			}
+			close(stream)
+
+			err := consumeStarlarkCompletion(stream)
+			if test.wantErr == "" {
+				require.NoError(t, err)
+				return
+			}
+			require.EqualError(t, err, test.wantErr)
+		})
+	}
+}
+
+func TestStarlarkErrorKinds(t *testing.T) {
+	for name, test := range map[string]struct {
+		input *kurtosis_core_rpc_api_bindings.StarlarkError
+		want  string
+	}{
+		"interpretation": {
+			input: &kurtosis_core_rpc_api_bindings.StarlarkError{
+				Error: &kurtosis_core_rpc_api_bindings.StarlarkError_InterpretationError{
+					InterpretationError: &kurtosis_core_rpc_api_bindings.StarlarkInterpretationError{ErrorMessage: "bad syntax"},
+				},
+			},
+			want: "Kurtosis Starlark interpretation failed: bad syntax",
+		},
+		"validation": {
+			input: &kurtosis_core_rpc_api_bindings.StarlarkError{
+				Error: &kurtosis_core_rpc_api_bindings.StarlarkError_ValidationError{
+					ValidationError: &kurtosis_core_rpc_api_bindings.StarlarkValidationError{ErrorMessage: "bad plan"},
+				},
+			},
+			want: "Kurtosis Starlark validation failed: bad plan",
+		},
+		"execution": {
+			input: errorLine("bad run").GetError(),
+			want:  "Kurtosis Starlark execution failed: bad run",
+		},
+		"unknown": {
+			input: &kurtosis_core_rpc_api_bindings.StarlarkError{},
+			want:  "Kurtosis Starlark package run failed with an unknown structured error",
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			require.EqualError(t, starlarkError(test.input), test.want)
+		})
+	}
 }
