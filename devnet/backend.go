@@ -25,6 +25,14 @@ func ParseBackend(value string) (Backend, error) {
 	}
 }
 
+const (
+	DefaultExecutionImage = "local/go-qrl:devnet"
+	DefaultClefImage      = "local/go-qrl-clef:devnet"
+	DefaultConsensusImage = "local/qrysm-beacon:devnet"
+	DefaultValidatorImage = "local/qrysm-validator:devnet"
+	DefaultGenesisImage   = "local/qrl-genesis-generator:devnet"
+)
+
 type Images struct {
 	Execution string
 	Clef      string
