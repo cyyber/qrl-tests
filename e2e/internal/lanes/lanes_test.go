@@ -48,7 +48,7 @@ func TestLaneSelect(t *testing.T) {
 
 	selected, err := executionABI.Select([]string{"execution-abi", "execution-abi"})
 	require.NoError(t, err)
-	require.Equal(t, []SuiteID{SuiteExecutionABI}, selected.Suites)
+	require.Equal(t, []SuiteID{suiteExecutionABI}, selected.Suites)
 
 	_, err = executionABI.Select([]string{"unknown"})
 	require.ErrorContains(t, err, "unknown E2E suite")

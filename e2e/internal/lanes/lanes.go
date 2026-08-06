@@ -21,18 +21,18 @@ type Lane struct {
 type SuiteID string
 
 const (
-	SuiteExecutionABI SuiteID = "execution-abi"
+	suiteExecutionABI SuiteID = "execution-abi"
 )
 
 var suitePackages = map[SuiteID]string{
-	SuiteExecutionABI: "./e2e/suites/execution/abi",
+	suiteExecutionABI: "./e2e/suites/execution/abi",
 }
 
 var registry = []Lane{
 	{
 		Name:    "execution-abi",
 		Profile: devnet.ProfileSingle,
-		Suites:  []SuiteID{SuiteExecutionABI},
+		Suites:  []SuiteID{suiteExecutionABI},
 		Timeout: 15 * time.Minute,
 	},
 }
