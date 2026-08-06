@@ -23,10 +23,12 @@ func Write(path string, manifest Manifest) error {
 	if _, err := manifest.Environment.Primary(); err != nil {
 		return err
 	}
+
 	payload, err := json.MarshalIndent(manifest, "", "  ")
 	if err != nil {
 		return fmt.Errorf("encode test manifest: %w", err)
 	}
+
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return fmt.Errorf("create test manifest directory: %w", err)
 	}
@@ -41,12 +43,14 @@ func Read(path string) (Manifest, error) {
 	if err != nil {
 		return Manifest{}, fmt.Errorf("read test manifest: %w", err)
 	}
+
 	var manifest Manifest
 	if err := json.Unmarshal(payload, &manifest); err != nil {
 		return Manifest{}, fmt.Errorf("decode test manifest: %w", err)
 	}
+
 	if _, err := manifest.Environment.Primary(); err != nil {
-		return Manifest{}, err
+		return Manifest{}, fmt.Errorf("test manifest %s: %w", path, err)
 	}
 	return manifest, nil
 }
