@@ -74,10 +74,7 @@ func resolveParameters(address string, options StartOptions) (string, error) {
 	}
 
 	images := options.Images.withDefaults()
-	spec, ok := profileSpecs[options.Profile]
-	if !ok {
-		return "", fmt.Errorf("unknown development-network profile %q", options.Profile)
-	}
+	spec := profileSpecs[options.Profile]
 	participants := make([]participant, len(spec.participants))
 	for index := range participants {
 		configuration := spec.participants[index]
