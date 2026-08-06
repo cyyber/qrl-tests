@@ -50,13 +50,17 @@ func networkCommand(network networkController) *cli.Command {
 					if err != nil {
 						return err
 					}
+					backend, err := devnet.ParseBackend(command.String("backend"))
+					if err != nil {
+						return err
+					}
 
 					ctx, cancel := context.WithTimeout(command.Context, command.Duration("timeout"))
 					defer cancel()
 
 					if _, err := network.Start(ctx, devnet.StartOptions{
 						EnclaveName: command.String("enclave-name"),
-						Backend:     devnet.Backend(command.String("backend")),
+						Backend:     backend,
 						Images:      imagesFromFlags(command),
 						Parameters:  parameters,
 						Profile:     devnet.Profile(command.String("profile")),

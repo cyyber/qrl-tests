@@ -90,9 +90,8 @@ func (manager *Manager) Start(ctx context.Context, options StartOptions) (Enviro
 	if options.EnclaveName == "" {
 		options.EnclaveName = DefaultEnclaveName
 	}
-	backend, err := ParseBackend(string(options.Backend))
-	if err != nil {
-		return Environment{}, err
+	if options.Backend == "" {
+		options.Backend = BackendDocker
 	}
 
 	parameters, err := effectiveParameters(devwallet.Address, options)
@@ -123,7 +122,7 @@ func (manager *Manager) Start(ctx context.Context, options StartOptions) (Enviro
 	if err != nil {
 		return Environment{}, manager.startFailure(client, options.EnclaveName, "resolve network endpoints", err)
 	}
-	environment.Backend = backend
+	environment.Backend = options.Backend
 
 	primary, err := environment.Primary()
 	if err != nil {
