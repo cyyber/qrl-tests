@@ -42,7 +42,7 @@ type StartOptions struct {
 
 type Manager struct {
 	newClient func() (kurtosisClient, error)
-	probe     func(context.Context, string, string) error
+	probe     func(ctx context.Context, rpcURL, address string) error
 }
 
 func NewManager() *Manager {
