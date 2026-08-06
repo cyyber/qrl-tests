@@ -64,6 +64,7 @@ func (runtime *Runtime) open(ctx context.Context, participant devnet.Participant
 	if err != nil {
 		return nil, fmt.Errorf("open participant %d HTTP RPC: %w", participant.Index, err)
 	}
+
 	if runtime.ChainID == nil {
 		runtime.ChainID, err = client.ChainID(ctx)
 		if err != nil {
@@ -71,6 +72,7 @@ func (runtime *Runtime) open(ctx context.Context, participant devnet.Participant
 			return nil, fmt.Errorf("read participant %d chain ID: %w", participant.Index, err)
 		}
 	}
+
 	node := &Node{Runtime: runtime, Execution: client}
 	if withWebSocket {
 		node.ExecutionWebSocket, err = qrlclient.DialContext(ctx, participant.Execution.WebSocketURL)
@@ -79,6 +81,7 @@ func (runtime *Runtime) open(ctx context.Context, participant devnet.Participant
 			return nil, fmt.Errorf("open participant %d WebSocket RPC: %w", participant.Index, err)
 		}
 	}
+
 	runtime.nodes = append(runtime.nodes, node)
 	return node, nil
 }
