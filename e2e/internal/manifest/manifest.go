@@ -1,5 +1,5 @@
-// Package manifest defines the environment contract passed from the E2E runner
-// to live test suites.
+// Package manifest defines the handoff the E2E runner writes for live test
+// suites: which lane ran, under which profile, against which network.
 package manifest
 
 import (

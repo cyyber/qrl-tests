@@ -1,6 +1,7 @@
 package manifest
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -38,4 +39,14 @@ func TestManifestRoundTrip(t *testing.T) {
 func TestManifestRequiresParticipant(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "manifest.json")
 	require.Error(t, Write(path, Manifest{}))
+
+	require.NoError(t, os.WriteFile(path, []byte(`{"environment":{}}`), 0o600))
+	_, err := Read(path)
+	require.Error(t, err)
+}
+
+func TestRequiredReportsMissingConfiguration(t *testing.T) {
+	t.Setenv(PathEnv, "")
+	_, err := Required()
+	require.ErrorContains(t, err, PathEnv)
 }
