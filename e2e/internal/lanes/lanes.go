@@ -25,7 +25,7 @@ const (
 )
 
 var suitePackages = map[SuiteID]string{
-	SuiteExecutionABI: "./endtoend/suites/execution/abi",
+	SuiteExecutionABI: "./e2e/suites/execution/abi",
 }
 
 func (id SuiteID) Package() string {

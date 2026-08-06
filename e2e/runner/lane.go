@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/cyyber/qrl-tests/devnet"
-	"github.com/cyyber/qrl-tests/endtoend/internal/runenv"
+	"github.com/cyyber/qrl-tests/e2e/internal/runenv"
 )
 
 const laneCleanupTimeout = 2 * time.Minute

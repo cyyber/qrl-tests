@@ -8,7 +8,7 @@ import (
 	"sync"
 
 	"github.com/cyyber/qrl-tests/devnet"
-	"github.com/cyyber/qrl-tests/endtoend/internal/runenv"
+	"github.com/cyyber/qrl-tests/e2e/internal/runenv"
 	"github.com/cyyber/qrl-tests/internal/devwallet"
 	"github.com/theQRL/go-qrl/common"
 	qrlwallet "github.com/theQRL/go-qrl/crypto/pqcrypto/wallet"

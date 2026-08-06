@@ -5,7 +5,7 @@ package abi
 import (
 	"testing"
 
-	"github.com/cyyber/qrl-tests/endtoend/internal/testsuite"
+	"github.com/cyyber/qrl-tests/e2e/internal/testsuite"
 	ginkgo "github.com/onsi/ginkgo/v2"
 )
 

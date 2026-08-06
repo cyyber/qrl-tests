@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/cyyber/qrl-tests/devnet"
-	"github.com/cyyber/qrl-tests/endtoend/internal/lanes"
+	"github.com/cyyber/qrl-tests/e2e/internal/lanes"
 )
 
 const DefaultReportDir = "reports"

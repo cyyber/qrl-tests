@@ -6,7 +6,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/cyyber/qrl-tests/endtoend/internal/contracts/abifixture"
+	"github.com/cyyber/qrl-tests/e2e/internal/contracts/abifixture"
 	ginkgo "github.com/onsi/ginkgo/v2"
 	gomega "github.com/onsi/gomega"
 	"github.com/theQRL/go-qrl/accounts/abi/bind"

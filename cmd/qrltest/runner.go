@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	"github.com/cyyber/qrl-tests/devnet"
-	"github.com/cyyber/qrl-tests/endtoend/runner"
+	"github.com/cyyber/qrl-tests/e2e/runner"
 	"github.com/urfave/cli/v2"
 )
 

@@ -7,7 +7,7 @@ import (
 	"math/big"
 	"strings"
 
-	"github.com/cyyber/qrl-tests/endtoend/internal/contracts/abifixture"
+	"github.com/cyyber/qrl-tests/e2e/internal/contracts/abifixture"
 	ginkgo "github.com/onsi/ginkgo/v2"
 	gomega "github.com/onsi/gomega"
 	qrl "github.com/theQRL/go-qrl"

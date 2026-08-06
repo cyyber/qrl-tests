@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/cyyber/qrl-tests/devnet"
-	"github.com/cyyber/qrl-tests/endtoend/internal/lanes"
-	"github.com/cyyber/qrl-tests/endtoend/internal/runenv"
+	"github.com/cyyber/qrl-tests/e2e/internal/lanes"
+	"github.com/cyyber/qrl-tests/e2e/internal/runenv"
 	"github.com/stretchr/testify/require"
 )
 
@@ -59,7 +59,7 @@ func TestRunBuildsCommandAndCleansUp(t *testing.T) {
 	require.Equal(t, []byte(`{"custom":true}`), networks.started.Parameters)
 	require.Equal(t, "qrl-tests", networks.stopped)
 	require.Equal(t, "go", command.Path)
-	require.Contains(t, command.Args, "./endtoend/suites/execution/abi")
+	require.Contains(t, command.Args, "./e2e/suites/execution/abi")
 
 	manifestPath := filepath.Join(reports, "execution-abi", "environment.json")
 	manifest, err := runenv.Read(manifestPath)
@@ -117,7 +117,7 @@ func TestRunPlanDescribesEachLane(t *testing.T) {
 	require.Len(t, plan.lanes, 1)
 	require.Equal(t, "qrl-tests-execution-abi", plan.lanes[0].enclaveName)
 	require.Equal(t, filepath.Join(reports, "execution-abi", "environment.json"), plan.lanes[0].manifestPath)
-	require.Contains(t, plan.lanes[0].arguments, "./endtoend/suites/execution/abi")
+	require.Contains(t, plan.lanes[0].arguments, "./e2e/suites/execution/abi")
 	require.True(t, plan.lanes[0].provision)
 }
 

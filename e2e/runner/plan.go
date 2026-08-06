@@ -5,7 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/cyyber/qrl-tests/endtoend/internal/lanes"
+	"github.com/cyyber/qrl-tests/e2e/internal/lanes"
 )
 
 type laneRun struct {

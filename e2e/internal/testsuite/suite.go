@@ -4,7 +4,7 @@ package testsuite
 import (
 	"testing"
 
-	endtoendlive "github.com/cyyber/qrl-tests/endtoend/internal/live"
+	e2elive "github.com/cyyber/qrl-tests/e2e/internal/live"
 	"github.com/onsi/ginkgo/v2"
 	"github.com/onsi/gomega"
 )
@@ -14,10 +14,10 @@ func Run(t *testing.T, name string) {
 	ginkgo.RunSpecs(t, name)
 }
 
-func LoadRuntime() *endtoendlive.Runtime {
+func LoadRuntime() *e2elive.Runtime {
 	ginkgo.GinkgoHelper()
 
-	runtime, err := endtoendlive.Load()
+	runtime, err := e2elive.Load()
 	gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	ginkgo.DeferCleanup(runtime.Close)
 	return runtime
