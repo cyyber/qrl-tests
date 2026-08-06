@@ -44,7 +44,7 @@ func Load() (*Runtime, error) {
 	}
 	wallet, err := devwallet.Restore()
 	if err != nil {
-		return nil, fmt.Errorf("restore development wallet: %w", err)
+		return nil, err
 	}
 	runtime := &Runtime{
 		Environment: manifest.Environment,
