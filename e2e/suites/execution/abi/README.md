@@ -5,7 +5,7 @@
 go test -tags=e2e -run '^$' ./e2e/suites/execution/abi
 
 # Regeneration requires `hypc --version` to report commit.2b9a0f1d.
-go generate ./e2e/internal/contracts/abifixture
+go generate ./e2e/internal/abifixture
 
 # Run against an already-running development network.
 make e2e E2E_LANE=execution-abi

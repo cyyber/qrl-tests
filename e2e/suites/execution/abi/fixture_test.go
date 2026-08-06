@@ -6,7 +6,7 @@ import (
 	"context"
 	"math/big"
 
-	"github.com/cyyber/qrl-tests/e2e/internal/contracts/abifixture"
+	"github.com/cyyber/qrl-tests/e2e/internal/abifixture"
 	"github.com/cyyber/qrl-tests/e2e/internal/testsuite"
 	ginkgo "github.com/onsi/ginkgo/v2"
 	gomega "github.com/onsi/gomega"
