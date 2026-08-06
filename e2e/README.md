@@ -1,8 +1,8 @@
 # End-to-end suites
 
-The suites run against a separately managed [development network](../devnet/README.md).
-The runner passes a generated environment manifest containing participant
-endpoints and prebuilt helper binaries; suites do not provision infrastructure.
+The suites run against a [development network](../devnet/README.md). The
+runner passes a generated environment manifest containing the participant
+endpoints; suites do not provision infrastructure.
 
 ## Lanes
 
@@ -32,5 +32,5 @@ Files that register or execute live scenarios use the `e2e` build tag.
 Deterministic fixture, encoding, and helper tests remain untagged so the default
 `go test ./...` run continues to validate them without a network.
 
-Keep construction paths local when they are the behavior under test. Shared
-network inspection and fixture data belong under `internal/`.
+Build test inputs inside the suite when the building is the behavior under
+test; shared client helpers and fixtures belong under `internal/`.
