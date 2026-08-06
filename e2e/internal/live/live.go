@@ -33,7 +33,7 @@ type Node struct {
 // Load resolves the configured test environment and restores the disposable
 // development wallet once for the suite.
 func Load() (*Runtime, error) {
-	handoff, err := manifest.Required()
+	suiteManifest, err := manifest.Required()
 	if err != nil {
 		return nil, err
 	}
@@ -45,7 +45,7 @@ func Load() (*Runtime, error) {
 
 	runtime := &Runtime{
 		Wallet:      wallet,
-		environment: handoff.Environment,
+		environment: suiteManifest.Environment,
 	}
 	return runtime, nil
 }
