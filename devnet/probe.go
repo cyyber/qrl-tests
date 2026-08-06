@@ -12,6 +12,11 @@ import (
 const chainAdvancementWindow = 30 * time.Second
 
 func probeNetwork(ctx context.Context, rpcURL, address string) error {
+	account, err := common.NewAddressFromString(address)
+	if err != nil {
+		return fmt.Errorf("parse development wallet address: %w", err)
+	}
+
 	client, err := qrlclient.DialContext(ctx, rpcURL)
 	if err != nil {
 		return fmt.Errorf("dial execution RPC: %w", err)
@@ -43,10 +48,6 @@ func probeNetwork(ctx context.Context, rpcURL, address string) error {
 		)
 	}
 
-	account, err := common.NewAddressFromString(address)
-	if err != nil {
-		return fmt.Errorf("parse development wallet address: %w", err)
-	}
 	balance, err := client.BalanceAt(ctx, account, nil)
 	if err != nil {
 		return fmt.Errorf("read development wallet balance: %w", err)

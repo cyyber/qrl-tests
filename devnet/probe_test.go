@@ -35,3 +35,26 @@ func TestProbeNetwork(t *testing.T) {
 	require.NoError(t, probeNetwork(t.Context(), server.URL, devwallet.Address))
 	require.GreaterOrEqual(t, blockCalls, 2)
 }
+
+func TestProbeNetworkRejectsUnfundedWallet(t *testing.T) {
+	blockCalls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		var payload struct {
+			Method string `json:"method"`
+		}
+		require.NoError(t, json.NewDecoder(request.Body).Decode(&payload))
+		switch payload.Method {
+		case "qrl_blockNumber":
+			blockCalls++
+			fmt.Fprintf(writer, `{"jsonrpc":"2.0","id":1,"result":"0x%x"}`, blockCalls)
+		case "qrl_getBalance":
+			fmt.Fprint(writer, `{"jsonrpc":"2.0","id":1,"result":"0x0"}`)
+		default:
+			t.Fatalf("unexpected RPC method %q", payload.Method)
+		}
+	}))
+	defer server.Close()
+
+	err := probeNetwork(t.Context(), server.URL, devwallet.Address)
+	require.ErrorContains(t, err, "has no balance")
+}
