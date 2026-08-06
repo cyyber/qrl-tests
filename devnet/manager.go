@@ -24,7 +24,7 @@ const (
 	DefaultEnclaveName  = "go-qrl-devnet"
 	DefaultStartTimeout = 5 * time.Minute
 
-	destroyConfirmationTimeout = 2 * time.Minute
+	destroyConfirmationTimeout = time.Minute
 	retryInterval              = 500 * time.Millisecond
 
 	// packageLocator pins the qrl-package revision run for every network.
