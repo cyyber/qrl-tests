@@ -10,24 +10,23 @@ import (
 	"github.com/cyyber/qrl-tests/devnet"
 	"github.com/cyyber/qrl-tests/e2e/internal/runenv"
 	"github.com/cyyber/qrl-tests/internal/devwallet"
-	"github.com/theQRL/go-qrl/common"
 	qrlwallet "github.com/theQRL/go-qrl/crypto/pqcrypto/wallet"
 	"github.com/theQRL/go-qrl/qrlclient"
 )
 
 // Runtime owns the network metadata and shared resources for one live suite.
 type Runtime struct {
-	Environment devnet.Environment
-	Wallet      qrlwallet.Wallet
-	Address     common.Address
-	ChainID     *big.Int
+	Wallet  qrlwallet.Wallet
+	ChainID *big.Int
 
-	sessions []*Session
+	environment devnet.Environment
+	sessions    []*Session
 }
 
+// Session bundles one participant's open execution clients with the shared
+// suite Runtime.
 type Session struct {
 	*Runtime
-	Participant        devnet.Participant
 	Execution          *qrlclient.Client
 	ExecutionWebSocket *qrlclient.Client
 
@@ -46,15 +45,14 @@ func Load() (*Runtime, error) {
 		return nil, err
 	}
 	runtime := &Runtime{
-		Environment: manifest.Environment,
 		Wallet:      wallet,
-		Address:     common.Address(wallet.GetAddress()),
+		environment: manifest.Environment,
 	}
 	return runtime, nil
 }
 
 func (runtime *Runtime) PrimaryWithWebSocket(ctx context.Context) (*Session, error) {
-	participant, err := runtime.Environment.Primary()
+	participant, err := runtime.environment.Primary()
 	if err != nil {
 		return nil, err
 	}
@@ -73,7 +71,7 @@ func (runtime *Runtime) open(ctx context.Context, participant devnet.Participant
 			return nil, fmt.Errorf("read participant %d chain ID: %w", participant.Index, err)
 		}
 	}
-	session := &Session{Runtime: runtime, Participant: participant, Execution: client}
+	session := &Session{Runtime: runtime, Execution: client}
 	if withWebSocket {
 		session.ExecutionWebSocket, err = qrlclient.DialContext(ctx, participant.Execution.WebSocketURL)
 		if err != nil {
