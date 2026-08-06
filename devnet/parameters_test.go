@@ -53,7 +53,7 @@ network_params:
 qrl_genesis_generator_params:
   image: registry.example/qrl-genesis:custom
 `, address, address))
-	rendered, err := effectiveParameters(address, StartOptions{Parameters: custom, Profile: ProfileSingle, Backend: BackendKubernetes})
+	rendered, err := effectiveParameters(address, StartOptions{Parameters: custom, Profile: ProfileSingle})
 	require.NoError(t, err)
 	require.Equal(t, string(custom), rendered)
 
@@ -96,13 +96,6 @@ func TestNetworkParametersTemplate(t *testing.T) {
 	require.Equal(t, DefaultValidatorImage, shape.Participants[0].ValidatorImage)
 	require.Equal(t, DefaultGenesisImage, shape.Genesis.Image)
 	require.Contains(t, shape.Network.PrefundedAccounts, devwallet.Address)
-
-	_, err = effectiveParameters(devwallet.Address, StartOptions{
-		Parameters: payload,
-		Profile:    ProfileSingle,
-		Backend:    BackendKubernetes,
-	})
-	require.ErrorContains(t, err, "not available to Kubernetes")
 }
 
 func TestInvalidCustomParameters(t *testing.T) {
@@ -127,7 +120,6 @@ func testParameters(address, executionImage string, custom []byte) (string, erro
 		Images:     images,
 		Parameters: custom,
 		Profile:    ProfileSingle,
-		Backend:    BackendDocker,
 	})
 }
 
@@ -159,7 +151,6 @@ func TestBuiltInProfiles(t *testing.T) {
 		payload, err := effectiveParameters(address, StartOptions{
 			Images:  Images{Execution: "image"},
 			Profile: test.profile,
-			Backend: BackendDocker,
 		})
 		require.NoError(t, err)
 		var parameters struct {

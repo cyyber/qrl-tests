@@ -78,8 +78,10 @@ remain supported. Image flags and `DEVNET_PROFILE` are ignored when the file is
 set.
 
 The checked-in [`network_params.yaml`](network_params.yaml) is a complete
-single-participant example. Kubernetes configurations must use registry-backed
-images instead of the Docker-local image defaults. Custom files
+single-participant example. Kubernetes configurations must reference images the
+cluster can resolve — registry-backed, or preloaded onto the nodes (for
+example with `kind load docker-image`) — instead of the Docker-local image
+defaults. Custom files
 must pre-fund the checked-in development wallet used by readiness checks and
 the E2E suites.
 

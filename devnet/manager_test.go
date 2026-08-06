@@ -141,19 +141,12 @@ func TestParseBackend(t *testing.T) {
 	require.Error(t, err)
 }
 
-func TestKubernetesImagesUseRegistry(t *testing.T) {
-	images := Images{
-		Execution: "registry.example/go-qrl:test",
-		Clef:      "registry.example/go-qrl-clef:test",
-		Consensus: "registry.example/qrysm-beacon:test",
-		Validator: "registry.example/qrysm-validator:test",
-		Genesis:   "registry.example/qrl-genesis:test",
-	}
-	require.NoError(t, images.validate(BackendKubernetes))
+func TestImagesValidate(t *testing.T) {
+	require.NoError(t, DefaultImages().validate())
 
-	images.Execution = DefaultExecutionImage
-	require.ErrorContains(t, images.validate(BackendKubernetes), "not available to Kubernetes")
-	require.NoError(t, images.validate(BackendDocker))
+	images := DefaultImages()
+	images.Execution = " "
+	require.ErrorContains(t, images.validate(), "execution image is empty")
 }
 
 func TestProbeNetwork(t *testing.T) {

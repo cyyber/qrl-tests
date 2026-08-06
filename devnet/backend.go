@@ -63,7 +63,7 @@ func (images Images) withDefaults() Images {
 	return images
 }
 
-func (images Images) validate(backend Backend) error {
+func (images Images) validate() error {
 	for _, item := range []struct {
 		name, image string
 	}{
@@ -75,9 +75,6 @@ func (images Images) validate(backend Backend) error {
 	} {
 		if strings.TrimSpace(item.image) == "" {
 			return fmt.Errorf("%s image is empty", item.name)
-		}
-		if backend == BackendKubernetes && strings.HasPrefix(item.image, "local/") {
-			return fmt.Errorf("%s image %q is not available to Kubernetes; use a registry image", item.name, item.image)
 		}
 	}
 	return nil

@@ -7,10 +7,10 @@ import (
 
 func effectiveParameters(address string, options StartOptions) (string, error) {
 	if options.Parameters != nil {
-		return customParameters(options.Parameters, address, options.Backend)
+		return customParameters(options.Parameters, address)
 	}
 	images := options.Images.withDefaults()
-	if err := images.validate(options.Backend); err != nil {
+	if err := images.validate(); err != nil {
 		return "", err
 	}
 	profile, err := normalizeProfile(options.Profile)
