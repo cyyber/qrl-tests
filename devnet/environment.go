@@ -35,10 +35,7 @@ const (
 )
 
 type Environment struct {
-	EnclaveName string `json:"enclave_name"`
-	// Backend records the backend declared when the network was started;
-	// inspected networks leave it empty because Kurtosis does not expose the
-	// cluster type.
+	EnclaveName     string        `json:"enclave_name"`
 	Backend         Backend       `json:"backend,omitempty"`
 	EngineJWTSecret string        `json:"engine_jwt_secret"`
 	Participants    []Participant `json:"participants"`
