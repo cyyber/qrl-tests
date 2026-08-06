@@ -65,7 +65,10 @@ qrl_genesis_generator_params:
 	require.Equal(t, "registry.example/qrysm-beacon:custom", view.Participants[0].ConsensusImage)
 	require.Equal(t, "registry.example/qrysm-validator:custom", view.Participants[0].ValidatorImage)
 	require.Equal(t, "registry.example/qrl-genesis:custom", view.Genesis.Image)
-	require.Contains(t, view.Network.PrefundedAccounts, address)
+	require.Equal(t, "1QRL", view.Network.PrefundedAccounts[address].Balance)
+	require.Equal(t, address, view.Network.WithdrawalAddress)
+	// 2^53+1: would corrupt to ...992 if pass-through re-encoded via float64.
+	require.Equal(t, int64(9007199254740993), view.Participants[0].Custom)
 }
 
 func TestFileParametersSupportJSON(t *testing.T) {
@@ -193,9 +196,13 @@ type parametersFileView struct {
 		ConsensusImage    string `yaml:"cl_image"`
 		ValidatorImage    string `yaml:"vc_image"`
 		RemoteSignerImage string `yaml:"remote_signer_image"`
+		Custom            int64  `yaml:"custom"`
 	} `yaml:"participants"`
 	Network struct {
-		PrefundedAccounts map[string]any `yaml:"prefunded_accounts"`
+		PrefundedAccounts map[string]struct {
+			Balance string `yaml:"balance"`
+		} `yaml:"prefunded_accounts"`
+		WithdrawalAddress string `yaml:"withdrawal_address"`
 	} `yaml:"network_params"`
 	Genesis struct {
 		Image string `yaml:"image"`
