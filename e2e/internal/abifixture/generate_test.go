@@ -16,10 +16,10 @@ import (
 func TestGeneratedBindingMatchesABI(t *testing.T) {
 	artifact, err := os.ReadFile("testdata/EventEmitter.abi")
 	require.NoError(t, err)
-	require.JSONEq(t, normalizedABI(t, string(artifact)), normalizedABI(t, EventEmitterMetaData.ABI))
+	require.Equal(t, normalizedABI(t, string(artifact)), normalizedABI(t, EventEmitterMetaData.ABI))
 }
 
-func normalizedABI(t *testing.T, payload string) string {
+func normalizedABI(t *testing.T, payload string) any {
 	t.Helper()
 	var document any
 	require.NoError(t, json.Unmarshal([]byte(payload), &document))
@@ -42,7 +42,5 @@ func normalizedABI(t *testing.T, payload string) string {
 	}
 	walk(document)
 
-	normalized, err := json.Marshal(document)
-	require.NoError(t, err)
-	return string(normalized)
+	return document
 }
