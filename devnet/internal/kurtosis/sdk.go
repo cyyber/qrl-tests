@@ -12,7 +12,6 @@ import (
 	"strconv"
 
 	"github.com/kurtosis-tech/kurtosis/api/golang/core/kurtosis_core_rpc_api_bindings"
-	"github.com/kurtosis-tech/kurtosis/api/golang/core/lib/enclaves"
 	"github.com/kurtosis-tech/kurtosis/api/golang/core/lib/services"
 	"github.com/kurtosis-tech/kurtosis/api/golang/core/lib/starlark_run_config"
 	"github.com/kurtosis-tech/kurtosis/api/golang/engine/lib/kurtosis_context"
@@ -38,19 +37,19 @@ func (service Service) PublicEndpoint(portID, scheme string) (string, error) {
 }
 
 type Client struct {
-	context *kurtosis_context.KurtosisContext
+	engine *kurtosis_context.KurtosisContext
 }
 
 func NewClient() (*Client, error) {
-	ctx, err := kurtosis_context.NewKurtosisContextFromLocalEngine()
+	engine, err := kurtosis_context.NewKurtosisContextFromLocalEngine()
 	if err != nil {
 		return nil, err
 	}
-	return &Client{context: ctx}, nil
+	return &Client{engine: engine}, nil
 }
 
 func (client *Client) EnclaveExists(ctx context.Context, name string) (bool, error) {
-	running, err := client.context.GetEnclaves(ctx)
+	running, err := client.engine.GetEnclaves(ctx)
 	if err != nil {
 		return false, fmt.Errorf("list running Kurtosis enclaves: %w", err)
 	}
@@ -58,30 +57,37 @@ func (client *Client) EnclaveExists(ctx context.Context, name string) (bool, err
 	return found, nil
 }
 
-func (client *Client) CreateAndRunRemotePackage(
+func (client *Client) CreateEnclave(ctx context.Context, name string) error {
+	_, err := client.engine.CreateEnclave(ctx, name)
+	return err
+}
+
+func (client *Client) RunRemotePackage(
 	ctx context.Context,
-	name string,
+	enclaveName string,
 	locator,
 	serializedParams string,
-) (bool, error) {
-	enclave, err := client.context.CreateEnclave(ctx, name)
+) error {
+	enclave, err := client.engine.GetEnclaveContext(ctx, enclaveName)
 	if err != nil {
-		return false, err
+		return err
 	}
+
 	configuration := starlark_run_config.NewRunStarlarkConfig(starlark_run_config.WithSerializedParams(serializedParams))
 	stream, cancel, err := enclave.RunStarlarkRemotePackage(ctx, locator, configuration)
 	if err != nil {
-		return true, err
+		return err
 	}
 	defer cancel()
+
 	// qrl-package output can contain generated seed material. Completion is all
 	// the network controller needs, so raw serialized output never escapes this
 	// SDK boundary.
-	return true, consumeStarlarkCompletion(stream)
+	return consumeStarlarkCompletion(stream)
 }
 
 func (client *Client) Services(ctx context.Context, enclaveName string) (map[string]Service, error) {
-	enclave, err := client.enclave(ctx, enclaveName)
+	enclave, err := client.engine.GetEnclaveContext(ctx, enclaveName)
 	if err != nil {
 		return nil, err
 	}
@@ -89,6 +95,7 @@ func (client *Client) Services(ctx context.Context, enclaveName string) (map[str
 	if err != nil {
 		return nil, err
 	}
+
 	wanted := make(map[string]bool, len(identifiers))
 	for name := range identifiers {
 		wanted[string(name)] = true
@@ -97,15 +104,12 @@ func (client *Client) Services(ctx context.Context, enclaveName string) (map[str
 	if err != nil {
 		return nil, err
 	}
+
 	result := make(map[string]Service, len(contexts))
-	for name, context := range contexts {
-		result[string(name)] = service(context)
+	for name, serviceCtx := range contexts {
+		result[string(name)] = newService(serviceCtx)
 	}
 	return result, nil
-}
-
-func (client *Client) enclave(ctx context.Context, name string) (*enclaves.EnclaveContext, error) {
-	return client.context.GetEnclaveContext(ctx, name)
 }
 
 type serviceContext interface {
@@ -116,29 +120,29 @@ type serviceContext interface {
 	GetLabels() map[string]string
 }
 
-func service(serviceContext serviceContext) Service {
-	publicPorts := make(map[string]uint16, len(serviceContext.GetPublicPorts()))
-	for id, port := range serviceContext.GetPublicPorts() {
+func newService(source serviceContext) Service {
+	publicPorts := make(map[string]uint16, len(source.GetPublicPorts()))
+	for id, port := range source.GetPublicPorts() {
 		publicPorts[id] = port.GetNumber()
 	}
 	return Service{
-		UUID:        string(serviceContext.GetServiceUUID()),
-		PrivateIP:   serviceContext.GetPrivateIPAddress(),
-		PublicIP:    serviceContext.GetMaybePublicIPAddress(),
+		UUID:        string(source.GetServiceUUID()),
+		PrivateIP:   source.GetPrivateIPAddress(),
+		PublicIP:    source.GetMaybePublicIPAddress(),
 		PublicPorts: publicPorts,
-		Labels:      maps.Clone(serviceContext.GetLabels()),
+		Labels:      maps.Clone(source.GetLabels()),
 	}
 }
 
 func (client *Client) DestroyEnclave(ctx context.Context, name string) error {
-	return client.context.DestroyEnclave(ctx, name)
+	return client.engine.DestroyEnclave(ctx, name)
 }
 
 func consumeStarlarkCompletion(stream <-chan *kurtosis_core_rpc_api_bindings.StarlarkRunResponseLine) error {
 	var runErr error
 	for line := range stream {
 		if responseErr := line.GetError(); responseErr != nil {
-			runErr = starlarkError(responseErr)
+			runErr = errors.Join(runErr, starlarkError(responseErr))
 		}
 		if finished := line.GetRunFinishedEvent(); finished != nil {
 			if !finished.GetIsRunSuccessful() {

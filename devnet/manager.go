@@ -13,7 +13,8 @@ import (
 
 type kurtosisClient interface {
 	EnclaveExists(context.Context, string) (bool, error)
-	CreateAndRunRemotePackage(context.Context, string, string, string) (bool, error)
+	CreateEnclave(context.Context, string) error
+	RunRemotePackage(context.Context, string, string, string) error
 	Services(context.Context, string) (map[string]kurtosis.Service, error)
 	DestroyEnclave(context.Context, string) error
 }
@@ -110,41 +111,38 @@ func (manager *Manager) Start(ctx context.Context, options StartOptions) (Enviro
 		return Environment{}, errors.New("network already exists or provisioning is incomplete; stop it before retrying")
 	}
 
-	created, err := client.CreateAndRunRemotePackage(
-		ctx,
-		options.EnclaveName,
-		packageLocator,
-		parameters,
-	)
-	if err != nil {
-		return Environment{}, manager.startFailure(client, options.EnclaveName, created, "create enclave or run pinned qrl-package", err)
+	if err := client.CreateEnclave(ctx, options.EnclaveName); err != nil {
+		return Environment{}, fmt.Errorf("create enclave: %w", err)
+	}
+	if err := client.RunRemotePackage(ctx, options.EnclaveName, packageLocator, parameters); err != nil {
+		return Environment{}, manager.startFailure(client, options.EnclaveName, "run pinned qrl-package", err)
 	}
 
 	// Endpoints are fixed once the package run completes; only the probe has to
 	// wait for the chain to come up.
 	environment, err := resolveEnvironment(ctx, client, options.EnclaveName, backend)
 	if err != nil {
-		return Environment{}, manager.startFailure(client, options.EnclaveName, true, "resolve network endpoints", err)
+		return Environment{}, manager.startFailure(client, options.EnclaveName, "resolve network endpoints", err)
 	}
 
 	primary, err := environment.Primary()
 	if err != nil {
-		return Environment{}, manager.startFailure(client, options.EnclaveName, true, "resolve primary participant", err)
+		return Environment{}, manager.startFailure(client, options.EnclaveName, "resolve primary participant", err)
 	}
 	if err := retryUntil(ctx, func() error {
 		return manager.probe(ctx, primary.Execution.RPCURL, devwallet.Address)
 	}); err != nil {
-		return Environment{}, manager.startFailure(client, options.EnclaveName, true, "wait for network readiness", err)
+		return Environment{}, manager.startFailure(client, options.EnclaveName, "wait for network readiness", err)
 	}
 
 	return environment, nil
 }
 
-func (manager *Manager) startFailure(client kurtosisClient, name string, created bool, operation string, failure error) error {
+// startFailure wraps a failure that happened after the enclave was created,
+// destroying the partially provisioned network before returning.
+func (manager *Manager) startFailure(client kurtosisClient, name string, operation string, failure error) error {
 	result := fmt.Errorf("%s: %w", operation, failure)
-	if !created {
-		return result
-	}
+
 	cleanupCtx, cancel := context.WithTimeout(context.Background(), destroyConfirmationTimeout)
 	defer cancel()
 	if err := manager.destroyAndConfirm(cleanupCtx, client, name); err != nil {

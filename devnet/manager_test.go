@@ -15,14 +15,17 @@ import (
 )
 
 type startClient struct {
-	created   bool
+	createErr error
+	runErr    error
 	destroyed bool
 }
 
 func (*startClient) EnclaveExists(context.Context, string) (bool, error) { return false, nil }
 
-func (client *startClient) CreateAndRunRemotePackage(context.Context, string, string, string) (bool, error) {
-	return client.created, errors.New("package failed")
+func (client *startClient) CreateEnclave(context.Context, string) error { return client.createErr }
+
+func (client *startClient) RunRemotePackage(context.Context, string, string, string) error {
+	return client.runErr
 }
 
 func (*startClient) Services(context.Context, string) (map[string]kurtosis.Service, error) {
@@ -34,20 +37,35 @@ func (client *startClient) DestroyEnclave(context.Context, string) error {
 	return nil
 }
 
-func TestStartCleansCreatedEnclave(t *testing.T) {
-	client := &startClient{created: true}
-	manager := &Manager{
+func startManager(client *startClient) *Manager {
+	return &Manager{
 		newClient: func() (kurtosisClient, error) { return client, nil },
 		probe:     func(context.Context, string, string) error { return nil },
 	}
+}
 
-	_, err := manager.Start(t.Context(), StartOptions{
+func startOptions() StartOptions {
+	return StartOptions{
 		EnclaveName: "failed-start",
 		Images:      Images{Execution: "go-qrl:test"},
 		Profile:     ProfileSingle,
-	})
+	}
+}
+
+func TestStartCleansCreatedEnclave(t *testing.T) {
+	client := &startClient{runErr: errors.New("package failed")}
+
+	_, err := startManager(client).Start(t.Context(), startOptions())
 	require.ErrorContains(t, err, "package failed")
 	require.True(t, client.destroyed)
+}
+
+func TestStartCreateFailureSkipsCleanup(t *testing.T) {
+	client := &startClient{createErr: errors.New("create failed")}
+
+	_, err := startManager(client).Start(t.Context(), startOptions())
+	require.ErrorContains(t, err, "create failed")
+	require.False(t, client.destroyed)
 }
 
 func TestParticipantsFromServices(t *testing.T) {
