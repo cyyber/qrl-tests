@@ -24,6 +24,9 @@ const (
 
 	destroyConfirmationTimeout = 2 * time.Minute
 	retryInterval              = 500 * time.Millisecond
+
+	// packageLocator pins the qrl-package revision run for every network.
+	packageLocator = "github.com/rgeraldes24/qrl-package@3892c3d2596403c080424d9e8fc99ff172483fe0"
 )
 
 type StartOptions struct {

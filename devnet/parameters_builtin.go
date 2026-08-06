@@ -5,6 +5,11 @@ import (
 	"strconv"
 )
 
+const (
+	defaultNetworkID = "1337"
+	prefundBalance   = "2000000QRL"
+)
+
 func effectiveParameters(address string, options StartOptions) (string, error) {
 	if options.Parameters != nil {
 		return customParameters(options.Parameters, address)

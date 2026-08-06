@@ -11,6 +11,19 @@ import (
 	"github.com/cyyber/qrl-tests/devnet/internal/kurtosis"
 )
 
+// Port identifiers and the fixed engine secret published by qrl-package runs.
+const (
+	engineJWTSecret = "0xdc49981516e8e72b401a63e6405495a32dafc3939b5d6d83cc319ac0388bca1b"
+
+	rpcPortID           = "rpc"
+	webSocketPortID     = "ws"
+	engineRPCPortID     = "engine-rpc"
+	consensusHTTPPortID = "http"
+	validatorHTTPPortID = "http-validator"
+	metricsPortID       = "metrics"
+	graphQLPath         = "/graphql"
+)
+
 type Environment struct {
 	EnclaveName     string        `json:"enclave_name"`
 	Backend         Backend       `json:"backend"`
@@ -95,9 +108,10 @@ func participantsFromServices(services map[string]kurtosis.Service) ([]Participa
 			byIndex[index] = participant
 		}
 
+		info := ServiceInfo{Name: name, ID: service.UUID, PrivateIP: service.PrivateIP}
 		switch clientType {
 		case "execution":
-			participant.Execution.ServiceInfo = ServiceInfo{Name: name, ID: service.UUID, PrivateIP: service.PrivateIP}
+			participant.Execution.ServiceInfo = info
 			participant.Execution.RPCURL, err = service.PublicEndpoint(rpcPortID, "http")
 			if err != nil {
 				return nil, fmt.Errorf("execution service %q: %w", name, err)
@@ -107,17 +121,17 @@ func participantsFromServices(services map[string]kurtosis.Service) ([]Participa
 			if err != nil {
 				return nil, fmt.Errorf("execution service %q: %w", name, err)
 			}
-			participant.Execution.EngineURL = optionalPublicEndpoint(service, "engine-rpc", "http")
+			participant.Execution.EngineURL = optionalPublicEndpoint(service, engineRPCPortID, "http")
 		case "beacon":
-			participant.Consensus.ServiceInfo = ServiceInfo{Name: name, ID: service.UUID, PrivateIP: service.PrivateIP}
+			participant.Consensus.ServiceInfo = info
 			participant.Consensus.URL, err = service.PublicEndpoint(consensusHTTPPortID, "http")
 			if err != nil {
 				return nil, fmt.Errorf("consensus service %q: %w", name, err)
 			}
 			participant.Consensus.MetricsURL = optionalPublicEndpoint(service, metricsPortID, "http")
 		case "validator":
-			participant.Validator.ServiceInfo = ServiceInfo{Name: name, ID: service.UUID, PrivateIP: service.PrivateIP}
-			participant.Validator.URL = optionalPublicEndpoint(service, "http-validator", "http")
+			participant.Validator.ServiceInfo = info
+			participant.Validator.URL = optionalPublicEndpoint(service, validatorHTTPPortID, "http")
 			participant.Validator.MetricsURL = optionalPublicEndpoint(service, metricsPortID, "http")
 		}
 	}
@@ -160,6 +174,8 @@ func serviceIndex(name string) (int, error) {
 	return index, nil
 }
 
+// optionalPublicEndpoint resolves a port a service may legitimately not
+// expose; absence is reported as an empty endpoint, not an error.
 func optionalPublicEndpoint(service kurtosis.Service, portID, scheme string) string {
 	endpoint, _ := service.PublicEndpoint(portID, scheme)
 	return endpoint

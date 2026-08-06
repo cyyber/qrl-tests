@@ -1,19 +1,6 @@
 package devnet
 
 const (
-	packageLocator   = "github.com/rgeraldes24/qrl-package@3892c3d2596403c080424d9e8fc99ff172483fe0"
-	defaultNetworkID = "1337"
-	prefundBalance   = "2000000QRL"
-	engineJWTSecret  = "0xdc49981516e8e72b401a63e6405495a32dafc3939b5d6d83cc319ac0388bca1b"
-
-	rpcPortID           = "rpc"
-	webSocketPortID     = "ws"
-	consensusHTTPPortID = "http"
-	metricsPortID       = "metrics"
-	graphQLPath         = "/graphql"
-)
-
-const (
 	DefaultExecutionImage = "local/go-qrl:devnet"
 	DefaultClefImage      = "local/go-qrl-clef:devnet"
 	DefaultConsensusImage = "local/qrysm-beacon:devnet"
