@@ -15,7 +15,10 @@ import (
 func TestDefaultParameters(t *testing.T) {
 	address := "Q" + strings.Repeat("a", 128)
 	const executionImage = "local/go-qrl:test"
-	payload, err := testParameters(address, executionImage, nil)
+	payload, err := resolveParameters(address, StartOptions{
+		Images:  Images{Execution: executionImage},
+		Profile: ProfileSingle,
+	})
 	require.NoError(t, err)
 
 	var parameters map[string]any
@@ -34,7 +37,6 @@ func TestDefaultParameters(t *testing.T) {
 	require.Equal(t, "1337", network["network_id"])
 	require.Equal(t, address, network["withdrawal_address"])
 	require.Equal(t, "2000000QRL", prefund["balance"])
-	require.Regexp(t, `^github\.com/rgeraldes24/qrl-package@[0-9a-f]{40}$`, packageLocator)
 }
 
 func TestCustomParametersAreUsedUnchanged(t *testing.T) {
@@ -53,7 +55,7 @@ network_params:
 qrl_genesis_generator_params:
   image: registry.example/qrl-genesis:custom
 `, address, address))
-	rendered, err := resolveParameters(address, StartOptions{Parameters: custom, Profile: ProfileSingle})
+	rendered, err := resolveParameters(address, StartOptions{Parameters: custom})
 	require.NoError(t, err)
 	require.Equal(t, string(custom), rendered)
 
@@ -72,7 +74,7 @@ func TestCustomJSONParametersRemainSupported(t *testing.T) {
 		"participants":[{"el_image":"registry.example/go-qrl:test"}],
 		"network_params":{"prefunded_accounts":{"%s":{}}}
 	}`, address))
-	rendered, err := testParameters(address, "ignored", custom)
+	rendered, err := resolveParameters(address, StartOptions{Parameters: custom})
 	require.NoError(t, err)
 	require.Equal(t, string(custom), rendered)
 
@@ -85,7 +87,7 @@ func TestNetworkParametersTemplate(t *testing.T) {
 	payload, err := os.ReadFile("network_params.yaml")
 	require.NoError(t, err)
 
-	rendered, err := testParameters(devwallet.Address, "ignored", payload)
+	rendered, err := resolveParameters(devwallet.Address, StartOptions{Parameters: payload})
 	require.NoError(t, err)
 	require.Equal(t, string(payload), rendered)
 
@@ -106,44 +108,10 @@ func TestInvalidCustomParameters(t *testing.T) {
 		"top-level array": []byte(`[]`),
 	} {
 		t.Run(name, func(t *testing.T) {
-			_, err := testParameters(address, "image", custom)
+			_, err := resolveParameters(address, StartOptions{Parameters: custom})
 			require.Error(t, err)
 		})
 	}
-}
-
-func testParameters(address, executionImage string, custom []byte) (string, error) {
-	images := DefaultImages()
-	images.Execution = executionImage
-	return resolveParameters(address, StartOptions{
-		Images:     images,
-		Parameters: custom,
-		Profile:    ProfileSingle,
-	})
-}
-
-// customFileView decodes the fields the tests assert survive pass-through;
-// production validation reads only requiredParameters.
-type customFileView struct {
-	Participants []struct {
-		ExecutionImage    string `yaml:"el_image"`
-		ConsensusImage    string `yaml:"cl_image"`
-		ValidatorImage    string `yaml:"vc_image"`
-		RemoteSignerImage string `yaml:"remote_signer_image"`
-	} `yaml:"participants"`
-	Network struct {
-		PrefundedAccounts map[string]any `yaml:"prefunded_accounts"`
-	} `yaml:"network_params"`
-	Genesis struct {
-		Image string `yaml:"image"`
-	} `yaml:"qrl_genesis_generator_params"`
-}
-
-func decodedCustomFile(t *testing.T, payload string) customFileView {
-	t.Helper()
-	var view customFileView
-	require.NoError(t, yaml.Unmarshal([]byte(payload), &view))
-	return view
 }
 
 func TestBuiltInProfiles(t *testing.T) {
@@ -213,4 +181,28 @@ func TestBuiltInProfiles(t *testing.T) {
 			require.Contains(t, parameters.Participants[1].CLExtraParams, "--min-sync-peers=0")
 		}
 	}
+}
+
+// customFileView decodes the fields the tests assert survive pass-through;
+// production validation reads only requiredParameters.
+type customFileView struct {
+	Participants []struct {
+		ExecutionImage    string `yaml:"el_image"`
+		ConsensusImage    string `yaml:"cl_image"`
+		ValidatorImage    string `yaml:"vc_image"`
+		RemoteSignerImage string `yaml:"remote_signer_image"`
+	} `yaml:"participants"`
+	Network struct {
+		PrefundedAccounts map[string]any `yaml:"prefunded_accounts"`
+	} `yaml:"network_params"`
+	Genesis struct {
+		Image string `yaml:"image"`
+	} `yaml:"qrl_genesis_generator_params"`
+}
+
+func decodedCustomFile(t *testing.T, payload string) customFileView {
+	t.Helper()
+	var view customFileView
+	require.NoError(t, yaml.Unmarshal([]byte(payload), &view))
+	return view
 }

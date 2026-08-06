@@ -121,6 +121,10 @@ func TestInspect(t *testing.T) {
 	require.Len(t, environment.Participants, 1)
 }
 
+func TestPackageLocatorIsPinned(t *testing.T) {
+	require.Regexp(t, `^github\.com/.+/qrl-package@[0-9a-f]{40}$`, packageLocator)
+}
+
 func TestStop(t *testing.T) {
 	missing := new(fakeClient)
 	require.NoError(t, testManager(missing).Stop(t.Context(), "missing"))
