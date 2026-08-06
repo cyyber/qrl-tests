@@ -70,7 +70,7 @@ type requiredParameters struct {
 
 func resolveParameters(address string, options StartOptions) (string, error) {
 	if options.Parameters != nil {
-		return customParameters(options.Parameters, address)
+		return fileParameters(options.Parameters, address)
 	}
 
 	images := options.Images.withDefaults()
@@ -138,7 +138,7 @@ func participantParameters(configured []string, defaults ...string) []string {
 	return append([]string{}, defaults...)
 }
 
-func customParameters(payload []byte, address string) (string, error) {
+func fileParameters(payload []byte, address string) (string, error) {
 	var document yaml.Node
 	if err := yaml.Unmarshal(payload, &document); err != nil {
 		return "", errors.New("parameters file must contain one YAML mapping")
