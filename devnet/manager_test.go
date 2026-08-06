@@ -73,6 +73,12 @@ func TestStartCreateFailureSkipsCleanup(t *testing.T) {
 	require.Equal(t, "failed-start", client.createdName)
 }
 
+func TestStopIsIdempotent(t *testing.T) {
+	client := new(startClient)
+	require.NoError(t, startManager(client).Stop(t.Context(), "missing"))
+	require.False(t, client.destroyed)
+}
+
 func TestStartDefaultsEnclaveName(t *testing.T) {
 	client := &startClient{createErr: errors.New("create failed")}
 	options := startOptions()
