@@ -7,40 +7,21 @@ import (
 
 type Backend string
 
-type Capability string
-
 const (
 	BackendDocker     Backend = "docker"
 	BackendKubernetes Backend = "kubernetes"
-
-	CapabilityNetworkPartition Capability = "network-partition"
 )
 
-func (backend Backend) Supports(capability Capability) bool {
-	switch capability {
-	case CapabilityNetworkPartition:
-		return backend == BackendDocker
-	default:
-		return false
-	}
-}
-
+// ParseBackend validates the raw value, resolving the empty value to the
+// default Docker backend; only a verified value becomes a Backend.
 func ParseBackend(value string) (Backend, error) {
-	return Backend(value).normalize()
-}
-
-// normalize validates the backend and resolves the empty value to the
-// default Docker backend.
-func (backend Backend) normalize() (Backend, error) {
-	backend = Backend(strings.TrimSpace(string(backend)))
-	if backend == "" {
+	switch trimmed := strings.TrimSpace(value); trimmed {
+	case "":
 		return BackendDocker, nil
-	}
-	switch backend {
-	case BackendDocker, BackendKubernetes:
-		return backend, nil
+	case string(BackendDocker), string(BackendKubernetes):
+		return Backend(trimmed), nil
 	default:
-		return "", fmt.Errorf("unsupported Kurtosis backend %q", backend)
+		return "", fmt.Errorf("unsupported Kurtosis backend %q", value)
 	}
 }
 

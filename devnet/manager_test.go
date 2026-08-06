@@ -29,10 +29,6 @@ func (*startClient) Services(context.Context, string) (map[string]kurtosis.Servi
 	return nil, nil
 }
 
-func (*startClient) StartServices(context.Context, string, ...string) error { return nil }
-
-func (*startClient) StopServices(context.Context, string, ...string) error { return nil }
-
 func (client *startClient) DestroyEnclave(context.Context, string) error {
 	client.destroyed = true
 	return nil

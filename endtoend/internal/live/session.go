@@ -18,7 +18,6 @@ import (
 // Runtime owns the network metadata and shared resources for one live suite.
 type Runtime struct {
 	Environment devnet.Environment
-	Profile     devnet.Profile
 	Wallet      qrlwallet.Wallet
 	Address     common.Address
 	ChainID     *big.Int
@@ -48,7 +47,6 @@ func Load() (*Runtime, error) {
 	}
 	runtime := &Runtime{
 		Environment: manifest.Environment,
-		Profile:     manifest.Profile,
 		Wallet:      wallet,
 		Address:     common.Address(wallet.GetAddress()),
 	}

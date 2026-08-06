@@ -114,10 +114,9 @@ func (runner *Runner) List() error {
 	for _, suite := range lanes.RegisteredSuites() {
 		if _, err := fmt.Fprintf(
 			runner.stdout,
-			"%-24s package=%-52s requires=%s\n",
+			"%-24s package=%s\n",
 			suite.ID,
 			suite.Package,
-			capabilities(suite.Requires),
 		); err != nil {
 			return err
 		}
@@ -133,22 +132,11 @@ func suiteIDs(ids []lanes.SuiteID) string {
 	return strings.Join(values, ",")
 }
 
-func capabilities(values []devnet.Capability) string {
-	if len(values) == 0 {
-		return "-"
-	}
-	items := make([]string, len(values))
-	for index, value := range values {
-		items[index] = string(value)
-	}
-	return strings.Join(items, ",")
-}
-
 func (runner *Runner) Test(ctx context.Context, name string) error {
 	if len(runner.configuration.Parameters) != 0 {
 		return errors.New("custom parameters cannot be used with an existing network")
 	}
-	lane, err := runner.supportedLane(name)
+	lane, err := runner.selectedLane(name)
 	if err != nil {
 		return err
 	}
@@ -156,7 +144,7 @@ func (runner *Runner) Test(ctx context.Context, name string) error {
 }
 
 func (runner *Runner) Run(ctx context.Context, name string) error {
-	lane, err := runner.supportedLane(name)
+	lane, err := runner.selectedLane(name)
 	if err != nil {
 		return err
 	}
@@ -170,26 +158,13 @@ func (runner *Runner) RunAll(ctx context.Context) error {
 	if len(runner.configuration.Suites) != 0 {
 		return errors.New("suite selection cannot be used with run-all")
 	}
-	selected := make([]lanes.Lane, 0, len(lanes.All()))
-	for _, lane := range lanes.All() {
-		lane, supported := lane.ForBackend(runner.configuration.Backend)
-		if !supported {
-			fmt.Fprintf(runner.stdout, "=== SKIP lane=%s: unsupported by %s backend ===\n", lane.Name, runner.configuration.Backend)
-			continue
-		}
-		selected = append(selected, lane)
-	}
-	return runner.run(ctx, selected, provisionPerLane)
+	return runner.run(ctx, lanes.All(), provisionPerLane)
 }
 
-func (runner *Runner) supportedLane(name string) (lanes.Lane, error) {
+func (runner *Runner) selectedLane(name string) (lanes.Lane, error) {
 	lane, err := lanes.Named(name)
 	if err != nil {
 		return lanes.Lane{}, err
-	}
-	lane, supported := lane.ForBackend(runner.configuration.Backend)
-	if !supported {
-		return lanes.Lane{}, fmt.Errorf("lane %s is unsupported by %s backend", lane.Name, runner.configuration.Backend)
 	}
 	return lane.Select(runner.configuration.Suites)
 }
@@ -257,9 +232,6 @@ func ginkgoArguments(lane lanes.Lane, reportDir string) []string {
 		"--output-dir=" + reportDir,
 		"--junit-report=junit.xml",
 		"--json-report=report.json",
-	}
-	if lane.LabelFilter != "" {
-		arguments = append(arguments, "--label-filter="+lane.LabelFilter)
 	}
 	arguments = append(arguments, lane.Packages()...)
 	return append(arguments, "--", "-test.run=^TestE2E$")

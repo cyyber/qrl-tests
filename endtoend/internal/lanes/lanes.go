@@ -11,11 +11,10 @@ import (
 )
 
 type Lane struct {
-	Name        string
-	Profile     devnet.Profile
-	Suites      []SuiteID
-	LabelFilter string
-	Timeout     time.Duration
+	Name    string
+	Profile devnet.Profile
+	Suites  []SuiteID
+	Timeout time.Duration
 }
 
 type SuiteID string
@@ -25,9 +24,8 @@ const (
 )
 
 type Suite struct {
-	ID       SuiteID
-	Package  string
-	Requires []devnet.Capability
+	ID      SuiteID
+	Package string
 }
 
 var suites = map[SuiteID]Suite{
@@ -45,18 +43,6 @@ var registry = []Lane{
 
 func All() []Lane {
 	return slices.Clone(registry)
-}
-
-func (lane Lane) ForBackend(backend devnet.Backend) (Lane, bool) {
-	selected := make([]SuiteID, 0, len(lane.Suites))
-	for _, id := range lane.Suites {
-		suite := suites[id]
-		if supportsAll(backend, suite.Requires) {
-			selected = append(selected, id)
-		}
-	}
-	lane.Suites = selected
-	return lane, len(lane.Suites) != 0
 }
 
 func (lane Lane) Select(names []string) (Lane, error) {
@@ -116,13 +102,4 @@ func Named(name string) (Lane, error) {
 		}
 	}
 	return Lane{}, fmt.Errorf("unknown E2E lane %q", name)
-}
-
-func supportsAll(backend devnet.Backend, required []devnet.Capability) bool {
-	for _, capability := range required {
-		if !backend.Supports(capability) {
-			return false
-		}
-	}
-	return true
 }

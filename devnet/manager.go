@@ -15,8 +15,6 @@ type kurtosisClient interface {
 	EnclaveExists(context.Context, string) (bool, error)
 	CreateAndRunRemotePackage(context.Context, string, string, string) (bool, error)
 	Services(context.Context, string) (map[string]kurtosis.Service, error)
-	StartServices(context.Context, string, ...string) error
-	StopServices(context.Context, string, ...string) error
 	DestroyEnclave(context.Context, string) error
 }
 
@@ -55,7 +53,7 @@ func NewManager() *Manager {
 }
 
 func (manager *Manager) Inspect(ctx context.Context, name string, backend Backend) (Environment, error) {
-	backend, err := backend.normalize()
+	backend, err := ParseBackend(string(backend))
 	if err != nil {
 		return Environment{}, err
 	}
@@ -85,7 +83,7 @@ func (manager *Manager) Inspect(ctx context.Context, name string, backend Backen
 }
 
 func (manager *Manager) Start(ctx context.Context, options StartOptions) (Environment, error) {
-	backend, err := options.Backend.normalize()
+	backend, err := ParseBackend(string(options.Backend))
 	if err != nil {
 		return Environment{}, err
 	}
