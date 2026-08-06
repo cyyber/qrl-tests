@@ -51,7 +51,7 @@ func Read(path string) (Manifest, error) {
 	return manifest, nil
 }
 
-func Required() (Manifest, error) {
+func FromEnv() (Manifest, error) {
 	path := os.Getenv(PathEnv)
 	if path == "" {
 		return Manifest{}, fmt.Errorf("%s is not configured", PathEnv)

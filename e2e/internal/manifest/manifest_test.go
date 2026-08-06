@@ -31,7 +31,7 @@ func TestManifestRoundTrip(t *testing.T) {
 	require.Equal(t, want, got)
 
 	t.Setenv(PathEnv, path)
-	configured, err := Required()
+	configured, err := FromEnv()
 	require.NoError(t, err)
 	require.Equal(t, want, configured)
 }
@@ -45,8 +45,8 @@ func TestManifestRequiresParticipant(t *testing.T) {
 	require.Error(t, err)
 }
 
-func TestRequiredReportsMissingConfiguration(t *testing.T) {
+func TestFromEnvReportsMissingConfiguration(t *testing.T) {
 	t.Setenv(PathEnv, "")
-	_, err := Required()
+	_, err := FromEnv()
 	require.ErrorContains(t, err, PathEnv)
 }
