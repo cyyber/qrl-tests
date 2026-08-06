@@ -191,9 +191,6 @@ func TestBuiltInProfiles(t *testing.T) {
 	}
 }
 
-// parametersFileView is the test-side view of a parameters file: the fields
-// the tests assert survive pass-through. Production decodes only
-// requiredParameters.
 type parametersFileView struct {
 	Participants []struct {
 		ExecutionImage    string `yaml:"el_image"`
