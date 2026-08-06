@@ -28,10 +28,6 @@ var suitePackages = map[SuiteID]string{
 	SuiteExecutionABI: "./e2e/suites/execution/abi",
 }
 
-func (id SuiteID) Package() string {
-	return suitePackages[id]
-}
-
 var registry = []Lane{
 	{
 		Name:    "execution-abi",
@@ -39,6 +35,10 @@ var registry = []Lane{
 		Suites:  []SuiteID{SuiteExecutionABI},
 		Timeout: 90 * time.Minute,
 	},
+}
+
+func (id SuiteID) Package() string {
+	return suitePackages[id]
 }
 
 func All() []Lane {

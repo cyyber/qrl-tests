@@ -42,6 +42,10 @@ func TestLaneSelect(t *testing.T) {
 	executionABI, err := Named("execution-abi")
 	require.NoError(t, err)
 
+	unchanged, err := executionABI.Select(nil)
+	require.NoError(t, err)
+	require.Equal(t, executionABI, unchanged)
+
 	selected, err := executionABI.Select([]string{"execution-abi", "execution-abi"})
 	require.NoError(t, err)
 	require.Equal(t, []SuiteID{SuiteExecutionABI}, selected.Suites)
