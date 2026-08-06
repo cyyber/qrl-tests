@@ -9,8 +9,6 @@ import (
 
 	"github.com/cyyber/qrl-tests/devnet/internal/kurtosis"
 	"github.com/cyyber/qrl-tests/internal/devwallet"
-	"github.com/theQRL/go-qrl/common"
-	"github.com/theQRL/go-qrl/qrlclient"
 )
 
 type kurtosisClient interface {
@@ -57,7 +55,7 @@ func NewManager() *Manager {
 }
 
 func (manager *Manager) Inspect(ctx context.Context, name string, backend Backend) (Environment, error) {
-	backend, err := ParseBackend(string(backend))
+	backend, err := backend.normalize()
 	if err != nil {
 		return Environment{}, err
 	}
@@ -87,7 +85,7 @@ func (manager *Manager) Inspect(ctx context.Context, name string, backend Backen
 }
 
 func (manager *Manager) Start(ctx context.Context, options StartOptions) (Environment, error) {
-	backend, err := ParseBackend(string(options.Backend))
+	backend, err := options.Backend.normalize()
 	if err != nil {
 		return Environment{}, err
 	}
@@ -201,53 +199,4 @@ func retryUntil(ctx context.Context, operation func() error) error {
 		case <-ticker.C:
 		}
 	}
-}
-
-const chainAdvancementWindow = 30 * time.Second
-
-func probeNetwork(ctx context.Context, rpcURL, address string) error {
-	client, err := qrlclient.DialContext(ctx, rpcURL)
-	if err != nil {
-		return fmt.Errorf("dial execution RPC: %w", err)
-	}
-	defer client.Close()
-
-	firstBlock, err := client.BlockNumber(ctx)
-	if err != nil {
-		return fmt.Errorf("read block number: %w", err)
-	}
-
-	advancementCtx, cancel := context.WithTimeout(ctx, chainAdvancementWindow)
-	defer cancel()
-	if err := retryUntil(advancementCtx, func() error {
-		block, err := client.BlockNumber(advancementCtx)
-		if err != nil {
-			return fmt.Errorf("read advancing block number: %w", err)
-		}
-		if block <= firstBlock {
-			return fmt.Errorf("block number remains at %d", block)
-		}
-		return nil
-	}); err != nil {
-		return fmt.Errorf(
-			"chain did not advance beyond block %d within %s: %w",
-			firstBlock,
-			chainAdvancementWindow,
-			err,
-		)
-	}
-
-	account, err := common.NewAddressFromString(address)
-	if err != nil {
-		return fmt.Errorf("parse development wallet address: %w", err)
-	}
-	balance, err := client.BalanceAt(ctx, account, nil)
-	if err != nil {
-		return fmt.Errorf("read development wallet balance: %w", err)
-	}
-	if balance.Sign() <= 0 {
-		return fmt.Errorf("development wallet %s has no balance", address)
-	}
-
-	return nil
 }
