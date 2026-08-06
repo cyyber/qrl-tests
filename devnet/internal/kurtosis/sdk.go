@@ -1,5 +1,6 @@
 // Package kurtosis provides the narrow Kurtosis API used by the development
-// network controller. Raw SDK types deliberately do not escape this package.
+// network controller. It converts SDK types into local ones at the boundary
+// so Kurtosis internals never leak into devnet.
 package kurtosis
 
 import (
