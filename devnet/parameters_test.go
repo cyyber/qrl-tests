@@ -53,7 +53,7 @@ network_params:
 qrl_genesis_generator_params:
   image: registry.example/qrl-genesis:custom
 `, address, address))
-	rendered, err := effectiveParameters(address, StartOptions{Parameters: custom, Profile: ProfileSingle})
+	rendered, err := resolveParameters(address, StartOptions{Parameters: custom, Profile: ProfileSingle})
 	require.NoError(t, err)
 	require.Equal(t, string(custom), rendered)
 
@@ -115,7 +115,7 @@ func TestInvalidCustomParameters(t *testing.T) {
 func testParameters(address, executionImage string, custom []byte) (string, error) {
 	images := DefaultImages()
 	images.Execution = executionImage
-	return effectiveParameters(address, StartOptions{
+	return resolveParameters(address, StartOptions{
 		Images:     images,
 		Parameters: custom,
 		Profile:    ProfileSingle,
@@ -162,7 +162,7 @@ func TestBuiltInProfiles(t *testing.T) {
 		{ProfileOptimistic, 2, 64},
 		{ProfileExecutionSync, 2, 64},
 	} {
-		payload, err := effectiveParameters(address, StartOptions{
+		payload, err := resolveParameters(address, StartOptions{
 			Images:  Images{Execution: "image"},
 			Profile: test.profile,
 		})

@@ -68,7 +68,7 @@ type requiredParameters struct {
 	} `yaml:"network_params"`
 }
 
-func effectiveParameters(address string, options StartOptions) (string, error) {
+func resolveParameters(address string, options StartOptions) (string, error) {
 	if options.Parameters != nil {
 		return customParameters(options.Parameters, address)
 	}
