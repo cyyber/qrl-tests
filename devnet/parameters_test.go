@@ -39,7 +39,7 @@ func TestDefaultParameters(t *testing.T) {
 	require.Equal(t, "2000000QRL", prefund["balance"])
 }
 
-func TestCustomParametersAreUsedUnchanged(t *testing.T) {
+func TestFileParametersPassThroughUnchanged(t *testing.T) {
 	address := "Q" + strings.Repeat("b", 128)
 	custom := []byte(fmt.Sprintf(`participants:
   - el_image: registry.example/go-qrl:custom
@@ -59,7 +59,7 @@ qrl_genesis_generator_params:
 	require.NoError(t, err)
 	require.Equal(t, string(custom), rendered)
 
-	view := decodedCustomFile(t, rendered)
+	view := decodedParametersFile(t, rendered)
 	require.Equal(t, "registry.example/go-qrl:custom", view.Participants[0].ExecutionImage)
 	require.Equal(t, "registry.example/clef:custom", view.Participants[0].RemoteSignerImage)
 	require.Equal(t, "registry.example/qrysm-beacon:custom", view.Participants[0].ConsensusImage)
@@ -68,7 +68,7 @@ qrl_genesis_generator_params:
 	require.Contains(t, view.Network.PrefundedAccounts, address)
 }
 
-func TestCustomJSONParametersRemainSupported(t *testing.T) {
+func TestFileParametersSupportJSON(t *testing.T) {
 	address := "Q" + strings.Repeat("e", 128)
 	custom := []byte(fmt.Sprintf(`{
 		"participants":[{"el_image":"registry.example/go-qrl:test"}],
@@ -78,7 +78,7 @@ func TestCustomJSONParametersRemainSupported(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, string(custom), rendered)
 
-	view := decodedCustomFile(t, rendered)
+	view := decodedParametersFile(t, rendered)
 	require.Equal(t, "registry.example/go-qrl:test", view.Participants[0].ExecutionImage)
 	require.Contains(t, view.Network.PrefundedAccounts, address)
 }
@@ -91,7 +91,7 @@ func TestNetworkParametersTemplate(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, string(payload), rendered)
 
-	view := decodedCustomFile(t, rendered)
+	view := decodedParametersFile(t, rendered)
 	require.Equal(t, DefaultExecutionImage, view.Participants[0].ExecutionImage)
 	require.Equal(t, DefaultClefImage, view.Participants[0].RemoteSignerImage)
 	require.Equal(t, DefaultConsensusImage, view.Participants[0].ConsensusImage)
@@ -100,7 +100,7 @@ func TestNetworkParametersTemplate(t *testing.T) {
 	require.Contains(t, view.Network.PrefundedAccounts, devwallet.Address)
 }
 
-func TestInvalidCustomParameters(t *testing.T) {
+func TestFileParametersRejectInvalid(t *testing.T) {
 	address := "Q" + strings.Repeat("c", 128)
 	for name, custom := range map[string][]byte{
 		"malformed":       []byte(`participants: [`),
@@ -185,9 +185,9 @@ func TestBuiltInProfiles(t *testing.T) {
 	}
 }
 
-// customFileView decodes the fields the tests assert survive pass-through;
+// parametersFileView decodes the fields the tests assert survive pass-through;
 // production validation reads only requiredParameters.
-type customFileView struct {
+type parametersFileView struct {
 	Participants []struct {
 		ExecutionImage    string `yaml:"el_image"`
 		ConsensusImage    string `yaml:"cl_image"`
@@ -202,9 +202,9 @@ type customFileView struct {
 	} `yaml:"qrl_genesis_generator_params"`
 }
 
-func decodedCustomFile(t *testing.T, payload string) customFileView {
+func decodedParametersFile(t *testing.T, payload string) parametersFileView {
 	t.Helper()
-	var view customFileView
+	var view parametersFileView
 	require.NoError(t, yaml.Unmarshal([]byte(payload), &view))
 	return view
 }
