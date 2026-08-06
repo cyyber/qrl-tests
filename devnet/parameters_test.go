@@ -57,7 +57,7 @@ qrl_genesis_generator_params:
 	require.NoError(t, err)
 	require.Equal(t, string(custom), rendered)
 
-	shape := decodedParameterShape(t, rendered)
+	shape := decodedCustomFile(t, rendered)
 	require.Equal(t, "registry.example/go-qrl:custom", shape.Participants[0].ExecutionImage)
 	require.Equal(t, "registry.example/clef:custom", shape.Participants[0].RemoteSignerImage)
 	require.Equal(t, "registry.example/qrysm-beacon:custom", shape.Participants[0].ConsensusImage)
@@ -76,7 +76,7 @@ func TestCustomJSONParametersRemainSupported(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, string(custom), rendered)
 
-	shape := decodedParameterShape(t, rendered)
+	shape := decodedCustomFile(t, rendered)
 	require.Equal(t, "registry.example/go-qrl:test", shape.Participants[0].ExecutionImage)
 	require.Contains(t, shape.Network.PrefundedAccounts, address)
 }
@@ -89,7 +89,7 @@ func TestNetworkParametersTemplate(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, string(payload), rendered)
 
-	shape := decodedParameterShape(t, rendered)
+	shape := decodedCustomFile(t, rendered)
 	require.Equal(t, DefaultExecutionImage, shape.Participants[0].ExecutionImage)
 	require.Equal(t, DefaultClefImage, shape.Participants[0].RemoteSignerImage)
 	require.Equal(t, DefaultConsensusImage, shape.Participants[0].ConsensusImage)
@@ -123,13 +123,28 @@ func testParameters(address, executionImage string, custom []byte) (string, erro
 	})
 }
 
-func decodedParameterShape(t *testing.T, payload string) parameterShape {
+// customFileView decodes the fields the tests assert survive pass-through;
+// production validation reads only requiredParameters.
+type customFileView struct {
+	Participants []struct {
+		ExecutionImage    string `yaml:"el_image"`
+		ConsensusImage    string `yaml:"cl_image"`
+		ValidatorImage    string `yaml:"vc_image"`
+		RemoteSignerImage string `yaml:"remote_signer_image"`
+	} `yaml:"participants"`
+	Network struct {
+		PrefundedAccounts map[string]any `yaml:"prefunded_accounts"`
+	} `yaml:"network_params"`
+	Genesis struct {
+		Image string `yaml:"image"`
+	} `yaml:"qrl_genesis_generator_params"`
+}
+
+func decodedCustomFile(t *testing.T, payload string) customFileView {
 	t.Helper()
-	var document yaml.Node
-	require.NoError(t, yaml.Unmarshal([]byte(payload), &document))
-	shape, err := decodeParameterShape(&document)
-	require.NoError(t, err)
-	return shape
+	var view customFileView
+	require.NoError(t, yaml.Unmarshal([]byte(payload), &view))
+	return view
 }
 
 func TestBuiltInProfiles(t *testing.T) {
