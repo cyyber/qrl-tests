@@ -9,11 +9,6 @@ import (
 	"go.yaml.in/yaml/v3"
 )
 
-const (
-	defaultNetworkID = "1337"
-	prefundBalance   = "2000000QRL"
-)
-
 // The qrl-package parameter schema, as far as the built-in profile uses it.
 type packageParameters struct {
 	Participants  []participant   `json:"participants"`
@@ -80,7 +75,8 @@ func resolveParameters(address string, options StartOptions) (string, error) {
 		configuration := spec.participants[index]
 		labels := map[string]string{
 			participantLabel: strconv.Itoa(index + 1),
-			partitionLabel:   strconv.Itoa(index%2 + 1),
+			// Alternate halves for the network-partition lanes.
+			partitionLabel: strconv.Itoa(index%2 + 1),
 		}
 		participants[index] = participant{
 			ELImage:           images.Execution,
@@ -102,14 +98,14 @@ func resolveParameters(address string, options StartOptions) (string, error) {
 	payload, err := json.Marshal(packageParameters{
 		Participants: participants,
 		NetworkParams: networkParams{
-			NetworkID:               defaultNetworkID,
+			NetworkID:               "1337",
 			PreregisteredValidators: spec.preregisteredValidators,
 			SecondsPerSlot:          5,
 			SlotsPerEpoch:           8,
 			ExecutionFollowDistance: 8,
 			WithdrawabilityDelay:    2,
 			ShardCommitteePeriod:    2,
-			PrefundedAccounts:       map[string]account{address: {Balance: prefundBalance}},
+			PrefundedAccounts:       map[string]account{address: {Balance: "2000000QRL"}},
 			WithdrawalAddress:       address,
 			LightKDFEnabled:         true,
 		},
@@ -122,8 +118,6 @@ func resolveParameters(address string, options StartOptions) (string, error) {
 	return string(payload), nil
 }
 
-// participantParameters keeps a profile's explicit parameter list, including
-// an explicitly empty one; only a nil (unset) list falls back to defaults.
 func participantParameters(configured []string, defaults ...string) []string {
 	if configured != nil {
 		return configured
@@ -132,13 +126,9 @@ func participantParameters(configured []string, defaults ...string) []string {
 }
 
 func fileParameters(payload []byte, address string) (string, error) {
-	var document yaml.Node
-	if err := yaml.Unmarshal(payload, &document); err != nil {
+	var required requiredParameters
+	if err := yaml.Unmarshal(payload, &required); err != nil {
 		return "", errors.New("parameters file must contain one YAML mapping")
-	}
-	required, err := decodeRequiredParameters(&document)
-	if err != nil {
-		return "", err
 	}
 
 	if _, ok := required.Network.PrefundedAccounts[address]; !ok {
@@ -146,15 +136,4 @@ func fileParameters(payload []byte, address string) (string, error) {
 	}
 
 	return string(payload), nil
-}
-
-func decodeRequiredParameters(document *yaml.Node) (requiredParameters, error) {
-	if len(document.Content) != 1 || document.Content[0].Kind != yaml.MappingNode {
-		return requiredParameters{}, errors.New("parameters file must contain one YAML mapping")
-	}
-	var required requiredParameters
-	if err := document.Decode(&required); err != nil {
-		return requiredParameters{}, errors.New("parameters file must contain one YAML mapping")
-	}
-	return required, nil
 }

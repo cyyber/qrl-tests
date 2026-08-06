@@ -33,7 +33,7 @@ func TestDefaultParameters(t *testing.T) {
 	require.Equal(t, DefaultGenesisImage, parameters["qrl_genesis_generator_params"].(map[string]any)["image"])
 	require.Equal(t, "1337", network["network_id"])
 	require.Equal(t, address, network["withdrawal_address"])
-	require.Equal(t, prefundBalance, prefund["balance"])
+	require.Equal(t, "2000000QRL", prefund["balance"])
 	require.Regexp(t, `^github\.com/rgeraldes24/qrl-package@[0-9a-f]{40}$`, packageLocator)
 }
 
