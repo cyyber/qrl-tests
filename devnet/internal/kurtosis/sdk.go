@@ -26,8 +26,8 @@ type Service struct {
 }
 
 func (service Service) PublicEndpoint(portID, scheme string) (string, error) {
-	port, ok := service.PublicPorts[portID]
-	if !ok || port == 0 {
+	port := service.PublicPorts[portID]
+	if port == 0 {
 		return "", fmt.Errorf("no public %q port", portID)
 	}
 	if service.PublicIP == "" {
