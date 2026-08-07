@@ -45,7 +45,7 @@ func All() []Lane {
 	return slices.Clone(registry)
 }
 
-func (lane Lane) Select(names []string) (Lane, error) {
+func (lane Lane) SelectSuites(names []string) (Lane, error) {
 	if len(names) == 0 {
 		return lane, nil
 	}
