@@ -92,6 +92,7 @@ func TestRunBuildsCommandAndCleansUp(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "execution-abi", written.Lane)
 	require.Equal(t, devnet.ProfileSingle, written.Profile)
+	require.Equal(t, testEnvironment("qrl-tests", devnet.BackendDocker), written.Environment)
 	require.Contains(t, command.Env, manifest.PathEnv+"="+manifestPath)
 	require.FileExists(t, filepath.Join(reports, "execution-abi", "output.log"))
 	require.Contains(t, output.String(), "=== RUN lane=execution-abi profile=single ===")
