@@ -64,7 +64,7 @@ func TestRunBuildsCommandAndCleansUp(t *testing.T) {
 	networks := new(recordingNetworks)
 	var command commandSpec
 	var output bytes.Buffer
-	tests := New(Config{
+	runner := New(Config{
 		BaseName:     "qrl-tests",
 		ReportDir:    reports,
 		Backend:      devnet.BackendDocker,
@@ -72,10 +72,10 @@ func TestRunBuildsCommandAndCleansUp(t *testing.T) {
 		Parameters:   []byte(`{"custom":true}`),
 		Suites:       []string{"execution-abi"},
 	}, &output, &output)
-	tests.networks = networks
-	tests.runCommand = captureCommand(&command)
+	runner.networks = networks
+	runner.runCommand = captureCommand(&command)
 
-	require.NoError(t, tests.Run(t.Context(), "execution-abi"))
+	require.NoError(t, runner.Run(t.Context(), "execution-abi"))
 	require.Equal(t, "qrl-tests", networks.started.EnclaveName)
 	require.Equal(t, devnet.ProfileSingle, networks.started.Profile)
 	require.Equal(t, []byte(`{"custom":true}`), networks.started.Parameters)
@@ -100,8 +100,8 @@ func TestRunBuildsCommandAndCleansUp(t *testing.T) {
 
 func TestListDescribesLanesAndSuites(t *testing.T) {
 	var output bytes.Buffer
-	tests := New(Config{}, &output, &output)
-	require.NoError(t, tests.List())
+	runner := New(Config{}, &output, &output)
+	require.NoError(t, runner.List())
 	require.Contains(t, output.String(), "execution-abi")
 	require.Contains(t, output.String(), "profile=single")
 	require.Contains(t, output.String(), "package=./e2e/suites/execution/abi")
@@ -113,8 +113,8 @@ func TestRunAllRejectsOverrides(t *testing.T) {
 		"suites":     {Suites: []string{"execution-abi"}},
 	} {
 		t.Run(name, func(t *testing.T) {
-			tests := New(configuration, io.Discard, io.Discard)
-			require.Error(t, tests.RunAll(t.Context()))
+			runner := New(configuration, io.Discard, io.Discard)
+			require.Error(t, runner.RunAll(t.Context()))
 		})
 	}
 }
@@ -122,16 +122,16 @@ func TestRunAllRejectsOverrides(t *testing.T) {
 func TestRunAllProvisionsPerLane(t *testing.T) {
 	networks := new(recordingNetworks)
 	var command commandSpec
-	tests := New(Config{
+	runner := New(Config{
 		BaseName:     "qrl-tests",
 		ReportDir:    t.TempDir(),
 		Backend:      devnet.BackendDocker,
 		StartTimeout: time.Minute,
 	}, io.Discard, io.Discard)
-	tests.networks = networks
-	tests.runCommand = captureCommand(&command)
+	runner.networks = networks
+	runner.runCommand = captureCommand(&command)
 
-	require.NoError(t, tests.RunAll(t.Context()))
+	require.NoError(t, runner.RunAll(t.Context()))
 	require.Equal(t, "qrl-tests-execution-abi", networks.started.EnclaveName)
 	require.Equal(t, devnet.ProfileSingle, networks.started.Profile)
 	require.Equal(t, []string{"qrl-tests-execution-abi"}, networks.stopped)
@@ -140,31 +140,31 @@ func TestRunAllProvisionsPerLane(t *testing.T) {
 
 func TestRunReturnsCleanupFailure(t *testing.T) {
 	networks := &recordingNetworks{stopErr: errors.New("stop failed")}
-	tests := New(Config{
+	runner := New(Config{
 		BaseName:     "qrl-tests",
 		ReportDir:    t.TempDir(),
 		Backend:      devnet.BackendDocker,
 		StartTimeout: time.Minute,
 	}, io.Discard, io.Discard)
-	tests.networks = networks
-	tests.runCommand = func(context.Context, commandSpec) error { return nil }
+	runner.networks = networks
+	runner.runCommand = func(context.Context, commandSpec) error { return nil }
 
-	err := tests.Run(t.Context(), "execution-abi")
+	err := runner.Run(t.Context(), "execution-abi")
 	require.ErrorContains(t, err, "lane execution-abi: stop network: stop failed")
 }
 
 func TestRunLeavesNoArtifactsWhenStartFails(t *testing.T) {
 	reports := t.TempDir()
 	networks := &recordingNetworks{startErr: errors.New("no capacity")}
-	tests := New(Config{
+	runner := New(Config{
 		BaseName:     "qrl-tests",
 		ReportDir:    reports,
 		Backend:      devnet.BackendDocker,
 		StartTimeout: time.Minute,
 	}, io.Discard, io.Discard)
-	tests.networks = networks
+	runner.networks = networks
 
-	err := tests.Run(t.Context(), "execution-abi")
+	err := runner.Run(t.Context(), "execution-abi")
 	require.ErrorContains(t, err, "lane execution-abi: start network: no capacity")
 	require.NoDirExists(t, filepath.Join(reports, "execution-abi"))
 	require.Empty(t, networks.stopped, "a lane that never started must not be stopped")
@@ -173,15 +173,15 @@ func TestRunLeavesNoArtifactsWhenStartFails(t *testing.T) {
 func TestTestAttachesToExistingNetwork(t *testing.T) {
 	networks := new(recordingNetworks)
 	var command commandSpec
-	tests := New(Config{
+	runner := New(Config{
 		BaseName:  "qrl-tests",
 		ReportDir: t.TempDir(),
 		Backend:   devnet.BackendDocker,
 	}, io.Discard, io.Discard)
-	tests.networks = networks
-	tests.runCommand = captureCommand(&command)
+	runner.networks = networks
+	runner.runCommand = captureCommand(&command)
 
-	require.NoError(t, tests.Test(t.Context(), "execution-abi"))
+	require.NoError(t, runner.Test(t.Context(), "execution-abi"))
 	require.Equal(t, "qrl-tests", networks.inspected)
 	require.Empty(t, networks.started.EnclaveName, "attaching must not provision")
 	require.Empty(t, networks.stopped, "attaching must not stop the network")
@@ -189,8 +189,8 @@ func TestTestAttachesToExistingNetwork(t *testing.T) {
 }
 
 func TestTestRejectsCustomParameters(t *testing.T) {
-	tests := New(Config{Parameters: []byte(`{}`)}, io.Discard, io.Discard)
-	require.ErrorContains(t, tests.Test(t.Context(), "execution-abi"), "existing network")
+	runner := New(Config{Parameters: []byte(`{}`)}, io.Discard, io.Discard)
+	require.ErrorContains(t, runner.Test(t.Context(), "execution-abi"), "existing network")
 }
 
 func testLaneRuns(t *testing.T, reports string, count int) []laneRun {
@@ -215,21 +215,21 @@ func testLaneRuns(t *testing.T, reports string, count int) []laneRun {
 
 func TestRunLanesRunsConcurrently(t *testing.T) {
 	networks := new(recordingNetworks)
-	tests := New(Config{MaxParallel: 2}, io.Discard, io.Discard)
-	tests.networks = networks
-	tests.runCommand = func(context.Context, commandSpec) error { return nil }
+	runner := New(Config{MaxParallel: 2}, io.Discard, io.Discard)
+	runner.networks = networks
+	runner.runCommand = func(context.Context, commandSpec) error { return nil }
 
 	planned := testLaneRuns(t, t.TempDir(), 2)
-	require.NoError(t, tests.runLanes(t.Context(), planned))
+	require.NoError(t, runner.runLanes(t.Context(), planned))
 	require.ElementsMatch(t, []string{"lane-0", "lane-1"}, networks.stopped)
 }
 
 func TestRunLanesHonorsCancellation(t *testing.T) {
 	networks := new(recordingNetworks)
-	tests := New(Config{MaxParallel: 2}, io.Discard, io.Discard)
-	tests.networks = networks
+	runner := New(Config{MaxParallel: 2}, io.Discard, io.Discard)
+	runner.networks = networks
 	entered := make(chan struct{}, 3)
-	tests.runCommand = func(ctx context.Context, _ commandSpec) error {
+	runner.runCommand = func(ctx context.Context, _ commandSpec) error {
 		entered <- struct{}{}
 		<-ctx.Done()
 		return ctx.Err()
@@ -242,7 +242,7 @@ func TestRunLanesHonorsCancellation(t *testing.T) {
 	defer cancel()
 	planned := testLaneRuns(t, t.TempDir(), 3)
 	done := make(chan error, 1)
-	go func() { done <- tests.runLanes(ctx, planned) }()
+	go func() { done <- runner.runLanes(ctx, planned) }()
 
 	<-entered
 	<-entered
