@@ -177,16 +177,16 @@ func (runner *Runner) run(ctx context.Context, selected []lanes.Lane, mode runMo
 
 func (runner *Runner) runLanes(ctx context.Context, planned []laneRun) error {
 	limit := runner.configuration.MaxParallel
+	results := make([]error, len(planned))
+
 	if limit < 2 || len(planned) < 2 {
-		var result error
-		for _, lane := range planned {
-			result = errors.Join(result, runner.runLane(ctx, lane))
+		for index, lane := range planned {
+			results[index] = runner.runLane(ctx, lane)
 		}
-		return result
+		return errors.Join(results...)
 	}
 
 	semaphore := make(chan struct{}, limit)
-	results := make([]error, len(planned))
 	var group sync.WaitGroup
 	for index, lane := range planned {
 		group.Go(func() {
@@ -201,10 +201,5 @@ func (runner *Runner) runLanes(ctx context.Context, planned []laneRun) error {
 		})
 	}
 	group.Wait()
-
-	var result error
-	for _, err := range results {
-		result = errors.Join(result, err)
-	}
-	return result
+	return errors.Join(results...)
 }
