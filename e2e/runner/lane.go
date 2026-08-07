@@ -1,6 +1,7 @@
 package runner
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -16,7 +17,8 @@ import (
 )
 
 const (
-	laneCleanupTimeout = 2 * time.Minute
+	laneCleanupTimeout     = 2 * time.Minute
+	laneDiagnosticsTimeout = 5 * time.Minute
 
 	// laneReportSlack extends the lane context past ginkgo's own --timeout so
 	// it can report and clean up before the context interrupts the process.
@@ -37,15 +39,20 @@ func (runner *Runner) acquireLane(ctx context.Context, planned laneRun) (laneLea
 		return laneLease{environment: environment}, nil
 	}
 
-	startCtx, cancelStart := context.WithTimeout(ctx, runner.configuration.StartTimeout)
-	environment, err := runner.networks.Start(startCtx, devnet.StartOptions{
+	options := devnet.StartOptions{
 		EnclaveName:    planned.enclaveName,
 		Backend:        runner.configuration.Backend,
 		Images:         runner.configuration.Images,
 		Parameters:     runner.configuration.Parameters,
 		Profile:        planned.lane.Profile,
 		PackageLocator: runner.configuration.PackageLocator,
-	})
+	}
+	if runner.diagnosticsMode() != DiagnosticsNever {
+		options.FailureDiagnosticsDir = planned.diagnosticsDir
+	}
+
+	startCtx, cancelStart := context.WithTimeout(ctx, runner.configuration.StartTimeout)
+	environment, err := runner.networks.Start(startCtx, options)
 	cancelStart()
 	if err != nil {
 		return laneLease{}, fmt.Errorf("start network: %w", err)
@@ -112,7 +119,7 @@ func (runner *Runner) executeLane(ctx context.Context, planned laneRun) (result 
 	defer cancelLane()
 	fmt.Fprintf(stdout, "=== RUN lane=%s profile=%s ===\n", lane.Name, lane.Profile)
 	processEnvironment := append(os.Environ(), manifest.PathEnv+"="+planned.manifestPath)
-	return runner.runCommand(laneCtx, commandSpec{
+	runErr := runner.runCommand(laneCtx, commandSpec{
 		Path:   "go",
 		Args:   planned.arguments,
 		Dir:    planned.testsDir,
@@ -120,4 +127,36 @@ func (runner *Runner) executeLane(ctx context.Context, planned laneRun) (result 
 		Stdout: stdout,
 		Stderr: stderr,
 	})
+
+	// Diagnostics happen here, before the deferred release destroys the
+	// enclave. A collection problem never converts a passing lane into a
+	// failing one; on a failing lane it is reported alongside the failure.
+	if err := runner.collectDiagnostics(planned, lease.environment, runErr != nil); err != nil {
+		if runErr != nil {
+			return errors.Join(runErr, fmt.Errorf("collect diagnostics: %w", err))
+		}
+		fmt.Fprintf(stderr, "collect diagnostics: %v\n", err)
+	}
+	return runErr
+}
+
+func (runner *Runner) diagnosticsMode() DiagnosticsMode {
+	if runner.configuration.Diagnostics == "" {
+		return DiagnosticsOnFailure
+	}
+	return runner.configuration.Diagnostics
+}
+
+func (runner *Runner) collectDiagnostics(planned laneRun, environment devnet.Environment, failed bool) error {
+	mode := runner.diagnosticsMode()
+	if mode == DiagnosticsNever || (mode == DiagnosticsOnFailure && !failed) {
+		return nil
+	}
+
+	// A fresh context: the lane context is already canceled when the lane
+	// timed out, which is exactly when diagnostics matter most.
+	collectCtx, cancel := context.WithTimeout(context.Background(), laneDiagnosticsTimeout)
+	defer cancel()
+	backend := cmp.Or(environment.Backend, runner.configuration.Backend)
+	return runner.networks.Collect(collectCtx, backend, planned.enclaveName, planned.diagnosticsDir)
 }

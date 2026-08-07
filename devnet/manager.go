@@ -19,8 +19,9 @@ const (
 	DefaultEnclaveName  = "go-qrl-devnet"
 	DefaultStartTimeout = 5 * time.Minute
 
-	startCleanupTimeout        = time.Minute // destroy call after a failed start
-	destroyConfirmationTimeout = time.Minute // confirm loop in destroyAndConfirm
+	startCleanupTimeout        = time.Minute     // destroy call after a failed start
+	destroyConfirmationTimeout = time.Minute     // confirm loop in destroyAndConfirm
+	startDiagnosticsTimeout    = 2 * time.Minute // enclave dump before a failed start is cleaned up
 	retryInterval              = 500 * time.Millisecond
 
 	// DefaultPackageLocator pins the qrl-package revision run for every
@@ -60,11 +61,16 @@ type StartOptions struct {
 	Parameters     []byte
 	Profile        Profile
 	PackageLocator string
+
+	// FailureDiagnosticsDir, when set, receives the enclave's diagnostics
+	// before a failed start is cleaned up; the enclave is gone afterwards.
+	FailureDiagnosticsDir string
 }
 
 type Manager struct {
 	newClient func() (kurtosisClient, error)
 	probe     func(ctx context.Context, rpcURL, address string) error
+	collect   func(ctx context.Context, backend Backend, enclave, outputDir string) error
 }
 
 func NewManager() *Manager {
@@ -77,6 +83,9 @@ func NewManager() *Manager {
 			return client, nil
 		},
 		probe: probeNetwork,
+		collect: func(ctx context.Context, backend Backend, enclave, outputDir string) error {
+			return collectDiagnostics(ctx, runDiagnosticsCommand, backend, enclave, outputDir)
+		},
 	}
 }
 
@@ -140,40 +149,50 @@ func (manager *Manager) Start(ctx context.Context, options StartOptions) (Enviro
 		return Environment{}, fmt.Errorf("create enclave: %w", err)
 	}
 	if err := client.RunRemotePackage(ctx, options.EnclaveName, locator, parameters); err != nil {
-		return Environment{}, manager.startFailure(client, options.EnclaveName, "run qrl-package", err)
+		return Environment{}, manager.startFailure(client, options, "run qrl-package", err)
 	}
 
 	// Endpoints are fixed once the package run completes; only the probe has to
 	// wait for the chain to come up.
 	environment, err := resolveEnvironment(ctx, client, options.EnclaveName)
 	if err != nil {
-		return Environment{}, manager.startFailure(client, options.EnclaveName, "resolve network endpoints", err)
+		return Environment{}, manager.startFailure(client, options, "resolve network endpoints", err)
 	}
 	environment.Backend = options.Backend
 
 	primary, err := environment.Primary()
 	if err != nil {
-		return Environment{}, manager.startFailure(client, options.EnclaveName, "resolve primary participant", err)
+		return Environment{}, manager.startFailure(client, options, "resolve primary participant", err)
 	}
 	if err := retryUntil(ctx, func() error {
 		return manager.probe(ctx, primary.Execution.RPCURL, devwallet.Address)
 	}); err != nil {
-		return Environment{}, manager.startFailure(client, options.EnclaveName, "wait for network readiness", err)
+		return Environment{}, manager.startFailure(client, options, "wait for network readiness", err)
 	}
 
 	return environment, nil
 }
 
 // startFailure wraps a failure that happened after the enclave was created,
-// destroying the partially provisioned network before returning.
-func (manager *Manager) startFailure(client kurtosisClient, name string, operation string, failure error) error {
+// collecting the requested diagnostics and then destroying the partially
+// provisioned network before returning. Diagnostics and cleanup problems are
+// reported alongside the start failure, never instead of it.
+func (manager *Manager) startFailure(client kurtosisClient, options StartOptions, operation string, failure error) error {
 	result := fmt.Errorf("%s: %w", operation, failure)
 
-	// Clean up on a fresh context: the start context is typically already
-	// canceled or expired by the time the failure reaches here.
+	// Diagnostics and cleanup run on fresh contexts: the start context is
+	// typically already canceled or expired by the time the failure gets here.
+	if options.FailureDiagnosticsDir != "" {
+		dumpCtx, cancel := context.WithTimeout(context.Background(), startDiagnosticsTimeout)
+		if err := manager.collect(dumpCtx, options.Backend, options.EnclaveName, options.FailureDiagnosticsDir); err != nil {
+			result = errors.Join(result, fmt.Errorf("collect start diagnostics: %w", err))
+		}
+		cancel()
+	}
+
 	cleanupCtx, cancel := context.WithTimeout(context.Background(), startCleanupTimeout)
 	defer cancel()
-	if err := manager.destroyAndConfirm(cleanupCtx, client, name); err != nil {
+	if err := manager.destroyAndConfirm(cleanupCtx, client, options.EnclaveName); err != nil {
 		return errors.Join(result, fmt.Errorf("clean up failed network: %w", err))
 	}
 	return result

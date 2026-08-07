@@ -10,14 +10,15 @@ import (
 )
 
 type laneRun struct {
-	lane         lanes.Lane
-	enclaveName  string
-	reportDir    string
-	manifestPath string
-	seed         int64
-	arguments    []string
-	provision    bool
-	testsDir     string
+	lane           lanes.Lane
+	enclaveName    string
+	reportDir      string
+	diagnosticsDir string
+	manifestPath   string
+	seed           int64
+	arguments      []string
+	provision      bool
+	testsDir       string
 }
 
 func planLanes(configuration Config, selected []lanes.Lane, mode runMode) ([]laneRun, string, error) {
@@ -42,14 +43,15 @@ func planLanes(configuration Config, selected []lanes.Lane, mode runMode) ([]lan
 		// manifest keeps every ordering reproducible.
 		seed := 1 + rand.Int64N(1<<31-1)
 		planned[index] = laneRun{
-			lane:         lane,
-			enclaveName:  enclaveName,
-			reportDir:    reportDir,
-			manifestPath: filepath.Join(reportDir, "manifest.json"),
-			seed:         seed,
-			arguments:    ginkgoArguments(lane, reportDir, seed),
-			provision:    mode.provisions(),
-			testsDir:     testsDir,
+			lane:           lane,
+			enclaveName:    enclaveName,
+			reportDir:      reportDir,
+			diagnosticsDir: filepath.Join(reportRoot, "diagnostics", lane.Name),
+			manifestPath:   filepath.Join(reportDir, "manifest.json"),
+			seed:           seed,
+			arguments:      ginkgoArguments(lane, reportDir, seed),
+			provision:      mode.provisions(),
+			testsDir:       testsDir,
 		}
 	}
 	return planned, reportRoot, nil

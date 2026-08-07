@@ -114,6 +114,12 @@ func runnerFlags() []cli.Flag {
 			Value:   devnet.DefaultStartTimeout,
 			EnvVars: []string{"DEVNET_START_TIMEOUT"},
 		},
+		&cli.StringFlag{
+			Name:    "diagnostics",
+			Usage:   "network diagnostics collection: on-failure, always, or never",
+			Value:   string(runner.DiagnosticsOnFailure),
+			EnvVars: []string{"E2E_DIAGNOSTICS"},
+		},
 	}
 
 	return append(flags, imageFlags()...)
@@ -135,6 +141,11 @@ func runnerConfig(command *cli.Context) (runner.Config, error) {
 		return runner.Config{}, err
 	}
 
+	diagnostics, err := runner.ParseDiagnosticsMode(command.String("diagnostics"))
+	if err != nil {
+		return runner.Config{}, err
+	}
+
 	parameters, err := readParametersFile(command)
 	if err != nil {
 		return runner.Config{}, err
@@ -151,5 +162,6 @@ func runnerConfig(command *cli.Context) (runner.Config, error) {
 		MaxParallel:    maxParallel,
 		Images:         imagesFromFlags(command),
 		PackageLocator: packageLocator,
+		Diagnostics:    diagnostics,
 	}, nil
 }

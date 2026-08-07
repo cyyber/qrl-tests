@@ -33,12 +33,37 @@ type Config struct {
 	Suites         []string
 	StartTimeout   time.Duration
 	MaxParallel    int
+	Diagnostics    DiagnosticsMode
+}
+
+// DiagnosticsMode selects when a lane's network diagnostics are collected
+// into reports/diagnostics/<lane>/ before its enclave is destroyed.
+type DiagnosticsMode string
+
+const (
+	DiagnosticsOnFailure DiagnosticsMode = "on-failure"
+	DiagnosticsAlways    DiagnosticsMode = "always"
+	DiagnosticsNever     DiagnosticsMode = "never"
+)
+
+// ParseDiagnosticsMode validates the raw value, resolving the empty value to
+// on-failure collection; only a verified value becomes a DiagnosticsMode.
+func ParseDiagnosticsMode(value string) (DiagnosticsMode, error) {
+	switch trimmed := strings.TrimSpace(value); trimmed {
+	case "":
+		return DiagnosticsOnFailure, nil
+	case string(DiagnosticsOnFailure), string(DiagnosticsAlways), string(DiagnosticsNever):
+		return DiagnosticsMode(trimmed), nil
+	default:
+		return "", fmt.Errorf("unsupported diagnostics mode %q: expected on-failure, always, or never", value)
+	}
 }
 
 type networkManager interface {
 	Start(ctx context.Context, options devnet.StartOptions) (devnet.Environment, error)
 	Inspect(ctx context.Context, name string) (devnet.Environment, error)
 	Stop(ctx context.Context, name string) error
+	Collect(ctx context.Context, backend devnet.Backend, enclave, outputDir string) error
 }
 
 type commandSpec struct {
