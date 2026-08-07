@@ -197,5 +197,6 @@ func (runner *Runner) runLanes(ctx context.Context, planned []laneRun) error {
 		})
 	}
 	group.Wait()
+
 	return errors.Join(results...)
 }
