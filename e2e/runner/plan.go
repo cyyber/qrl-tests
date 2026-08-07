@@ -1,8 +1,8 @@
 package runner
 
 import (
+	"cmp"
 	"fmt"
-	"os"
 	"path/filepath"
 
 	"github.com/cyyber/qrl-tests/e2e/internal/lanes"
@@ -19,15 +19,7 @@ type laneRun struct {
 }
 
 func planLanes(configuration Config, selected []lanes.Lane, mode runMode) ([]laneRun, error) {
-	testsDir := configuration.TestsDir
-	if testsDir == "" {
-		var err error
-		testsDir, err = os.Getwd()
-		if err != nil {
-			return nil, fmt.Errorf("resolve test source directory: %w", err)
-		}
-	}
-	testsDir, err := filepath.Abs(testsDir)
+	testsDir, err := filepath.Abs(cmp.Or(configuration.TestsDir, "."))
 	if err != nil {
 		return nil, fmt.Errorf("resolve test source directory: %w", err)
 	}
@@ -61,6 +53,8 @@ func ginkgoArguments(lane lanes.Lane, reportDir string) []string {
 	arguments := []string{
 		"tool", "ginkgo",
 		"--tags=e2e",
+		// --procs=1: suites share one funded wallet, so specs must stay in a
+		// single process to keep its nonce sequence serial.
 		"--procs=1",
 		"--keep-going",
 		"--require-suite",
