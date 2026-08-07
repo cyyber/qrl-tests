@@ -3,6 +3,7 @@
 package devnet
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -88,15 +89,9 @@ func (manager *Manager) Inspect(ctx context.Context, name string) (Environment, 
 }
 
 func (manager *Manager) Start(ctx context.Context, options StartOptions) (Environment, error) {
-	if options.EnclaveName == "" {
-		options.EnclaveName = DefaultEnclaveName
-	}
-	if options.Backend == "" {
-		options.Backend = BackendDocker
-	}
-	if options.Profile == "" {
-		options.Profile = ProfileSingle
-	}
+	options.EnclaveName = cmp.Or(options.EnclaveName, DefaultEnclaveName)
+	options.Backend = cmp.Or(options.Backend, BackendDocker)
+	options.Profile = cmp.Or(options.Profile, ProfileSingle)
 
 	parameters, err := resolveParameters(devwallet.Address, options)
 	if err != nil {

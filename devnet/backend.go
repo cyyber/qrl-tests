@@ -1,6 +1,7 @@
 package devnet
 
 import (
+	"cmp"
 	"fmt"
 	"strings"
 )
@@ -55,10 +56,7 @@ func DefaultImages() Images {
 // development defaults.
 func (images Images) withDefaults() Images {
 	normalize := func(value, fallback string) string {
-		if trimmed := strings.TrimSpace(value); trimmed != "" {
-			return trimmed
-		}
-		return fallback
+		return cmp.Or(strings.TrimSpace(value), fallback)
 	}
 	return Images{
 		Execution: normalize(images.Execution, DefaultExecutionImage),
