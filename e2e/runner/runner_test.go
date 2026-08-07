@@ -200,18 +200,18 @@ func TestRunLanesHonorsCancellation(t *testing.T) {
 	require.ErrorIs(t, <-done, context.Canceled)
 }
 
-func TestRunPlanDescribesEachLane(t *testing.T) {
+func TestPlanLanesDescribesEachLane(t *testing.T) {
 	reports := t.TempDir()
 	executionABI, err := lanes.Named("execution-abi")
 	require.NoError(t, err)
 	selected := []lanes.Lane{executionABI}
-	plan, err := newRunPlan(Config{BaseName: "qrl-tests", ReportDir: reports}, selected, provisionPerLane)
+	planned, err := planLanes(Config{BaseName: "qrl-tests", ReportDir: reports}, selected, provisionPerLane)
 	require.NoError(t, err)
-	require.Len(t, plan.lanes, 1)
-	require.Equal(t, "qrl-tests-execution-abi", plan.lanes[0].enclaveName)
-	require.Equal(t, filepath.Join(reports, "execution-abi", "manifest.json"), plan.lanes[0].manifestPath)
-	require.Contains(t, plan.lanes[0].arguments, "./e2e/suites/execution/abi")
-	require.True(t, plan.lanes[0].provision)
+	require.Len(t, planned, 1)
+	require.Equal(t, "qrl-tests-execution-abi", planned[0].enclaveName)
+	require.Equal(t, filepath.Join(reports, "execution-abi", "manifest.json"), planned[0].manifestPath)
+	require.Contains(t, planned[0].arguments, "./e2e/suites/execution/abi")
+	require.True(t, planned[0].provision)
 }
 
 func testEnvironment(name string, backend devnet.Backend) devnet.Environment {

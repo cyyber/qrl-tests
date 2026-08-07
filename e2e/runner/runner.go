@@ -168,11 +168,11 @@ func (runner *Runner) selectedLane(name string) (lanes.Lane, error) {
 }
 
 func (runner *Runner) run(ctx context.Context, selected []lanes.Lane, mode runMode) error {
-	plan, err := newRunPlan(runner.configuration, selected, mode)
+	planned, err := planLanes(runner.configuration, selected, mode)
 	if err != nil {
 		return err
 	}
-	return runner.runLanes(ctx, plan.lanes)
+	return runner.runLanes(ctx, planned)
 }
 
 func (runner *Runner) runLanes(ctx context.Context, planned []laneRun) error {
@@ -189,9 +189,7 @@ func (runner *Runner) runLanes(ctx context.Context, planned []laneRun) error {
 	results := make([]error, len(planned))
 	var group sync.WaitGroup
 	for index, lane := range planned {
-		group.Add(1)
-		go func() {
-			defer group.Done()
+		group.Go(func() {
 			select {
 			case semaphore <- struct{}{}:
 				defer func() { <-semaphore }()
@@ -200,7 +198,7 @@ func (runner *Runner) runLanes(ctx context.Context, planned []laneRun) error {
 				return
 			}
 			results[index] = runner.runLane(ctx, lane)
-		}()
+		})
 	}
 	group.Wait()
 
@@ -209,24 +207,4 @@ func (runner *Runner) runLanes(ctx context.Context, planned []laneRun) error {
 		result = errors.Join(result, err)
 	}
 	return result
-}
-
-func ginkgoArguments(lane lanes.Lane, reportDir string) []string {
-	arguments := []string{
-		"tool", "ginkgo",
-		"--tags=e2e",
-		"--procs=1",
-		"--keep-going",
-		"--require-suite",
-		"--fail-on-empty",
-		"--fail-on-pending",
-		"--timeout=" + lane.Timeout.String(),
-		"--output-dir=" + reportDir,
-		"--junit-report=junit.xml",
-		"--json-report=report.json",
-	}
-	arguments = append(arguments, lane.Packages()...)
-	// Every suite package defines exactly one Go test entrypoint named TestE2E;
-	// --fail-on-empty turns a misnamed entrypoint into a failed lane.
-	return append(arguments, "--", "-test.run=^TestE2E$")
 }

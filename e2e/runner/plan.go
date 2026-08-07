@@ -18,39 +18,33 @@ type laneRun struct {
 	testsDir     string
 }
 
-type runPlan struct {
-	testsDir string
-	lanes    []laneRun
-}
-
-func newRunPlan(configuration Config, selected []lanes.Lane, mode runMode) (runPlan, error) {
+func planLanes(configuration Config, selected []lanes.Lane, mode runMode) ([]laneRun, error) {
 	testsDir := configuration.TestsDir
 	if testsDir == "" {
 		var err error
 		testsDir, err = os.Getwd()
 		if err != nil {
-			return runPlan{}, fmt.Errorf("resolve test source directory: %w", err)
+			return nil, fmt.Errorf("resolve test source directory: %w", err)
 		}
 	}
 	testsDir, err := filepath.Abs(testsDir)
 	if err != nil {
-		return runPlan{}, fmt.Errorf("resolve test source directory: %w", err)
+		return nil, fmt.Errorf("resolve test source directory: %w", err)
 	}
+
 	reportRoot, err := filepath.Abs(configuration.ReportDir)
 	if err != nil {
-		return runPlan{}, fmt.Errorf("resolve report directory: %w", err)
+		return nil, fmt.Errorf("resolve report directory: %w", err)
 	}
-	plan := runPlan{
-		testsDir: testsDir,
-		lanes:    make([]laneRun, len(selected)),
-	}
+
+	planned := make([]laneRun, len(selected))
 	for index, lane := range selected {
 		enclaveName := configuration.BaseName
 		if mode.suffixesEnclave() {
 			enclaveName += "-" + lane.Name
 		}
 		reportDir := filepath.Join(reportRoot, lane.Name)
-		plan.lanes[index] = laneRun{
+		planned[index] = laneRun{
 			lane:         lane,
 			enclaveName:  enclaveName,
 			reportDir:    reportDir,
@@ -60,5 +54,25 @@ func newRunPlan(configuration Config, selected []lanes.Lane, mode runMode) (runP
 			testsDir:     testsDir,
 		}
 	}
-	return plan, nil
+	return planned, nil
+}
+
+func ginkgoArguments(lane lanes.Lane, reportDir string) []string {
+	arguments := []string{
+		"tool", "ginkgo",
+		"--tags=e2e",
+		"--procs=1",
+		"--keep-going",
+		"--require-suite",
+		"--fail-on-empty",
+		"--fail-on-pending",
+		"--timeout=" + lane.Timeout.String(),
+		"--output-dir=" + reportDir,
+		"--junit-report=junit.xml",
+		"--json-report=report.json",
+	}
+	arguments = append(arguments, lane.Packages()...)
+	// Every suite package defines exactly one Go test entrypoint named TestE2E;
+	// --fail-on-empty turns a misnamed entrypoint into a failed lane.
+	return append(arguments, "--", "-test.run=^TestE2E$")
 }
