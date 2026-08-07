@@ -170,7 +170,7 @@ func TestRunLeavesNoArtifactsWhenStartFails(t *testing.T) {
 	require.Empty(t, networks.stopped, "a lane that never started must not be stopped")
 }
 
-func TestTestAttachesToExistingNetwork(t *testing.T) {
+func TestAttachUsesExistingNetwork(t *testing.T) {
 	networks := new(recordingNetworks)
 	var command commandSpec
 	runner := New(Config{
@@ -188,7 +188,7 @@ func TestTestAttachesToExistingNetwork(t *testing.T) {
 	require.Contains(t, command.Args, "./e2e/suites/execution/abi")
 }
 
-func TestTestRejectsCustomParameters(t *testing.T) {
+func TestAttachRejectsCustomParameters(t *testing.T) {
 	runner := New(Config{Parameters: []byte(`{}`)}, io.Discard, io.Discard)
 	require.ErrorContains(t, runner.Test(t.Context(), "execution-abi"), "existing network")
 }
