@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"os/exec"
 	"strings"
 	"sync"
@@ -70,12 +69,6 @@ type Runner struct {
 }
 
 func New(configuration Config, stdout, stderr io.Writer) *Runner {
-	if stdout == nil {
-		stdout = os.Stdout
-	}
-	if stderr == nil {
-		stderr = os.Stderr
-	}
 	outputLock := new(sync.Mutex)
 	return &Runner{
 		configuration: configuration,
@@ -92,6 +85,10 @@ func execute(ctx context.Context, specification commandSpec) error {
 	command.Env = specification.Env
 	command.Stdout = specification.Stdout
 	command.Stderr = specification.Stderr
+	// Cancellation kills the child, but ginkgo's own test-binary children can
+	// survive it holding the output pipes; WaitDelay bounds how long Run waits
+	// for them before force-closing the pipes.
+	command.WaitDelay = 30 * time.Second
 	return command.Run()
 }
 

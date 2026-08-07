@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"path/filepath"
 	"sync"
 	"testing"
@@ -97,7 +98,7 @@ func TestRunAllRejectsOverrides(t *testing.T) {
 		"suites":     {Suites: []string{"execution-abi"}},
 	} {
 		t.Run(name, func(t *testing.T) {
-			tests := New(configuration, nil, nil)
+			tests := New(configuration, io.Discard, io.Discard)
 			require.Error(t, tests.RunAll(t.Context()))
 		})
 	}
@@ -110,7 +111,7 @@ func TestRunReturnsCleanupFailure(t *testing.T) {
 		ReportDir:    t.TempDir(),
 		Backend:      devnet.BackendDocker,
 		StartTimeout: time.Minute,
-	}, nil, nil)
+	}, io.Discard, io.Discard)
 	tests.networks = networks
 	tests.runCommand = func(context.Context, commandSpec) error { return nil }
 
@@ -125,7 +126,7 @@ func TestTestAttachesToExistingNetwork(t *testing.T) {
 		BaseName:  "qrl-tests",
 		ReportDir: t.TempDir(),
 		Backend:   devnet.BackendDocker,
-	}, nil, nil)
+	}, io.Discard, io.Discard)
 	tests.networks = networks
 	tests.runCommand = func(_ context.Context, specification commandSpec) error {
 		command = specification
@@ -140,7 +141,7 @@ func TestTestAttachesToExistingNetwork(t *testing.T) {
 }
 
 func TestTestRejectsCustomParameters(t *testing.T) {
-	tests := New(Config{Parameters: []byte(`{}`)}, nil, nil)
+	tests := New(Config{Parameters: []byte(`{}`)}, io.Discard, io.Discard)
 	require.ErrorContains(t, tests.Test(t.Context(), "execution-abi"), "existing network")
 }
 
@@ -166,7 +167,7 @@ func testLaneRuns(t *testing.T, reports string, count int) []laneRun {
 
 func TestRunLanesRunsConcurrently(t *testing.T) {
 	networks := new(recordingNetworks)
-	tests := New(Config{MaxParallel: 2}, nil, nil)
+	tests := New(Config{MaxParallel: 2}, io.Discard, io.Discard)
 	tests.networks = networks
 	tests.runCommand = func(context.Context, commandSpec) error { return nil }
 
@@ -177,7 +178,7 @@ func TestRunLanesRunsConcurrently(t *testing.T) {
 
 func TestRunLanesHonorsCancellation(t *testing.T) {
 	networks := new(recordingNetworks)
-	tests := New(Config{MaxParallel: 2}, nil, nil)
+	tests := New(Config{MaxParallel: 2}, io.Discard, io.Discard)
 	tests.networks = networks
 	entered := make(chan struct{}, 3)
 	tests.runCommand = func(ctx context.Context, _ commandSpec) error {
@@ -187,7 +188,8 @@ func TestRunLanesHonorsCancellation(t *testing.T) {
 	}
 
 	// Three lanes against two slots: two block inside the command, the third
-	// waits on the semaphore until cancellation aborts all of them.
+	// waits on the semaphore until a canceled lane releases its slot and then
+	// fails through runLane itself.
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	planned := testLaneRuns(t, t.TempDir(), 3)
