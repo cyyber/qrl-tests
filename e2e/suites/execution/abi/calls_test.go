@@ -128,6 +128,27 @@ func (fixture *liveFixture) assertCallRoundTrips(ctx context.Context) {
 	gomega.Expect(transformedInteger).To(gomega.Equal(uint16(0xffff)))
 }
 
+func (fixture *liveFixture) assertLibraryCall(ctx context.Context) {
+	ginkgo.GinkgoHelper()
+
+	// Hyperion:
+	// library Math512 { function plusOne(uint512) external pure returns (uint512); }
+	// function addViaLibrary(uint512 value) external pure returns (uint512) {
+	//     return Math512.plusOne(value);
+	// }
+	// Goal: the generated deployment deploys the external library and links its
+	// 64-byte address into EventEmitter's bytecode, and the delegatecalled
+	// library call round-trips through generic ABI, generated bindings, and
+	// raw RPC.
+	ginkgo.By("routing a call through a linked external library")
+	input := fixture.inputs.amount
+	want := new(big.Int).Add(input, big.NewInt(1))
+	fixture.assertCall(ctx, "addViaLibrary", []any{input}, []any{want})
+	got, err := fixture.binding.AddViaLibrary(fixture.callOpts(ctx), input)
+	gomega.Expect(err).NotTo(gomega.HaveOccurred())
+	gomega.Expect(got.Cmp(want)).To(gomega.Equal(0))
+}
+
 func (fixture *liveFixture) assertDynamicContainers(ctx context.Context) {
 	ginkgo.GinkgoHelper()
 

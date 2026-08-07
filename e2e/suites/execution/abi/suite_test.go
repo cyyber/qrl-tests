@@ -38,6 +38,10 @@ var _ = ginkgo.Describe(
 			fixture.assertCallRoundTrips(ctx)
 		})
 
+		ginkgo.It("routes a call through a linked external library", func(ctx ginkgo.SpecContext) {
+			fixture.assertLibraryCall(ctx)
+		})
+
 		ginkgo.It("round-trips mixed integer and container boundaries", func(ctx ginkgo.SpecContext) {
 			fixture.assertMixedBoundaries(ctx)
 		})

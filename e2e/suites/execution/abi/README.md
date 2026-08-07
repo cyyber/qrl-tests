@@ -36,6 +36,8 @@ Covered:
   fixed bytes across the 32- and 64-byte boundaries, dynamic bytes and strings
   around 64-byte length boundaries, fixed and dynamic arrays, nested tuples,
   views, and overloaded methods.
+- Library linking: an external library deployed and linked by the generated
+  bindings, with its delegatecalled function exercised live.
 - Errors: complex and zero-argument custom errors, `Error(string)`,
   `Panic(uint256)`, RPC revert data, and failed transaction receipts.
 - Events and filters: scalar and composite events, supported indexed topics,

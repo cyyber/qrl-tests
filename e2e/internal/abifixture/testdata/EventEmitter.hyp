@@ -9,6 +9,15 @@
 
 pragma hyperion >=0.1.0;
 
+// External library functions compile to delegatecall sites with link
+// placeholders, so deploying EventEmitter requires the generated bindings to
+// deploy this library and link its address first.
+library Math512 {
+    function plusOne(uint512 value) external pure returns (uint512) {
+        return value + 1;
+    }
+}
+
 contract EventEmitter {
     struct Record {
         uint512 amount;
@@ -335,6 +344,10 @@ contract EventEmitter {
 
     function emitTransformed(string calldata value) external {
         emit Transformed(value);
+    }
+
+    function addViaLibrary(uint512 value) external pure returns (uint512) {
+        return Math512.plusOne(value);
     }
 
     function pay(uint16 marker) external payable {
