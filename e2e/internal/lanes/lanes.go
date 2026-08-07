@@ -45,7 +45,8 @@ func All() []Lane {
 	return slices.Clone(registry)
 }
 
-func (lane Lane) SelectSuites(names []string) (Lane, error) {
+// WithSuites returns the lane narrowed to the named suites; nil keeps them all.
+func (lane Lane) WithSuites(names []string) (Lane, error) {
 	if len(names) == 0 {
 		return lane, nil
 	}

@@ -38,19 +38,19 @@ func TestRegistry(t *testing.T) {
 	}
 }
 
-func TestLaneSelectSuites(t *testing.T) {
+func TestLaneWithSuites(t *testing.T) {
 	executionABI, err := Named("execution-abi")
 	require.NoError(t, err)
 
-	unchanged, err := executionABI.SelectSuites(nil)
+	unchanged, err := executionABI.WithSuites(nil)
 	require.NoError(t, err)
 	require.Equal(t, executionABI, unchanged)
 
-	selected, err := executionABI.SelectSuites([]string{"execution-abi", "execution-abi"})
+	selected, err := executionABI.WithSuites([]string{"execution-abi", "execution-abi"})
 	require.NoError(t, err)
 	require.Equal(t, []SuiteID{suiteExecutionABI}, selected.Suites)
 
-	_, err = executionABI.SelectSuites([]string{"unknown"})
+	_, err = executionABI.WithSuites([]string{"unknown"})
 	require.ErrorContains(t, err, "unknown E2E suite")
 }
 

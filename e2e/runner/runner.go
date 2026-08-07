@@ -164,7 +164,7 @@ func (runner *Runner) selectedLane(name string) (lanes.Lane, error) {
 	if err != nil {
 		return lanes.Lane{}, err
 	}
-	return lane.SelectSuites(runner.configuration.Suites)
+	return lane.WithSuites(runner.configuration.Suites)
 }
 
 func (runner *Runner) run(ctx context.Context, selected []lanes.Lane, mode runMode) error {
