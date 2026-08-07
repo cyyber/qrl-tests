@@ -25,7 +25,7 @@ func (runner *Runner) acquireLane(ctx context.Context, planned laneRun) (laneLea
 	if !planned.provision {
 		environment, err := runner.networks.Inspect(ctx, planned.enclaveName)
 		if err != nil {
-			return laneLease{}, fmt.Errorf("lane %s: inspect network: %w", planned.lane.Name, err)
+			return laneLease{}, fmt.Errorf("inspect network: %w", err)
 		}
 		return laneLease{environment: environment}, nil
 	}
@@ -40,7 +40,7 @@ func (runner *Runner) acquireLane(ctx context.Context, planned laneRun) (laneLea
 	})
 	cancelStart()
 	if err != nil {
-		return laneLease{}, fmt.Errorf("lane %s: start network: %w", planned.lane.Name, err)
+		return laneLease{}, fmt.Errorf("start network: %w", err)
 	}
 	return laneLease{
 		environment: environment,
@@ -48,7 +48,7 @@ func (runner *Runner) acquireLane(ctx context.Context, planned laneRun) (laneLea
 			stopCtx, cancel := context.WithTimeout(context.Background(), laneCleanupTimeout)
 			defer cancel()
 			if err := runner.networks.Stop(stopCtx, planned.enclaveName); err != nil {
-				return fmt.Errorf("lane %s: stop network: %w", planned.lane.Name, err)
+				return fmt.Errorf("stop network: %w", err)
 			}
 			return nil
 		},
@@ -62,49 +62,53 @@ func (lease laneLease) close() error {
 	return lease.release()
 }
 
-func (runner *Runner) runLane(ctx context.Context, planned laneRun) (result error) {
-	lane := planned.lane
-	if err := os.MkdirAll(planned.reportDir, 0o755); err != nil {
-		return fmt.Errorf("lane %s: create report directory: %w", lane.Name, err)
+func (runner *Runner) runLane(ctx context.Context, planned laneRun) error {
+	if err := runner.executeLane(ctx, planned); err != nil {
+		return fmt.Errorf("lane %s: %w", planned.lane.Name, err)
 	}
-	logFile, err := os.OpenFile(filepath.Join(planned.reportDir, "output.log"), os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
-	if err != nil {
-		return fmt.Errorf("lane %s: create output log: %w", lane.Name, err)
-	}
-	defer func() { result = errors.Join(result, logFile.Close()) }()
-	laneLog := &lockedWriter{lock: new(sync.Mutex), writer: logFile}
-	stdout := io.MultiWriter(runner.stdout, laneLog)
-	stderr := io.MultiWriter(runner.stderr, laneLog)
+	return nil
+}
 
+func (runner *Runner) executeLane(ctx context.Context, planned laneRun) (result error) {
+	lane := planned.lane
 	lease, err := runner.acquireLane(ctx, planned)
 	if err != nil {
 		return err
 	}
 	defer func() { result = errors.Join(result, lease.close()) }()
 
+	if err := os.MkdirAll(planned.reportDir, 0o755); err != nil {
+		return fmt.Errorf("create report directory: %w", err)
+	}
+	logFile, err := os.OpenFile(filepath.Join(planned.reportDir, "output.log"), os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
+	if err != nil {
+		return fmt.Errorf("create output log: %w", err)
+	}
+	defer func() { result = errors.Join(result, logFile.Close()) }()
+	laneLog := &lockedWriter{lock: new(sync.Mutex), writer: logFile}
+	stdout := io.MultiWriter(runner.stdout, laneLog)
+	stderr := io.MultiWriter(runner.stderr, laneLog)
+
 	if err := manifest.Write(planned.manifestPath, manifest.Manifest{
 		Lane:        lane.Name,
 		Profile:     lane.Profile,
 		Environment: lease.environment,
 	}); err != nil {
-		return fmt.Errorf("lane %s: %w", lane.Name, err)
+		return err
 	}
 
 	// Give ginkgo slack past its own --timeout so it can report and clean up
-	// before the context kills the process.
+	// before the context interrupts the process.
 	laneCtx, cancelLane := context.WithTimeout(ctx, lane.Timeout+5*time.Minute)
 	defer cancelLane()
 	fmt.Fprintf(stdout, "=== RUN lane=%s profile=%s ===\n", lane.Name, lane.Profile)
-	environment := append(os.Environ(), manifest.PathEnv+"="+planned.manifestPath)
-	if err := runner.runCommand(laneCtx, commandSpec{
+	processEnvironment := append(os.Environ(), manifest.PathEnv+"="+planned.manifestPath)
+	return runner.runCommand(laneCtx, commandSpec{
 		Path:   "go",
 		Args:   planned.arguments,
 		Dir:    planned.testsDir,
-		Env:    environment,
+		Env:    processEnvironment,
 		Stdout: stdout,
 		Stderr: stderr,
-	}); err != nil {
-		return fmt.Errorf("lane %s: %w", lane.Name, err)
-	}
-	return nil
+	})
 }
