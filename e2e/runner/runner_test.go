@@ -52,6 +52,13 @@ func (networks *recordingNetworks) Stop(_ context.Context, name string) error {
 	return networks.stopErr
 }
 
+func captureCommand(command *commandSpec) func(context.Context, commandSpec) error {
+	return func(_ context.Context, specification commandSpec) error {
+		*command = specification
+		return nil
+	}
+}
+
 func TestRunBuildsCommandAndCleansUp(t *testing.T) {
 	reports := t.TempDir()
 	networks := new(recordingNetworks)
@@ -66,10 +73,7 @@ func TestRunBuildsCommandAndCleansUp(t *testing.T) {
 		Suites:       []string{"execution-abi"},
 	}, &output, &output)
 	tests.networks = networks
-	tests.runCommand = func(_ context.Context, specification commandSpec) error {
-		command = specification
-		return nil
-	}
+	tests.runCommand = captureCommand(&command)
 
 	require.NoError(t, tests.Run(t.Context(), "execution-abi"))
 	require.Equal(t, "qrl-tests", networks.started.EnclaveName)
@@ -78,6 +82,10 @@ func TestRunBuildsCommandAndCleansUp(t *testing.T) {
 	require.Equal(t, []string{"qrl-tests"}, networks.stopped)
 	require.Equal(t, "go", command.Path)
 	require.Contains(t, command.Args, "./e2e/suites/execution/abi")
+	workingDirectory, err := os.Getwd()
+	require.NoError(t, err)
+	require.Equal(t, workingDirectory, command.Dir)
+	require.Contains(t, command.Env, "PATH="+os.Getenv("PATH"))
 
 	manifestPath := filepath.Join(reports, "execution-abi", "manifest.json")
 	written, err := manifest.Read(manifestPath)
@@ -122,10 +130,7 @@ func TestRunAllProvisionsPerLane(t *testing.T) {
 		StartTimeout: time.Minute,
 	}, io.Discard, io.Discard)
 	tests.networks = networks
-	tests.runCommand = func(_ context.Context, specification commandSpec) error {
-		command = specification
-		return nil
-	}
+	tests.runCommand = captureCommand(&command)
 
 	require.NoError(t, tests.RunAll(t.Context()))
 	require.Equal(t, "qrl-tests-execution-abi", networks.started.EnclaveName)
@@ -146,7 +151,7 @@ func TestRunReturnsCleanupFailure(t *testing.T) {
 	tests.runCommand = func(context.Context, commandSpec) error { return nil }
 
 	err := tests.Run(t.Context(), "execution-abi")
-	require.ErrorContains(t, err, "stop failed")
+	require.ErrorContains(t, err, "lane execution-abi: stop network: stop failed")
 }
 
 func TestRunLeavesNoArtifactsWhenStartFails(t *testing.T) {
@@ -175,10 +180,7 @@ func TestTestAttachesToExistingNetwork(t *testing.T) {
 		Backend:   devnet.BackendDocker,
 	}, io.Discard, io.Discard)
 	tests.networks = networks
-	tests.runCommand = func(_ context.Context, specification commandSpec) error {
-		command = specification
-		return nil
-	}
+	tests.runCommand = captureCommand(&command)
 
 	require.NoError(t, tests.Test(t.Context(), "execution-abi"))
 	require.Equal(t, "qrl-tests", networks.inspected)
