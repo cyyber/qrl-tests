@@ -3,6 +3,7 @@ package runner
 import (
 	"cmp"
 	"fmt"
+	"math/rand/v2"
 	"path/filepath"
 
 	"github.com/cyyber/qrl-tests/e2e/internal/lanes"
@@ -13,20 +14,21 @@ type laneRun struct {
 	enclaveName  string
 	reportDir    string
 	manifestPath string
+	seed         int64
 	arguments    []string
 	provision    bool
 	testsDir     string
 }
 
-func planLanes(configuration Config, selected []lanes.Lane, mode runMode) ([]laneRun, error) {
+func planLanes(configuration Config, selected []lanes.Lane, mode runMode) ([]laneRun, string, error) {
 	testsDir, err := filepath.Abs(cmp.Or(configuration.TestsDir, "."))
 	if err != nil {
-		return nil, fmt.Errorf("resolve test source directory: %w", err)
+		return nil, "", fmt.Errorf("resolve test source directory: %w", err)
 	}
 
 	reportRoot, err := filepath.Abs(cmp.Or(configuration.ReportDir, DefaultReportDir))
 	if err != nil {
-		return nil, fmt.Errorf("resolve report directory: %w", err)
+		return nil, "", fmt.Errorf("resolve report directory: %w", err)
 	}
 
 	planned := make([]laneRun, len(selected))
@@ -35,21 +37,25 @@ func planLanes(configuration Config, selected []lanes.Lane, mode runMode) ([]lan
 		if mode.suffixesEnclave() {
 			enclaveName += "-" + lane.Name
 		}
-		reportDir := filepath.Join(reportRoot, lane.Name)
+		reportDir := filepath.Join(reportRoot, "lanes", lane.Name)
+		// The seed randomizes ginkgo's spec order; recording it in the run
+		// manifest keeps every ordering reproducible.
+		seed := 1 + rand.Int64N(1<<31-1)
 		planned[index] = laneRun{
 			lane:         lane,
 			enclaveName:  enclaveName,
 			reportDir:    reportDir,
 			manifestPath: filepath.Join(reportDir, "manifest.json"),
-			arguments:    ginkgoArguments(lane, reportDir),
+			seed:         seed,
+			arguments:    ginkgoArguments(lane, reportDir, seed),
 			provision:    mode.provisions(),
 			testsDir:     testsDir,
 		}
 	}
-	return planned, nil
+	return planned, reportRoot, nil
 }
 
-func ginkgoArguments(lane lanes.Lane, reportDir string) []string {
+func ginkgoArguments(lane lanes.Lane, reportDir string, seed int64) []string {
 	arguments := []string{
 		"tool", "ginkgo",
 		"--tags=e2e",
@@ -60,6 +66,7 @@ func ginkgoArguments(lane lanes.Lane, reportDir string) []string {
 		"--require-suite",
 		"--fail-on-empty",
 		"--fail-on-pending",
+		fmt.Sprintf("--seed=%d", seed),
 		"--timeout=" + lane.Timeout.String(),
 		"--output-dir=" + reportDir,
 		"--junit-report=junit.xml",

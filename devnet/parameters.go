@@ -71,7 +71,7 @@ func resolveParameters(address string, options StartOptions) (string, error) {
 }
 
 func profileParameters(address string, options StartOptions) (string, error) {
-	images, err := options.Images.resolve()
+	images, err := options.Images.Resolved()
 	if err != nil {
 		return "", err
 	}

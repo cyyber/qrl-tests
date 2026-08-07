@@ -17,11 +17,11 @@ const (
 )
 
 type Images struct {
-	Execution string
-	Clef      string
-	Consensus string
-	Validator string
-	Genesis   string
+	Execution string `json:"execution"`
+	Clef      string `json:"clef"`
+	Consensus string `json:"consensus"`
+	Validator string `json:"validator"`
+	Genesis   string `json:"genesis"`
 }
 
 func DefaultImages() Images {
@@ -34,10 +34,11 @@ func DefaultImages() Images {
 	}
 }
 
-// resolve trims every reference, falls back to the local development defaults
-// for blank ones, and rejects references no registry could serve, reporting
-// every invalid reference at once so CI surfaces all mistakes in one run.
-func (images Images) resolve() (Images, error) {
+// Resolved trims every reference, falls back to the local development
+// defaults for blank ones, and rejects references no registry could serve,
+// reporting every invalid reference at once so CI surfaces all mistakes in
+// one run.
+func (images Images) Resolved() (Images, error) {
 	var problems []error
 	normalize := func(role, value, fallback string) string {
 		reference := cmp.Or(strings.TrimSpace(value), fallback)

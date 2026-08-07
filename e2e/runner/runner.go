@@ -2,18 +2,22 @@
 package runner
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/cyyber/qrl-tests/devnet"
 	"github.com/cyyber/qrl-tests/e2e/internal/lanes"
+	"github.com/cyyber/qrl-tests/internal/results"
+	"github.com/cyyber/qrl-tests/internal/runmanifest"
 )
 
 const DefaultReportDir = "reports"
@@ -169,22 +173,91 @@ func (runner *Runner) selectedLane(name string) (lanes.Lane, error) {
 }
 
 func (runner *Runner) run(ctx context.Context, selected []lanes.Lane, mode runMode) error {
-	planned, err := planLanes(runner.configuration, selected, mode)
+	planned, reportRoot, err := planLanes(runner.configuration, selected, mode)
 	if err != nil {
 		return err
 	}
-	return runner.runLanes(ctx, planned)
+
+	record := runner.collectManifest(ctx, planned, mode)
+	manifestPath := filepath.Join(reportRoot, runmanifest.FileName)
+	// The starting snapshot survives even a run the harness cannot finish.
+	manifestErr := record.Write(manifestPath)
+
+	laneErrors := runner.runLanes(ctx, planned)
+
+	laneResults := make(map[string]string, len(planned))
+	summaryLanes := make([]results.Lane, len(planned))
+	for index, lane := range planned {
+		laneResults[lane.lane.Name] = "passed"
+		if laneErrors[index] != nil {
+			laneResults[lane.lane.Name] = "failed"
+		}
+		summaryLanes[index] = results.Lane{
+			Name:      lane.lane.Name,
+			ReportDir: lane.reportDir,
+			Err:       laneErrors[index],
+		}
+	}
+	record.Finish(laneResults, time.Now())
+	manifestErr = errors.Join(manifestErr, record.Write(manifestPath))
+
+	summary, summarizeErr := results.Summarize(reportRoot, summaryLanes)
+
+	// Reporting problems never mask the test result, and vice versa.
+	return errors.Join(errors.Join(laneErrors...), summary.SkipError(), manifestErr, summarizeErr)
 }
 
-func (runner *Runner) runLanes(ctx context.Context, planned []laneRun) error {
+func (runner *Runner) collectManifest(ctx context.Context, planned []laneRun, mode runMode) runmanifest.Manifest {
+	configuration := runner.configuration
+	options := runmanifest.Options{
+		Backend:  cmp.Or(configuration.Backend, devnet.BackendDocker),
+		Enclave:  cmp.Or(configuration.BaseName, devnet.DefaultEnclaveName),
+		TestsDir: cmp.Or(configuration.TestsDir, "."),
+		Lanes:    make([]runmanifest.Lane, len(planned)),
+	}
+	for index, lane := range planned {
+		suites := make([]string, len(lane.lane.Suites))
+		for position, id := range lane.lane.Suites {
+			suites[position] = string(id)
+		}
+		options.Lanes[index] = runmanifest.Lane{
+			Name:    lane.lane.Name,
+			Profile: lane.lane.Profile,
+			Suites:  suites,
+			Seed:    lane.seed,
+		}
+	}
+
+	// Attached networks run whatever they were provisioned with; recording
+	// this run's image configuration there would only mislead.
+	if mode.provisions() {
+		if locator, err := devnet.ParsePackageLocator(configuration.PackageLocator); err == nil {
+			options.PackageLocator = locator
+		} else {
+			options.PackageLocator = configuration.PackageLocator
+		}
+		if len(configuration.Parameters) != 0 {
+			options.CustomParameters = true
+		} else if images, err := configuration.Images.Resolved(); err == nil {
+			options.Images = &images
+		} else {
+			raw := configuration.Images
+			options.Images = &raw
+		}
+	}
+
+	return runmanifest.Collect(ctx, options)
+}
+
+func (runner *Runner) runLanes(ctx context.Context, planned []laneRun) []error {
 	limit := runner.configuration.MaxParallel
-	results := make([]error, len(planned))
+	outcomes := make([]error, len(planned))
 
 	if limit < 2 || len(planned) < 2 {
 		for index, lane := range planned {
-			results[index] = runner.runLane(ctx, lane)
+			outcomes[index] = runner.runLane(ctx, lane)
 		}
-		return errors.Join(results...)
+		return outcomes
 	}
 
 	semaphore := make(chan struct{}, limit)
@@ -194,10 +267,10 @@ func (runner *Runner) runLanes(ctx context.Context, planned []laneRun) error {
 			semaphore <- struct{}{}
 			defer func() { <-semaphore }()
 
-			results[index] = runner.runLane(ctx, lane)
+			outcomes[index] = runner.runLane(ctx, lane)
 		})
 	}
 	group.Wait()
 
-	return errors.Join(results...)
+	return outcomes
 }

@@ -12,6 +12,7 @@ import (
 
 	"github.com/cyyber/qrl-tests/devnet"
 	"github.com/cyyber/qrl-tests/e2e/internal/manifest"
+	"github.com/cyyber/qrl-tests/internal/results"
 )
 
 const (
@@ -78,18 +79,20 @@ func (runner *Runner) runLane(ctx context.Context, planned laneRun) error {
 
 func (runner *Runner) executeLane(ctx context.Context, planned laneRun) (result error) {
 	lane := planned.lane
+	// The sentinels feed failure classification: everything before the test
+	// process starts is either network bootstrap or harness infrastructure.
 	lease, err := runner.acquireLane(ctx, planned)
 	if err != nil {
-		return err
+		return fmt.Errorf("%w: %w", results.ErrBootstrap, err)
 	}
 	defer func() { result = errors.Join(result, lease.close()) }()
 
 	if err := os.MkdirAll(planned.reportDir, 0o755); err != nil {
-		return fmt.Errorf("create report directory: %w", err)
+		return fmt.Errorf("%w: create report directory: %w", results.ErrInfrastructure, err)
 	}
 	logFile, err := os.OpenFile(filepath.Join(planned.reportDir, "output.log"), os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
 	if err != nil {
-		return fmt.Errorf("create output log: %w", err)
+		return fmt.Errorf("%w: create output log: %w", results.ErrInfrastructure, err)
 	}
 	defer func() { result = errors.Join(result, logFile.Close()) }()
 
@@ -102,7 +105,7 @@ func (runner *Runner) executeLane(ctx context.Context, planned laneRun) (result 
 		Profile:     lane.Profile,
 		Environment: lease.environment,
 	}); err != nil {
-		return err
+		return fmt.Errorf("%w: %w", results.ErrInfrastructure, err)
 	}
 
 	laneCtx, cancelLane := context.WithTimeout(ctx, lane.Timeout+laneReportSlack)

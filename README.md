@@ -14,7 +14,15 @@ The configured client images must already be available to the selected Kurtosis
 backend.
 
 `e2e-run` provisions a network, runs the selected E2E lane, writes reports under
-`reports/<lane>/`, and removes the network.
+`reports/`, and removes the network:
+
+```
+reports/
+├── run-manifest.json     # everything needed to reproduce the run
+├── summary.json          # spec counts and classified failures
+├── summary.md            # the same, rendered for GitHub job summaries
+└── lanes/<lane>/         # junit.xml, report.json, output.log, manifest.json
+```
 
 For iterative development:
 
