@@ -406,6 +406,11 @@ func (fixture *liveFixture) assertOverloadedEvents(ctx context.Context) {
 	// function emitTransformed(string calldata value) external { emit Transformed(value); }
 	// Goal: overloaded event lookup and generated parsers retain the correct
 	// canonical signature and decode each overload independently.
+	//
+	// Overload suffixes follow ABI array order, and hypc orders the two kinds
+	// differently — events keep declaration order, functions are sorted by
+	// signature — so the string overload is Transformed0 as an event but
+	// EmitTransformed as a method.
 	ginkgo.By("resolving and decoding overloaded events")
 	auth := fixture.transactOpts(ctx)
 	gomega.Expect(fixture.contractABI.Events["Transformed"].Sig).To(
