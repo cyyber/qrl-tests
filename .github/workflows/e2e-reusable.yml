@@ -1,0 +1,216 @@
+# The single authoritative E2E workflow: manual runs, the nightly, and
+# eventually go-qrl/qrysm callers all come through here. It resolves or builds
+# the client images, runs one lane through `make e2e-run`, publishes the job
+# summary, and uploads the reports tree (run manifest, summaries, lane
+# reports, diagnostics).
+name: e2e-reusable
+
+on:
+  workflow_call:
+    inputs:
+      qrl-tests-ref:
+        description: qrl-tests ref to run (empty for the calling ref)
+        type: string
+        default: ""
+      go-qrl-ref:
+        description: go-qrl ref to build when no execution image is supplied
+        type: string
+        default: ""
+      execution-image:
+        description: immutable execution image reference (skips the go-qrl build)
+        type: string
+        default: ""
+      clef-image:
+        description: immutable Clef image reference
+        type: string
+        default: ""
+      consensus-image:
+        description: immutable consensus client image reference
+        type: string
+        default: ""
+      validator-image:
+        description: immutable validator client image reference
+        type: string
+        default: ""
+      genesis-image:
+        description: immutable genesis generator image reference
+        type: string
+        default: ""
+      qrl-package-ref:
+        description: qrl-package locator (empty for the pinned default)
+        type: string
+        default: ""
+      source-qrysm:
+        description: qrysm revision recorded in the run manifest
+        type: string
+        default: ""
+      lane:
+        description: E2E lane to run
+        type: string
+        default: execution-abi
+      diagnostics:
+        description: "network diagnostics collection: on-failure, always, or never"
+        type: string
+        default: on-failure
+      runner:
+        description: runner label the lane executes on
+        type: string
+        default: ubuntu-latest
+      timeout-minutes:
+        description: job budget for the whole lane
+        type: number
+        default: 60
+      use-ecr:
+        description: assume the CI role and log in to ECR before pulling images
+        type: boolean
+        default: false
+    outputs:
+      result:
+        description: overall run result from reports/summary.json
+        value: ${{ jobs.e2e.outputs.result }}
+  workflow_dispatch:
+    inputs:
+      go-qrl-ref:
+        description: go-qrl ref to build when no execution image is supplied
+        type: string
+        default: ""
+      execution-image:
+        description: immutable execution image reference (skips the go-qrl build)
+        type: string
+        default: ""
+      clef-image:
+        description: immutable Clef image reference
+        type: string
+        default: ""
+      consensus-image:
+        description: immutable consensus client image reference
+        type: string
+        default: ""
+      validator-image:
+        description: immutable validator client image reference
+        type: string
+        default: ""
+      genesis-image:
+        description: immutable genesis generator image reference
+        type: string
+        default: ""
+      qrl-package-ref:
+        description: qrl-package locator (empty for the pinned default)
+        type: string
+        default: ""
+      lane:
+        description: E2E lane to run
+        type: string
+        default: execution-abi
+      diagnostics:
+        description: "network diagnostics collection: on-failure, always, or never"
+        type: string
+        default: on-failure
+      use-ecr:
+        description: assume the CI role and log in to ECR before pulling images
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+env:
+  KURTOSIS_VERSION: 1.20.0
+
+jobs:
+  e2e:
+    runs-on: ${{ inputs.runner || 'ubuntu-latest' }}
+    timeout-minutes: ${{ inputs.timeout-minutes || 60 }}
+    permissions:
+      contents: read
+      id-token: write # OIDC for the ECR login; unused when use-ecr is false
+    outputs:
+      result: ${{ steps.verdict.outputs.result }}
+    steps:
+      - name: Check out qrl-tests
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.qrl-tests-ref }}
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Install Kurtosis CLI
+        run: |
+          echo "deb [trusted=yes] https://apt.fury.io/kurtosis-tech/ /" | sudo tee /etc/apt/sources.list.d/kurtosis.list
+          sudo apt-get update
+          sudo apt-get install -y "kurtosis-cli=${KURTOSIS_VERSION}"
+          kurtosis analytics disable
+
+      - name: Configure AWS credentials
+        if: ${{ inputs.use-ecr }}
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_E2E_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Log in to ECR
+        if: ${{ inputs.use-ecr }}
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Check out go-qrl
+        if: ${{ inputs.execution-image == '' && inputs.go-qrl-ref != '' }}
+        uses: actions/checkout@v5
+        with:
+          repository: ${{ vars.E2E_GO_QRL_REPOSITORY || 'cyyber/go-qrl' }}
+          ref: ${{ inputs.go-qrl-ref }}
+          path: .build/go-qrl
+
+      - name: Build the execution image
+        if: ${{ inputs.execution-image == '' && inputs.go-qrl-ref != '' }}
+        run: docker build --tag local/go-qrl:devnet .build/go-qrl
+
+      - name: Record source revisions
+        id: sources
+        run: |
+          if [ -d .build/go-qrl ]; then
+            echo "go-qrl=$(git -C .build/go-qrl rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run the lane
+        env:
+          E2E_LANE: ${{ inputs.lane }}
+          E2E_DIAGNOSTICS: ${{ inputs.diagnostics }}
+          DEVNET_EXECUTION_IMAGE: ${{ inputs.execution-image }}
+          DEVNET_CLEF_IMAGE: ${{ inputs.clef-image }}
+          DEVNET_CONSENSUS_IMAGE: ${{ inputs.consensus-image }}
+          DEVNET_VALIDATOR_IMAGE: ${{ inputs.validator-image }}
+          DEVNET_GENESIS_IMAGE: ${{ inputs.genesis-image }}
+          DEVNET_QRL_PACKAGE_REF: ${{ inputs.qrl-package-ref }}
+          # One enclave per run, attempt, and lane, so retried or concurrent
+          # runs can never collide on the deterministic default name.
+          DEVNET_ENCLAVE_NAME: qrl-e2e-${{ github.run_id }}-${{ github.run_attempt }}-${{ inputs.lane }}
+          E2E_SOURCE_GO_QRL: ${{ steps.sources.outputs.go-qrl }}
+          E2E_SOURCE_QRYSM: ${{ inputs.source-qrysm }}
+        run: make e2e-run
+
+      - name: Publish the job summary
+        if: ${{ always() }}
+        run: |
+          if [ -f reports/summary.md ]; then
+            cat reports/summary.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "## E2E result: no summary produced" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Read the verdict
+        id: verdict
+        if: ${{ always() }}
+        run: |
+          result=$(jq -r '.result // "failed"' reports/summary.json 2>/dev/null || echo failed)
+          echo "result=$result" >> "$GITHUB_OUTPUT"
+
+      - name: Upload the reports
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-reports-${{ inputs.lane }}-${{ github.run_attempt }}
+          path: reports/
+          if-no-files-found: warn

@@ -1,0 +1,92 @@
+# Nightly E2E: resolve the latest client revisions, run every nightly lane
+# through the reusable workflow, and publish one combined result. Exact
+# revisions and image references land in each lane's run-manifest.json; to
+# reproduce a night, dispatch e2e-reusable with the recorded values.
+name: nightly
+
+on:
+  schedule:
+    - cron: "30 2 * * *"
+  workflow_dispatch:
+    inputs:
+      go-qrl-ref:
+        description: go-qrl ref to build and test
+        type: string
+        default: main
+
+permissions:
+  contents: read
+
+jobs:
+  resolve:
+    runs-on: ubuntu-latest
+    outputs:
+      go-qrl-sha: ${{ steps.refs.outputs.go-qrl-sha }}
+      qrysm-sha: ${{ steps.refs.outputs.qrysm-sha }}
+      lanes: ${{ steps.lanes.outputs.lanes }}
+    steps:
+      - name: Resolve the client revisions
+        id: refs
+        env:
+          GO_QRL_REPOSITORY: ${{ vars.E2E_GO_QRL_REPOSITORY || 'cyyber/go-qrl' }}
+          QRYSM_REPOSITORY: ${{ vars.E2E_QRYSM_REPOSITORY || 'cyyber/qrysm' }}
+          GO_QRL_REF: ${{ inputs.go-qrl-ref || 'main' }}
+        run: |
+          go_qrl=$(git ls-remote "https://github.com/${GO_QRL_REPOSITORY}" "refs/heads/${GO_QRL_REF}" | cut -f1)
+          test -n "$go_qrl" || { echo "cannot resolve ${GO_QRL_REPOSITORY}@${GO_QRL_REF}" >&2; exit 1; }
+          qrysm=$(git ls-remote "https://github.com/${QRYSM_REPOSITORY}" refs/heads/main | cut -f1)
+          echo "go-qrl-sha=${go_qrl}" >> "$GITHUB_OUTPUT"
+          echo "qrysm-sha=${qrysm}" >> "$GITHUB_OUTPUT"
+
+      - name: Select the nightly lanes
+        id: lanes
+        env:
+          # A JSON array in the E2E_NIGHTLY_LANES repository variable; new
+          # lanes join the nightly by registration, not by workflow edits.
+          LANES: ${{ vars.E2E_NIGHTLY_LANES || '["execution-abi"]' }}
+        run: echo "lanes=${LANES}" >> "$GITHUB_OUTPUT"
+
+  e2e:
+    needs: resolve
+    strategy:
+      fail-fast: false
+      matrix:
+        lane: ${{ fromJSON(needs.resolve.outputs.lanes) }}
+    uses: ./.github/workflows/e2e-reusable.yml
+    with:
+      go-qrl-ref: ${{ needs.resolve.outputs.go-qrl-sha }}
+      clef-image: ${{ vars.E2E_CLEF_IMAGE || '' }}
+      consensus-image: ${{ vars.E2E_CONSENSUS_IMAGE || '' }}
+      validator-image: ${{ vars.E2E_VALIDATOR_IMAGE || '' }}
+      genesis-image: ${{ vars.E2E_GENESIS_IMAGE || '' }}
+      qrl-package-ref: ${{ vars.E2E_QRL_PACKAGE_REF || '' }}
+      source-qrysm: ${{ needs.resolve.outputs.qrysm-sha }}
+      lane: ${{ matrix.lane }}
+      runner: ${{ vars.E2E_RUNNER || 'ubuntu-latest' }}
+      timeout-minutes: 90
+      use-ecr: ${{ vars.AWS_E2E_ROLE_ARN != '' }}
+
+  report:
+    needs: [resolve, e2e]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish the combined result
+        env:
+          RESULT: ${{ needs.e2e.result }}
+          GO_QRL_SHA: ${{ needs.resolve.outputs.go-qrl-sha }}
+          QRYSM_SHA: ${{ needs.resolve.outputs.qrysm-sha }}
+          LANES: ${{ needs.resolve.outputs.lanes }}
+        run: |
+          {
+            echo "# Nightly E2E: ${RESULT}"
+            echo
+            echo "| Source | Revision |"
+            echo "| --- | --- |"
+            echo "| go-qrl | \`${GO_QRL_SHA}\` |"
+            echo "| qrysm | \`${QRYSM_SHA}\` |"
+            echo "| qrl-tests | \`${GITHUB_SHA}\` |"
+            echo
+            echo "Lanes: \`${LANES}\` — per-lane manifests and diagnostics are in each lane's reports artifact."
+          } >> "$GITHUB_STEP_SUMMARY"
+          test "$RESULT" = "success"
