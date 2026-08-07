@@ -14,8 +14,12 @@ import (
 	"github.com/theQRL/go-qrl/crypto"
 )
 
-func makeFunctionValue(address common.Address, selector []byte) [common.AddressLength + 4]byte {
-	var value [common.AddressLength + 4]byte
+// functionValue is the ABI encoding of an external function: a 64-byte
+// address followed by the 4-byte selector.
+type functionValue = [common.AddressLength + 4]byte
+
+func makeFunctionValue(address common.Address, selector []byte) functionValue {
+	var value functionValue
 	copy(value[:common.AddressLength], address[:])
 	copy(value[common.AddressLength:], selector)
 	return value
@@ -41,8 +45,8 @@ func (fixture *liveFixture) assertFunctionValues(ctx context.Context) {
 	)
 	secondCallback := callback
 	secondCallback[len(secondCallback)-1] ^= 0xff
-	fixedCallbacks := [2][common.AddressLength + 4]byte{callback, secondCallback}
-	callbacks := [][common.AddressLength + 4]byte{secondCallback, callback}
+	fixedCallbacks := [2]functionValue{callback, secondCallback}
+	callbacks := []functionValue{secondCallback, callback}
 	functionRecord := abifixture.EventEmitterFunctionRecord{
 		Callback: callback,
 		Note:     fixture.inputs.note,
@@ -146,7 +150,7 @@ func (fixture *liveFixture) assertFunctionValues(ctx context.Context) {
 	block := receipt.BlockNumber.Uint64()
 	iterator, err := fixture.binding.FilterFunctionObserved(
 		&bind.FilterOpts{Start: block, End: &block, Context: ctx},
-		[][common.AddressLength + 4]byte{callback},
+		[]functionValue{callback},
 	)
 	gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	defer iterator.Close()
