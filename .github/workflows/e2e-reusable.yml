@@ -167,6 +167,22 @@ jobs:
         if: ${{ inputs.execution-image == '' && inputs.go-qrl-ref != '' }}
         run: docker build --tag local/go-qrl:devnet .build/go-qrl
 
+      # Kurtosis pulls through its engine container, which does not share the
+      # runner's registry login; pulling here parks the images in the local
+      # daemon where the engine finds them without authenticating.
+      - name: Pre-pull the configured images
+        env:
+          IMAGES: >-
+            ${{ inputs.execution-image }}
+            ${{ inputs.clef-image }}
+            ${{ inputs.consensus-image }}
+            ${{ inputs.validator-image }}
+            ${{ inputs.genesis-image }}
+        run: |
+          for image in $IMAGES; do
+            docker pull "$image"
+          done
+
       - name: Record source revisions
         id: sources
         run: |

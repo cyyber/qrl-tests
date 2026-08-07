@@ -48,6 +48,9 @@ jobs:
 
   e2e:
     needs: resolve
+    permissions:
+      contents: read
+      id-token: write # the called workflow's ECR login runs under these grants
     strategy:
       fail-fast: false
       matrix:
