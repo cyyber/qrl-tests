@@ -75,7 +75,7 @@ func signedMaximum(bits uint) *big.Int {
 	return new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), bits-1), big.NewInt(1))
 }
 
-func assertBoundaryEdgesEqual(got, want abifixture.EventEmitterBoundaryEdges, context string) {
+func assertBoundaryEdgesEqual(got, want abifixture.EventEmitterBoundaryEdges, label string) {
 	ginkgo.GinkgoHelper()
 
 	for _, pair := range []struct {
@@ -88,13 +88,13 @@ func assertBoundaryEdgesEqual(got, want abifixture.EventEmitterBoundaryEdges, co
 		{"unsigned504", got.Unsigned504, want.Unsigned504}, {"signed504", got.Signed504, want.Signed504},
 		{"unsigned512", got.Unsigned512, want.Unsigned512}, {"signed512", got.Signed512, want.Signed512},
 	} {
-		gomega.Expect(pair.got.Cmp(pair.want)).To(gomega.Equal(0), "%s %s", context, pair.name)
+		gomega.Expect(pair.got.Cmp(pair.want)).To(gomega.Equal(0), "%s %s", label, pair.name)
 	}
-	gomega.Expect(got.Bytes31Value).To(gomega.Equal(want.Bytes31Value), context)
-	gomega.Expect(got.Bytes32Value).To(gomega.Equal(want.Bytes32Value), context)
-	gomega.Expect(got.Bytes33Value).To(gomega.Equal(want.Bytes33Value), context)
-	gomega.Expect(got.Bytes63Value).To(gomega.Equal(want.Bytes63Value), context)
-	gomega.Expect(got.Bytes64Value).To(gomega.Equal(want.Bytes64Value), context)
+	gomega.Expect(got.Bytes31Value).To(gomega.Equal(want.Bytes31Value), label)
+	gomega.Expect(got.Bytes32Value).To(gomega.Equal(want.Bytes32Value), label)
+	gomega.Expect(got.Bytes33Value).To(gomega.Equal(want.Bytes33Value), label)
+	gomega.Expect(got.Bytes63Value).To(gomega.Equal(want.Bytes63Value), label)
+	gomega.Expect(got.Bytes64Value).To(gomega.Equal(want.Bytes64Value), label)
 }
 
 func fillPattern(destination []byte, seed byte) {

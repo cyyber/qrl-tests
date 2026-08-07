@@ -258,11 +258,11 @@ func (fixture *liveFixture) assertNestedComposites(ctx context.Context) {
 	gomega.Expect(gotNested.Extra).To(gomega.Equal(nested.Extra))
 }
 
-func assertDynamicRecordEqual(got, want abifixture.EventEmitterDynamicRecord, context string) {
+func assertDynamicRecordEqual(got, want abifixture.EventEmitterDynamicRecord, label string) {
 	ginkgo.GinkgoHelper()
 
-	gomega.Expect(got.Amount.Cmp(want.Amount)).To(gomega.Equal(0), context)
-	gomega.Expect(got.Note).To(gomega.Equal(want.Note), context)
-	gomega.Expect(got.Payload).To(gomega.Equal(want.Payload), context)
-	gomega.Expect(got.Values).To(gomega.Equal(want.Values), context)
+	gomega.Expect(got.Amount.Cmp(want.Amount)).To(gomega.Equal(0), label)
+	gomega.Expect(got.Note).To(gomega.Equal(want.Note), label)
+	gomega.Expect(got.Payload).To(gomega.Equal(want.Payload), label)
+	gomega.Expect(got.Values).To(gomega.Equal(want.Values), label)
 }
