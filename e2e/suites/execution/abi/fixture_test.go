@@ -26,6 +26,32 @@ type liveSuite struct {
 	inputs      scenarioInputs
 }
 
+type liveFixture struct {
+	*liveSuite
+	deploymentBlock *big.Int
+	address         common.Address
+	contract        *bind.BoundContract
+	binding         *abifixture.EventEmitter
+	initial         *big.Int
+}
+
+type scenarioInputs struct {
+	// Large uint512 value with upper-half bits set.
+	amount *big.Int
+
+	// Negative int512 value exercising signed 64-byte encoding.
+	delta *big.Int
+
+	// Fully populated bytes64 value.
+	tag [64]byte
+
+	// 129-byte dynamic value spanning three ABI data words.
+	payload []byte
+
+	// Dynamic string crossing the 64-byte ABI word boundary.
+	note string
+}
+
 func setupLiveSuite(ctx context.Context) *liveSuite {
 	ginkgo.GinkgoHelper()
 
@@ -45,10 +71,7 @@ func setupLiveSuite(ctx context.Context) *liveSuite {
 		inputs.tag[index] = byte(0x80 + index)
 	}
 
-	inputs.payload = make([]byte, 129)
-	for index := range inputs.payload {
-		inputs.payload[index] = byte((index*29 + 7) & 0xff)
-	}
+	inputs.payload = patternedBytes(129, 7)
 
 	parsed, err := abifixture.EventEmitterMetaData.GetAbi()
 	gomega.Expect(err).NotTo(gomega.HaveOccurred())
@@ -69,7 +92,7 @@ func (suite *liveSuite) deployEventEmitter(ctx context.Context) *liveFixture {
 	deploymentAuth := suite.transactOpts(ctx)
 	initial := new(big.Int).Add(new(big.Int).Lsh(big.NewInt(1), 500), big.NewInt(1337))
 	deploymentNote := "dynamic constructor value: " + suite.inputs.note
-	deploymentPayload := append([]byte(nil), suite.inputs.payload...)
+	deploymentPayload := suite.inputs.payload
 	deploymentRecord := abifixture.EventEmitterRecord{
 		Amount:    suite.inputs.amount,
 		Recipient: suite.from,
@@ -129,32 +152,6 @@ func (suite *liveSuite) deployEventEmitter(ctx context.Context) *liveFixture {
 		binding: binding,
 		initial: initial,
 	}
-}
-
-type liveFixture struct {
-	*liveSuite
-	deploymentBlock *big.Int
-	address         common.Address
-	contract        *bind.BoundContract
-	binding         *abifixture.EventEmitter
-	initial         *big.Int
-}
-
-type scenarioInputs struct {
-	// Large uint512 value with upper-half bits set.
-	amount *big.Int
-
-	// Negative int512 value exercising signed 64-byte encoding.
-	delta *big.Int
-
-	// Fully populated bytes64 value.
-	tag [64]byte
-
-	// 129-byte dynamic value spanning three ABI data words.
-	payload []byte
-
-	// Dynamic string crossing the 64-byte ABI word boundary.
-	note string
 }
 
 func (suite *liveSuite) transactOpts(ctx context.Context) *bind.TransactOpts {
