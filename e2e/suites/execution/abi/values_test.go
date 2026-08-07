@@ -78,14 +78,17 @@ func signedMaximum(bits uint) *big.Int {
 func assertBoundaryEdgesEqual(got, want abifixture.EventEmitterBoundaryEdges, context string) {
 	ginkgo.GinkgoHelper()
 
-	for _, values := range [][2]*big.Int{
-		{got.Unsigned248, want.Unsigned248}, {got.Signed248, want.Signed248},
-		{got.Unsigned256, want.Unsigned256}, {got.Signed256, want.Signed256},
-		{got.Unsigned264, want.Unsigned264}, {got.Signed264, want.Signed264},
-		{got.Unsigned504, want.Unsigned504}, {got.Signed504, want.Signed504},
-		{got.Unsigned512, want.Unsigned512}, {got.Signed512, want.Signed512},
+	for _, pair := range []struct {
+		name      string
+		got, want *big.Int
+	}{
+		{"unsigned248", got.Unsigned248, want.Unsigned248}, {"signed248", got.Signed248, want.Signed248},
+		{"unsigned256", got.Unsigned256, want.Unsigned256}, {"signed256", got.Signed256, want.Signed256},
+		{"unsigned264", got.Unsigned264, want.Unsigned264}, {"signed264", got.Signed264, want.Signed264},
+		{"unsigned504", got.Unsigned504, want.Unsigned504}, {"signed504", got.Signed504, want.Signed504},
+		{"unsigned512", got.Unsigned512, want.Unsigned512}, {"signed512", got.Signed512, want.Signed512},
 	} {
-		gomega.Expect(values[0].Cmp(values[1])).To(gomega.Equal(0), context)
+		gomega.Expect(pair.got.Cmp(pair.want)).To(gomega.Equal(0), "%s %s", context, pair.name)
 	}
 	gomega.Expect(got.Bytes31Value).To(gomega.Equal(want.Bytes31Value), context)
 	gomega.Expect(got.Bytes32Value).To(gomega.Equal(want.Bytes32Value), context)
