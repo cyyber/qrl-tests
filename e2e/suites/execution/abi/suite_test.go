@@ -34,7 +34,7 @@ var _ = ginkgo.Describe(
 			fixture = suite.deployEventEmitter(ctx)
 		})
 
-		ginkgo.It("round-trips scalar and nested ABI values through generic ABI, generated bindings, and raw RPC", func(ctx ginkgo.SpecContext) {
+		ginkgo.It("round-trips scalar and nested ABI values, views, and overloaded methods through generic ABI, generated bindings, and raw RPC", func(ctx ginkgo.SpecContext) {
 			fixture.assertCallRoundTrips(ctx)
 		})
 
