@@ -115,7 +115,9 @@ permissions:
   contents: read
 
 env:
-  KURTOSIS_VERSION: 1.20.0
+  # The Makefile preflight requires this CLI series; the exact package
+  # version (with its packaging revision) is resolved from the repository.
+  KURTOSIS_SERIES: "1.20."
 
 jobs:
   e2e:
@@ -141,7 +143,9 @@ jobs:
         run: |
           echo "deb [trusted=yes] https://apt.fury.io/kurtosis-tech/ /" | sudo tee /etc/apt/sources.list.d/kurtosis.list
           sudo apt-get update
-          sudo apt-get install -y "kurtosis-cli=${KURTOSIS_VERSION}"
+          version=$(apt-cache madison kurtosis-cli | awk -v series="$KURTOSIS_SERIES" 'index($3, series) == 1 {print $3; exit}')
+          test -n "$version" || { echo "no kurtosis-cli ${KURTOSIS_SERIES}x package is available" >&2; exit 1; }
+          sudo apt-get install -y "kurtosis-cli=${version}"
           kurtosis analytics disable
 
       - name: Configure AWS credentials

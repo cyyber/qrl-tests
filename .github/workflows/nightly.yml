@@ -14,8 +14,12 @@ on:
         type: string
         default: main
 
+# id-token lets the called workflow log in to ECR via OIDC; a caller's
+# permissions cap the called workflow's, and the job-level grant alone did
+# not reach the called job's token.
 permissions:
   contents: read
+  id-token: write
 
 jobs:
   resolve:
