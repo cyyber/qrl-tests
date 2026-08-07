@@ -21,13 +21,6 @@ const (
 	destroyConfirmationTimeout = time.Minute // confirm loop in destroyAndConfirm
 	retryInterval              = 500 * time.Millisecond
 
-	// packageLocator pins the qrl-package revision run for every network.
-	// The upstream cyyber tip is not runnable as a locator: its kurtosis.yml
-	// declares github.com/theQRL/qrl-package, and Kurtosis rejects packages
-	// whose declared name does not match their location. A PR-only commit is
-	// not pinnable either: Kurtosis resolves only branch- or tag-reachable
-	// commits. Re-pin once cyyber/qrl-package#15 lands on a cyyber ref or
-	// theQRL/qrl-package merges the cyyber line.
 	packageLocator = "github.com/rgeraldes24/qrl-package@3892c3d2596403c080424d9e8fc99ff172483fe0"
 )
 
