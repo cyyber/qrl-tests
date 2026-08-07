@@ -50,6 +50,7 @@ cluster. The commands use the currently selected Kurtosis context.
 | `DEVNET_CONSENSUS_IMAGE` | `local/qrysm-beacon:devnet` | Consensus client image reference |
 | `DEVNET_VALIDATOR_IMAGE` | `local/qrysm-validator:devnet` | Validator client image reference |
 | `DEVNET_GENESIS_IMAGE` | `local/qrl-genesis-generator:devnet` | Genesis generator image reference |
+| `DEVNET_QRL_PACKAGE_REF` | pinned `github.com/cyyber/qrl-package@<commit>` | qrl-package locator: `github.com/<owner>/<repository>[@<ref>]` |
 | `DEVNET_PROFILE` | `single` | Built-in profile used by `network-start` |
 | `DEVNET_START_TIMEOUT` | `5m` | Network startup budget |
 | `DEVNET_PARAMS_FILE` | unset | Complete qrl-package YAML parameters |
@@ -69,6 +70,12 @@ DEVNET_ENCLAVE_NAME=my-devnet make network-stop
 Kurtosis restricts enclave names to letters, digits, and dashes. Operations
 using the same name must run serially. Concurrent networks need different names.
 Networks testing different client builds also need different image references.
+
+Image references may name a tag, a digest, or both
+(`registry.example/go-qrl:v1@sha256:<64 hex>`); malformed references fail the
+start before any enclave is created. CI should supply immutable references —
+digests for images, a commit for `DEVNET_QRL_PACKAGE_REF` — so every run is
+reproducible.
 
 ## Custom parameters
 

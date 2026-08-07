@@ -17,6 +17,7 @@ func networkCommand(network networkController) *cli.Command {
 	startFlags := []cli.Flag{
 		enclaveNameFlag(),
 		backendFlag(),
+		packageLocatorFlag(),
 		&cli.StringFlag{
 			Name:    "profile",
 			Usage:   "built-in network profile",
@@ -58,16 +59,21 @@ func networkCommand(network networkController) *cli.Command {
 					if err != nil {
 						return err
 					}
+					packageLocator, err := devnet.ParsePackageLocator(command.String("qrl-package"))
+					if err != nil {
+						return err
+					}
 
 					ctx, cancel := context.WithTimeout(command.Context, command.Duration("timeout"))
 					defer cancel()
 
 					if _, err := network.Start(ctx, devnet.StartOptions{
-						EnclaveName: command.String("enclave-name"),
-						Backend:     backend,
-						Images:      imagesFromFlags(command),
-						Parameters:  parameters,
-						Profile:     profile,
+						EnclaveName:    command.String("enclave-name"),
+						Backend:        backend,
+						Images:         imagesFromFlags(command),
+						Parameters:     parameters,
+						Profile:        profile,
+						PackageLocator: packageLocator,
 					}); err != nil {
 						return err
 					}

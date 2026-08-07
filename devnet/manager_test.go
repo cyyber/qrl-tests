@@ -16,6 +16,7 @@ type fakeClient struct {
 	destroyErr  error
 	services    map[string]kurtosis.Service
 	createdName string
+	runLocator  string
 	destroyed   bool
 }
 
@@ -28,7 +29,8 @@ func (client *fakeClient) CreateEnclave(_ context.Context, name string) error {
 	return client.createErr
 }
 
-func (client *fakeClient) RunRemotePackage(context.Context, string, string, string) error {
+func (client *fakeClient) RunRemotePackage(_ context.Context, _ string, locator string, _ string) error {
+	client.runLocator = locator
 	return client.runErr
 }
 
@@ -121,8 +123,70 @@ func TestInspect(t *testing.T) {
 	require.Len(t, environment.Participants, 1)
 }
 
-func TestPackageLocatorIsPinned(t *testing.T) {
-	require.Regexp(t, `^github\.com/.+/qrl-package@[0-9a-f]{40}$`, packageLocator)
+func TestDefaultPackageLocatorIsPinned(t *testing.T) {
+	require.Regexp(t, `^github\.com/.+/qrl-package@[0-9a-f]{40}$`, DefaultPackageLocator)
+}
+
+func TestParsePackageLocator(t *testing.T) {
+	locator, err := ParsePackageLocator("")
+	require.NoError(t, err)
+	require.Equal(t, DefaultPackageLocator, locator)
+
+	locator, err = ParsePackageLocator("  github.com/rgeraldes24/qrl-package@feature/vm64  ")
+	require.NoError(t, err)
+	require.Equal(t, "github.com/rgeraldes24/qrl-package@feature/vm64", locator)
+
+	locator, err = ParsePackageLocator("github.com/cyyber/qrl-package")
+	require.NoError(t, err)
+	require.Equal(t, "github.com/cyyber/qrl-package", locator)
+
+	for name, value := range map[string]string{
+		"other host":     "gitlab.com/cyyber/qrl-package",
+		"missing repo":   "github.com/qrl-package",
+		"empty ref":      "github.com/cyyber/qrl-package@ ",
+		"embedded space": "github.com/cyyber/qrl package",
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := ParsePackageLocator(value)
+			require.ErrorContains(t, err, "invalid qrl-package locator")
+		})
+	}
+}
+
+func TestStartRunsConfiguredPackageLocator(t *testing.T) {
+	client := &fakeClient{services: singleParticipant()}
+	options := startOptions()
+
+	_, err := testManager(client).Start(t.Context(), options)
+	require.NoError(t, err)
+	require.Equal(t, DefaultPackageLocator, client.runLocator)
+
+	client = &fakeClient{services: singleParticipant()}
+	options.PackageLocator = "github.com/rgeraldes24/qrl-package@0000000000000000000000000000000000000000"
+	_, err = testManager(client).Start(t.Context(), options)
+	require.NoError(t, err)
+	require.Equal(t, options.PackageLocator, client.runLocator)
+}
+
+func TestStartRejectsInvalidPackageLocator(t *testing.T) {
+	client := &fakeClient{services: singleParticipant()}
+	options := startOptions()
+	options.PackageLocator = "example.com/not/qrl-package"
+
+	_, err := testManager(client).Start(t.Context(), options)
+	require.ErrorContains(t, err, "invalid qrl-package locator")
+	require.Empty(t, client.createdName, "no enclave may be created for a rejected locator")
+}
+
+func TestStartRejectsInvalidImages(t *testing.T) {
+	client := &fakeClient{services: singleParticipant()}
+	options := startOptions()
+	options.Images.Consensus = "local/QRYSM-BEACON:devnet"
+
+	_, err := testManager(client).Start(t.Context(), options)
+	require.ErrorContains(t, err, "prepare qrl-package parameters")
+	require.ErrorContains(t, err, "consensus image")
+	require.Empty(t, client.createdName, "no enclave may be created for a rejected image")
 }
 
 func TestStop(t *testing.T) {

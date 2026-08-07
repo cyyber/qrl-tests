@@ -89,6 +89,7 @@ func runnerFlags() []cli.Flag {
 			EnvVars: []string{"QRL_TESTS_SOURCE_DIR"},
 		},
 		enclaveNameFlag(),
+		packageLocatorFlag(),
 		parametersFileFlag(),
 		&cli.StringSliceFlag{
 			Name:  "suite",
@@ -129,20 +130,26 @@ func runnerConfig(command *cli.Context) (runner.Config, error) {
 		return runner.Config{}, fmt.Errorf("max-parallel must be at least 1")
 	}
 
+	packageLocator, err := devnet.ParsePackageLocator(command.String("qrl-package"))
+	if err != nil {
+		return runner.Config{}, err
+	}
+
 	parameters, err := readParametersFile(command)
 	if err != nil {
 		return runner.Config{}, err
 	}
 
 	return runner.Config{
-		TestsDir:     command.String("tests-dir"),
-		BaseName:     command.String("enclave-name"),
-		ReportDir:    command.String("report-dir"),
-		Backend:      backend,
-		Parameters:   parameters,
-		Suites:       command.StringSlice("suite"),
-		StartTimeout: command.Duration("start-timeout"),
-		MaxParallel:  maxParallel,
-		Images:       imagesFromFlags(command),
+		TestsDir:       command.String("tests-dir"),
+		BaseName:       command.String("enclave-name"),
+		ReportDir:      command.String("report-dir"),
+		Backend:        backend,
+		Parameters:     parameters,
+		Suites:         command.StringSlice("suite"),
+		StartTimeout:   command.Duration("start-timeout"),
+		MaxParallel:    maxParallel,
+		Images:         imagesFromFlags(command),
+		PackageLocator: packageLocator,
 	}, nil
 }

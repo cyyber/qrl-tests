@@ -19,15 +19,16 @@ import (
 const DefaultReportDir = "reports"
 
 type Config struct {
-	TestsDir     string
-	BaseName     string
-	ReportDir    string
-	Backend      devnet.Backend
-	Images       devnet.Images
-	Parameters   []byte
-	Suites       []string
-	StartTimeout time.Duration
-	MaxParallel  int
+	TestsDir       string
+	BaseName       string
+	ReportDir      string
+	Backend        devnet.Backend
+	Images         devnet.Images
+	PackageLocator string
+	Parameters     []byte
+	Suites         []string
+	StartTimeout   time.Duration
+	MaxParallel    int
 }
 
 type networkManager interface {

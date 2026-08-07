@@ -38,11 +38,12 @@ func (runner *Runner) acquireLane(ctx context.Context, planned laneRun) (laneLea
 
 	startCtx, cancelStart := context.WithTimeout(ctx, runner.configuration.StartTimeout)
 	environment, err := runner.networks.Start(startCtx, devnet.StartOptions{
-		EnclaveName: planned.enclaveName,
-		Backend:     runner.configuration.Backend,
-		Images:      runner.configuration.Images,
-		Parameters:  runner.configuration.Parameters,
-		Profile:     planned.lane.Profile,
+		EnclaveName:    planned.enclaveName,
+		Backend:        runner.configuration.Backend,
+		Images:         runner.configuration.Images,
+		Parameters:     runner.configuration.Parameters,
+		Profile:        planned.lane.Profile,
+		PackageLocator: runner.configuration.PackageLocator,
 	})
 	cancelStart()
 	if err != nil {

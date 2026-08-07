@@ -7,6 +7,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"regexp"
+	"strings"
 	"time"
 
 	"github.com/cyyber/qrl-tests/devnet/internal/kurtosis"
@@ -21,8 +23,27 @@ const (
 	destroyConfirmationTimeout = time.Minute // confirm loop in destroyAndConfirm
 	retryInterval              = 500 * time.Millisecond
 
-	packageLocator = "github.com/rgeraldes24/qrl-package@3892c3d2596403c080424d9e8fc99ff172483fe0"
+	// DefaultPackageLocator pins the qrl-package revision run for every
+	// network unless the caller supplies its own locator.
+	DefaultPackageLocator = "github.com/rgeraldes24/qrl-package@3892c3d2596403c080424d9e8fc99ff172483fe0"
 )
+
+// packageLocatorPattern admits Kurtosis GitHub locators:
+// github.com/<owner>/<repository>[/<path>...][@<ref>].
+var packageLocatorPattern = regexp.MustCompile(`^github\.com/[\w.-]+/[\w.-]+(?:/[\w.-]+)*(?:@[\w./-]+)?$`)
+
+// ParsePackageLocator validates the raw value, resolving the empty value to
+// the pinned default; only a verified value becomes the qrl-package locator.
+func ParsePackageLocator(value string) (string, error) {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return DefaultPackageLocator, nil
+	}
+	if !packageLocatorPattern.MatchString(trimmed) {
+		return "", fmt.Errorf("invalid qrl-package locator %q: expected github.com/<owner>/<repository>[@<ref>]", value)
+	}
+	return trimmed, nil
+}
 
 type kurtosisClient interface {
 	EnclaveExists(ctx context.Context, name string) (bool, error)
@@ -33,11 +54,12 @@ type kurtosisClient interface {
 }
 
 type StartOptions struct {
-	EnclaveName string
-	Backend     Backend
-	Images      Images
-	Parameters  []byte
-	Profile     Profile
+	EnclaveName    string
+	Backend        Backend
+	Images         Images
+	Parameters     []byte
+	Profile        Profile
+	PackageLocator string
 }
 
 type Manager struct {
@@ -92,6 +114,11 @@ func (manager *Manager) Start(ctx context.Context, options StartOptions) (Enviro
 	options.Backend = cmp.Or(options.Backend, BackendDocker)
 	options.Profile = cmp.Or(options.Profile, ProfileSingle)
 
+	locator, err := ParsePackageLocator(options.PackageLocator)
+	if err != nil {
+		return Environment{}, err
+	}
+
 	parameters, err := resolveParameters(devwallet.Address, options)
 	if err != nil {
 		return Environment{}, fmt.Errorf("prepare qrl-package parameters: %w", err)
@@ -112,8 +139,8 @@ func (manager *Manager) Start(ctx context.Context, options StartOptions) (Enviro
 	if err := client.CreateEnclave(ctx, options.EnclaveName); err != nil {
 		return Environment{}, fmt.Errorf("create enclave: %w", err)
 	}
-	if err := client.RunRemotePackage(ctx, options.EnclaveName, packageLocator, parameters); err != nil {
-		return Environment{}, manager.startFailure(client, options.EnclaveName, "run pinned qrl-package", err)
+	if err := client.RunRemotePackage(ctx, options.EnclaveName, locator, parameters); err != nil {
+		return Environment{}, manager.startFailure(client, options.EnclaveName, "run qrl-package", err)
 	}
 
 	// Endpoints are fixed once the package run completes; only the probe has to
