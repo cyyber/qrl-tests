@@ -88,6 +88,7 @@ func TestRunBuildsCommandAndCleansUp(t *testing.T) {
 	logs, err := filepath.Glob(filepath.Join(reports, "execution-abi", "output.log"))
 	require.NoError(t, err)
 	require.Len(t, logs, 1)
+	require.Contains(t, output.String(), "=== RUN lane=execution-abi profile=single ===")
 }
 
 func TestListDescribesLanesAndSuites(t *testing.T) {
@@ -96,6 +97,7 @@ func TestListDescribesLanesAndSuites(t *testing.T) {
 	require.NoError(t, tests.List())
 	require.Contains(t, output.String(), "execution-abi")
 	require.Contains(t, output.String(), "profile=single")
+	require.Contains(t, output.String(), "package=./e2e/suites/execution/abi")
 }
 
 func TestRunAllRejectsOverrides(t *testing.T) {
@@ -108,6 +110,28 @@ func TestRunAllRejectsOverrides(t *testing.T) {
 			require.Error(t, tests.RunAll(t.Context()))
 		})
 	}
+}
+
+func TestRunAllProvisionsPerLane(t *testing.T) {
+	networks := new(recordingNetworks)
+	var command commandSpec
+	tests := New(Config{
+		BaseName:     "qrl-tests",
+		ReportDir:    t.TempDir(),
+		Backend:      devnet.BackendDocker,
+		StartTimeout: time.Minute,
+	}, io.Discard, io.Discard)
+	tests.networks = networks
+	tests.runCommand = func(_ context.Context, specification commandSpec) error {
+		command = specification
+		return nil
+	}
+
+	require.NoError(t, tests.RunAll(t.Context()))
+	require.Equal(t, "qrl-tests-execution-abi", networks.started.EnclaveName)
+	require.Equal(t, devnet.ProfileSingle, networks.started.Profile)
+	require.Equal(t, []string{"qrl-tests-execution-abi"}, networks.stopped)
+	require.Contains(t, command.Args, "./e2e/suites/execution/abi")
 }
 
 func TestRunReturnsCleanupFailure(t *testing.T) {
