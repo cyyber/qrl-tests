@@ -115,9 +115,8 @@ permissions:
   contents: read
 
 env:
-  # The Makefile preflight requires this CLI series; the exact package
-  # version (with its packaging revision) is resolved from the repository.
-  KURTOSIS_SERIES: "1.20."
+  # The Makefile preflight requires the 1.20.x CLI series.
+  KURTOSIS_VERSION: 1.20.0
 
 jobs:
   e2e:
@@ -139,13 +138,19 @@ jobs:
         with:
           go-version-file: go.mod
 
+      # The apt repository stopped receiving releases at 1.15.x; the pinned
+      # tarballs from kurtosis-cli-release-artifacts are the current channel.
       - name: Install Kurtosis CLI
         run: |
-          echo "deb [trusted=yes] https://apt.fury.io/kurtosis-tech/ /" | sudo tee /etc/apt/sources.list.d/kurtosis.list
-          sudo apt-get update
-          version=$(apt-cache madison kurtosis-cli | awk -v series="$KURTOSIS_SERIES" 'index($3, series) == 1 {print $3; exit}')
-          test -n "$version" || { echo "no kurtosis-cli ${KURTOSIS_SERIES}x package is available" >&2; exit 1; }
-          sudo apt-get install -y "kurtosis-cli=${version}"
+          case "$(uname -m)" in
+            aarch64) arch=arm64 sha256=8c5f50adbb27ca2d0693b9ac8643a148d55240cfdbc5b36fa8eef4b02325af16 ;;
+            x86_64) arch=amd64 sha256=3866e805a83a63d3d0b177f54c3fb556066b8c0e12f6442a0579bb7deaa1d5ae ;;
+            *) echo "unsupported architecture $(uname -m)" >&2; exit 1 ;;
+          esac
+          curl -fsSL -o kurtosis.tar.gz "https://github.com/kurtosis-tech/kurtosis-cli-release-artifacts/releases/download/${KURTOSIS_VERSION}/kurtosis-cli_${KURTOSIS_VERSION}_linux_${arch}.tar.gz"
+          echo "${sha256}  kurtosis.tar.gz" | sha256sum -c -
+          sudo tar -xzf kurtosis.tar.gz -C /usr/local/bin kurtosis
+          rm kurtosis.tar.gz
           kurtosis analytics disable
 
       - name: Configure AWS credentials
