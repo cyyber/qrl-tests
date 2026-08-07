@@ -170,7 +170,7 @@ func TestRunLeavesNoArtifactsWhenStartFails(t *testing.T) {
 	require.Empty(t, networks.stopped, "a lane that never started must not be stopped")
 }
 
-func TestAttachUsesExistingNetwork(t *testing.T) {
+func TestAttachBuildsCommandWithoutProvisioning(t *testing.T) {
 	networks := new(recordingNetworks)
 	var command commandSpec
 	runner := New(Config{
