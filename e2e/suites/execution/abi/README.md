@@ -1,13 +1,22 @@
 # ABI suite
 
+Compile the complete suite without running live tests:
+
 ```bash
-# Compile the complete suite without running live tests.
 go test -tags=e2e -run '^$' ./e2e/suites/execution/abi
+```
 
-# Regeneration requires `hypc --version` to report commit.2b9a0f1d.
+Regenerate the bindings after changing the fixture contract at
+[`e2e/internal/abifixture/testdata/EventEmitter.hyp`](../../../internal/abifixture/testdata/EventEmitter.hyp) —
+`hypc --version` must report `commit.2b9a0f1d`:
+
+```bash
 go generate ./e2e/internal/abifixture
+```
 
-# Run against an already-running development network.
+Run against an already-running development network:
+
+```bash
 make e2e E2E_LANE=execution-abi
 ```
 
