@@ -41,7 +41,7 @@ Covered:
 - Events and filters: scalar and composite events, supported indexed topics,
   indexed struct hashing, anonymous emission, overloaded events, and positive,
   negative, wildcard, and OR filters.
-- Function values: 68-byte function values, dynamic offsets, callback
+- Function values: standalone 68-byte values, dynamic offsets, callback
   execution, generated calls and events, and indexed hashing and filtering.
 - Payable entrypoints: a named payable method plus distinct receive and
   fallback transactions.
