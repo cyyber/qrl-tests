@@ -24,6 +24,7 @@ type recordingNetworks struct {
 	started   devnet.StartOptions
 	inspected string
 	stopped   []string
+	startErr  error
 	stopErr   error
 }
 
@@ -31,6 +32,9 @@ func (networks *recordingNetworks) Start(_ context.Context, options devnet.Start
 	networks.mutex.Lock()
 	defer networks.mutex.Unlock()
 	networks.started = options
+	if networks.startErr != nil {
+		return devnet.Environment{}, networks.startErr
+	}
 	return testEnvironment(options.EnclaveName, options.Backend), nil
 }
 
@@ -119,6 +123,23 @@ func TestRunReturnsCleanupFailure(t *testing.T) {
 
 	err := tests.Run(t.Context(), "execution-abi")
 	require.ErrorContains(t, err, "stop failed")
+}
+
+func TestRunLeavesNoArtifactsWhenStartFails(t *testing.T) {
+	reports := t.TempDir()
+	networks := &recordingNetworks{startErr: errors.New("no capacity")}
+	tests := New(Config{
+		BaseName:     "qrl-tests",
+		ReportDir:    reports,
+		Backend:      devnet.BackendDocker,
+		StartTimeout: time.Minute,
+	}, io.Discard, io.Discard)
+	tests.networks = networks
+
+	err := tests.Run(t.Context(), "execution-abi")
+	require.ErrorContains(t, err, "lane execution-abi: start network: no capacity")
+	require.NoDirExists(t, filepath.Join(reports, "execution-abi"))
+	require.Empty(t, networks.stopped, "a lane that never started must not be stopped")
 }
 
 func TestTestAttachesToExistingNetwork(t *testing.T) {

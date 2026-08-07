@@ -14,7 +14,13 @@ import (
 	"github.com/cyyber/qrl-tests/e2e/internal/manifest"
 )
 
-const laneCleanupTimeout = 2 * time.Minute
+const (
+	laneCleanupTimeout = 2 * time.Minute
+
+	// laneReportSlack extends the lane context past ginkgo's own --timeout so
+	// it can report and clean up before the context interrupts the process.
+	laneReportSlack = 5 * time.Minute
+)
 
 type laneLease struct {
 	environment devnet.Environment
@@ -85,6 +91,7 @@ func (runner *Runner) executeLane(ctx context.Context, planned laneRun) (result 
 		return fmt.Errorf("create output log: %w", err)
 	}
 	defer func() { result = errors.Join(result, logFile.Close()) }()
+
 	laneLog := &lockedWriter{lock: new(sync.Mutex), writer: logFile}
 	stdout := io.MultiWriter(runner.stdout, laneLog)
 	stderr := io.MultiWriter(runner.stderr, laneLog)
@@ -97,9 +104,7 @@ func (runner *Runner) executeLane(ctx context.Context, planned laneRun) (result 
 		return err
 	}
 
-	// Give ginkgo slack past its own --timeout so it can report and clean up
-	// before the context interrupts the process.
-	laneCtx, cancelLane := context.WithTimeout(ctx, lane.Timeout+5*time.Minute)
+	laneCtx, cancelLane := context.WithTimeout(ctx, lane.Timeout+laneReportSlack)
 	defer cancelLane()
 	fmt.Fprintf(stdout, "=== RUN lane=%s profile=%s ===\n", lane.Name, lane.Profile)
 	processEnvironment := append(os.Environ(), manifest.PathEnv+"="+planned.manifestPath)
