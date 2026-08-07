@@ -107,32 +107,19 @@ func (writer *lockedWriter) Write(payload []byte) (int, error) {
 }
 
 func (runner *Runner) List() error {
+	var listing strings.Builder
 	for _, lane := range lanes.All() {
-		if _, err := fmt.Fprintf(
-			runner.stdout,
-			"%-16s profile=%-16s timeout=%-8s suites=%s\n",
-			lane.Name,
-			lane.Profile,
-			lane.Timeout,
-			suiteIDs(lane.Suites),
-		); err != nil {
-			return err
-		}
+		fmt.Fprintf(&listing, "%-16s profile=%-16s timeout=%-8s suites=%s\n",
+			lane.Name, lane.Profile, lane.Timeout, suiteIDs(lane.Suites))
 	}
-	if _, err := fmt.Fprintln(runner.stdout, "\nRegistered suites:"); err != nil {
-		return err
-	}
+
+	listing.WriteString("\nRegistered suites:\n")
 	for _, id := range lanes.RegisteredSuites() {
-		if _, err := fmt.Fprintf(
-			runner.stdout,
-			"%-24s package=%s\n",
-			id,
-			id.Package(),
-		); err != nil {
-			return err
-		}
+		fmt.Fprintf(&listing, "%-24s package=%s\n", id, id.Package())
 	}
-	return nil
+
+	_, err := fmt.Fprint(runner.stdout, listing.String())
+	return err
 }
 
 func suiteIDs(ids []lanes.SuiteID) string {
@@ -185,9 +172,6 @@ func (runner *Runner) run(ctx context.Context, selected []lanes.Lane, mode runMo
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(plan.reportRoot, 0o755); err != nil {
-		return fmt.Errorf("create report directory: %w", err)
-	}
 	return runner.runLanes(ctx, plan.lanes)
 }
 
@@ -201,9 +185,6 @@ func (runner *Runner) runLanes(ctx context.Context, planned []laneRun) error {
 		return result
 	}
 
-	if limit > len(planned) {
-		limit = len(planned)
-	}
 	semaphore := make(chan struct{}, limit)
 	results := make([]error, len(planned))
 	var group sync.WaitGroup

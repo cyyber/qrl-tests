@@ -19,9 +19,8 @@ type laneRun struct {
 }
 
 type runPlan struct {
-	reportRoot string
-	testsDir   string
-	lanes      []laneRun
+	testsDir string
+	lanes    []laneRun
 }
 
 func newRunPlan(configuration Config, selected []lanes.Lane, mode runMode) (runPlan, error) {
@@ -42,9 +41,8 @@ func newRunPlan(configuration Config, selected []lanes.Lane, mode runMode) (runP
 		return runPlan{}, fmt.Errorf("resolve report directory: %w", err)
 	}
 	plan := runPlan{
-		reportRoot: reportRoot,
-		testsDir:   testsDir,
-		lanes:      make([]laneRun, len(selected)),
+		testsDir: testsDir,
+		lanes:    make([]laneRun, len(selected)),
 	}
 	for index, lane := range selected {
 		enclaveName := configuration.BaseName
