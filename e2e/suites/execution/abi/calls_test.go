@@ -146,7 +146,7 @@ func (fixture *liveFixture) assertLibraryCall(ctx context.Context) {
 	fixture.assertCall(ctx, "addViaLibrary", []any{input}, []any{want})
 	got, err := fixture.binding.AddViaLibrary(fixture.callOpts(ctx), input)
 	gomega.Expect(err).NotTo(gomega.HaveOccurred())
-	gomega.Expect(got.Cmp(want)).To(gomega.Equal(0))
+	gomega.Expect(got).To(gomega.Equal(want))
 }
 
 func (fixture *liveFixture) assertDynamicContainers(ctx context.Context) {
