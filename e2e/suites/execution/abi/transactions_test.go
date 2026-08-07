@@ -15,7 +15,6 @@ import (
 	"github.com/theQRL/go-qrl/accounts/abi/bind"
 	"github.com/theQRL/go-qrl/common"
 	"github.com/theQRL/go-qrl/common/hexutil"
-	qrlmath "github.com/theQRL/go-qrl/common/math"
 	"github.com/theQRL/go-qrl/core/types"
 	"github.com/theQRL/go-qrl/rpc"
 )
@@ -276,7 +275,7 @@ func (fixture *liveFixture) assertPayableEntrypoints(ctx context.Context) {
 		exactTopics: []common.LogTopic{
 			common.HashToLogTopic(fixture.contractABI.Events["Paid"].ID),
 			common.BytesToLeftAlignedLogTopic(fixture.from[:]),
-			common.BytesToRightAlignedLogTopic(qrlmath.U512Bytes(new(big.Int).SetUint64(uint64(marker)))),
+			u512Topic(new(big.Int).SetUint64(uint64(marker))),
 		},
 		want: map[string]any{
 			"sender": fixture.from,

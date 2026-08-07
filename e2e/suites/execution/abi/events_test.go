@@ -28,6 +28,15 @@ type eventExpectation struct {
 	reject      [][]any
 }
 
+// u512Topic right-aligns value into a topic; the copy matters because
+// U512Bytes mutates its argument.
+func u512Topic(value *big.Int) common.LogTopic {
+	return common.BytesToRightAlignedLogTopic(qrlmath.U512Bytes(new(big.Int).Set(value)))
+}
+
+// assertEvent checks the log's canonical data and exact topic list, decodes it
+// generically, and proves through raw FilterLogs that the filter rules match
+// exactly this log — and that the reject rules match nothing.
 func (fixture *liveFixture) assertEvent(
 	ctx context.Context,
 	expectation eventExpectation,
@@ -148,8 +157,8 @@ func (fixture *liveFixture) assertStoredEventAndFilters(ctx context.Context) {
 		exactTopics: []common.LogTopic{
 			common.HashToLogTopic(fixture.contractABI.Events["Stored"].ID),
 			common.BytesToLeftAlignedLogTopic(sender[:]),
-			common.BytesToRightAlignedLogTopic(qrlmath.U512Bytes(new(big.Int).Set(inputs.amount))),
-			common.BytesToRightAlignedLogTopic(qrlmath.U512Bytes(new(big.Int).Set(inputs.delta))),
+			u512Topic(inputs.amount),
+			u512Topic(inputs.delta),
 		},
 		want: map[string]any{
 			"recipient": sender,
@@ -258,6 +267,8 @@ func (fixture *liveFixture) assertCompositeEvent(ctx context.Context) {
 			common.HashToLogTopic(fixture.contractABI.Events["Composite"].ID),
 		},
 		want: map[string]any{
+			// UnpackLogIntoMap decodes tuples as anonymous structs, never the
+			// generated binding types.
 			"record": struct {
 				Amount  *big.Int   `json:"amount"`
 				Note    string     `json:"note"`
@@ -332,7 +343,7 @@ func (fixture *liveFixture) assertAnonymousEvent(ctx context.Context) {
 
 	log := receipt.Logs[0]
 	gomega.Expect(log.Topics).To(gomega.Equal([]common.LogTopic{
-		common.BytesToRightAlignedLogTopic(qrlmath.U512Bytes(big.NewInt(int64(marker)))),
+		u512Topic(big.NewInt(int64(marker))),
 	}))
 	data, err := fixture.contractABI.Events["Pinged"].Inputs.NonIndexed().Pack(value)
 	gomega.Expect(err).NotTo(gomega.HaveOccurred(), "pack Pinged value")
@@ -367,7 +378,7 @@ func (fixture *liveFixture) assertIndexedScalarEvent(ctx context.Context) {
 			common.HashToLogTopic(fixture.contractABI.Events["IndexedScalars"].ID),
 			{},
 			common.BytesToLeftAlignedLogTopic(code[:]),
-			common.BytesToRightAlignedLogTopic(qrlmath.U512Bytes(big.NewInt(int64(delta)))),
+			u512Topic(big.NewInt(int64(delta))),
 		},
 		want: map[string]any{
 			"flag":  false,
@@ -396,13 +407,14 @@ func (fixture *liveFixture) assertOverloadedEvents(ctx context.Context) {
 	// Goal: overloaded event lookup and generated parsers retain the correct
 	// canonical signature and decode each overload independently.
 	ginkgo.By("resolving and decoding overloaded events")
+	auth := fixture.transactOpts(ctx)
 	gomega.Expect(fixture.contractABI.Events["Transformed"].Sig).To(
 		gomega.Equal("Transformed(uint16)"),
 	)
 	gomega.Expect(fixture.contractABI.Events["Transformed0"].Sig).To(
 		gomega.Equal("Transformed(string)"),
 	)
-	stringTx, err := fixture.binding.EmitTransformed(fixture.transactOpts(ctx), inputs.note)
+	stringTx, err := fixture.binding.EmitTransformed(auth, inputs.note)
 	gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	stringReceipt := fixture.waitSuccessfulTransaction(ctx, stringTx)
 	gomega.Expect(stringReceipt.Logs).To(gomega.HaveLen(1))
@@ -420,10 +432,7 @@ func (fixture *liveFixture) assertOverloadedEvents(ctx context.Context) {
 	gomega.Expect(stringEvent.Value).To(gomega.Equal(inputs.note))
 
 	const transformedInteger = uint16(0x1234)
-	integerTx, err := fixture.binding.EmitTransformed0(
-		fixture.transactOpts(ctx),
-		transformedInteger,
-	)
+	integerTx, err := fixture.binding.EmitTransformed0(auth, transformedInteger)
 	gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	integerReceipt := fixture.waitSuccessfulTransaction(ctx, integerTx)
 	gomega.Expect(integerReceipt.Logs).To(gomega.HaveLen(1))
