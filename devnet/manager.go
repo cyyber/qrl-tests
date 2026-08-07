@@ -22,7 +22,11 @@ const (
 	retryInterval              = 500 * time.Millisecond
 
 	// packageLocator pins the qrl-package revision run for every network.
-	packageLocator = "github.com/cyyber/qrl-package@9093b6f04b25256e765c50e0d1636339f49dd700"
+	// The upstream cyyber tip is not runnable as a locator: its kurtosis.yml
+	// declares github.com/theQRL/qrl-package, and Kurtosis rejects packages
+	// whose declared name does not match their location. Re-pin upstream once
+	// theQRL/qrl-package merges the cyyber line.
+	packageLocator = "github.com/rgeraldes24/qrl-package@3892c3d2596403c080424d9e8fc99ff172483fe0"
 )
 
 type kurtosisClient interface {
