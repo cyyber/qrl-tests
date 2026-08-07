@@ -6,7 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -214,6 +216,20 @@ func TestPlanLanesDescribesEachLane(t *testing.T) {
 	require.Equal(t, filepath.Join(reports, "execution-abi", "manifest.json"), planned[0].manifestPath)
 	require.Contains(t, planned[0].arguments, "./e2e/suites/execution/abi")
 	require.True(t, planned[0].provision)
+}
+
+func TestExecuteWiresTheCommand(t *testing.T) {
+	gopath := t.TempDir()
+	var output bytes.Buffer
+	err := execute(t.Context(), commandSpec{
+		Path:   "go",
+		Args:   []string{"env", "GOPATH"},
+		Env:    append(os.Environ(), "GOPATH="+gopath),
+		Stdout: &output,
+		Stderr: io.Discard,
+	})
+	require.NoError(t, err)
+	require.Equal(t, gopath, strings.TrimSpace(output.String()))
 }
 
 func testEnvironment(name string, backend devnet.Backend) devnet.Environment {
