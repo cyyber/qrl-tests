@@ -190,13 +190,9 @@ func (runner *Runner) runLanes(ctx context.Context, planned []laneRun) error {
 	var group sync.WaitGroup
 	for index, lane := range planned {
 		group.Go(func() {
-			select {
-			case semaphore <- struct{}{}:
-				defer func() { <-semaphore }()
-			case <-ctx.Done():
-				results[index] = ctx.Err()
-				return
-			}
+			semaphore <- struct{}{}
+			defer func() { <-semaphore }()
+
 			results[index] = runner.runLane(ctx, lane)
 		})
 	}
