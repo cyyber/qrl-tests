@@ -24,7 +24,7 @@ func planLanes(configuration Config, selected []lanes.Lane, mode runMode) ([]lan
 		return nil, fmt.Errorf("resolve test source directory: %w", err)
 	}
 
-	reportRoot, err := filepath.Abs(configuration.ReportDir)
+	reportRoot, err := filepath.Abs(cmp.Or(configuration.ReportDir, DefaultReportDir))
 	if err != nil {
 		return nil, fmt.Errorf("resolve report directory: %w", err)
 	}
