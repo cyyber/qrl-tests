@@ -131,8 +131,8 @@ func (fixture *liveFixture) assertStoredEventAndFilters(ctx context.Context) {
 	gomega.Expect(iterator.Next()).To(gomega.BeTrue(), "generated Stored OR/wildcard filter missed the transaction")
 	stored := iterator.Event
 	gomega.Expect(stored.Recipient).To(gomega.Equal(sender))
-	gomega.Expect(stored.Amount.Cmp(inputs.amount)).To(gomega.Equal(0))
-	gomega.Expect(stored.Delta.Cmp(inputs.delta)).To(gomega.Equal(0))
+	gomega.Expect(stored.Amount).To(gomega.Equal(inputs.amount))
+	gomega.Expect(stored.Delta).To(gomega.Equal(inputs.delta))
 	gomega.Expect(stored.Tag).To(gomega.Equal(inputs.tag))
 	gomega.Expect(stored.Payload).To(gomega.Equal(inputs.payload))
 	gomega.Expect(stored.Note).To(gomega.Equal(inputs.note))

@@ -251,9 +251,7 @@ func (fixture *liveFixture) assertNestedComposites(ctx context.Context) {
 	for index := range records {
 		assertDynamicRecordEqual(gotRecords[index], records[index], "dynamic record")
 	}
-	gomega.Expect(gotNested.FixedRecord.Amount.Cmp(nested.FixedRecord.Amount)).To(gomega.Equal(0))
-	gomega.Expect(gotNested.FixedRecord.Recipient).To(gomega.Equal(nested.FixedRecord.Recipient))
-	gomega.Expect(gotNested.FixedRecord.Tag).To(gomega.Equal(nested.FixedRecord.Tag))
+	gomega.Expect(gotNested.FixedRecord).To(gomega.Equal(nested.FixedRecord))
 	assertDynamicRecordEqual(gotNested.DynamicRecord, nested.DynamicRecord, "nested record")
 	gomega.Expect(gotNested.Extra).To(gomega.Equal(nested.Extra))
 }
