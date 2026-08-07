@@ -32,7 +32,7 @@ Covered:
 - Deployment: dynamic constructor strings, bytes, tuples, and arrays, verified
   through the emitted constructor event, and value accepted by the payable
   constructor.
-- Calls: VM integer transition widths and extrema, booleans, 64-byte addresses,
+- Calls: VM integer transition widths and edge values, booleans, 64-byte addresses,
   fixed bytes across the 32- and 64-byte boundaries, dynamic bytes and strings
   around 64-byte length boundaries, fixed and dynamic arrays, nested tuples,
   views, and overloaded methods.
