@@ -107,7 +107,7 @@ func (fixture *liveFixture) assertWebSocketWatcher(ctx context.Context) {
 
 	nonMatchingPayload := []byte("not the watched payload")
 	nonMatchingDynamicTx, err := fixture.binding.Store(
-		fixture.transactOpts(ctx),
+		auth,
 		fixture.inputs.amount,
 		fixture.inputs.delta,
 		fixture.inputs.tag,
@@ -119,7 +119,7 @@ func (fixture *liveFixture) assertWebSocketWatcher(ctx context.Context) {
 	gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	fixture.waitSuccessfulTransaction(ctx, nonMatchingDynamicTx)
 	matchingDynamicTx, err := fixture.binding.Store(
-		fixture.transactOpts(ctx),
+		auth,
 		fixture.inputs.amount,
 		fixture.inputs.delta,
 		fixture.inputs.tag,
