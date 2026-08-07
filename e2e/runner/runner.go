@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
 	"strings"
 	"sync"
@@ -85,9 +86,11 @@ func execute(ctx context.Context, specification commandSpec) error {
 	command.Env = specification.Env
 	command.Stdout = specification.Stdout
 	command.Stderr = specification.Stderr
-	// Cancellation kills the child, but ginkgo's own test-binary children can
-	// survive it holding the output pipes; WaitDelay bounds how long Run waits
-	// for them before force-closing the pipes.
+	// Cancellation interrupts ginkgo so it can abort specs and still write its
+	// reports. WaitDelay bounds that shutdown — and any test-binary children
+	// surviving it while holding the output pipes — before the process is
+	// killed and the pipes are force-closed.
+	command.Cancel = func() error { return command.Process.Signal(os.Interrupt) }
 	command.WaitDelay = 30 * time.Second
 	return command.Run()
 }
