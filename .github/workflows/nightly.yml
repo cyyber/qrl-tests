@@ -97,3 +97,34 @@ jobs:
             echo "Lanes: \`${LANES}\` — per-lane manifests and diagnostics are in each lane's reports artifact."
           } >> "$GITHUB_STEP_SUMMARY"
           test "$RESULT" = "success"
+
+      # Failures are pushed to Discord; a missing webhook downgrades this to
+      # a no-op so forks and callers without the secret stay green.
+      - name: Notify Discord of the failure
+        if: ${{ always() && needs.e2e.result != 'success' }}
+        env:
+          WEBHOOK: ${{ secrets.DISCORD_E2E_WEBHOOK }}
+          RESULT: ${{ needs.e2e.result }}
+          GO_QRL_SHA: ${{ needs.resolve.outputs.go-qrl-sha }}
+          QRYSM_SHA: ${{ needs.resolve.outputs.qrysm-sha }}
+          LANES: ${{ needs.resolve.outputs.lanes }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          if [ -z "$WEBHOOK" ]; then
+            echo "DISCORD_E2E_WEBHOOK is not configured; skipping the notification"
+            exit 0
+          fi
+          jq -n '{
+            embeds: [{
+              title: "Nightly E2E: \(env.RESULT)",
+              url: env.RUN_URL,
+              color: 15158332,
+              fields: [
+                {name: "go-qrl", value: env.GO_QRL_SHA, inline: true},
+                {name: "qrysm", value: env.QRYSM_SHA, inline: true},
+                {name: "qrl-tests", value: env.GITHUB_SHA, inline: true},
+                {name: "lanes", value: env.LANES}
+              ],
+              footer: {text: "Reports and diagnostics are attached to the run as artifacts."}
+            }]
+          }' | curl -fsS -H 'Content-Type: application/json' -d @- "$WEBHOOK"
