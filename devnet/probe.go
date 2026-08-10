@@ -1,0 +1,62 @@
+package devnet
+
+import (
+	"context"
+	"fmt"
+	"time"
+
+	"github.com/theQRL/go-qrl/common"
+	"github.com/theQRL/go-qrl/qrlclient"
+)
+
+// chainAdvancementWindow must cover at least one block interval of the
+// slowest supported network; block times are at most 60 seconds today.
+const chainAdvancementWindow = 2 * time.Minute
+
+func probeNetwork(ctx context.Context, rpcURL, address string) error {
+	account, err := common.NewAddressFromString(address)
+	if err != nil {
+		return fmt.Errorf("parse development wallet address: %w", err)
+	}
+
+	client, err := qrlclient.DialContext(ctx, rpcURL)
+	if err != nil {
+		return fmt.Errorf("dial execution RPC: %w", err)
+	}
+	defer client.Close()
+
+	firstBlock, err := client.BlockNumber(ctx)
+	if err != nil {
+		return fmt.Errorf("read block number: %w", err)
+	}
+
+	advancementCtx, cancel := context.WithTimeout(ctx, chainAdvancementWindow)
+	defer cancel()
+	if err := retryUntil(advancementCtx, func() error {
+		block, err := client.BlockNumber(advancementCtx)
+		if err != nil {
+			return fmt.Errorf("read advancing block number: %w", err)
+		}
+		if block <= firstBlock {
+			return fmt.Errorf("block number remains at %d", block)
+		}
+		return nil
+	}); err != nil {
+		return fmt.Errorf(
+			"chain did not advance beyond block %d within %s: %w",
+			firstBlock,
+			chainAdvancementWindow,
+			err,
+		)
+	}
+
+	balance, err := client.BalanceAt(ctx, account, nil)
+	if err != nil {
+		return fmt.Errorf("read development wallet balance: %w", err)
+	}
+	if balance.Sign() <= 0 {
+		return fmt.Errorf("development wallet %s has no balance", address)
+	}
+
+	return nil
+}

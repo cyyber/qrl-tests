@@ -1,0 +1,25 @@
+participants:
+  - el_image: local/go-qrl:devnet
+    el_extra_params:
+      - --graphql
+      - --graphql.vhosts=*
+    cl_image: local/qrysm-beacon:devnet
+    cl_extra_params:
+      - --min-sync-peers=0
+      - --minimum-peers-per-subnet=0
+    vc_image: local/qrysm-validator:devnet
+    use_remote_signer: true
+    remote_signer_type: clef
+    remote_signer_image: local/go-qrl-clef:devnet
+    validator_count: 64
+network_params:
+  network_id: "1337"
+  seconds_per_slot: 5
+  execution_follow_distance: 8
+  prefunded_accounts:
+    QBb81a0496aa34a64f96c2bCd28793165e1e6C08af0605b119cc768764901d2E4B48b5b9c049C57469CcA8a0421D2E31DF5C637a9cee8f3DA83964261B6CF9a22:
+      balance: 2000000QRL
+  withdrawal_address: QBb81a0496aa34a64f96c2bCd28793165e1e6C08af0605b119cc768764901d2E4B48b5b9c049C57469CcA8a0421D2E31DF5C637a9cee8f3DA83964261B6CF9a22
+  light_kdf_enabled: true
+qrl_genesis_generator_params:
+  image: local/qrl-genesis-generator:devnet
