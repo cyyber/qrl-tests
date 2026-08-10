@@ -53,6 +53,11 @@ values come from the `qrl-infra` Terraform outputs; none are secrets.
 | `E2E_GO_QRL_REPOSITORY` | go-qrl repository (defaults to `cyyber/go-qrl`) |
 | `E2E_QRYSM_REPOSITORY` | qrysm repository (defaults to `cyyber/qrysm`) |
 
+One secret is optional: `DISCORD_E2E_WEBHOOK`, a Discord webhook URL the
+nightly posts failures to (run link, resolved revisions, lanes). Store it as
+a secret — anyone holding the URL can post to the channel — and leave it
+unset to disable the notification.
+
 ## Reproducing a run
 
 Every lane's artifact contains `run-manifest.json`: source revisions, exact
