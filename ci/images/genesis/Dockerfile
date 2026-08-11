@@ -29,7 +29,8 @@ RUN test -n "${QRYSM_GIT_REPO}" && test -n "${QRYSM_GIT_COMMIT}" && \
     cd /src/qrysm && \
     GOTOOLCHAIN=local go install -mod=readonly \
         ./cmd/qrysmctl \
-        ./cmd/staking-deposit-cli/deposit
+        ./cmd/staking-deposit-cli/deposit \
+        ./cmd/validator
 
 # The virtual environment is built with the compiler toolchain in a stage
 # that is thrown away; only the finished venv reaches the runtime, whose
@@ -71,6 +72,9 @@ COPY --from=qrysm-builder /src/generator/config-example /config
 COPY --from=qrysm-builder /src/generator/entrypoint.sh /work/entrypoint.sh
 COPY --from=qrysm-builder /go/bin/qrysmctl /usr/local/bin/qrysmctl
 COPY --from=qrysm-builder /go/bin/deposit /usr/local/bin/deposit
+# The Kurtosis package execs validator inside this image to import the
+# generated keystores.
+COPY --from=qrysm-builder /go/bin/validator /usr/local/bin/validator
 
 # Exec smoke tests plus the 64-byte markers the devnet depends on: a
 # generator revision without the VM64-native genesis layout fails the build
@@ -80,7 +84,8 @@ RUN /apps/el-gen/.venv/bin/pip check && \
     grep -q 'to_bytes(length=64' /apps/el-gen/genesis_gqrl.py && \
     grep -q '"baseFeePerGas"' /apps/el-gen/genesis_gqrl.py && \
     qrysmctl --help >/dev/null && \
-    deposit --help >/dev/null
+    deposit --help >/dev/null && \
+    validator --version >/dev/null
 
 ENTRYPOINT ["/work/entrypoint.sh"]
 
