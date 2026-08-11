@@ -29,15 +29,16 @@ Images resolve in this order:
 3. Anything still unset falls back to the harness defaults
    (`local/*:devnet`), which must already exist on the runner.
 
-The Clef, consensus, validator, and genesis images are built from source by
-the nightly's `images` job, content-addressed by their exact inputs and
-cached in the repository owner's GHCR namespace: a tag that already exists
-is reused, anything else is built and pushed. Clef builds from the resolved
-go-qrl revision (`Dockerfile.alltools`); the qrysm and genesis images build
-from the pins in [`ci/images/sources.env`](../ci/images/sources.env), so
-bumping a pinned revision is a reviewed one-line change that triggers a
-rebuild on the next nightly. Repository variables override any image with
-an immutable reference.
+All five devnet images are built from source by the nightly's `images` job,
+content-addressed by their exact inputs and cached in the repository
+owner's GHCR namespace: a tag that already exists is reused, anything else
+is built and pushed. The node and Clef images build from the resolved
+go-qrl revision (`Dockerfile` and `Dockerfile.alltools`); the qrysm beacon,
+validator, and genesis images build from the pins in
+[`ci/images/sources.env`](../ci/images/sources.env), so bumping a pinned
+revision is a reviewed one-line change that triggers a rebuild on the next
+nightly. Repository variables override any image with an immutable
+reference.
 
 ## Repository variables
 
@@ -49,6 +50,7 @@ public fallbacks.
 | --- | --- |
 | `E2E_RUNNER` | Runner label for lanes (defaults to `ubuntu-24.04-arm`) |
 | `E2E_NIGHTLY_LANES` | JSON array of lanes the nightly runs |
+| `E2E_EXECUTION_IMAGE` | Immutable execution client image reference |
 | `E2E_CLEF_IMAGE` | Immutable Clef image reference |
 | `E2E_CONSENSUS_IMAGE` | Immutable consensus client image reference |
 | `E2E_VALIDATOR_IMAGE` | Immutable validator client image reference |

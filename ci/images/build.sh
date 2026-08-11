@@ -45,6 +45,13 @@ ensure() {
 	echo "$3=${REGISTRY_NAMESPACE}/$1@$(crane digest "${reference}")" >>"${GITHUB_OUTPUT}"
 }
 
+build_node() {
+	docker build \
+		--build-arg "COMMIT=${go_qrl_sha}" \
+		-f "${GO_QRL_DIR}/Dockerfile" \
+		-t "$1" "${GO_QRL_DIR}"
+}
+
 build_clef() {
 	docker build \
 		--build-arg "COMMIT=${go_qrl_sha}" \
@@ -94,6 +101,7 @@ genesis_recipe=$(recipe_hash \
 	"${script_dir}/genesis/vm64_genesis_gqrl.py" \
 	"${script_dir}/genesis/qrysm-deposit-runtime/main.go")
 
+ensure go-qrl "src-${go_qrl_sha:0:12}" execution-image build_node
 ensure go-qrl-clef "src-${go_qrl_sha:0:12}" clef-image build_clef
 ensure qrysm-beacon "src-${QRYSM_GIT_COMMIT:0:12}-r${qrysm_recipe}" consensus-image build_beacon
 ensure qrysm-validator "src-${QRYSM_GIT_COMMIT:0:12}-r${qrysm_recipe}" validator-image build_validator
