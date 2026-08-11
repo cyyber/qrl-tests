@@ -193,7 +193,14 @@ jobs:
         run: |
           kurtosis engine start &
           engine=$!
+          # Best-effort: enclave creation pulls these anyway when absent, so
+          # a rename upstream costs nothing here.
+          docker pull "kurtosistech/core:${KURTOSIS_VERSION}" || true &
+          core=$!
+          docker pull "kurtosistech/files-artifacts-expander:${KURTOSIS_VERSION}" || true &
+          expander=$!
           echo "$IMAGES" | xargs -r -n1 -P5 docker pull
+          wait "$core" "$expander" || true
           wait "$engine"
 
       - name: Record source revisions

@@ -18,16 +18,36 @@ permissions:
   contents: read
 
 jobs:
-  resolve:
-    runs-on: ubuntu-latest
+  # One job decides and provides what tonight tests: it resolves every
+  # source repository to its upstream tip (only base images and builders
+  # stay pinned, in ci/images/sources.env), selects the lane list, and
+  # builds or reuses every devnet image. Every image is built from source,
+  # content-addressed by its exact
+  # inputs (including the build architecture), and cached in the repository
+  # owner's GHCR namespace: a tag that already exists is reused, anything
+  # else is built and pushed. All images track the resolved source tips;
+  # only base and builder images stay pinned, in ci/images/sources.env. The
+  # runner label must stay in lockstep with the lane jobs so image and
+  # runner architectures match.
+  images:
+    runs-on: ${{ vars.E2E_RUNNER || 'ubuntu-24.04-arm' }}
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      packages: write
     outputs:
       go-qrl-sha: ${{ steps.refs.outputs.go-qrl-sha }}
       qrysm-sha: ${{ steps.refs.outputs.qrysm-sha }}
-      generator-sha: ${{ steps.refs.outputs.generator-sha }}
       lanes: ${{ steps.lanes.outputs.lanes }}
+      execution-image: ${{ steps.build.outputs.execution-image }}
+      clef-image: ${{ steps.build.outputs.clef-image }}
+      consensus-image: ${{ steps.build.outputs.consensus-image }}
+      validator-image: ${{ steps.build.outputs.validator-image }}
+      genesis-image: ${{ steps.build.outputs.genesis-image }}
     steps:
-      # Every source repository resolves to its upstream tip; only base
-      # images and builders stay pinned, in ci/images/sources.env.
+      - name: Check out qrl-tests
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
       - name: Resolve the source revisions
         id: refs
         env:
@@ -55,30 +75,6 @@ jobs:
           # lanes join the nightly by registration, not by workflow edits.
           LANES: ${{ vars.E2E_NIGHTLY_LANES || '["execution-abi"]' }}
         run: echo "lanes=${LANES}" >> "$GITHUB_OUTPUT"
-
-  # Every devnet image is built from source, content-addressed by its exact
-  # inputs (including the build architecture), and cached in the repository
-  # owner's GHCR namespace: a tag that already exists is reused, anything
-  # else is built and pushed. All images track the resolved source tips;
-  # only base and builder images stay pinned, in ci/images/sources.env. The
-  # runner label must stay in lockstep with the lane jobs so image and
-  # runner architectures match.
-  images:
-    needs: resolve
-    runs-on: ${{ vars.E2E_RUNNER || 'ubuntu-24.04-arm' }}
-    timeout-minutes: 45
-    permissions:
-      contents: read
-      packages: write
-    outputs:
-      execution-image: ${{ steps.build.outputs.execution-image }}
-      clef-image: ${{ steps.build.outputs.clef-image }}
-      consensus-image: ${{ steps.build.outputs.consensus-image }}
-      validator-image: ${{ steps.build.outputs.validator-image }}
-      genesis-image: ${{ steps.build.outputs.genesis-image }}
-    steps:
-      - name: Check out qrl-tests
-        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
       - name: Install crane
         run: |
@@ -109,19 +105,19 @@ jobs:
         env:
           REGISTRY_NAMESPACE: ghcr.io/${{ github.repository_owner }}
           GO_QRL_GIT_REPO: https://github.com/${{ vars.E2E_GO_QRL_REPOSITORY || 'cyyber/go-qrl' }}.git
-          GO_QRL_GIT_COMMIT: ${{ needs.resolve.outputs.go-qrl-sha }}
+          GO_QRL_GIT_COMMIT: ${{ steps.refs.outputs.go-qrl-sha }}
           QRYSM_GIT_REPO: https://github.com/${{ vars.E2E_QRYSM_REPOSITORY || 'cyyber/qrysm' }}.git
-          QRYSM_GIT_COMMIT: ${{ needs.resolve.outputs.qrysm-sha }}
+          QRYSM_GIT_COMMIT: ${{ steps.refs.outputs.qrysm-sha }}
           GENERATOR_GIT_REPO: https://github.com/${{ vars.E2E_GENERATOR_REPOSITORY || 'cyyber/qrl-genesis-generator' }}.git
-          GENERATOR_GIT_COMMIT: ${{ needs.resolve.outputs.generator-sha }}
+          GENERATOR_GIT_COMMIT: ${{ steps.refs.outputs.generator-sha }}
         run: ci/images/build.sh
 
   e2e:
-    needs: [resolve, images]
+    needs: images
     strategy:
       fail-fast: false
       matrix:
-        lane: ${{ fromJSON(needs.resolve.outputs.lanes) }}
+        lane: ${{ fromJSON(needs.images.outputs.lanes) }}
     uses: ./.github/workflows/e2e-reusable.yml
     with:
       # Immutable digest references from the images job; repository variables
@@ -130,27 +126,27 @@ jobs:
       # link between image and resolved revision, so recording the sha would
       # fabricate provenance.
       execution-image: ${{ vars.E2E_EXECUTION_IMAGE || needs.images.outputs.execution-image }}
-      source-go-qrl: ${{ vars.E2E_EXECUTION_IMAGE == '' && needs.resolve.outputs.go-qrl-sha || '' }}
+      source-go-qrl: ${{ vars.E2E_EXECUTION_IMAGE == '' && needs.images.outputs.go-qrl-sha || '' }}
       clef-image: ${{ vars.E2E_CLEF_IMAGE || needs.images.outputs.clef-image }}
       consensus-image: ${{ vars.E2E_CONSENSUS_IMAGE || needs.images.outputs.consensus-image }}
       validator-image: ${{ vars.E2E_VALIDATOR_IMAGE || needs.images.outputs.validator-image }}
       genesis-image: ${{ vars.E2E_GENESIS_IMAGE || needs.images.outputs.genesis-image }}
-      source-qrysm: ${{ vars.E2E_CONSENSUS_IMAGE == '' && vars.E2E_VALIDATOR_IMAGE == '' && needs.resolve.outputs.qrysm-sha || '' }}
+      source-qrysm: ${{ vars.E2E_CONSENSUS_IMAGE == '' && vars.E2E_VALIDATOR_IMAGE == '' && needs.images.outputs.qrysm-sha || '' }}
       lane: ${{ matrix.lane }}
       runner: ${{ vars.E2E_RUNNER || 'ubuntu-24.04-arm' }}
       timeout-minutes: 90
 
   report:
-    needs: [resolve, e2e]
+    needs: [images, e2e]
     if: ${{ always() }}
     runs-on: ubuntu-latest
     steps:
       - name: Publish the combined result
         env:
           RESULT: ${{ needs.e2e.result }}
-          GO_QRL_SHA: ${{ needs.resolve.outputs.go-qrl-sha }}
-          QRYSM_SHA: ${{ needs.resolve.outputs.qrysm-sha }}
-          LANES: ${{ needs.resolve.outputs.lanes }}
+          GO_QRL_SHA: ${{ needs.images.outputs.go-qrl-sha }}
+          QRYSM_SHA: ${{ needs.images.outputs.qrysm-sha }}
+          LANES: ${{ needs.images.outputs.lanes }}
         run: |
           {
             echo "# Nightly E2E: ${RESULT}"
