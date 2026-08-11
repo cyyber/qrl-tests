@@ -56,7 +56,6 @@ public fallbacks.
 | `E2E_VALIDATOR_IMAGE` | Immutable validator client image reference |
 | `E2E_GENESIS_IMAGE` | Immutable genesis generator image reference |
 | `E2E_GO_QRL_REPOSITORY` | go-qrl repository (defaults to `cyyber/go-qrl`) |
-| `E2E_QRYSM_REPOSITORY` | qrysm repository (defaults to `cyyber/qrysm`) |
 
 No secrets are required: image pushes authenticate with the workflow's own
 `GITHUB_TOKEN`.

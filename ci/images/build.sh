@@ -103,6 +103,9 @@ genesis_recipe=$(recipe_hash \
 
 ensure go-qrl "src-${go_qrl_sha:0:12}" execution-image build_node
 ensure go-qrl-clef "src-${go_qrl_sha:0:12}" clef-image build_clef
+# The manifest records the qrysm revision the consensus binaries were
+# actually built from, which is the pin — not any repository's tip.
+echo "source-qrysm=${QRYSM_GIT_COMMIT}" >>"${GITHUB_OUTPUT}"
 ensure qrysm-beacon "src-${QRYSM_GIT_COMMIT:0:12}-r${qrysm_recipe}" consensus-image build_beacon
 ensure qrysm-validator "src-${QRYSM_GIT_COMMIT:0:12}-r${qrysm_recipe}" validator-image build_validator
 ensure qrl-genesis-generator "src-${GENERATOR_GIT_COMMIT:0:12}-r${genesis_recipe}" genesis-image build_genesis
