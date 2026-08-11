@@ -9,7 +9,7 @@ on:
   workflow_call:
     inputs:
       qrl-tests-ref:
-        description: qrl-tests ref to run (empty for the calling ref)
+        description: qrl-tests ref to run (empty for this workflow's own revision)
         type: string
         default: ""
       go-qrl-ref:
@@ -116,10 +116,21 @@ jobs:
     outputs:
       result: ${{ steps.verdict.outputs.result }}
     steps:
+      # A reusable workflow runs in its caller's context, so a bare checkout
+      # of a cross-repository caller would check out that caller. Deriving
+      # the repository from the workflow's own identity keeps go-qrl or
+      # qrysm callers running this repository's harness.
+      - name: Identify the workflow repository
+        id: self
+        env:
+          WORKFLOW_REF: ${{ github.workflow_ref }}
+        run: echo "repository=${WORKFLOW_REF%%/.github/workflows/*}" >> "$GITHUB_OUTPUT"
+
       - name: Check out qrl-tests
         uses: actions/checkout@v5
         with:
-          ref: ${{ inputs.qrl-tests-ref }}
+          repository: ${{ steps.self.outputs.repository }}
+          ref: ${{ inputs.qrl-tests-ref || github.workflow_sha }}
 
       - name: Set up Go
         uses: actions/setup-go@v5

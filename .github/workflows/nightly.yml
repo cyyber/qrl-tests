@@ -90,12 +90,14 @@ jobs:
       - name: Install crane
         run: |
           case "$(uname -m)" in
-            aarch64) arch=arm64 ;;
-            x86_64) arch=x86_64 ;;
+            aarch64) arch=arm64 sha256=fc0515857bc38e4ddd2d37a5ab03fb5959449c7b2d4ad759bcc1174ac0cad91b ;;
+            x86_64) arch=x86_64 sha256=c1d593d01551f2c9a3df5ca0a0be4385a839bd9b86d4a76e18d7b17d16559127 ;;
             *) echo "unsupported architecture $(uname -m)" >&2; exit 1 ;;
           esac
-          curl -fsSL "https://github.com/google/go-containerregistry/releases/download/v0.20.6/go-containerregistry_Linux_${arch}.tar.gz" \
-            | sudo tar -xz -C /usr/local/bin crane
+          curl -fsSL -o crane.tar.gz "https://github.com/google/go-containerregistry/releases/download/v0.20.6/go-containerregistry_Linux_${arch}.tar.gz"
+          echo "${sha256}  crane.tar.gz" | sha256sum -c -
+          sudo tar -xzf crane.tar.gz -C /usr/local/bin crane
+          rm crane.tar.gz
 
       - name: Log in to GHCR
         env:
@@ -127,15 +129,17 @@ jobs:
     uses: ./.github/workflows/e2e-reusable.yml
     with:
       # Immutable digest references from the images job; repository variables
-      # override any of them without a code change. The resolved go-qrl
-      # revision rides along for the run manifest.
+      # override any of them without a code change. Source revisions are only
+      # recorded for images this run actually built — an override severs the
+      # link between image and resolved revision, so recording the sha would
+      # fabricate provenance.
       execution-image: ${{ vars.E2E_EXECUTION_IMAGE || needs.images.outputs.execution-image }}
-      source-go-qrl: ${{ needs.resolve.outputs.go-qrl-sha }}
+      source-go-qrl: ${{ vars.E2E_EXECUTION_IMAGE == '' && needs.resolve.outputs.go-qrl-sha || '' }}
       clef-image: ${{ vars.E2E_CLEF_IMAGE || needs.images.outputs.clef-image }}
       consensus-image: ${{ vars.E2E_CONSENSUS_IMAGE || needs.images.outputs.consensus-image }}
       validator-image: ${{ vars.E2E_VALIDATOR_IMAGE || needs.images.outputs.validator-image }}
       genesis-image: ${{ vars.E2E_GENESIS_IMAGE || needs.images.outputs.genesis-image }}
-      source-qrysm: ${{ needs.resolve.outputs.qrysm-sha }}
+      source-qrysm: ${{ vars.E2E_CONSENSUS_IMAGE == '' && vars.E2E_VALIDATOR_IMAGE == '' && needs.resolve.outputs.qrysm-sha || '' }}
       lane: ${{ matrix.lane }}
       runner: ${{ vars.E2E_RUNNER || 'ubuntu-24.04-arm' }}
       timeout-minutes: 90

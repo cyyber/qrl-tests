@@ -109,6 +109,22 @@ func Summarize(reportRoot string, lanes []Lane) (Summary, error) {
 	return summary, nil
 }
 
+// VerdictError converts a non-passing summary into an error, so the process
+// exit can never contradict the published verdict: a lane that exited
+// cleanly but produced no usable report still fails the run.
+func (summary Summary) VerdictError() error {
+	var failed []string
+	for _, lane := range summary.Lanes {
+		if lane.Class != ClassPassed {
+			failed = append(failed, fmt.Sprintf("%s (%s)", lane.Name, lane.Class))
+		}
+	}
+	if len(failed) == 0 {
+		return nil
+	}
+	return fmt.Errorf("lanes did not pass: %s", strings.Join(failed, "; "))
+}
+
 // SkipError reports unexpected skipped or pending specs as an error, so a run
 // whose lanes all "succeeded" by exit code still fails on silent skips.
 func (summary Summary) SkipError() error {

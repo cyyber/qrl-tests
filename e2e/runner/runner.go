@@ -222,13 +222,22 @@ func (runner *Runner) run(ctx context.Context, selected []lanes.Lane, mode runMo
 			Err:       laneErrors[index],
 		}
 	}
-	record.Finish(laneResults, time.Now())
-	manifestErr = errors.Join(manifestErr, record.Write(manifestPath))
 
 	summary, summarizeErr := results.Summarize(reportRoot, summaryLanes)
 
+	// The summary is the verdict authority: a lane whose process exited
+	// cleanly but whose report is missing or unusable is a failure, in the
+	// manifest and in the exit code alike.
+	for _, lane := range summary.Lanes {
+		if lane.Class != results.ClassPassed {
+			laneResults[lane.Name] = "failed"
+		}
+	}
+	record.Finish(laneResults, time.Now())
+	manifestErr = errors.Join(manifestErr, record.Write(manifestPath))
+
 	// Reporting problems never mask the test result, and vice versa.
-	return errors.Join(errors.Join(laneErrors...), summary.SkipError(), manifestErr, summarizeErr)
+	return errors.Join(errors.Join(laneErrors...), summary.VerdictError(), summary.SkipError(), manifestErr, summarizeErr)
 }
 
 func (runner *Runner) collectManifest(ctx context.Context, planned []laneRun, mode runMode) runmanifest.Manifest {

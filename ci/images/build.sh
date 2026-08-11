@@ -59,7 +59,7 @@ ensure() {
 }
 
 build_node() {
-	docker buildx build --push \
+	docker buildx build --push --provenance=false \
 		--cache-from "type=registry,ref=${BUILD_CACHE_REF}" \
 		--cache-to "type=registry,ref=${BUILD_CACHE_REF},mode=max" \
 		--build-arg "COMMIT=${go_qrl_sha}" \
@@ -68,7 +68,7 @@ build_node() {
 }
 
 build_clef() {
-	docker buildx build --push \
+	docker buildx build --push --provenance=false \
 		--cache-from "type=registry,ref=${BUILD_CACHE_REF}" \
 		--cache-to "type=registry,ref=${BUILD_CACHE_REF},mode=max" \
 		--build-arg "COMMIT=${go_qrl_sha}" \
@@ -77,7 +77,7 @@ build_clef() {
 }
 
 build_beacon() {
-	docker buildx build --push \
+	docker buildx build --push --provenance=false \
 		--cache-from "type=registry,ref=${BUILD_CACHE_REF}" \
 		--cache-to "type=registry,ref=${BUILD_CACHE_REF},mode=max" \
 		--target beacon \
@@ -91,7 +91,7 @@ build_beacon() {
 }
 
 build_validator() {
-	docker buildx build --push \
+	docker buildx build --push --provenance=false \
 		--cache-from "type=registry,ref=${BUILD_CACHE_REF}" \
 		--cache-to "type=registry,ref=${BUILD_CACHE_REF},mode=max" \
 		--target validator \
@@ -105,7 +105,7 @@ build_validator() {
 }
 
 build_genesis() {
-	docker buildx build --push \
+	docker buildx build --push --provenance=false \
 		--cache-from "type=registry,ref=${BUILD_CACHE_REF}" \
 		--cache-to "type=registry,ref=${BUILD_CACHE_REF},mode=max" \
 		--build-arg "GENESIS_GO_BUILDER_IMAGE=${GENESIS_GO_BUILDER_IMAGE}" \

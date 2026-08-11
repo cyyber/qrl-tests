@@ -203,3 +203,11 @@ func TestSummarizeEmptyReportIsInfrastructure(t *testing.T) {
 	summary := summarizeOne(t, root, Lane{Name: "execution-abi", ReportDir: laneDir})
 	require.Equal(t, ClassInfrastructure, summary.Lanes[0].Class)
 }
+
+func TestVerdictError(t *testing.T) {
+	summary := Summary{Lanes: []LaneSummary{{Name: "abi", Class: ClassPassed}}}
+	require.NoError(t, summary.VerdictError())
+
+	summary.Lanes = append(summary.Lanes, LaneSummary{Name: "sync", Class: ClassInfrastructure})
+	require.ErrorContains(t, summary.VerdictError(), "sync (infrastructure)")
+}

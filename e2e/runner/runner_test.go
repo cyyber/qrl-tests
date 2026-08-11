@@ -92,7 +92,10 @@ func TestRunBuildsCommandAndCleansUp(t *testing.T) {
 		Suites:       []string{"execution-abi"},
 	}, &output, &output)
 	runner.networks = networks
-	runner.runCommand = captureCommand(&command)
+	runner.runCommand = func(ctx context.Context, spec commandSpec) error {
+		writeGinkgoReport(t, filepath.Join(reports, "lanes", "execution-abi"), types.SpecStatePassed)
+		return captureCommand(&command)(ctx, spec)
+	}
 
 	require.NoError(t, runner.Run(t.Context(), "execution-abi"))
 	require.Equal(t, "qrl-tests", networks.started.EnclaveName)
@@ -115,6 +118,17 @@ func TestRunBuildsCommandAndCleansUp(t *testing.T) {
 	require.Contains(t, command.Env, manifest.PathEnv+"="+manifestPath)
 	require.FileExists(t, filepath.Join(reports, "lanes", "execution-abi", "output.log"))
 	require.Contains(t, output.String(), "=== RUN lane=execution-abi profile=single ===")
+}
+
+// passingCommand fakes a lane process that succeeds AND leaves a passing
+// report behind — the summary treats a cleanly exited lane without a usable
+// report as an infrastructure failure.
+func passingCommand(t *testing.T, reports string) func(context.Context, commandSpec) error {
+	t.Helper()
+	return func(context.Context, commandSpec) error {
+		writeGinkgoReport(t, filepath.Join(reports, "lanes", "execution-abi"), types.SpecStatePassed)
+		return nil
+	}
 }
 
 func writeGinkgoReport(t *testing.T, laneDir string, state types.SpecState) {
@@ -187,8 +201,35 @@ func TestRunFailsOnUnexpectedSkips(t *testing.T) {
 
 	record, readErr := runmanifest.Read(filepath.Join(reports, runmanifest.FileName))
 	require.NoError(t, readErr)
-	require.Equal(t, "passed", record.Lanes[0].Result,
-		"the lane process succeeded; the skip verdict comes from the summary")
+	require.Equal(t, "failed", record.Lanes[0].Result,
+		"the manifest records the verdict, not the process exit")
+}
+
+func TestRunFailsWithoutAUsableReport(t *testing.T) {
+	reports := t.TempDir()
+	tests := New(Config{
+		BaseName:     "qrl-tests",
+		ReportDir:    reports,
+		Backend:      devnet.BackendDocker,
+		StartTimeout: time.Minute,
+	}, io.Discard, io.Discard)
+	tests.networks = new(recordingNetworks)
+	// The lane process "succeeds" without ever writing a report.
+	tests.runCommand = func(context.Context, commandSpec) error { return nil }
+
+	err := tests.Run(t.Context(), "execution-abi")
+	require.ErrorContains(t, err, "lanes did not pass")
+
+	record, readErr := runmanifest.Read(filepath.Join(reports, runmanifest.FileName))
+	require.NoError(t, readErr)
+	require.Equal(t, "failed", record.Result)
+	require.Equal(t, "failed", record.Lanes[0].Result)
+
+	payload, readErr := os.ReadFile(filepath.Join(reports, results.SummaryFileName))
+	require.NoError(t, readErr)
+	var summary results.Summary
+	require.NoError(t, json.Unmarshal(payload, &summary))
+	require.Equal(t, results.ClassInfrastructure, summary.Lanes[0].Class)
 }
 
 func TestRunManifestSurvivesBootstrapFailure(t *testing.T) {
@@ -235,14 +276,15 @@ func TestRunCollectsDiagnosticsOnFailureBeforeCleanup(t *testing.T) {
 
 func TestRunSkipsDiagnosticsOnSuccessByDefault(t *testing.T) {
 	networks := new(recordingNetworks)
+	reports := t.TempDir()
 	tests := New(Config{
 		BaseName:     "qrl-tests",
-		ReportDir:    t.TempDir(),
+		ReportDir:    reports,
 		Backend:      devnet.BackendDocker,
 		StartTimeout: time.Minute,
 	}, io.Discard, io.Discard)
 	tests.networks = networks
-	tests.runCommand = func(context.Context, commandSpec) error { return nil }
+	tests.runCommand = passingCommand(t, reports)
 
 	require.NoError(t, tests.Run(t.Context(), "execution-abi"))
 	require.Empty(t, networks.collected)
@@ -260,15 +302,21 @@ func TestRunDiagnosticsModes(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			networks := new(recordingNetworks)
+			reports := t.TempDir()
 			tests := New(Config{
 				BaseName:     "qrl-tests",
-				ReportDir:    t.TempDir(),
+				ReportDir:    reports,
 				Backend:      devnet.BackendDocker,
 				StartTimeout: time.Minute,
 				Diagnostics:  testCase.mode,
 			}, io.Discard, io.Discard)
 			tests.networks = networks
-			tests.runCommand = func(context.Context, commandSpec) error { return testCase.runErr }
+			tests.runCommand = func(ctx context.Context, spec commandSpec) error {
+				if testCase.runErr == nil {
+					return passingCommand(t, reports)(ctx, spec)
+				}
+				return testCase.runErr
+			}
 
 			err := tests.Run(t.Context(), "execution-abi")
 			require.Equal(t, testCase.runErr == nil, err == nil)
@@ -282,9 +330,10 @@ func TestRunDiagnosticsModes(t *testing.T) {
 
 func TestRunDiagnosticsFailureNeverMasksTheResult(t *testing.T) {
 	networks := &recordingNetworks{collectErr: errors.New("dump broke")}
+	reports := t.TempDir()
 	configuration := Config{
 		BaseName:     "qrl-tests",
-		ReportDir:    t.TempDir(),
+		ReportDir:    reports,
 		Backend:      devnet.BackendDocker,
 		StartTimeout: time.Minute,
 		Diagnostics:  DiagnosticsAlways,
@@ -293,7 +342,7 @@ func TestRunDiagnosticsFailureNeverMasksTheResult(t *testing.T) {
 	var output bytes.Buffer
 	tests := New(configuration, &output, &output)
 	tests.networks = networks
-	tests.runCommand = func(context.Context, commandSpec) error { return nil }
+	tests.runCommand = passingCommand(t, reports)
 	require.NoError(t, tests.Run(t.Context(), "execution-abi"),
 		"a diagnostics failure must not fail a passing lane")
 	require.Contains(t, output.String(), "collect diagnostics: dump broke")
@@ -345,14 +394,18 @@ func TestRunAllRejectsOverrides(t *testing.T) {
 func TestRunAllProvisionsPerLane(t *testing.T) {
 	networks := new(recordingNetworks)
 	var command commandSpec
+	reports := t.TempDir()
 	runner := New(Config{
 		BaseName:     "qrl-tests",
-		ReportDir:    t.TempDir(),
+		ReportDir:    reports,
 		Backend:      devnet.BackendDocker,
 		StartTimeout: time.Minute,
 	}, io.Discard, io.Discard)
 	runner.networks = networks
-	runner.runCommand = captureCommand(&command)
+	runner.runCommand = func(ctx context.Context, spec commandSpec) error {
+		writeGinkgoReport(t, filepath.Join(reports, "lanes", "execution-abi"), types.SpecStatePassed)
+		return captureCommand(&command)(ctx, spec)
+	}
 
 	require.NoError(t, runner.RunAll(t.Context()))
 	require.Equal(t, "qrl-tests-execution-abi", networks.started.EnclaveName)
@@ -396,13 +449,17 @@ func TestRunLeavesNoArtifactsWhenStartFails(t *testing.T) {
 func TestAttachBuildsCommandWithoutProvisioning(t *testing.T) {
 	networks := new(recordingNetworks)
 	var command commandSpec
+	reports := t.TempDir()
 	runner := New(Config{
 		BaseName:  "qrl-tests",
-		ReportDir: t.TempDir(),
+		ReportDir: reports,
 		Backend:   devnet.BackendDocker,
 	}, io.Discard, io.Discard)
 	runner.networks = networks
-	runner.runCommand = captureCommand(&command)
+	runner.runCommand = func(ctx context.Context, spec commandSpec) error {
+		writeGinkgoReport(t, filepath.Join(reports, "lanes", "execution-abi"), types.SpecStatePassed)
+		return captureCommand(&command)(ctx, spec)
+	}
 
 	require.NoError(t, runner.Test(t.Context(), "execution-abi"))
 	require.Equal(t, "qrl-tests", networks.inspected)
