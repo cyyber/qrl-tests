@@ -62,6 +62,14 @@ func networkCommand(network networkController) *cli.Command {
 					ctx, cancel := context.WithTimeout(command.Context, command.Duration("timeout"))
 					defer cancel()
 
+					if _, err := fmt.Fprintf(
+						command.App.Writer,
+						"starting network %q with profile %q; this may take several minutes\n",
+						command.String("enclave-name"),
+						profile,
+					); err != nil {
+						return err
+					}
 					if _, err := network.Start(ctx, devnet.StartOptions{
 						EnclaveName: command.String("enclave-name"),
 						Backend:     backend,

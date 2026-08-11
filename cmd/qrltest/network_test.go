@@ -40,7 +40,7 @@ func TestNetworkStart(t *testing.T) {
 		"--params-file", paramsFile,
 	)
 
-	require.Equal(t, "network ready\n", output)
+	require.Equal(t, "starting network \"go-qrl-devnet-test\" with profile \"single\"; this may take several minutes\nnetwork ready\n", output)
 	require.Equal(t, devnet.StartOptions{
 		EnclaveName: enclaveName,
 		Backend:     devnet.BackendDocker,
