@@ -1,0 +1,42 @@
+# Content-addressed tags accumulate one version per tested revision, and
+# every registry-cache push supersedes the previous cache manifest. Prune
+# superseded untagged manifests entirely and keep a recent window of tagged
+# versions; anything still in use is always inside the window, because a tag
+# only stops being rebuilt when its inputs change.
+name: ghcr-retention
+
+on:
+  schedule:
+    - cron: "17 2 * * 0"
+  workflow_dispatch:
+
+permissions:
+  packages: write
+
+jobs:
+  prune:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        package:
+          - go-qrl
+          - go-qrl-clef
+          - qrysm-beacon
+          - qrysm-validator
+          - qrl-genesis-generator
+    steps:
+      - name: Delete superseded untagged versions
+        uses: actions/delete-package-versions@v5
+        with:
+          package-name: ${{ matrix.package }}
+          package-type: container
+          delete-only-untagged-versions: "true"
+          min-versions-to-keep: 0
+
+      - name: Keep only the newest tagged window
+        uses: actions/delete-package-versions@v5
+        with:
+          package-name: ${{ matrix.package }}
+          package-type: container
+          min-versions-to-keep: 60

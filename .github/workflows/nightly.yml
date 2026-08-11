@@ -94,6 +94,11 @@ jobs:
           TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: echo "$TOKEN" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
 
+      # The registry-backed layer cache needs the docker-container driver;
+      # the default docker driver cannot export cache to a registry.
+      - name: Set up buildx
+        run: docker buildx create --use --name e2e-images
+
       - name: Build or reuse the images
         id: build
         env:

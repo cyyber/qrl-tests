@@ -40,6 +40,14 @@ revision is a reviewed one-line change that triggers a rebuild on the next
 nightly. Repository variables override any image with an immutable
 reference.
 
+Builds go through buildx with a registry-backed layer cache (each package's
+`:buildcache` tag), so a cold rebuild reuses every layer its sources did
+not invalidate. The scheduled
+[`ghcr-retention.yml`](../.github/workflows/ghcr-retention.yml) workflow
+prunes superseded untagged manifests and keeps a recent window of tagged
+versions per package; anything still in use is always inside the window,
+because a tag only stops being rebuilt when its inputs change.
+
 ## Repository variables
 
 Set under Settings → Secrets and variables → Actions → Variables; none are

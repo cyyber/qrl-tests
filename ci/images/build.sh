@@ -4,7 +4,12 @@
 # plus a hash of every other build input, so a cache hit is exact: the same
 # tag can only ever name the same sources, recipe, and bases.
 #
-# Requires docker (logged in to the target registry), crane, and:
+# Builds run through buildx with a registry-backed layer cache living beside
+# each package as its :buildcache tag, so a cold rebuild reuses every layer
+# the sources did not invalidate (module downloads in particular).
+#
+# Requires docker with a buildx docker-container builder selected
+# (docker buildx create --use), crane, a registry login, and:
 #   REGISTRY_NAMESPACE  e.g. ghcr.io/cyyber
 #   GO_QRL_DIR          go-qrl checkout at the revision under test
 #   GITHUB_OUTPUT       receives <name>-image=<ref@digest> lines
@@ -32,35 +37,41 @@ recipe_hash() {
 
 # ensure <package> <tag> <output-key> <build-function>
 # Skips the build when the registry already holds the tag; either way the
-# resolved immutable digest reference lands in GITHUB_OUTPUT.
+# resolved immutable digest reference lands in GITHUB_OUTPUT. Build
+# functions read BUILD_CACHE_REF for their layer cache and push on success.
 ensure() {
 	local reference="${REGISTRY_NAMESPACE}/$1:$2"
 	if crane manifest "${reference}" >/dev/null 2>&1; then
 		echo "cache hit: ${reference}"
 	else
 		echo "cache miss, building: ${reference}"
-		"$4" "${reference}"
-		docker push "${reference}"
+		BUILD_CACHE_REF="${REGISTRY_NAMESPACE}/$1:buildcache" "$4" "${reference}"
 	fi
 	echo "$3=${REGISTRY_NAMESPACE}/$1@$(crane digest "${reference}")" >>"${GITHUB_OUTPUT}"
 }
 
 build_node() {
-	docker build \
+	docker buildx build --push \
+		--cache-from "type=registry,ref=${BUILD_CACHE_REF}" \
+		--cache-to "type=registry,ref=${BUILD_CACHE_REF},mode=max" \
 		--build-arg "COMMIT=${go_qrl_sha}" \
 		-f "${GO_QRL_DIR}/Dockerfile" \
 		-t "$1" "${GO_QRL_DIR}"
 }
 
 build_clef() {
-	docker build \
+	docker buildx build --push \
+		--cache-from "type=registry,ref=${BUILD_CACHE_REF}" \
+		--cache-to "type=registry,ref=${BUILD_CACHE_REF},mode=max" \
 		--build-arg "COMMIT=${go_qrl_sha}" \
 		-f "${GO_QRL_DIR}/Dockerfile.alltools" \
 		-t "$1" "${GO_QRL_DIR}"
 }
 
 build_beacon() {
-	docker build \
+	docker buildx build --push \
+		--cache-from "type=registry,ref=${BUILD_CACHE_REF}" \
+		--cache-to "type=registry,ref=${BUILD_CACHE_REF},mode=max" \
 		--target beacon \
 		--build-arg "QRYSM_GO_BUILDER_IMAGE=${QRYSM_GO_BUILDER_IMAGE}" \
 		--build-arg "QRYSM_CL_BASE_IMAGE=${QRYSM_CL_BASE_IMAGE}" \
@@ -72,7 +83,9 @@ build_beacon() {
 }
 
 build_validator() {
-	docker build \
+	docker buildx build --push \
+		--cache-from "type=registry,ref=${BUILD_CACHE_REF}" \
+		--cache-to "type=registry,ref=${BUILD_CACHE_REF},mode=max" \
 		--target validator \
 		--build-arg "QRYSM_GO_BUILDER_IMAGE=${QRYSM_GO_BUILDER_IMAGE}" \
 		--build-arg "QRYSM_CL_BASE_IMAGE=${QRYSM_CL_BASE_IMAGE}" \
@@ -84,7 +97,9 @@ build_validator() {
 }
 
 build_genesis() {
-	docker build \
+	docker buildx build --push \
+		--cache-from "type=registry,ref=${BUILD_CACHE_REF}" \
+		--cache-to "type=registry,ref=${BUILD_CACHE_REF},mode=max" \
 		--build-arg "GENESIS_GO_BUILDER_IMAGE=${GENESIS_GO_BUILDER_IMAGE}" \
 		--build-arg "GENESIS_BASE_IMAGE=${GENESIS_BASE_IMAGE}" \
 		--build-arg "QRYSM_GIT_REPO=${QRYSM_GIT_REPO}" \
