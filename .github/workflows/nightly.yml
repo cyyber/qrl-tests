@@ -23,25 +23,30 @@ jobs:
     outputs:
       go-qrl-sha: ${{ steps.refs.outputs.go-qrl-sha }}
       qrysm-sha: ${{ steps.refs.outputs.qrysm-sha }}
+      generator-sha: ${{ steps.refs.outputs.generator-sha }}
       lanes: ${{ steps.lanes.outputs.lanes }}
     steps:
-      # Both clients under test resolve to their upstream tips. The genesis
-      # generator is not resolved: its 64-byte address migration only exists
-      # in the fork pinned by ci/images/sources.env; resolve it here once
-      # those commits land upstream.
-      - name: Resolve the client revisions
+      # Every source repository resolves to its upstream tip; only base
+      # images and builders stay pinned, in ci/images/sources.env.
+      - name: Resolve the source revisions
         id: refs
         env:
           GO_QRL_REPOSITORY: ${{ vars.E2E_GO_QRL_REPOSITORY || 'cyyber/go-qrl' }}
           QRYSM_REPOSITORY: ${{ vars.E2E_QRYSM_REPOSITORY || 'cyyber/qrysm' }}
+          GENERATOR_REPOSITORY: ${{ vars.E2E_GENERATOR_REPOSITORY || 'cyyber/qrl-genesis-generator' }}
           GO_QRL_REF: ${{ inputs.go-qrl-ref || 'main' }}
         run: |
-          go_qrl=$(git ls-remote "https://github.com/${GO_QRL_REPOSITORY}" "refs/heads/${GO_QRL_REF}" | cut -f1)
-          test -n "$go_qrl" || { echo "cannot resolve ${GO_QRL_REPOSITORY}@${GO_QRL_REF}" >&2; exit 1; }
-          qrysm=$(git ls-remote "https://github.com/${QRYSM_REPOSITORY}" refs/heads/main | cut -f1)
-          test -n "$qrysm" || { echo "cannot resolve ${QRYSM_REPOSITORY}@main" >&2; exit 1; }
-          echo "go-qrl-sha=${go_qrl}" >> "$GITHUB_OUTPUT"
-          echo "qrysm-sha=${qrysm}" >> "$GITHUB_OUTPUT"
+          resolve() {
+            local sha
+            sha=$(git ls-remote "https://github.com/$1" "refs/heads/$2" | cut -f1)
+            test -n "$sha" || { echo "cannot resolve $1@$2" >&2; exit 1; }
+            echo "$sha"
+          }
+          {
+            echo "go-qrl-sha=$(resolve "${GO_QRL_REPOSITORY}" "${GO_QRL_REF}")"
+            echo "qrysm-sha=$(resolve "${QRYSM_REPOSITORY}" main)"
+            echo "generator-sha=$(resolve "${GENERATOR_REPOSITORY}" main)"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Select the nightly lanes
         id: lanes
@@ -109,6 +114,8 @@ jobs:
           GO_QRL_DIR: .build/go-qrl
           QRYSM_GIT_REPO: https://github.com/${{ vars.E2E_QRYSM_REPOSITORY || 'cyyber/qrysm' }}.git
           QRYSM_GIT_COMMIT: ${{ needs.resolve.outputs.qrysm-sha }}
+          GENERATOR_GIT_REPO: https://github.com/${{ vars.E2E_GENERATOR_REPOSITORY || 'cyyber/qrl-genesis-generator' }}.git
+          GENERATOR_GIT_COMMIT: ${{ needs.resolve.outputs.generator-sha }}
         run: ci/images/build.sh
 
   e2e:
