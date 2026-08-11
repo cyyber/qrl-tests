@@ -82,9 +82,13 @@ reproduce, dispatch `e2e-reusable` with the recorded values (images, seed,
 and a runner label matching the image architecture) — or locally:
 
 ```bash
-DEVNET_EXECUTION_IMAGE=<from manifest> \
-DEVNET_CONSENSUS_IMAGE=<from manifest> \
+E2E_LANE=<from manifest> \
 E2E_SEED=<from manifest> \
+DEVNET_EXECUTION_IMAGE=<from manifest> \
+DEVNET_CLEF_IMAGE=<from manifest> \
+DEVNET_CONSENSUS_IMAGE=<from manifest> \
+DEVNET_VALIDATOR_IMAGE=<from manifest> \
+DEVNET_GENESIS_IMAGE=<from manifest> \
 make e2e-run
 ```
 

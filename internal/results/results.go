@@ -223,11 +223,14 @@ func classify(lane Lane, reports []types.Report, reportErr error, tallied LaneSu
 		return ClassTimeout
 	case tallied.Counts.Failed > 0 || len(tallied.Failures) > 0:
 		return ClassAssertion
+	case len(tallied.UnexpectedSkips) > 0:
+		// Report-backed evidence outranks the bare exit code: ginkgo runs
+		// with --fail-on-pending, so a pending or skipped spec also fails
+		// the process, and that exit says nothing new.
+		return ClassSkipped
 	case lane.Err != nil:
 		// The test process failed without a failing spec on record.
 		return ClassInfrastructure
-	case len(tallied.UnexpectedSkips) > 0:
-		return ClassSkipped
 	case tallied.Counts.Passed == 0:
 		// An empty report means the suites never ran.
 		return ClassInfrastructure

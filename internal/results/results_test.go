@@ -211,3 +211,18 @@ func TestVerdictError(t *testing.T) {
 	summary.Lanes = append(summary.Lanes, LaneSummary{Name: "sync", Class: ClassInfrastructure})
 	require.ErrorContains(t, summary.VerdictError(), "sync (infrastructure)")
 }
+
+func TestSkippedSpecsOutrankTheExitCode(t *testing.T) {
+	root := t.TempDir()
+	laneDir := filepath.Join(root, "lanes", "execution-abi")
+	writeReport(t, laneDir,
+		spec(types.SpecStatePassed, "encodes calls"),
+		spec(types.SpecStatePending, "decodes events"),
+	)
+
+	// --fail-on-pending makes ginkgo exit nonzero for a pending spec; the
+	// classification must still come from the report, not the exit code.
+	lane := Lane{Name: "execution-abi", ReportDir: laneDir, Err: errors.New("exit status 1")}
+	summary := summarizeOne(t, root, lane)
+	require.Equal(t, ClassSkipped, summary.Lanes[0].Class)
+}
