@@ -62,7 +62,7 @@ type Manifest struct {
 	CustomParameters bool           `json:"custom_parameters,omitempty"`
 	// ParametersSHA256 fingerprints the custom parameters payload, so a
 	// reproduction can verify it is feeding the network the same bytes.
-	ParametersSHA256 string `json:"custom_parameters_sha256,omitempty"`
+	ParametersSHA256 string         `json:"custom_parameters_sha256,omitempty"`
 	PackageLocator   string         `json:"qrl_package"`
 	Backend          devnet.Backend `json:"backend"`
 	Enclave          string         `json:"enclave"`
