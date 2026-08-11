@@ -119,10 +119,7 @@ build_genesis() {
 }
 
 qrysm_recipe=$(recipe_hash "${script_dir}/qrysm/Dockerfile")
-genesis_recipe=$(recipe_hash \
-	"${script_dir}/genesis/Dockerfile" \
-	"${script_dir}/genesis/vm64_genesis_gqrl.py" \
-	"${script_dir}/genesis/qrysm-deposit-runtime/main.go")
+genesis_recipe=$(recipe_hash "${script_dir}/genesis/Dockerfile")
 
 ensure go-qrl "src-${go_qrl_sha:0:12}" execution-image build_node
 ensure go-qrl-clef "src-${go_qrl_sha:0:12}" clef-image build_clef
