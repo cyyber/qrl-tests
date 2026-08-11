@@ -30,20 +30,19 @@ Images resolve in this order:
    (`local/*:devnet`), which must already exist on the runner.
 
 The Clef, consensus, validator, and genesis images currently have no
-in-workflow build recipe; CI callers supply them as immutable references
-(nightly reads them from repository variables). Wiring their builds in is a
-follow-up, as is moving execution onto the pre-provisioned AWS workers.
+in-workflow build recipe; the nightly falls back to public, digest-pinned
+GHCR references (linux/arm64), and repository variables override them with
+any immutable reference. Wiring their builds in is a follow-up.
 
 ## Repository variables
 
-Set under Settings → Secrets and variables → Actions → Variables. The AWS
-values come from the `qrl-infra` Terraform outputs; none are secrets.
+Set under Settings → Secrets and variables → Actions → Variables; none are
+secrets, and none are required — with nothing set the nightly runs on its
+public fallbacks.
 
 | Variable | Purpose |
 | --- | --- |
-| `AWS_REGION` | Region of the CI resources |
-| `AWS_E2E_ROLE_ARN` | Role assumed via OIDC for ECR access; unset disables ECR |
-| `E2E_RUNNER` | Runner label for lanes (defaults to `ubuntu-latest`) |
+| `E2E_RUNNER` | Runner label for lanes (defaults to `ubuntu-24.04-arm`) |
 | `E2E_NIGHTLY_LANES` | JSON array of lanes the nightly runs |
 | `E2E_CLEF_IMAGE` | Immutable Clef image reference |
 | `E2E_CONSENSUS_IMAGE` | Immutable consensus client image reference |
@@ -84,5 +83,4 @@ the reusable workflow with manifest values when you need the exact ones.
   the enclave is destroyed (`E2E_DIAGNOSTICS` selects `always`/`never`).
 - Cleanup always runs; a cleanup or diagnostics problem is reported alongside
   the test result and never replaces it.
-- Enclaves live on the runner, so an abandoned run disappears with it. The
-  AWS worker sweeper in `qrl-infra` covers the future EC2 workers.
+- Enclaves live on the runner, so an abandoned run disappears with it.

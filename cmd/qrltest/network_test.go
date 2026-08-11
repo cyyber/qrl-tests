@@ -59,7 +59,7 @@ func TestNetworkStart(t *testing.T) {
 }
 
 func TestNetworkStartEnvironmentOverrides(t *testing.T) {
-	digested := "123456789012.dkr.ecr.eu-west-1.amazonaws.com/qrysm-beacon@sha256:" + strings.Repeat("0af1", 16)
+	digested := "ghcr.io/example/qrysm-beacon@sha256:" + strings.Repeat("0af1", 16)
 	t.Setenv("DEVNET_CONSENSUS_IMAGE", digested)
 	t.Setenv("DEVNET_EXECUTION_IMAGE", "registry.example/go-qrl:env")
 	t.Setenv("DEVNET_QRL_PACKAGE_REF", "github.com/rgeraldes24/qrl-package@0000000000000000000000000000000000000000")

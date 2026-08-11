@@ -60,10 +60,6 @@ on:
         description: job budget for the whole lane
         type: number
         default: 60
-      use-ecr:
-        description: assume the CI role and log in to ECR before pulling images
-        type: boolean
-        default: false
     outputs:
       result:
         description: overall run result from reports/summary.json
@@ -106,10 +102,6 @@ on:
         description: "network diagnostics collection: on-failure, always, or never"
         type: string
         default: on-failure
-      use-ecr:
-        description: assume the CI role and log in to ECR before pulling images
-        type: boolean
-        default: false
 
 permissions:
   contents: read
@@ -124,7 +116,6 @@ jobs:
     timeout-minutes: ${{ inputs.timeout-minutes || 60 }}
     permissions:
       contents: read
-      id-token: write # OIDC for the ECR login; unused when use-ecr is false
     outputs:
       result: ${{ steps.verdict.outputs.result }}
     steps:
@@ -153,17 +144,6 @@ jobs:
           rm kurtosis.tar.gz
           kurtosis analytics disable
 
-      - name: Configure AWS credentials
-        if: ${{ inputs.use-ecr }}
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ vars.AWS_E2E_ROLE_ARN }}
-          aws-region: ${{ vars.AWS_REGION }}
-
-      - name: Log in to ECR
-        if: ${{ inputs.use-ecr }}
-        uses: aws-actions/amazon-ecr-login@v2
-
       - name: Check out go-qrl
         if: ${{ inputs.execution-image == '' && inputs.go-qrl-ref != '' }}
         uses: actions/checkout@v5
@@ -176,9 +156,9 @@ jobs:
         if: ${{ inputs.execution-image == '' && inputs.go-qrl-ref != '' }}
         run: docker build --tag local/go-qrl:devnet .build/go-qrl
 
-      # Kurtosis pulls through its engine container, which does not share the
-      # runner's registry login; pulling here parks the images in the local
-      # daemon where the engine finds them without authenticating.
+      # Kurtosis pulls through its engine container; pulling here first fails
+      # fast on a bad reference and parks the images in the local daemon where
+      # the engine finds them.
       - name: Pre-pull the configured images
         env:
           IMAGES: >-

@@ -14,12 +14,8 @@ on:
         type: string
         default: main
 
-# id-token lets the called workflow log in to ECR via OIDC; a caller's
-# permissions cap the called workflow's, and the job-level grant alone did
-# not reach the called job's token.
 permissions:
   contents: read
-  id-token: write
 
 jobs:
   resolve:
@@ -52,9 +48,6 @@ jobs:
 
   e2e:
     needs: resolve
-    permissions:
-      contents: read
-      id-token: write # the called workflow's ECR login runs under these grants
     strategy:
       fail-fast: false
       matrix:
@@ -74,7 +67,6 @@ jobs:
       lane: ${{ matrix.lane }}
       runner: ${{ vars.E2E_RUNNER || 'ubuntu-24.04-arm' }}
       timeout-minutes: 90
-      use-ecr: ${{ vars.AWS_E2E_ROLE_ARN != '' }}
 
   report:
     needs: [resolve, e2e]

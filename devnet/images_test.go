@@ -26,7 +26,7 @@ func TestImagesResolveReferences(t *testing.T) {
 		"tagged":             "local/go-qrl:devnet",
 		"uppercase tag":      "ghcr.io/cyyber/go-qrl:VM64-rc.1",
 		"registry with port": "localhost:5000/qrl/go-qrl:devnet",
-		"digest":             "123456789012.dkr.ecr.eu-west-1.amazonaws.com/go-qrl@" + digest,
+		"digest":             "ghcr.io/example/go-qrl@" + digest,
 		"tag and digest":     "registry.example/qrysm-beacon:v1.2.3@" + digest,
 		"other algorithm":    "registry.example/go-qrl@blake3:" + strings.Repeat("ab", 16),
 	} {

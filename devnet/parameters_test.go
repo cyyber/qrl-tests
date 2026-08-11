@@ -45,7 +45,7 @@ func TestDefaultParameters(t *testing.T) {
 
 func TestProfileParametersCarryDigestReferences(t *testing.T) {
 	address := "Q" + strings.Repeat("d", 128)
-	digested := "123456789012.dkr.ecr.eu-west-1.amazonaws.com/go-qrl@sha256:" + strings.Repeat("0af1", 16)
+	digested := "ghcr.io/example/go-qrl@sha256:" + strings.Repeat("0af1", 16)
 	payload, err := resolveParameters(address, StartOptions{
 		Images:  Images{Execution: digested},
 		Profile: ProfileSingle,
