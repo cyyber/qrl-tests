@@ -1,0 +1,7 @@
+# actionlint's github-context schema does not yet include the documented
+# github.job_workflow_sha property (the revision of a called reusable
+# workflow file); ignore exactly that report and nothing else.
+paths:
+  .github/workflows/e2e-reusable.yml:
+    ignore:
+      - 'property "job_workflow_sha" is not defined'

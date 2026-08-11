@@ -22,17 +22,19 @@ const (
 
 	// The CI workflow records the client revisions it built or resolved;
 	// local runs leave them unset.
-	SourceGoQRLEnv    = "E2E_SOURCE_GO_QRL"
-	SourceQrysmEnv    = "E2E_SOURCE_QRYSM"
-	SourceQRLTestsEnv = "E2E_SOURCE_QRL_TESTS"
+	SourceGoQRLEnv     = "E2E_SOURCE_GO_QRL"
+	SourceQrysmEnv     = "E2E_SOURCE_QRYSM"
+	SourceGeneratorEnv = "E2E_SOURCE_GENERATOR"
+	SourceQRLTestsEnv  = "E2E_SOURCE_QRL_TESTS"
 
 	probeTimeout = 10 * time.Second
 )
 
 type Sources struct {
-	GoQRL    string `json:"go_qrl,omitempty"`
-	Qrysm    string `json:"qrysm,omitempty"`
-	QRLTests string `json:"qrl_tests,omitempty"`
+	GoQRL     string `json:"go_qrl,omitempty"`
+	Qrysm     string `json:"qrysm,omitempty"`
+	Generator string `json:"genesis_generator,omitempty"`
+	QRLTests  string `json:"qrl_tests,omitempty"`
 }
 
 type Versions struct {
@@ -115,9 +117,10 @@ func Collect(ctx context.Context, options Options) Manifest {
 
 	return Manifest{
 		Sources: Sources{
-			GoQRL:    environ(SourceGoQRLEnv),
-			Qrysm:    environ(SourceQrysmEnv),
-			QRLTests: testsRevision,
+			GoQRL:     environ(SourceGoQRLEnv),
+			Qrysm:     environ(SourceQrysmEnv),
+			Generator: environ(SourceGeneratorEnv),
+			QRLTests:  testsRevision,
 		},
 		Images:           options.Images,
 		CustomParameters: options.CustomParameters,

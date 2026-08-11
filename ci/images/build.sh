@@ -37,14 +37,19 @@ go_qrl_sha="${GO_QRL_GIT_COMMIT}"
 go_qrl_dir=".build/go-qrl"
 
 # The checkout is only materialized when a go-qrl image actually needs
-# building; on the warm path the resolved revision alone is enough.
+# building; on the warm path the resolved revision alone is enough. A
+# pre-existing workspace (reused or self-hosted runner) is converged on the
+# requested revision, never trusted as-is.
 go_qrl_checkout() {
 	if [ ! -d "${go_qrl_dir}/.git" ]; then
 		git init -q "${go_qrl_dir}"
 		git -C "${go_qrl_dir}" remote add origin "${GO_QRL_GIT_REPO}"
-		git -C "${go_qrl_dir}" fetch -q --depth 1 origin "${go_qrl_sha}"
-		git -C "${go_qrl_dir}" checkout -q --detach FETCH_HEAD
 	fi
+	git -C "${go_qrl_dir}" remote set-url origin "${GO_QRL_GIT_REPO}"
+	git -C "${go_qrl_dir}" fetch -q --depth 1 origin "${go_qrl_sha}"
+	git -C "${go_qrl_dir}" checkout -q --force --detach FETCH_HEAD
+	git -C "${go_qrl_dir}" clean -qfdx
+	test "$(git -C "${go_qrl_dir}" rev-parse HEAD)" = "${go_qrl_sha}"
 }
 
 # Image identity includes the build platform: runners of different
@@ -63,9 +68,9 @@ esac
 # tag. sources.env is always included: it pins the bases and builders.
 recipe_hash() {
 	if command -v sha256sum >/dev/null; then
-		cat "$@" "${script_dir}/sources.env" | sha256sum | cut -c1-8
+		cat "$@" "${script_dir}/sources.env" "${script_dir}/build.sh" | sha256sum | cut -c1-8
 	else
-		cat "$@" "${script_dir}/sources.env" | shasum -a 256 | cut -c1-8
+		cat "$@" "${script_dir}/sources.env" "${script_dir}/build.sh" | shasum -a 256 | cut -c1-8
 	fi
 }
 
@@ -137,7 +142,7 @@ build_genesis() {
 		--cache-from "type=registry,ref=${BUILD_CACHE_REF}" \
 		--cache-to "type=registry,ref=${BUILD_CACHE_REF},mode=max" \
 		--build-arg "GENESIS_GO_BUILDER_IMAGE=${GENESIS_GO_BUILDER_IMAGE}" \
-		--build-arg "GENESIS_BASE_IMAGE=${GENESIS_BASE_IMAGE}" \
+		--build-arg "GENESIS_RUNTIME_BASE_IMAGE=${GENESIS_RUNTIME_BASE_IMAGE}" \
 		--build-arg "QRYSM_GIT_REPO=${QRYSM_GIT_REPO}" \
 		--build-arg "QRYSM_GIT_COMMIT=${QRYSM_GIT_COMMIT}" \
 		--build-arg "GENERATOR_GIT_REPO=${GENERATOR_GIT_REPO}" \

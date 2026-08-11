@@ -11,7 +11,9 @@ Two workflows drive the E2E lanes in CI:
 
 ## The reusable workflow
 
-One call runs one lane: check out qrl-tests, install the pinned Kurtosis CLI,
+One call runs one lane: check out qrl-tests (cross-repository callers must
+pass `harness-repository` so the checkout targets this repository), install
+the pinned Kurtosis CLI,
 resolve or build the client images, `make e2e-run`, publish
 `reports/summary.md` as the job summary, and upload the whole `reports/` tree
 (run manifest, summaries, per-lane Ginkgo reports, diagnostics) as an

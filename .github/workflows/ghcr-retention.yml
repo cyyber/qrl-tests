@@ -7,8 +7,9 @@
 # Deliberately NO untagged-only deletion: buildx provenance attaches
 # untagged child manifests to tagged indexes, and deleting the children
 # leaves the tag unpullable (actions/delete-package-versions#162). Builds
-# now disable provenance, but manifests pushed before that must never be
-# corrupted retroactively.
+# disable provenance, and a one-time cleanup removed every pre-fix
+# multi-manifest graph, so the registry holds single-manifest versions
+# only — which is the invariant that makes a newest-window policy safe.
 name: ghcr-retention
 
 on:
