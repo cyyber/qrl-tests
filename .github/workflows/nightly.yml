@@ -62,14 +62,17 @@ jobs:
     uses: ./.github/workflows/e2e-reusable.yml
     with:
       go-qrl-ref: ${{ needs.resolve.outputs.go-qrl-sha }}
-      clef-image: ${{ vars.E2E_CLEF_IMAGE || '' }}
-      consensus-image: ${{ vars.E2E_CONSENSUS_IMAGE || '' }}
-      validator-image: ${{ vars.E2E_VALIDATOR_IMAGE || '' }}
-      genesis-image: ${{ vars.E2E_GENESIS_IMAGE || '' }}
+      # The fallback images are public, digest-pinned, and linux/arm64 only,
+      # which is why the fallback runner must stay an arm64 label. Repository
+      # variables override every one of them without a code change.
+      clef-image: ${{ vars.E2E_CLEF_IMAGE || 'ghcr.io/rgeraldes24/go-qrl-clef@sha256:ed859e8bde23914c09e96b7b24dbfaf41eebd8df8850243c704a8b1227129a42' }}
+      consensus-image: ${{ vars.E2E_CONSENSUS_IMAGE || 'ghcr.io/rgeraldes24/qrysm-beacon@sha256:23eee233b54841f379482c3f2f0877532aad54627ed8a0f96ef91bd2893c50a0' }}
+      validator-image: ${{ vars.E2E_VALIDATOR_IMAGE || 'ghcr.io/rgeraldes24/qrysm-validator@sha256:4bcdf29ad52fef3f5e7ed0d5859b1f2c4c5b33e15606d222afacccc2bd695b20' }}
+      genesis-image: ${{ vars.E2E_GENESIS_IMAGE || 'ghcr.io/rgeraldes24/qrl-genesis-generator@sha256:890aa49d68098376cdf9fbf257c1ec4e1f88e8fbcf36065d5dff36dd945bae25' }}
       qrl-package-ref: ${{ vars.E2E_QRL_PACKAGE_REF || '' }}
       source-qrysm: ${{ needs.resolve.outputs.qrysm-sha }}
       lane: ${{ matrix.lane }}
-      runner: ${{ vars.E2E_RUNNER || 'ubuntu-latest' }}
+      runner: ${{ vars.E2E_RUNNER || 'ubuntu-24.04-arm' }}
       timeout-minutes: 90
       use-ecr: ${{ vars.AWS_E2E_ROLE_ARN != '' }}
 
