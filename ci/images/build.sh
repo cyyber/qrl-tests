@@ -10,8 +10,9 @@
 #
 # Requires docker with a buildx docker-container builder selected
 # (docker buildx create --use), crane, a registry login, and:
-#   REGISTRY_NAMESPACE  e.g. ghcr.io/cyyber
-#   GO_QRL_DIR          go-qrl checkout at the revision under test
+#   REGISTRY_NAMESPACE    e.g. ghcr.io/cyyber
+#   GO_QRL_GIT_REPO       go-qrl clone URL
+#   GO_QRL_GIT_COMMIT     resolved go-qrl revision under test
 #   QRYSM_GIT_REPO        qrysm clone URL
 #   QRYSM_GIT_COMMIT      resolved qrysm revision under test
 #   GENERATOR_GIT_REPO    genesis generator clone URL
@@ -20,7 +21,8 @@
 set -euo pipefail
 
 : "${REGISTRY_NAMESPACE:?set REGISTRY_NAMESPACE to the registry prefix}"
-: "${GO_QRL_DIR:?set GO_QRL_DIR to a go-qrl checkout}"
+: "${GO_QRL_GIT_REPO:?set GO_QRL_GIT_REPO to the go-qrl clone URL}"
+: "${GO_QRL_GIT_COMMIT:?set GO_QRL_GIT_COMMIT to the go-qrl revision}"
 : "${QRYSM_GIT_REPO:?set QRYSM_GIT_REPO to the qrysm clone URL}"
 : "${QRYSM_GIT_COMMIT:?set QRYSM_GIT_COMMIT to the qrysm revision}"
 : "${GENERATOR_GIT_REPO:?set GENERATOR_GIT_REPO to the generator clone URL}"
@@ -31,7 +33,19 @@ script_dir=$(cd -- "$(dirname -- "$0")" && pwd)
 # shellcheck source=sources.env
 source "${script_dir}/sources.env"
 
-go_qrl_sha=$(git -C "${GO_QRL_DIR}" rev-parse HEAD)
+go_qrl_sha="${GO_QRL_GIT_COMMIT}"
+go_qrl_dir=".build/go-qrl"
+
+# The checkout is only materialized when a go-qrl image actually needs
+# building; on the warm path the resolved revision alone is enough.
+go_qrl_checkout() {
+	if [ ! -d "${go_qrl_dir}/.git" ]; then
+		git init -q "${go_qrl_dir}"
+		git -C "${go_qrl_dir}" remote add origin "${GO_QRL_GIT_REPO}"
+		git -C "${go_qrl_dir}" fetch -q --depth 1 origin "${go_qrl_sha}"
+		git -C "${go_qrl_dir}" checkout -q --detach FETCH_HEAD
+	fi
+}
 
 # Image identity includes the build platform: runners of different
 # architectures build and cache their own copies, and a tag can never name
@@ -71,21 +85,23 @@ ensure() {
 }
 
 build_node() {
+	go_qrl_checkout
 	docker buildx build --push --provenance=false \
 		--cache-from "type=registry,ref=${BUILD_CACHE_REF}" \
 		--cache-to "type=registry,ref=${BUILD_CACHE_REF},mode=max" \
 		--build-arg "COMMIT=${go_qrl_sha}" \
-		-f "${GO_QRL_DIR}/Dockerfile" \
-		-t "$1" "${GO_QRL_DIR}"
+		-f "${go_qrl_dir}/Dockerfile" \
+		-t "$1" "${go_qrl_dir}"
 }
 
 build_clef() {
+	go_qrl_checkout
 	docker buildx build --push --provenance=false \
 		--cache-from "type=registry,ref=${BUILD_CACHE_REF}" \
 		--cache-to "type=registry,ref=${BUILD_CACHE_REF},mode=max" \
 		--build-arg "COMMIT=${go_qrl_sha}" \
-		-f "${GO_QRL_DIR}/Dockerfile.alltools" \
-		-t "$1" "${GO_QRL_DIR}"
+		-f "${go_qrl_dir}/Dockerfile.alltools" \
+		-t "$1" "${go_qrl_dir}"
 }
 
 build_beacon() {

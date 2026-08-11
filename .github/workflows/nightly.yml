@@ -80,13 +80,6 @@ jobs:
       - name: Check out qrl-tests
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
-      - name: Check out go-qrl
-        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
-        with:
-          repository: ${{ vars.E2E_GO_QRL_REPOSITORY || 'cyyber/go-qrl' }}
-          ref: ${{ needs.resolve.outputs.go-qrl-sha }}
-          path: .build/go-qrl
-
       - name: Install crane
         run: |
           case "$(uname -m)" in
@@ -115,7 +108,8 @@ jobs:
         id: build
         env:
           REGISTRY_NAMESPACE: ghcr.io/${{ github.repository_owner }}
-          GO_QRL_DIR: .build/go-qrl
+          GO_QRL_GIT_REPO: https://github.com/${{ vars.E2E_GO_QRL_REPOSITORY || 'cyyber/go-qrl' }}.git
+          GO_QRL_GIT_COMMIT: ${{ needs.resolve.outputs.go-qrl-sha }}
           QRYSM_GIT_REPO: https://github.com/${{ vars.E2E_QRYSM_REPOSITORY || 'cyyber/qrysm' }}.git
           QRYSM_GIT_COMMIT: ${{ needs.resolve.outputs.qrysm-sha }}
           GENERATOR_GIT_REPO: https://github.com/${{ vars.E2E_GENERATOR_REPOSITORY || 'cyyber/qrl-genesis-generator' }}.git

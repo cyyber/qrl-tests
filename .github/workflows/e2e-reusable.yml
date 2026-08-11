@@ -180,8 +180,9 @@ jobs:
 
       # Kurtosis pulls through its engine container; pulling here first fails
       # fast on a bad reference and parks the images in the local daemon where
-      # the engine finds them.
-      - name: Pre-pull the configured images
+      # the engine finds them. The pulls run in parallel, overlapped with the
+      # engine's own startup, so neither waits for the other.
+      - name: Start the engine and pull the images
         env:
           IMAGES: >-
             ${{ inputs.execution-image }}
@@ -190,9 +191,10 @@ jobs:
             ${{ inputs.validator-image }}
             ${{ inputs.genesis-image }}
         run: |
-          for image in $IMAGES; do
-            docker pull "$image"
-          done
+          kurtosis engine start &
+          engine=$!
+          echo "$IMAGES" | xargs -r -n1 -P5 docker pull
+          wait "$engine"
 
       - name: Record source revisions
         id: sources
