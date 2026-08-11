@@ -6,8 +6,8 @@ Two workflows drive the E2E lanes in CI:
   authoritative workflow. Manual dispatches, the nightly, and eventually
   go-qrl/qrysm callers all run lanes through it.
 - [`nightly.yml`](../.github/workflows/nightly.yml) — resolves the latest
-  client revisions, fans the nightly lanes out over the reusable workflow, and
-  publishes one combined result.
+  client revisions, builds or reuses the devnet images, fans the nightly
+  lanes out over the reusable workflow, and publishes one combined result.
 
 ## The reusable workflow
 
@@ -29,10 +29,15 @@ Images resolve in this order:
 3. Anything still unset falls back to the harness defaults
    (`local/*:devnet`), which must already exist on the runner.
 
-The Clef, consensus, validator, and genesis images currently have no
-in-workflow build recipe; the nightly falls back to public, digest-pinned
-GHCR references (linux/arm64), and repository variables override them with
-any immutable reference. Wiring their builds in is a follow-up.
+The Clef, consensus, validator, and genesis images are built from source by
+the nightly's `images` job, content-addressed by their exact inputs and
+cached in the repository owner's GHCR namespace: a tag that already exists
+is reused, anything else is built and pushed. Clef builds from the resolved
+go-qrl revision (`Dockerfile.alltools`); the qrysm and genesis images build
+from the pins in [`ci/images/sources.env`](../ci/images/sources.env), so
+bumping a pinned revision is a reviewed one-line change that triggers a
+rebuild on the next nightly. Repository variables override any image with
+an immutable reference.
 
 ## Repository variables
 
@@ -51,10 +56,8 @@ public fallbacks.
 | `E2E_GO_QRL_REPOSITORY` | go-qrl repository (defaults to `cyyber/go-qrl`) |
 | `E2E_QRYSM_REPOSITORY` | qrysm repository (defaults to `cyyber/qrysm`) |
 
-One secret is optional: `DISCORD_E2E_WEBHOOK`, a Discord webhook URL the
-nightly posts failures to (run link, resolved revisions, lanes). Store it as
-a secret — anyone holding the URL can post to the channel — and leave it
-unset to disable the notification.
+No secrets are required: image pushes authenticate with the workflow's own
+`GITHUB_TOKEN`.
 
 ## Reproducing a run
 

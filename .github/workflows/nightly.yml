@@ -46,8 +46,59 @@ jobs:
           LANES: ${{ vars.E2E_NIGHTLY_LANES || '["execution-abi"]' }}
         run: echo "lanes=${LANES}" >> "$GITHUB_OUTPUT"
 
-  e2e:
+  # Every devnet support image is built from source, content-addressed by its
+  # exact inputs, and cached in the repository owner's GHCR namespace: a tag
+  # that already exists is reused, anything else is built and pushed. Clef
+  # tracks the resolved go-qrl revision; the qrysm and genesis images build
+  # from the pins in ci/images/sources.env. The runner label must stay in
+  # lockstep with the lane jobs so image and runner architectures match.
+  images:
     needs: resolve
+    runs-on: ${{ vars.E2E_RUNNER || 'ubuntu-24.04-arm' }}
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      clef-image: ${{ steps.build.outputs.clef-image }}
+      consensus-image: ${{ steps.build.outputs.consensus-image }}
+      validator-image: ${{ steps.build.outputs.validator-image }}
+      genesis-image: ${{ steps.build.outputs.genesis-image }}
+    steps:
+      - name: Check out qrl-tests
+        uses: actions/checkout@v5
+
+      - name: Check out go-qrl
+        uses: actions/checkout@v5
+        with:
+          repository: ${{ vars.E2E_GO_QRL_REPOSITORY || 'cyyber/go-qrl' }}
+          ref: ${{ needs.resolve.outputs.go-qrl-sha }}
+          path: .build/go-qrl
+
+      - name: Install crane
+        run: |
+          case "$(uname -m)" in
+            aarch64) arch=arm64 ;;
+            x86_64) arch=x86_64 ;;
+            *) echo "unsupported architecture $(uname -m)" >&2; exit 1 ;;
+          esac
+          curl -fsSL "https://github.com/google/go-containerregistry/releases/download/v0.20.6/go-containerregistry_Linux_${arch}.tar.gz" \
+            | sudo tar -xz -C /usr/local/bin crane
+
+      - name: Log in to GHCR
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: echo "$TOKEN" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Build or reuse the images
+        id: build
+        env:
+          REGISTRY_NAMESPACE: ghcr.io/${{ github.repository_owner }}
+          GO_QRL_DIR: .build/go-qrl
+        run: ci/images/build.sh
+
+  e2e:
+    needs: [resolve, images]
     strategy:
       fail-fast: false
       matrix:
@@ -55,13 +106,12 @@ jobs:
     uses: ./.github/workflows/e2e-reusable.yml
     with:
       go-qrl-ref: ${{ needs.resolve.outputs.go-qrl-sha }}
-      # The fallback images are public, digest-pinned, and linux/arm64 only,
-      # which is why the fallback runner must stay an arm64 label. Repository
-      # variables override every one of them without a code change.
-      clef-image: ${{ vars.E2E_CLEF_IMAGE || 'ghcr.io/rgeraldes24/go-qrl-clef@sha256:ed859e8bde23914c09e96b7b24dbfaf41eebd8df8850243c704a8b1227129a42' }}
-      consensus-image: ${{ vars.E2E_CONSENSUS_IMAGE || 'ghcr.io/rgeraldes24/qrysm-beacon@sha256:23eee233b54841f379482c3f2f0877532aad54627ed8a0f96ef91bd2893c50a0' }}
-      validator-image: ${{ vars.E2E_VALIDATOR_IMAGE || 'ghcr.io/rgeraldes24/qrysm-validator@sha256:4bcdf29ad52fef3f5e7ed0d5859b1f2c4c5b33e15606d222afacccc2bd695b20' }}
-      genesis-image: ${{ vars.E2E_GENESIS_IMAGE || 'ghcr.io/rgeraldes24/qrl-genesis-generator@sha256:890aa49d68098376cdf9fbf257c1ec4e1f88e8fbcf36065d5dff36dd945bae25' }}
+      # Immutable digest references from the images job; repository variables
+      # override any of them without a code change.
+      clef-image: ${{ vars.E2E_CLEF_IMAGE || needs.images.outputs.clef-image }}
+      consensus-image: ${{ vars.E2E_CONSENSUS_IMAGE || needs.images.outputs.consensus-image }}
+      validator-image: ${{ vars.E2E_VALIDATOR_IMAGE || needs.images.outputs.validator-image }}
+      genesis-image: ${{ vars.E2E_GENESIS_IMAGE || needs.images.outputs.genesis-image }}
       source-qrysm: ${{ needs.resolve.outputs.qrysm-sha }}
       lane: ${{ matrix.lane }}
       runner: ${{ vars.E2E_RUNNER || 'ubuntu-24.04-arm' }}
@@ -91,34 +141,3 @@ jobs:
             echo "Lanes: \`${LANES}\` — per-lane manifests and diagnostics are in each lane's reports artifact."
           } >> "$GITHUB_STEP_SUMMARY"
           test "$RESULT" = "success"
-
-      # Failures are pushed to Discord; a missing webhook downgrades this to
-      # a no-op so forks and callers without the secret stay green.
-      - name: Notify Discord of the failure
-        if: ${{ always() && needs.e2e.result != 'success' }}
-        env:
-          WEBHOOK: ${{ secrets.DISCORD_E2E_WEBHOOK }}
-          RESULT: ${{ needs.e2e.result }}
-          GO_QRL_SHA: ${{ needs.resolve.outputs.go-qrl-sha }}
-          QRYSM_SHA: ${{ needs.resolve.outputs.qrysm-sha }}
-          LANES: ${{ needs.resolve.outputs.lanes }}
-          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        run: |
-          if [ -z "$WEBHOOK" ]; then
-            echo "DISCORD_E2E_WEBHOOK is not configured; skipping the notification"
-            exit 0
-          fi
-          jq -n '{
-            embeds: [{
-              title: "Nightly E2E: \(env.RESULT)",
-              url: env.RUN_URL,
-              color: 15158332,
-              fields: [
-                {name: "go-qrl", value: env.GO_QRL_SHA, inline: true},
-                {name: "qrysm", value: env.QRYSM_SHA, inline: true},
-                {name: "qrl-tests", value: env.GITHUB_SHA, inline: true},
-                {name: "lanes", value: env.LANES}
-              ],
-              footer: {text: "Reports and diagnostics are attached to the run as artifacts."}
-            }]
-          }' | curl -fsS -H 'Content-Type: application/json' -d @- "$WEBHOOK"
