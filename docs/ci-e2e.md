@@ -48,7 +48,6 @@ public fallbacks.
 | `E2E_CONSENSUS_IMAGE` | Immutable consensus client image reference |
 | `E2E_VALIDATOR_IMAGE` | Immutable validator client image reference |
 | `E2E_GENESIS_IMAGE` | Immutable genesis generator image reference |
-| `E2E_QRL_PACKAGE_REF` | qrl-package locator override |
 | `E2E_GO_QRL_REPOSITORY` | go-qrl repository (defaults to `cyyber/go-qrl`) |
 | `E2E_QRYSM_REPOSITORY` | qrysm repository (defaults to `cyyber/qrysm`) |
 
@@ -61,13 +60,13 @@ unset to disable the notification.
 
 Every lane's artifact contains `run-manifest.json`: source revisions, exact
 image references, the qrl-package locator, the Ginkgo seed per lane, tool
-versions, and the GitHub run coordinates. To reproduce, dispatch
-`e2e-reusable` with the recorded values — or locally:
+versions, and the GitHub run coordinates. The qrl-package locator is pinned
+in code, so checking out the recorded qrl-tests revision reproduces it. To
+reproduce, dispatch `e2e-reusable` with the recorded values — or locally:
 
 ```bash
 DEVNET_EXECUTION_IMAGE=<from manifest> \
 DEVNET_CONSENSUS_IMAGE=<from manifest> \
-DEVNET_QRL_PACKAGE_REF=<from manifest> \
 make e2e-run
 ```
 

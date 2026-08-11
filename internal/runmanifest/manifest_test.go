@@ -41,7 +41,7 @@ func TestCollect(t *testing.T) {
 	manifest := Collect(t.Context(), Options{
 		Backend:        devnet.BackendDocker,
 		Images:         &images,
-		PackageLocator: devnet.DefaultPackageLocator,
+		PackageLocator: devnet.PackageLocator,
 		Enclave:        "qrl-tests",
 		TestsDir:       "/checkout",
 		Lanes: []Lane{
@@ -57,7 +57,7 @@ func TestCollect(t *testing.T) {
 	require.Equal(t, "3333333333333333333333333333333333333333", manifest.Sources.QRLTests)
 	require.Contains(t, probes, []string{"git", "-C", "/checkout", "rev-parse", "HEAD"})
 	require.Equal(t, devnet.DefaultImages(), *manifest.Images)
-	require.Equal(t, devnet.DefaultPackageLocator, manifest.PackageLocator)
+	require.Equal(t, devnet.PackageLocator, manifest.PackageLocator)
 	require.Equal(t, runtime.Version(), manifest.Versions.Go)
 	require.Equal(t, "28.0.1", manifest.Versions.Docker)
 	require.Equal(t, "1.20.1", manifest.Versions.Kurtosis)
@@ -114,7 +114,7 @@ func TestFinish(t *testing.T) {
 func TestWriteAndRead(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "reports", FileName)
 	written := Manifest{
-		PackageLocator: devnet.DefaultPackageLocator,
+		PackageLocator: devnet.PackageLocator,
 		Backend:        devnet.BackendDocker,
 		Lanes:          []Lane{{Name: "execution-abi", Profile: devnet.ProfileSingle, Seed: 42}},
 		StartedAt:      time.Date(2026, 8, 7, 12, 0, 0, 0, time.UTC),

@@ -36,10 +36,6 @@ on:
         description: immutable genesis generator image reference
         type: string
         default: ""
-      qrl-package-ref:
-        description: qrl-package locator (empty for the pinned default)
-        type: string
-        default: ""
       source-qrysm:
         description: qrysm revision recorded in the run manifest
         type: string
@@ -88,10 +84,6 @@ on:
         default: ""
       genesis-image:
         description: immutable genesis generator image reference
-        type: string
-        default: ""
-      qrl-package-ref:
-        description: qrl-package locator (empty for the pinned default)
         type: string
         default: ""
       lane:
@@ -188,7 +180,6 @@ jobs:
           DEVNET_CONSENSUS_IMAGE: ${{ inputs.consensus-image }}
           DEVNET_VALIDATOR_IMAGE: ${{ inputs.validator-image }}
           DEVNET_GENESIS_IMAGE: ${{ inputs.genesis-image }}
-          DEVNET_QRL_PACKAGE_REF: ${{ inputs.qrl-package-ref }}
           # One enclave per run, attempt, and lane, so retried or concurrent
           # runs can never collide on the deterministic default name.
           DEVNET_ENCLAVE_NAME: qrl-e2e-${{ github.run_id }}-${{ github.run_attempt }}-${{ inputs.lane }}

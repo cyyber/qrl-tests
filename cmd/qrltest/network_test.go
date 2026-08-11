@@ -52,9 +52,8 @@ func TestNetworkStart(t *testing.T) {
 			Validator: devnet.DefaultValidatorImage,
 			Genesis:   devnet.DefaultGenesisImage,
 		},
-		Parameters:     parameters,
-		Profile:        devnet.ProfileSingle,
-		PackageLocator: devnet.DefaultPackageLocator,
+		Parameters: parameters,
+		Profile:    devnet.ProfileSingle,
 	}, controller.startOptions)
 }
 
@@ -62,7 +61,6 @@ func TestNetworkStartEnvironmentOverrides(t *testing.T) {
 	digested := "ghcr.io/example/qrysm-beacon@sha256:" + strings.Repeat("0af1", 16)
 	t.Setenv("DEVNET_CONSENSUS_IMAGE", digested)
 	t.Setenv("DEVNET_EXECUTION_IMAGE", "registry.example/go-qrl:env")
-	t.Setenv("DEVNET_QRL_PACKAGE_REF", "github.com/rgeraldes24/qrl-package@0000000000000000000000000000000000000000")
 
 	controller := new(recordingController)
 	runCommand(t, controller, "network", "start", "--execution-image", "registry.example/go-qrl:flag")
@@ -70,20 +68,6 @@ func TestNetworkStartEnvironmentOverrides(t *testing.T) {
 	require.Equal(t, digested, controller.startOptions.Images.Consensus)
 	require.Equal(t, "registry.example/go-qrl:flag", controller.startOptions.Images.Execution,
 		"a flag must take precedence over its environment variable")
-	require.Equal(t, "github.com/rgeraldes24/qrl-package@0000000000000000000000000000000000000000",
-		controller.startOptions.PackageLocator)
-}
-
-func TestNetworkStartRejectsInvalidPackageLocator(t *testing.T) {
-	controller := new(recordingController)
-
-	var stdout, stderr bytes.Buffer
-	app := newApp(controller)
-	app.Writer, app.ErrWriter = &stdout, &stderr
-
-	err := app.RunContext(t.Context(), []string{"qrltest", "network", "start", "--qrl-package", "example.com/x/y"})
-	require.ErrorContains(t, err, "invalid qrl-package locator")
-	require.Empty(t, controller.startOptions.EnclaveName, "the network must not be started")
 }
 
 func TestNetworkStop(t *testing.T) {

@@ -40,12 +40,11 @@ func (runner *Runner) acquireLane(ctx context.Context, planned laneRun) (laneLea
 	}
 
 	options := devnet.StartOptions{
-		EnclaveName:    planned.enclaveName,
-		Backend:        runner.configuration.Backend,
-		Images:         runner.configuration.Images,
-		Parameters:     runner.configuration.Parameters,
-		Profile:        planned.lane.Profile,
-		PackageLocator: runner.configuration.PackageLocator,
+		EnclaveName: planned.enclaveName,
+		Backend:     runner.configuration.Backend,
+		Images:      runner.configuration.Images,
+		Parameters:  runner.configuration.Parameters,
+		Profile:     planned.lane.Profile,
 	}
 	if runner.diagnosticsMode() != DiagnosticsNever {
 		options.FailureDiagnosticsDir = planned.diagnosticsDir

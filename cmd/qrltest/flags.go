@@ -26,15 +26,6 @@ func backendFlag() *cli.StringFlag {
 	}
 }
 
-func packageLocatorFlag() *cli.StringFlag {
-	return &cli.StringFlag{
-		Name:    "qrl-package",
-		Usage:   "qrl-package locator: github.com/<owner>/<repository>[@<ref>]",
-		Value:   devnet.DefaultPackageLocator,
-		EnvVars: []string{"DEVNET_QRL_PACKAGE_REF"},
-	}
-}
-
 func parametersFileFlag() *cli.PathFlag {
 	return &cli.PathFlag{
 		Name:    "params-file",

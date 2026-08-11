@@ -7,8 +7,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"regexp"
-	"strings"
 	"time"
 
 	"github.com/cyyber/qrl-tests/devnet/internal/kurtosis"
@@ -24,27 +22,9 @@ const (
 	startDiagnosticsTimeout    = 2 * time.Minute // enclave dump before a failed start is cleaned up
 	retryInterval              = 500 * time.Millisecond
 
-	// DefaultPackageLocator pins the qrl-package revision run for every
-	// network unless the caller supplies its own locator.
-	DefaultPackageLocator = "github.com/cyyber/qrl-package@bcb7370dc416606a2982d1f9192073232281154f"
+	// PackageLocator pins the qrl-package revision every network runs.
+	PackageLocator = "github.com/cyyber/qrl-package@bcb7370dc416606a2982d1f9192073232281154f"
 )
-
-// packageLocatorPattern admits Kurtosis GitHub locators:
-// github.com/<owner>/<repository>[/<path>...][@<ref>].
-var packageLocatorPattern = regexp.MustCompile(`^github\.com/[\w.-]+/[\w.-]+(?:/[\w.-]+)*(?:@[\w./-]+)?$`)
-
-// ParsePackageLocator validates the raw value, resolving the empty value to
-// the pinned default; only a verified value becomes the qrl-package locator.
-func ParsePackageLocator(value string) (string, error) {
-	trimmed := strings.TrimSpace(value)
-	if trimmed == "" {
-		return DefaultPackageLocator, nil
-	}
-	if !packageLocatorPattern.MatchString(trimmed) {
-		return "", fmt.Errorf("invalid qrl-package locator %q: expected github.com/<owner>/<repository>[@<ref>]", value)
-	}
-	return trimmed, nil
-}
 
 type kurtosisClient interface {
 	EnclaveExists(ctx context.Context, name string) (bool, error)
@@ -55,12 +35,11 @@ type kurtosisClient interface {
 }
 
 type StartOptions struct {
-	EnclaveName    string
-	Backend        Backend
-	Images         Images
-	Parameters     []byte
-	Profile        Profile
-	PackageLocator string
+	EnclaveName string
+	Backend     Backend
+	Images      Images
+	Parameters  []byte
+	Profile     Profile
 
 	// FailureDiagnosticsDir, when set, receives the enclave's diagnostics
 	// before a failed start is cleaned up; the enclave is gone afterwards.
@@ -123,11 +102,6 @@ func (manager *Manager) Start(ctx context.Context, options StartOptions) (Enviro
 	options.Backend = cmp.Or(options.Backend, BackendDocker)
 	options.Profile = cmp.Or(options.Profile, ProfileSingle)
 
-	locator, err := ParsePackageLocator(options.PackageLocator)
-	if err != nil {
-		return Environment{}, err
-	}
-
 	parameters, err := resolveParameters(devwallet.Address, options)
 	if err != nil {
 		return Environment{}, fmt.Errorf("prepare qrl-package parameters: %w", err)
@@ -148,7 +122,7 @@ func (manager *Manager) Start(ctx context.Context, options StartOptions) (Enviro
 	if err := client.CreateEnclave(ctx, options.EnclaveName); err != nil {
 		return Environment{}, fmt.Errorf("create enclave: %w", err)
 	}
-	if err := client.RunRemotePackage(ctx, options.EnclaveName, locator, parameters); err != nil {
+	if err := client.RunRemotePackage(ctx, options.EnclaveName, PackageLocator, parameters); err != nil {
 		return Environment{}, manager.startFailure(client, options, "run qrl-package", err)
 	}
 

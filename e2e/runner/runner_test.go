@@ -84,13 +84,12 @@ func TestRunBuildsCommandAndCleansUp(t *testing.T) {
 	var command commandSpec
 	var output bytes.Buffer
 	runner := New(Config{
-		BaseName:       "qrl-tests",
-		ReportDir:      reports,
-		Backend:        devnet.BackendDocker,
-		PackageLocator: "github.com/rgeraldes24/qrl-package@0000000000000000000000000000000000000000",
-		StartTimeout:   time.Minute,
-		Parameters:     []byte(`{"custom":true}`),
-		Suites:         []string{"execution-abi"},
+		BaseName:     "qrl-tests",
+		ReportDir:    reports,
+		Backend:      devnet.BackendDocker,
+		StartTimeout: time.Minute,
+		Parameters:   []byte(`{"custom":true}`),
+		Suites:       []string{"execution-abi"},
 	}, &output, &output)
 	runner.networks = networks
 	runner.runCommand = captureCommand(&command)
@@ -99,7 +98,6 @@ func TestRunBuildsCommandAndCleansUp(t *testing.T) {
 	require.Equal(t, "qrl-tests", networks.started.EnclaveName)
 	require.Equal(t, devnet.ProfileSingle, networks.started.Profile)
 	require.Equal(t, []byte(`{"custom":true}`), networks.started.Parameters)
-	require.Equal(t, "github.com/rgeraldes24/qrl-package@0000000000000000000000000000000000000000", networks.started.PackageLocator)
 	require.Equal(t, []string{"qrl-tests"}, networks.stopped)
 	require.Equal(t, "go", command.Path)
 	require.Contains(t, command.Args, "./e2e/suites/execution/abi")
@@ -153,7 +151,7 @@ func TestRunWritesRunManifestAndSummary(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "passed", record.Result)
 	require.Equal(t, devnet.BackendDocker, record.Backend)
-	require.Equal(t, devnet.DefaultPackageLocator, record.PackageLocator)
+	require.Equal(t, devnet.PackageLocator, record.PackageLocator)
 	require.NotNil(t, record.Images)
 	require.Equal(t, devnet.DefaultImages(), *record.Images)
 	require.Len(t, record.Lanes, 1)

@@ -23,17 +23,16 @@ import (
 const DefaultReportDir = "reports"
 
 type Config struct {
-	TestsDir       string
-	BaseName       string
-	ReportDir      string
-	Backend        devnet.Backend
-	Images         devnet.Images
-	PackageLocator string
-	Parameters     []byte
-	Suites         []string
-	StartTimeout   time.Duration
-	MaxParallel    int
-	Diagnostics    DiagnosticsMode
+	TestsDir     string
+	BaseName     string
+	ReportDir    string
+	Backend      devnet.Backend
+	Images       devnet.Images
+	Parameters   []byte
+	Suites       []string
+	StartTimeout time.Duration
+	MaxParallel  int
+	Diagnostics  DiagnosticsMode
 }
 
 // DiagnosticsMode selects when a lane's network diagnostics are collected
@@ -256,11 +255,7 @@ func (runner *Runner) collectManifest(ctx context.Context, planned []laneRun, mo
 	// Attached networks run whatever they were provisioned with; recording
 	// this run's image configuration there would only mislead.
 	if mode.provisions() {
-		if locator, err := devnet.ParsePackageLocator(configuration.PackageLocator); err == nil {
-			options.PackageLocator = locator
-		} else {
-			options.PackageLocator = configuration.PackageLocator
-		}
+		options.PackageLocator = devnet.PackageLocator
 		if len(configuration.Parameters) != 0 {
 			options.CustomParameters = true
 		} else if images, err := configuration.Images.Resolved(); err == nil {

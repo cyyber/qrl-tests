@@ -161,59 +161,16 @@ func TestInspect(t *testing.T) {
 	require.Len(t, environment.Participants, 1)
 }
 
-func TestDefaultPackageLocatorIsPinned(t *testing.T) {
-	require.Regexp(t, `^github\.com/.+/qrl-package@[0-9a-f]{40}$`, DefaultPackageLocator)
+func TestPackageLocatorIsPinned(t *testing.T) {
+	require.Regexp(t, `^github\.com/.+/qrl-package@[0-9a-f]{40}$`, PackageLocator)
 }
 
-func TestParsePackageLocator(t *testing.T) {
-	locator, err := ParsePackageLocator("")
-	require.NoError(t, err)
-	require.Equal(t, DefaultPackageLocator, locator)
-
-	locator, err = ParsePackageLocator("  github.com/rgeraldes24/qrl-package@feature/vm64  ")
-	require.NoError(t, err)
-	require.Equal(t, "github.com/rgeraldes24/qrl-package@feature/vm64", locator)
-
-	locator, err = ParsePackageLocator("github.com/cyyber/qrl-package")
-	require.NoError(t, err)
-	require.Equal(t, "github.com/cyyber/qrl-package", locator)
-
-	for name, value := range map[string]string{
-		"other host":     "gitlab.com/cyyber/qrl-package",
-		"missing repo":   "github.com/qrl-package",
-		"empty ref":      "github.com/cyyber/qrl-package@ ",
-		"embedded space": "github.com/cyyber/qrl package",
-	} {
-		t.Run(name, func(t *testing.T) {
-			_, err := ParsePackageLocator(value)
-			require.ErrorContains(t, err, "invalid qrl-package locator")
-		})
-	}
-}
-
-func TestStartRunsConfiguredPackageLocator(t *testing.T) {
+func TestStartRunsPinnedPackageLocator(t *testing.T) {
 	client := &fakeClient{services: singleParticipant()}
-	options := startOptions()
 
-	_, err := testManager(client).Start(t.Context(), options)
+	_, err := testManager(client).Start(t.Context(), startOptions())
 	require.NoError(t, err)
-	require.Equal(t, DefaultPackageLocator, client.runLocator)
-
-	client = &fakeClient{services: singleParticipant()}
-	options.PackageLocator = "github.com/rgeraldes24/qrl-package@0000000000000000000000000000000000000000"
-	_, err = testManager(client).Start(t.Context(), options)
-	require.NoError(t, err)
-	require.Equal(t, options.PackageLocator, client.runLocator)
-}
-
-func TestStartRejectsInvalidPackageLocator(t *testing.T) {
-	client := &fakeClient{services: singleParticipant()}
-	options := startOptions()
-	options.PackageLocator = "example.com/not/qrl-package"
-
-	_, err := testManager(client).Start(t.Context(), options)
-	require.ErrorContains(t, err, "invalid qrl-package locator")
-	require.Empty(t, client.createdName, "no enclave may be created for a rejected locator")
+	require.Equal(t, PackageLocator, client.runLocator)
 }
 
 func TestStartRejectsInvalidImages(t *testing.T) {
