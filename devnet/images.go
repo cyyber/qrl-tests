@@ -4,8 +4,9 @@ import (
 	"cmp"
 	"errors"
 	"fmt"
-	"regexp"
 	"strings"
+
+	"github.com/distribution/reference"
 )
 
 const (
@@ -61,53 +62,12 @@ func (images Images) Resolved() (Images, error) {
 	return resolved, nil
 }
 
-// The reference grammar is the Docker distribution subset the profiles use:
-// name[:tag][@algorithm:hex], where a name is an optional registry host
-// followed by lowercase path components.
-var (
-	imageDomainPattern = regexp.MustCompile(`^[a-zA-Z0-9](?:[a-zA-Z0-9-]*[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]*[a-zA-Z0-9])?)*(?::[0-9]+)?$`)
-	imagePathPattern   = regexp.MustCompile(`^[a-z0-9]+(?:(?:[._]|__|-+)[a-z0-9]+)*(?:/[a-z0-9]+(?:(?:[._]|__|-+)[a-z0-9]+)*)*$`)
-	imageTagPattern    = regexp.MustCompile(`^[A-Za-z0-9_][A-Za-z0-9._-]{0,127}$`)
-	digestPattern      = regexp.MustCompile(`^[a-z0-9]+(?:[+._-][a-z0-9]+)*:[0-9a-fA-F]{32,}$`)
-)
-
-func validateImageReference(reference string) error {
-	name := reference
-	if index := strings.IndexByte(name, '@'); index >= 0 {
-		if err := validateImageDigest(name[index+1:]); err != nil {
-			return fmt.Errorf("reference %q: %w", reference, err)
-		}
-		name = name[:index]
-	}
-
-	if index := strings.LastIndexByte(name, ':'); index > strings.LastIndexByte(name, '/') {
-		if tag := name[index+1:]; !imageTagPattern.MatchString(tag) {
-			return fmt.Errorf("reference %q: invalid tag %q", reference, tag)
-		}
-		name = name[:index]
-	}
-
-	// The first segment is a registry host exactly when it could not be a
-	// repository component: only then may it contain dots, a port, or both.
-	path := name
-	if head, rest, found := strings.Cut(name, "/"); found && (strings.ContainsAny(head, ".:") || head == "localhost") {
-		if !imageDomainPattern.MatchString(head) {
-			return fmt.Errorf("reference %q: invalid registry host %q", reference, head)
-		}
-		path = rest
-	}
-	if !imagePathPattern.MatchString(path) {
-		return fmt.Errorf("reference %q: invalid name %q", reference, path)
-	}
-	return nil
-}
-
-func validateImageDigest(digest string) error {
-	if !digestPattern.MatchString(digest) {
-		return fmt.Errorf("invalid digest %q", digest)
-	}
-	if hex, found := strings.CutPrefix(digest, "sha256:"); found && len(hex) != 64 {
-		return fmt.Errorf("sha256 digest %q must contain 64 hexadecimal characters", hex)
+// validateImageReference admits exactly what a registry could serve,
+// delegating the name[:tag][@digest] grammar and digest verification to the
+// canonical distribution parser.
+func validateImageReference(value string) error {
+	if _, err := reference.Parse(value); err != nil {
+		return fmt.Errorf("reference %q: %w", value, err)
 	}
 	return nil
 }

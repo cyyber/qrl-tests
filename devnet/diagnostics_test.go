@@ -20,16 +20,21 @@ func TestCollectDiagnostics(t *testing.T) {
 		if strings.HasPrefix(command, "kurtosis enclave dump") {
 			return "dump progress", nil
 		}
+		if strings.Contains(command, "--quiet") {
+			return "aaa111\nbbb222\n", nil
+		}
 		return "captured " + name, nil
 	}
 
 	require.NoError(t, collectDiagnostics(t.Context(), run, BackendDocker, "qrl-tests-abi", output))
 
+	const kurtosisManaged = "--filter label=com.kurtosistech.app-id=kurtosis"
 	require.Equal(t, []string{
 		"kurtosis enclave inspect qrl-tests-abi",
 		"kurtosis enclave dump qrl-tests-abi " + filepath.Join(output, "kurtosis", "dump"),
-		"docker ps --all --no-trunc",
-		"docker stats --all --no-stream",
+		"docker ps --all --no-trunc " + kurtosisManaged,
+		"docker ps --all --quiet " + kurtosisManaged,
+		"docker stats --no-stream aaa111 bbb222",
 	}, commands)
 
 	inspect, err := os.ReadFile(filepath.Join(output, "kurtosis", "inspect.txt"))

@@ -28,7 +28,6 @@ func TestImagesResolveReferences(t *testing.T) {
 		"registry with port": "localhost:5000/qrl/go-qrl:devnet",
 		"digest":             "ghcr.io/example/go-qrl@" + digest,
 		"tag and digest":     "registry.example/qrysm-beacon:v1.2.3@" + digest,
-		"other algorithm":    "registry.example/go-qrl@blake3:" + strings.Repeat("ab", 16),
 	} {
 		t.Run(name, func(t *testing.T) {
 			images, err := Images{Execution: reference}.Resolved()
@@ -48,6 +47,8 @@ func TestImagesResolveRejectsInvalid(t *testing.T) {
 		"sha256 too short":     "local/go-qrl@sha256:" + strings.Repeat("ab", 16),
 		"invalid host":         "registry..example/go-qrl:devnet",
 		"invalid port":         "localhost:http/go-qrl:devnet",
+		// The canonical parser only admits registered digest algorithms.
+		"unregistered digest algorithm": "registry.example/go-qrl@blake3:" + strings.Repeat("ab", 16),
 	} {
 		t.Run(name, func(t *testing.T) {
 			_, err := Images{Genesis: reference}.Resolved()

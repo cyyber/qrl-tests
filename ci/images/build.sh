@@ -33,6 +33,18 @@ source "${script_dir}/sources.env"
 
 go_qrl_sha=$(git -C "${GO_QRL_DIR}" rev-parse HEAD)
 
+# Image identity includes the build platform: runners of different
+# architectures build and cache their own copies, and a tag can never name
+# a mismatched binary.
+case "$(uname -m)" in
+	aarch64 | arm64) architecture=arm64 ;;
+	x86_64) architecture=amd64 ;;
+	*)
+		echo "unsupported architecture $(uname -m)" >&2
+		exit 1
+		;;
+esac
+
 # Every extra build input beyond the primary source revision, hashed into the
 # tag. sources.env is always included: it pins the bases and builders.
 recipe_hash() {
@@ -53,7 +65,7 @@ ensure() {
 		echo "cache hit: ${reference}"
 	else
 		echo "cache miss, building: ${reference}"
-		BUILD_CACHE_REF="${REGISTRY_NAMESPACE}/$1:buildcache" "$4" "${reference}"
+		BUILD_CACHE_REF="${REGISTRY_NAMESPACE}/$1:buildcache-${architecture}" "$4" "${reference}"
 	fi
 	echo "$3=${REGISTRY_NAMESPACE}/$1@$(crane digest "${reference}")" >>"${GITHUB_OUTPUT}"
 }
@@ -121,10 +133,10 @@ build_genesis() {
 qrysm_recipe=$(recipe_hash "${script_dir}/qrysm/Dockerfile")
 genesis_recipe=$(recipe_hash "${script_dir}/genesis/Dockerfile")
 
-ensure go-qrl "src-${go_qrl_sha:0:12}" execution-image build_node
-ensure go-qrl-clef "src-${go_qrl_sha:0:12}" clef-image build_clef
-ensure qrysm-beacon "src-${QRYSM_GIT_COMMIT:0:12}-r${qrysm_recipe}" consensus-image build_beacon
-ensure qrysm-validator "src-${QRYSM_GIT_COMMIT:0:12}-r${qrysm_recipe}" validator-image build_validator
+ensure go-qrl "src-${go_qrl_sha:0:12}-${architecture}" execution-image build_node
+ensure go-qrl-clef "src-${go_qrl_sha:0:12}-${architecture}" clef-image build_clef
+ensure qrysm-beacon "src-${QRYSM_GIT_COMMIT:0:12}-r${qrysm_recipe}-${architecture}" consensus-image build_beacon
+ensure qrysm-validator "src-${QRYSM_GIT_COMMIT:0:12}-r${qrysm_recipe}-${architecture}" validator-image build_validator
 # The generator image embeds qrysm tooling, so its identity spans both
 # source revisions.
-ensure qrl-genesis-generator "src-${GENERATOR_GIT_COMMIT:0:12}-q${QRYSM_GIT_COMMIT:0:12}-r${genesis_recipe}" genesis-image build_genesis
+ensure qrl-genesis-generator "src-${GENERATOR_GIT_COMMIT:0:12}-q${QRYSM_GIT_COMMIT:0:12}-r${genesis_recipe}-${architecture}" genesis-image build_genesis

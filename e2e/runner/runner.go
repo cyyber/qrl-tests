@@ -4,6 +4,7 @@ package runner
 import (
 	"cmp"
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"io"
@@ -33,6 +34,9 @@ type Config struct {
 	StartTimeout time.Duration
 	MaxParallel  int
 	Diagnostics  DiagnosticsMode
+	// Seed fixes ginkgo's spec ordering for every lane; zero draws a fresh
+	// seed per lane, and the run manifest records whichever was used.
+	Seed int64
 }
 
 // DiagnosticsMode selects when a lane's network diagnostics are collected
@@ -267,6 +271,7 @@ func (runner *Runner) collectManifest(ctx context.Context, planned []laneRun, mo
 		options.PackageLocator = devnet.PackageLocator
 		if len(configuration.Parameters) != 0 {
 			options.CustomParameters = true
+			options.ParametersSHA256 = fmt.Sprintf("%x", sha256.Sum256(configuration.Parameters))
 		} else if images, err := configuration.Images.Resolved(); err == nil {
 			options.Images = &images
 		} else {

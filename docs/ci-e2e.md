@@ -78,11 +78,13 @@ Every lane's artifact contains `run-manifest.json`: source revisions, exact
 image references, the qrl-package locator, the Ginkgo seed per lane, tool
 versions, and the GitHub run coordinates. The qrl-package locator is pinned
 in code, so checking out the recorded qrl-tests revision reproduces it. To
-reproduce, dispatch `e2e-reusable` with the recorded values — or locally:
+reproduce, dispatch `e2e-reusable` with the recorded values (images, seed,
+and a runner label matching the image architecture) — or locally:
 
 ```bash
 DEVNET_EXECUTION_IMAGE=<from manifest> \
 DEVNET_CONSENSUS_IMAGE=<from manifest> \
+E2E_SEED=<from manifest> \
 make e2e-run
 ```
 

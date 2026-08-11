@@ -53,10 +53,15 @@ on:
         description: "network diagnostics collection: on-failure, always, or never"
         type: string
         default: on-failure
-      runner:
-        description: runner label the lane executes on
+      seed:
+        description: ginkgo spec-order seed (empty draws a fresh one per lane)
         type: string
-        default: ubuntu-latest
+        default: ""
+      runner:
+        description: runner label the lane executes on; its architecture must
+          match the supplied images
+        type: string
+        default: ubuntu-24.04-arm
       timeout-minutes:
         description: job budget for the whole lane
         type: number
@@ -99,6 +104,15 @@ on:
         description: "network diagnostics collection: on-failure, always, or never"
         type: string
         default: on-failure
+      seed:
+        description: ginkgo spec-order seed (empty draws a fresh one per lane)
+        type: string
+        default: ""
+      runner:
+        description: runner label the lane executes on; its architecture must
+          match the supplied images
+        type: string
+        default: ubuntu-24.04-arm
 
 permissions:
   contents: read
@@ -109,7 +123,7 @@ env:
 
 jobs:
   e2e:
-    runs-on: ${{ inputs.runner || 'ubuntu-latest' }}
+    runs-on: ${{ inputs.runner || 'ubuntu-24.04-arm' }}
     timeout-minutes: ${{ inputs.timeout-minutes || 60 }}
     permissions:
       contents: read
@@ -127,13 +141,13 @@ jobs:
         run: echo "repository=${WORKFLOW_REF%%/.github/workflows/*}" >> "$GITHUB_OUTPUT"
 
       - name: Check out qrl-tests
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           repository: ${{ steps.self.outputs.repository }}
           ref: ${{ inputs.qrl-tests-ref || github.workflow_sha }}
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version-file: go.mod
 
@@ -154,7 +168,7 @@ jobs:
 
       - name: Check out go-qrl
         if: ${{ inputs.execution-image == '' && inputs.go-qrl-ref != '' }}
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           repository: ${{ vars.E2E_GO_QRL_REPOSITORY || 'cyyber/go-qrl' }}
           ref: ${{ inputs.go-qrl-ref }}
@@ -191,6 +205,7 @@ jobs:
         env:
           E2E_LANE: ${{ inputs.lane }}
           E2E_DIAGNOSTICS: ${{ inputs.diagnostics }}
+          E2E_SEED: ${{ inputs.seed }}
           DEVNET_EXECUTION_IMAGE: ${{ inputs.execution-image }}
           DEVNET_CLEF_IMAGE: ${{ inputs.clef-image }}
           DEVNET_CONSENSUS_IMAGE: ${{ inputs.consensus-image }}
@@ -221,7 +236,7 @@ jobs:
 
       - name: Upload the reports
         if: ${{ always() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: e2e-reports-${{ inputs.lane }}-${{ github.run_attempt }}
           path: reports/

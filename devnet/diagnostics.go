@@ -54,8 +54,20 @@ func collectDiagnostics(ctx context.Context, run commandRunner, backend Backend,
 		if err := os.MkdirAll(runtimeDir, 0o755); err != nil {
 			problems = append(problems, err)
 		} else {
-			capture(filepath.Join(runtimeDir, "containers.txt"), "docker", "ps", "--all", "--no-trunc")
-			capture(filepath.Join(runtimeDir, "stats.txt"), "docker", "stats", "--all", "--no-stream")
+			// Scoped to Kurtosis-managed containers: the host may run
+			// unrelated workloads, and the dump above already covers the
+			// enclave's own services in detail.
+			const kurtosisManaged = "label=com.kurtosistech.app-id=kurtosis"
+			capture(filepath.Join(runtimeDir, "containers.txt"),
+				"docker", "ps", "--all", "--no-trunc", "--filter", kurtosisManaged)
+			// docker stats accepts container identifiers only, not filters.
+			identifiers, err := run(ctx, "docker", "ps", "--all", "--quiet", "--filter", kurtosisManaged)
+			if err != nil {
+				problems = append(problems, fmt.Errorf("docker ps --quiet: %w", err))
+			} else if containers := strings.Fields(identifiers); len(containers) > 0 {
+				capture(filepath.Join(runtimeDir, "stats.txt"),
+					"docker", append([]string{"stats", "--no-stream"}, containers...)...)
+			}
 		}
 	}
 

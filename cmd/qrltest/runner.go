@@ -119,6 +119,11 @@ func runnerFlags() []cli.Flag {
 			Value:   string(runner.DiagnosticsOnFailure),
 			EnvVars: []string{"E2E_DIAGNOSTICS"},
 		},
+		&cli.Int64Flag{
+			Name:    "seed",
+			Usage:   "ginkgo spec-order seed; 0 draws a fresh seed per lane",
+			EnvVars: []string{"E2E_SEED"},
+		},
 	}
 
 	return append(flags, imageFlags()...)
@@ -156,5 +161,6 @@ func runnerConfig(command *cli.Context) (runner.Config, error) {
 		MaxParallel:  maxParallel,
 		Images:       imagesFromFlags(command),
 		Diagnostics:  diagnostics,
+		Seed:         command.Int64("seed"),
 	}, nil
 }

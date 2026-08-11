@@ -128,9 +128,13 @@ func (runner *Runner) executeLane(ctx context.Context, planned laneRun) (result 
 	})
 
 	// Diagnostics happen here, before the deferred release destroys the
-	// enclave. A collection problem never converts a passing lane into a
-	// failing one; on a failing lane it is reported alongside the failure.
-	if err := runner.collectDiagnostics(planned, lease.environment, runErr != nil); err != nil {
+	// enclave, and on the report verdict rather than the exit code alone: a
+	// process that exited cleanly with a failing or unusable report is
+	// still a failure worth capturing. A collection problem never converts
+	// a passing lane into a failing one; on a failing lane it is reported
+	// alongside the failure.
+	failed := runErr != nil || !results.LaneHealthy(planned.reportDir)
+	if err := runner.collectDiagnostics(planned, lease.environment, failed); err != nil {
 		if runErr != nil {
 			return errors.Join(runErr, fmt.Errorf("collect diagnostics: %w", err))
 		}

@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"fmt"
 	"math/rand/v2"
+	"os"
 	"path/filepath"
 
 	"github.com/cyyber/qrl-tests/e2e/internal/lanes"
@@ -39,16 +40,28 @@ func planLanes(configuration Config, selected []lanes.Lane, mode runMode) ([]lan
 			enclaveName += "-" + lane.Name
 		}
 		reportDir := filepath.Join(reportRoot, "lanes", lane.Name)
+		diagnosticsDir := filepath.Join(reportRoot, "diagnostics", lane.Name)
+		// Fresh directories per attempt: a stale report or dump from an
+		// earlier run must never feed this run's verdict.
+		for _, directory := range []string{reportDir, diagnosticsDir} {
+			if err := os.RemoveAll(directory); err != nil {
+				return nil, "", fmt.Errorf("clear %s: %w", directory, err)
+			}
+		}
 		// The seed randomizes ginkgo's spec order; recording it in the run
-		// manifest keeps every ordering reproducible.
-		seed := 1 + rand.Int64N(1<<31-1)
+		// manifest keeps every ordering reproducible, and a configured seed
+		// replays a recorded one exactly.
+		seed := configuration.Seed
+		if seed == 0 {
+			seed = 1 + rand.Int64N(1<<31-1)
+		}
 		planned[index] = laneRun{
 			lane:           lane,
 			enclaveName:    enclaveName,
 			reportDir:      reportDir,
-			diagnosticsDir: filepath.Join(reportRoot, "diagnostics", lane.Name),
-			manifestPath:   filepath.Join(reportDir, "manifest.json"),
-			seed:           seed,
+			diagnosticsDir: diagnosticsDir,
+			manifestPath: filepath.Join(reportDir, "manifest.json"),
+			seed:         seed,
 			arguments:      ginkgoArguments(lane, reportDir, seed),
 			provision:      mode.provisions(),
 			testsDir:       testsDir,

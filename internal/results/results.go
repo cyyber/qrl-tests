@@ -109,6 +109,14 @@ func Summarize(reportRoot string, lanes []Lane) (Summary, error) {
 	return summary, nil
 }
 
+// LaneHealthy reports whether the report on disk describes a fully passing
+// lane. This is the pre-cleanup verdict: it lets diagnostics run while the
+// network still exists, instead of discovering a bad report after the
+// enclave is gone.
+func LaneHealthy(reportDir string) bool {
+	return summarizeLane(Lane{ReportDir: reportDir}).Class == ClassPassed
+}
+
 // VerdictError converts a non-passing summary into an error, so the process
 // exit can never contradict the published verdict: a lane that exited
 // cleanly but produced no usable report still fails the run.
