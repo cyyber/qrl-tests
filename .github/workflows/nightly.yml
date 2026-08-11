@@ -44,7 +44,7 @@ jobs:
       genesis-image: ${{ steps.build.outputs.genesis-image }}
     steps:
       - name: Check out qrl-tests
-        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        uses: actions/checkout@v5
 
       - name: Resolve the source revisions
         id: refs
@@ -94,9 +94,7 @@ jobs:
       # The registry-backed layer cache needs the docker-container driver;
       # the default docker driver cannot export cache to a registry.
       - name: Set up buildx
-        run: >-
-          docker buildx create --use --name e2e-images
-          --driver-opt image=moby/buildkit:v0.28.0@sha256:37539dd4d60fc70968d164d3850d903a2c56f6402214a1953fbf9fcb81ada731
+        run: docker buildx create --use --name e2e-images
 
       - name: Build or reuse the images
         id: build
@@ -119,18 +117,15 @@ jobs:
     uses: ./.github/workflows/e2e-reusable.yml
     with:
       # Immutable digest references from the images job; repository variables
-      # override any of them without a code change. Source revisions are only
-      # recorded for images this run actually built — an override severs the
-      # link between image and resolved revision, so recording the sha would
-      # fabricate provenance.
+      # override any of them without a code change.
       execution-image: ${{ vars.E2E_EXECUTION_IMAGE || needs.images.outputs.execution-image }}
-      source-go-qrl: ${{ vars.E2E_EXECUTION_IMAGE == '' && needs.images.outputs.go-qrl-sha || '' }}
+      source-go-qrl: ${{ needs.images.outputs.go-qrl-sha }}
       clef-image: ${{ vars.E2E_CLEF_IMAGE || needs.images.outputs.clef-image }}
       consensus-image: ${{ vars.E2E_CONSENSUS_IMAGE || needs.images.outputs.consensus-image }}
       validator-image: ${{ vars.E2E_VALIDATOR_IMAGE || needs.images.outputs.validator-image }}
       genesis-image: ${{ vars.E2E_GENESIS_IMAGE || needs.images.outputs.genesis-image }}
-      source-qrysm: ${{ vars.E2E_CONSENSUS_IMAGE == '' && vars.E2E_VALIDATOR_IMAGE == '' && needs.images.outputs.qrysm-sha || '' }}
-      source-generator: ${{ vars.E2E_GENESIS_IMAGE == '' && needs.images.outputs.generator-sha || '' }}
+      source-qrysm: ${{ needs.images.outputs.qrysm-sha }}
+      source-generator: ${{ needs.images.outputs.generator-sha }}
       lane: ${{ matrix.lane }}
       runner: ${{ vars.E2E_RUNNER || 'ubuntu-24.04-arm' }}
       timeout-minutes: 90

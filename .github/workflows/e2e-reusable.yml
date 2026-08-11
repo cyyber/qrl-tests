@@ -12,12 +12,6 @@ on:
         description: qrl-tests ref to run (empty for this workflow's own revision)
         type: string
         default: ""
-      harness-repository:
-        description: repository holding this workflow (owner/name); the
-          default only resolves for same-repository callers, so
-          cross-repository callers must set it
-        type: string
-        default: ""
       go-qrl-ref:
         description: go-qrl ref to build when no execution image is supplied
         type: string
@@ -140,28 +134,13 @@ jobs:
     outputs:
       result: ${{ steps.verdict.outputs.result }}
     steps:
-      # A reusable workflow runs in its caller's context: github.workflow_ref
-      # names the CALLER's workflow file, while github.job_workflow_sha is
-      # the revision of THIS file. The parsed repository therefore only
-      # holds for same-repository callers; cross-repository callers supply
-      # harness-repository explicitly.
-      - name: Identify the workflow repository
-        id: self
-        env:
-          WORKFLOW_REF: ${{ github.workflow_ref }}
-        run: echo "repository=${WORKFLOW_REF%%/.github/workflows/*}" >> "$GITHUB_OUTPUT"
-
-      # job_workflow_sha is this file's revision even for cross-repository
-      # callers; workflow_sha is the same-repository fallback. actionlint's
-      # schema gap for the property is ignored via .github/actionlint.yml.
       - name: Check out qrl-tests
-        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        uses: actions/checkout@v5
         with:
-          repository: ${{ inputs.harness-repository || steps.self.outputs.repository }}
-          ref: ${{ inputs.qrl-tests-ref || github.job_workflow_sha || github.workflow_sha }}
+          ref: ${{ inputs.qrl-tests-ref }}
 
       - name: Set up Go
-        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
 
@@ -182,7 +161,7 @@ jobs:
 
       - name: Check out go-qrl
         if: ${{ inputs.execution-image == '' && inputs.go-qrl-ref != '' }}
-        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        uses: actions/checkout@v5
         with:
           repository: ${{ vars.E2E_GO_QRL_REPOSITORY || 'cyyber/go-qrl' }}
           ref: ${{ inputs.go-qrl-ref }}
@@ -195,9 +174,7 @@ jobs:
       # Kurtosis pulls through its engine container; pulling here first fails
       # fast on a bad reference and parks the images in the local daemon where
       # the engine finds them. The pulls run in parallel, overlapped with the
-      # engine's own startup. Every pulled reference is then resolved to its
-      # canonical repo@digest so the manifest records exact bytes even when
-      # an override supplied a mutable tag.
+      # engine's own startup, so neither waits for the other.
       - name: Start the engine and pull the images
         env:
           EXECUTION_IMAGE: ${{ inputs.execution-image }}
@@ -219,19 +196,6 @@ jobs:
           wait "$core" "$expander" || true
           wait "$engine"
 
-          resolve() {
-            local reference="$1" name="$2" digest=""
-            if [ -n "$reference" ]; then
-              digest=$(docker inspect --format '{{index .RepoDigests 0}}' "$reference" 2>/dev/null || true)
-            fi
-            echo "${name}=${digest:-$reference}" >> "$GITHUB_ENV"
-          }
-          resolve "$EXECUTION_IMAGE" RESOLVED_EXECUTION_IMAGE
-          resolve "$CLEF_IMAGE" RESOLVED_CLEF_IMAGE
-          resolve "$CONSENSUS_IMAGE" RESOLVED_CONSENSUS_IMAGE
-          resolve "$VALIDATOR_IMAGE" RESOLVED_VALIDATOR_IMAGE
-          resolve "$GENESIS_IMAGE" RESOLVED_GENESIS_IMAGE
-
       - name: Record source revisions
         id: sources
         run: |
@@ -244,11 +208,11 @@ jobs:
           E2E_LANE: ${{ inputs.lane }}
           E2E_DIAGNOSTICS: ${{ inputs.diagnostics }}
           E2E_SEED: ${{ inputs.seed }}
-          DEVNET_EXECUTION_IMAGE: ${{ env.RESOLVED_EXECUTION_IMAGE || inputs.execution-image }}
-          DEVNET_CLEF_IMAGE: ${{ env.RESOLVED_CLEF_IMAGE || inputs.clef-image }}
-          DEVNET_CONSENSUS_IMAGE: ${{ env.RESOLVED_CONSENSUS_IMAGE || inputs.consensus-image }}
-          DEVNET_VALIDATOR_IMAGE: ${{ env.RESOLVED_VALIDATOR_IMAGE || inputs.validator-image }}
-          DEVNET_GENESIS_IMAGE: ${{ env.RESOLVED_GENESIS_IMAGE || inputs.genesis-image }}
+          DEVNET_EXECUTION_IMAGE: ${{ inputs.execution-image }}
+          DEVNET_CLEF_IMAGE: ${{ inputs.clef-image }}
+          DEVNET_CONSENSUS_IMAGE: ${{ inputs.consensus-image }}
+          DEVNET_VALIDATOR_IMAGE: ${{ inputs.validator-image }}
+          DEVNET_GENESIS_IMAGE: ${{ inputs.genesis-image }}
           # One enclave per run, attempt, and lane, so retried or concurrent
           # runs can never collide on the deterministic default name.
           DEVNET_ENCLAVE_NAME: qrl-e2e-${{ github.run_id }}-${{ github.run_attempt }}-${{ inputs.lane }}
@@ -275,7 +239,7 @@ jobs:
 
       - name: Upload the reports
         if: ${{ always() }}
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@v4
         with:
           name: e2e-reports-${{ inputs.lane }}-${{ github.run_attempt }}
           path: reports/
