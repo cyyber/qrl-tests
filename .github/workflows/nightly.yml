@@ -22,20 +22,26 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       go-qrl-sha: ${{ steps.refs.outputs.go-qrl-sha }}
+      qrysm-sha: ${{ steps.refs.outputs.qrysm-sha }}
       lanes: ${{ steps.lanes.outputs.lanes }}
     steps:
-      # The qrysm revision is not resolved here: the consensus binaries build
-      # from the pin in ci/images/sources.env, and the images job reports
-      # that pin so the manifest records what actually ran.
-      - name: Resolve the go-qrl revision
+      # Both clients under test resolve to their upstream tips. The genesis
+      # generator is not resolved: its 64-byte address migration only exists
+      # in the fork pinned by ci/images/sources.env; resolve it here once
+      # those commits land upstream.
+      - name: Resolve the client revisions
         id: refs
         env:
           GO_QRL_REPOSITORY: ${{ vars.E2E_GO_QRL_REPOSITORY || 'cyyber/go-qrl' }}
+          QRYSM_REPOSITORY: ${{ vars.E2E_QRYSM_REPOSITORY || 'cyyber/qrysm' }}
           GO_QRL_REF: ${{ inputs.go-qrl-ref || 'main' }}
         run: |
           go_qrl=$(git ls-remote "https://github.com/${GO_QRL_REPOSITORY}" "refs/heads/${GO_QRL_REF}" | cut -f1)
           test -n "$go_qrl" || { echo "cannot resolve ${GO_QRL_REPOSITORY}@${GO_QRL_REF}" >&2; exit 1; }
+          qrysm=$(git ls-remote "https://github.com/${QRYSM_REPOSITORY}" refs/heads/main | cut -f1)
+          test -n "$qrysm" || { echo "cannot resolve ${QRYSM_REPOSITORY}@main" >&2; exit 1; }
           echo "go-qrl-sha=${go_qrl}" >> "$GITHUB_OUTPUT"
+          echo "qrysm-sha=${qrysm}" >> "$GITHUB_OUTPUT"
 
       - name: Select the nightly lanes
         id: lanes
@@ -65,9 +71,6 @@ jobs:
       consensus-image: ${{ steps.build.outputs.consensus-image }}
       validator-image: ${{ steps.build.outputs.validator-image }}
       genesis-image: ${{ steps.build.outputs.genesis-image }}
-      # The qrysm revision the consensus binaries were built from; recorded
-      # in the manifest so it reflects what actually ran.
-      source-qrysm: ${{ steps.build.outputs.source-qrysm }}
     steps:
       - name: Check out qrl-tests
         uses: actions/checkout@v5
@@ -104,6 +107,8 @@ jobs:
         env:
           REGISTRY_NAMESPACE: ghcr.io/${{ github.repository_owner }}
           GO_QRL_DIR: .build/go-qrl
+          QRYSM_GIT_REPO: https://github.com/${{ vars.E2E_QRYSM_REPOSITORY || 'cyyber/qrysm' }}.git
+          QRYSM_GIT_COMMIT: ${{ needs.resolve.outputs.qrysm-sha }}
         run: ci/images/build.sh
 
   e2e:
@@ -123,13 +128,13 @@ jobs:
       consensus-image: ${{ vars.E2E_CONSENSUS_IMAGE || needs.images.outputs.consensus-image }}
       validator-image: ${{ vars.E2E_VALIDATOR_IMAGE || needs.images.outputs.validator-image }}
       genesis-image: ${{ vars.E2E_GENESIS_IMAGE || needs.images.outputs.genesis-image }}
-      source-qrysm: ${{ needs.images.outputs.source-qrysm }}
+      source-qrysm: ${{ needs.resolve.outputs.qrysm-sha }}
       lane: ${{ matrix.lane }}
       runner: ${{ vars.E2E_RUNNER || 'ubuntu-24.04-arm' }}
       timeout-minutes: 90
 
   report:
-    needs: [resolve, images, e2e]
+    needs: [resolve, e2e]
     if: ${{ always() }}
     runs-on: ubuntu-latest
     steps:
@@ -137,7 +142,7 @@ jobs:
         env:
           RESULT: ${{ needs.e2e.result }}
           GO_QRL_SHA: ${{ needs.resolve.outputs.go-qrl-sha }}
-          QRYSM_SHA: ${{ needs.images.outputs.source-qrysm }}
+          QRYSM_SHA: ${{ needs.resolve.outputs.qrysm-sha }}
           LANES: ${{ needs.resolve.outputs.lanes }}
         run: |
           {

@@ -33,12 +33,14 @@ All five devnet images are built from source by the nightly's `images` job,
 content-addressed by their exact inputs and cached in the repository
 owner's GHCR namespace: a tag that already exists is reused, anything else
 is built and pushed. The node and Clef images build from the resolved
-go-qrl revision (`Dockerfile` and `Dockerfile.alltools`); the qrysm beacon,
-validator, and genesis images build from the pins in
-[`ci/images/sources.env`](../ci/images/sources.env), so bumping a pinned
-revision is a reviewed one-line change that triggers a rebuild on the next
-nightly. Repository variables override any image with an immutable
-reference.
+go-qrl revision (`Dockerfile` and `Dockerfile.alltools`), and the qrysm
+beacon and validator images from the resolved qrysm revision — both clients
+under test track their upstream tips. The genesis generator builds from the
+pin in [`ci/images/sources.env`](../ci/images/sources.env) (plus the
+resolved qrysm revision for its embedded tooling) until its 64-byte address
+migration lands upstream; bumping a pin is a reviewed one-line change that
+triggers a rebuild on the next nightly. Repository variables override any
+image with an immutable reference.
 
 Builds go through buildx with a registry-backed layer cache (each package's
 `:buildcache` tag), so a cold rebuild reuses every layer its sources did
@@ -64,6 +66,7 @@ public fallbacks.
 | `E2E_VALIDATOR_IMAGE` | Immutable validator client image reference |
 | `E2E_GENESIS_IMAGE` | Immutable genesis generator image reference |
 | `E2E_GO_QRL_REPOSITORY` | go-qrl repository (defaults to `cyyber/go-qrl`) |
+| `E2E_QRYSM_REPOSITORY` | qrysm repository (defaults to `cyyber/qrysm`) |
 
 No secrets are required: image pushes authenticate with the workflow's own
 `GITHUB_TOKEN`.
