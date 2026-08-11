@@ -26,7 +26,7 @@ const (
 
 	// DefaultPackageLocator pins the qrl-package revision run for every
 	// network unless the caller supplies its own locator.
-	DefaultPackageLocator = "github.com/cyyber/qrl-package@e1d938ba4b235b3cdd6c05ed8c381e9a607b6e0e"
+	DefaultPackageLocator = "github.com/cyyber/qrl-package@bcb7370dc416606a2982d1f9192073232281154f"
 )
 
 // packageLocatorPattern admits Kurtosis GitHub locators:
