@@ -86,6 +86,15 @@ jobs:
           path: .build/qrysm
           fetch-depth: 0
 
+      - name: Set up Bazel cache
+        if: steps.plan.outputs.qrysm-targets != ''
+        uses: bazel-contrib/setup-bazel@0.19.0
+        with:
+          module-root: .build/qrysm
+          bazelisk-cache: true
+          disk-cache: nightly-qrysm-${{ runner.arch }}
+          repository-cache: true
+
       - name: Build the missing Qrysm images
         if: steps.plan.outputs.qrysm-targets != ''
         env:
