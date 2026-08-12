@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-script_dir=$(cd -- "$(dirname -- "$0")" && pwd)
+# These values are part of the image tags. Bump only the matching revision
+# when its local build recipe changes in a way that can alter image contents.
+QRYSM_RECIPE_REVISION=5f15e680
+GENESIS_RECIPE_REVISION=5f15e680
 
 image_inventory=(
 	'go-qrl|GO_QRL_IMAGE_TAG|execution-image|bake|GO_QRL_IMAGE_STATUS'
@@ -29,29 +32,19 @@ architecture() {
 	esac
 }
 
-recipe_hash() {
-	local inputs=("${script_dir}/docker-bake.hcl" "${script_dir}/build.sh")
-	if command -v sha256sum >/dev/null; then
-		cat "${inputs[@]}" | sha256sum | cut -c1-8
-	else
-		cat "${inputs[@]}" | shasum -a 256 | cut -c1-8
-	fi
-}
-
 plan() {
 	require_build_inputs
 	: "${GITHUB_ENV:?set GITHUB_ENV to the environment file}"
 	: "${GITHUB_OUTPUT:?set GITHUB_OUTPUT to the outputs file}"
 
-	local arch image_recipe
+	local arch
 	arch=$(architecture)
-	image_recipe=$(recipe_hash)
 
 	GO_QRL_IMAGE_TAG="${REGISTRY_NAMESPACE}/go-qrl:src-${GO_QRL_GIT_COMMIT:0:12}-${arch}"
 	GO_QRL_CLEF_IMAGE_TAG="${REGISTRY_NAMESPACE}/go-qrl-clef:src-${GO_QRL_GIT_COMMIT:0:12}-${arch}"
-	QRYSM_BEACON_IMAGE_TAG="${REGISTRY_NAMESPACE}/qrysm-beacon:src-${QRYSM_GIT_COMMIT:0:12}-r${image_recipe}-${arch}"
-	QRYSM_VALIDATOR_IMAGE_TAG="${REGISTRY_NAMESPACE}/qrysm-validator:src-${QRYSM_GIT_COMMIT:0:12}-r${image_recipe}-${arch}"
-	GENESIS_IMAGE_TAG="${REGISTRY_NAMESPACE}/qrl-genesis-generator:src-${GENERATOR_GIT_COMMIT:0:12}-q${QRYSM_GIT_COMMIT:0:12}-r${image_recipe}-${arch}"
+	QRYSM_BEACON_IMAGE_TAG="${REGISTRY_NAMESPACE}/qrysm-beacon:src-${QRYSM_GIT_COMMIT:0:12}-r${QRYSM_RECIPE_REVISION}-${arch}"
+	QRYSM_VALIDATOR_IMAGE_TAG="${REGISTRY_NAMESPACE}/qrysm-validator:src-${QRYSM_GIT_COMMIT:0:12}-r${QRYSM_RECIPE_REVISION}-${arch}"
+	GENESIS_IMAGE_TAG="${REGISTRY_NAMESPACE}/qrl-genesis-generator:src-${GENERATOR_GIT_COMMIT:0:12}-q${QRYSM_GIT_COMMIT:0:12}-r${GENESIS_RECIPE_REVISION}-${arch}"
 
 	{
 		printf 'ARCHITECTURE=%s\n' "${arch}"
