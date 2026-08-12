@@ -40,23 +40,6 @@ on:
         description: E2E lane to run
         type: string
         default: execution-abi
-      diagnostics:
-        description: "network diagnostics collection: on-failure, always, or never"
-        type: string
-        default: on-failure
-      seed:
-        description: ginkgo spec-order seed (empty draws a fresh one per lane)
-        type: string
-        default: ""
-      runner:
-        description: runner label the lane executes on; its architecture must
-          match the supplied images
-        type: string
-        default: ubuntu-24.04-arm
-      timeout-minutes:
-        description: job budget for the whole lane
-        type: number
-        default: 60
   workflow_dispatch:
     inputs:
       execution-image:
@@ -95,10 +78,6 @@ on:
         description: E2E lane to run
         type: string
         default: execution-abi
-      diagnostics:
-        description: "network diagnostics collection: on-failure, always, or never"
-        type: string
-        default: on-failure
       seed:
         description: ginkgo spec-order seed (empty draws a fresh one per lane)
         type: string
@@ -118,8 +97,8 @@ env:
 
 jobs:
   e2e:
-    runs-on: ${{ inputs.runner }}
-    timeout-minutes: ${{ inputs.timeout-minutes || 60 }}
+    runs-on: ${{ inputs.runner || vars.E2E_RUNNER || 'ubuntu-24.04-arm' }}
+    timeout-minutes: 90
     steps:
       - name: Check out qrl-tests
         uses: actions/checkout@v7
@@ -150,7 +129,6 @@ jobs:
       - name: Run the tests
         env:
           E2E_LANE: ${{ inputs.lane }}
-          E2E_DIAGNOSTICS: ${{ inputs.diagnostics }}
           E2E_SEED: ${{ inputs.seed }}
           DEVNET_EXECUTION_IMAGE: ${{ inputs.execution-image }}
           DEVNET_CLEF_IMAGE: ${{ inputs.clef-image }}

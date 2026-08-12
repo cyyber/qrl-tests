@@ -77,14 +77,30 @@ jobs:
           GENERATOR_GIT_COMMIT: ${{ steps.refs.outputs.generator-sha }}
         run: ci/images/build.sh plan
 
-      - name: Build the missing images
+      - name: Check out Qrysm
+        if: steps.plan.outputs.qrysm-targets != ''
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ env.QRYSM_REPOSITORY }}
+          ref: ${{ steps.refs.outputs.qrysm-sha }}
+          path: .build/qrysm
+          fetch-depth: 0
+
+      - name: Build the missing Qrysm images
+        if: steps.plan.outputs.qrysm-targets != ''
+        env:
+          QRYSM_TARGETS: ${{ steps.plan.outputs.qrysm-targets }}
+          QRYSM_SOURCE_DIR: .build/qrysm
+        run: ci/images/build.sh build-qrysm
+
+      - name: Build the missing Bake images
         id: bake
-        if: steps.plan.outputs.targets != ''
+        if: steps.plan.outputs.bake-targets != ''
         uses: docker/bake-action@v7
         with:
           source: .
           files: ./ci/images/docker-bake.hcl
-          targets: ${{ steps.plan.outputs.targets }}
+          targets: ${{ steps.plan.outputs.bake-targets }}
           push: true
           provenance: false
 
@@ -112,8 +128,6 @@ jobs:
       source-qrysm: ${{ needs.images.outputs.qrysm-sha }}
       source-generator: ${{ needs.images.outputs.generator-sha }}
       lane: ${{ matrix.lane }}
-      runner: ${{ vars.E2E_RUNNER || 'ubuntu-24.04-arm' }}
-      timeout-minutes: 90
 
   report:
     needs: [images, e2e]
