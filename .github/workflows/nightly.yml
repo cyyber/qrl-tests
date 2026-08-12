@@ -56,17 +56,17 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Log in to GHCR
-        env:
-          TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: echo "$TOKEN" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-      # The registry-backed layer cache needs the docker-container driver;
-      # the default docker driver cannot export cache to a registry.
       - name: Set up buildx
-        run: docker buildx create --use
+        uses: docker/setup-buildx-action@v4
 
-      - name: Build or reuse the images
-        id: build
+      - name: Plan the image builds
+        id: plan
         env:
           REGISTRY_NAMESPACE: ghcr.io/${{ github.repository_owner }}
           GO_QRL_GIT_REPO: https://github.com/${{ env.GO_QRL_REPOSITORY }}.git
@@ -75,7 +75,24 @@ jobs:
           QRYSM_GIT_COMMIT: ${{ steps.refs.outputs.qrysm-sha }}
           GENERATOR_GIT_REPO: https://github.com/${{ env.GENERATOR_REPOSITORY }}.git
           GENERATOR_GIT_COMMIT: ${{ steps.refs.outputs.generator-sha }}
-        run: ci/images/build.sh
+        run: ci/images/build.sh plan
+
+      - name: Build the missing images
+        id: bake
+        if: steps.plan.outputs.targets != ''
+        uses: docker/bake-action@v7
+        with:
+          source: .
+          files: ./ci/images/docker-bake.hcl
+          targets: ${{ steps.plan.outputs.targets }}
+          push: true
+          provenance: false
+
+      - name: Resolve the image digests
+        id: build
+        env:
+          BAKE_METADATA: ${{ steps.bake.outputs.metadata }}
+        run: ci/images/build.sh collect
 
   e2e:
     needs: images
