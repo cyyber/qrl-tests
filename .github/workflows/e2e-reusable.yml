@@ -3,85 +3,54 @@ name: e2e-reusable
 on:
   workflow_call:
     inputs:
-      execution-image:
+      execution-image: &execution-image
         description: immutable execution image reference
         type: string
         required: true
-      source-go-qrl:
+      source-go-qrl: &source-go-qrl
         description: go-qrl revision recorded in the run manifest when the
           execution image arrives pre-built
         type: string
-        default: ""
-      clef-image:
+      clef-image: &clef-image
         description: immutable Clef image reference
         type: string
         required: true
-      consensus-image:
+      consensus-image: &consensus-image
         description: immutable consensus client image reference
         type: string
         required: true
-      validator-image:
+      validator-image: &validator-image
         description: immutable validator client image reference
         type: string
         required: true
-      genesis-image:
+      genesis-image: &genesis-image
         description: immutable genesis generator image reference
         type: string
         required: true
-      source-qrysm:
+      source-qrysm: &source-qrysm
         description: qrysm revision recorded in the run manifest
         type: string
-        default: ""
-      source-generator:
+      source-generator: &source-generator
         description: genesis generator revision recorded in the run manifest
         type: string
-        default: ""
-      lane:
+      lane: &lane
         description: E2E lane to run
         type: string
         default: execution-abi
   workflow_dispatch:
     inputs:
-      execution-image:
-        description: immutable execution image reference
-        type: string
-        required: true
-      source-go-qrl:
-        description: go-qrl revision recorded in the run manifest
-        type: string
-        default: ""
-      clef-image:
-        description: immutable Clef image reference
-        type: string
-        required: true
-      consensus-image:
-        description: immutable consensus client image reference
-        type: string
-        required: true
-      validator-image:
-        description: immutable validator client image reference
-        type: string
-        required: true
-      genesis-image:
-        description: immutable genesis generator image reference
-        type: string
-        required: true
-      source-qrysm:
-        description: qrysm revision recorded in the run manifest
-        type: string
-        default: ""
-      source-generator:
-        description: genesis generator revision recorded in the run manifest
-        type: string
-        default: ""
-      lane:
-        description: E2E lane to run
-        type: string
-        default: execution-abi
+      execution-image: *execution-image
+      source-go-qrl: *source-go-qrl
+      clef-image: *clef-image
+      consensus-image: *consensus-image
+      validator-image: *validator-image
+      genesis-image: *genesis-image
+      source-qrysm: *source-qrysm
+      source-generator: *source-generator
+      lane: *lane
       seed:
         description: ginkgo spec-order seed (empty draws a fresh one per lane)
         type: string
-        default: ""
       runner:
         description: runner label the lane executes on; its architecture must
           match the supplied images
@@ -158,4 +127,3 @@ jobs:
         with:
           name: e2e-reports-${{ inputs.lane }}-${{ github.run_attempt }}
           path: reports/
-          if-no-files-found: warn

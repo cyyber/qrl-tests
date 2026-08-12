@@ -241,7 +241,7 @@ func (runner *Runner) run(ctx context.Context, selected []lanes.Lane, mode runMo
 	manifestErr = errors.Join(manifestErr, record.Write(manifestPath))
 
 	// Reporting problems never mask the test result, and vice versa.
-	return errors.Join(errors.Join(laneErrors...), summary.VerdictError(), summary.SkipError(), manifestErr, summarizeErr)
+	return errors.Join(errors.Join(laneErrors...), summary.VerdictError(), manifestErr, summarizeErr)
 }
 
 func (runner *Runner) collectManifest(ctx context.Context, planned []laneRun, mode runMode) runmanifest.Manifest {

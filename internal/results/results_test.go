@@ -55,7 +55,6 @@ func TestSummarizePassedLane(t *testing.T) {
 	require.Equal(t, "passed", summary.Result)
 	require.Equal(t, ClassPassed, summary.Lanes[0].Class)
 	require.Equal(t, Counts{Specs: 2, Passed: 2}, summary.Lanes[0].Counts)
-	require.NoError(t, summary.SkipError())
 
 	var written Summary
 	payload, err := os.ReadFile(filepath.Join(root, SummaryFileName))
@@ -120,7 +119,7 @@ func TestSummarizeRejectsUnexpectedSkips(t *testing.T) {
 	summary := summarizeOne(t, root, Lane{Name: "execution-abi", ReportDir: laneDir})
 	require.Equal(t, "failed", summary.Result)
 	require.Equal(t, ClassSkipped, summary.Lanes[0].Class)
-	require.ErrorContains(t, summary.SkipError(), "ABI decodes events")
+	require.ErrorContains(t, summary.VerdictError(), "execution-abi (skipped)")
 }
 
 func TestSummarizeClassifiesSentinels(t *testing.T) {

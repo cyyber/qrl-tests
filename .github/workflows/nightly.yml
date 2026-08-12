@@ -99,7 +99,6 @@ jobs:
         if: steps.plan.outputs.qrysm-targets != ''
         env:
           QRYSM_TARGETS: ${{ steps.plan.outputs.qrysm-targets }}
-          QRYSM_SOURCE_DIR: .build/qrysm
         run: ci/images/build.sh build-qrysm
 
       - name: Build the missing Bake images

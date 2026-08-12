@@ -59,7 +59,6 @@ target "_go-qrl" {
 
 target "go-qrl" {
   inherits   = ["_go-qrl"]
-  dockerfile = "Dockerfile"
   tags       = [GO_QRL_IMAGE_TAG]
   cache-from = ["type=registry,ref=${REGISTRY_NAMESPACE}/go-qrl:buildcache-${ARCHITECTURE}"]
   cache-to   = ["type=registry,ref=${REGISTRY_NAMESPACE}/go-qrl:buildcache-${ARCHITECTURE},mode=max"]
@@ -75,7 +74,6 @@ target "go-qrl-clef" {
 
 target "qrl-genesis-generator" {
   context    = "${GENERATOR_GIT_REPO}#${GENERATOR_GIT_COMMIT}"
-  dockerfile = "Dockerfile"
   tags       = [GENESIS_IMAGE_TAG]
   args = {
     QRYSM_GIT_REPO = QRYSM_GIT_REPO

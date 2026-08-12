@@ -25,7 +25,6 @@ const (
 	SourceGoQRLEnv     = "E2E_SOURCE_GO_QRL"
 	SourceQrysmEnv     = "E2E_SOURCE_QRYSM"
 	SourceGeneratorEnv = "E2E_SOURCE_GENERATOR"
-	SourceQRLTestsEnv  = "E2E_SOURCE_QRL_TESTS"
 
 	probeTimeout = 10 * time.Second
 )
@@ -110,10 +109,7 @@ func Collect(ctx context.Context, options Options) Manifest {
 		now = time.Now
 	}
 
-	testsRevision := environ(SourceQRLTestsEnv)
-	if testsRevision == "" {
-		testsRevision, _ = command(ctx, "git", "-C", options.TestsDir, "rev-parse", "HEAD")
-	}
+	testsRevision, _ := command(ctx, "git", "-C", options.TestsDir, "rev-parse", "HEAD")
 
 	return Manifest{
 		Sources: Sources{

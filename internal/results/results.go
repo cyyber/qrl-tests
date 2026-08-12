@@ -76,7 +76,7 @@ type Summary struct {
 // Summarize reads every lane's Ginkgo JSON report, writes summary.json and
 // summary.md under reportRoot, and returns the assembled summary. The
 // returned error covers reading and writing only; test failures live in the
-// summary itself and in SkipError.
+// summary itself and VerdictError.
 func Summarize(reportRoot string, lanes []Lane) (Summary, error) {
 	summary := Summary{Result: "passed", Lanes: make([]LaneSummary, len(lanes))}
 	for index, lane := range lanes {
@@ -134,19 +134,6 @@ func (summary Summary) VerdictError() error {
 		return nil
 	}
 	return fmt.Errorf("lanes did not pass: %s", strings.Join(failed, "; "))
-}
-
-// SkipError reports unexpected skipped or pending specs as an error, so a run
-// whose lanes all "succeeded" by exit code still fails on silent skips.
-func (summary Summary) SkipError() error {
-	var skipped []string
-	for _, lane := range summary.Lanes {
-		skipped = append(skipped, lane.UnexpectedSkips...)
-	}
-	if len(skipped) == 0 {
-		return nil
-	}
-	return fmt.Errorf("unexpected skipped or pending specs: %s", strings.Join(skipped, "; "))
 }
 
 func summarizeLane(lane Lane) LaneSummary {

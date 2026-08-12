@@ -197,7 +197,7 @@ func TestRunFailsOnUnexpectedSkips(t *testing.T) {
 	}
 
 	err := tests.Run(t.Context(), "execution-abi")
-	require.ErrorContains(t, err, "unexpected skipped or pending specs")
+	require.ErrorContains(t, err, "execution-abi (skipped)")
 
 	record, readErr := runmanifest.Read(filepath.Join(reports, runmanifest.FileName))
 	require.NoError(t, readErr)

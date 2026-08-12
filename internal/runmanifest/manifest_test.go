@@ -68,21 +68,6 @@ func TestCollect(t *testing.T) {
 	require.Empty(t, manifest.Result, "a starting manifest must not claim a result")
 }
 
-func TestCollectPrefersExplicitTestsRevision(t *testing.T) {
-	manifest := Collect(t.Context(), Options{
-		Environ: func(key string) string {
-			if key == SourceQRLTestsEnv {
-				return "4444444444444444444444444444444444444444"
-			}
-			return ""
-		},
-		Command: func(context.Context, string, ...string) (string, error) {
-			return "", errors.New("probes must not run for configured revisions")
-		},
-	})
-	require.Equal(t, "4444444444444444444444444444444444444444", manifest.Sources.QRLTests)
-}
-
 func TestCollectSurvivesMissingTools(t *testing.T) {
 	manifest := Collect(t.Context(), Options{
 		Environ: func(string) string { return "" },
