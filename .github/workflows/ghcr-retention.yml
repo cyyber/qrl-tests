@@ -1,15 +1,3 @@
-# Content-addressed tags accumulate one version per tested revision. Keep a
-# recent window of versions per package; anything still in use is always
-# inside the window, because a tag only stops being rebuilt when its inputs
-# change, and a tag's referenced manifests enter the registry together so
-# whole graphs age out of the window together.
-#
-# Deliberately NO untagged-only deletion: buildx provenance attaches
-# untagged child manifests to tagged indexes, and deleting the children
-# leaves the tag unpullable (actions/delete-package-versions#162). Builds
-# disable provenance, and a one-time cleanup removed every pre-fix
-# multi-manifest graph, so the registry holds single-manifest versions
-# only — which is the invariant that makes a newest-window policy safe.
 name: ghcr-retention
 
 on:

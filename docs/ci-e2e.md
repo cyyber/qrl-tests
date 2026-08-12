@@ -6,17 +6,17 @@ Two workflows drive the E2E lanes in CI:
   authoritative workflow. Manual dispatches, the nightly, and eventually
   go-qrl/qrysm callers all run lanes through it.
 - [`nightly.yml`](../.github/workflows/nightly.yml) — resolves the latest
-  client revisions, builds or reuses the devnet images, and fans the nightly
-  lanes out over the reusable workflow.
+  client revisions, builds or reuses the devnet images, fans the nightly
+  lanes out over the reusable workflow, and publishes one combined result.
 
 ## The reusable workflow
 
 One call runs one lane: check out qrl-tests, install the pinned Kurtosis CLI,
-pull the supplied client images, `make e2e-run`, publish
+run `make e2e-run` with the supplied client images, publish
 `reports/summary.md` as the job summary, and upload the whole `reports/` tree
-(run manifest, summaries, per-lane Ginkgo reports, diagnostics) as an
-artifact. Every run uses a unique enclave name derived from the run id,
-attempt, and lane.
+(run manifest, summaries, per-lane Ginkgo reports, diagnostics) as an artifact.
+Every run uses a unique enclave name derived from the run id, attempt, and
+lane.
 
 All five `*-image` inputs are required and used as supplied. Each must be an
 immutable reference (digest, or tag plus digest).
