@@ -11,7 +11,7 @@ on:
       execution-image:
         description: immutable execution image reference
         type: string
-        default: ""
+        required: true
       source-go-qrl:
         description: go-qrl revision recorded in the run manifest when the
           execution image arrives pre-built
@@ -20,19 +20,19 @@ on:
       clef-image:
         description: immutable Clef image reference
         type: string
-        default: ""
+        required: true
       consensus-image:
         description: immutable consensus client image reference
         type: string
-        default: ""
+        required: true
       validator-image:
         description: immutable validator client image reference
         type: string
-        default: ""
+        required: true
       genesis-image:
         description: immutable genesis generator image reference
         type: string
-        default: ""
+        required: true
       source-qrysm:
         description: qrysm revision recorded in the run manifest
         type: string
@@ -67,23 +67,23 @@ on:
       execution-image:
         description: immutable execution image reference
         type: string
-        default: ""
+        required: true
       clef-image:
         description: immutable Clef image reference
         type: string
-        default: ""
+        required: true
       consensus-image:
         description: immutable consensus client image reference
         type: string
-        default: ""
+        required: true
       validator-image:
         description: immutable validator client image reference
         type: string
-        default: ""
+        required: true
       genesis-image:
         description: immutable genesis generator image reference
         type: string
-        default: ""
+        required: true
       lane:
         description: E2E lane to run
         type: string
@@ -165,7 +165,7 @@ jobs:
           wait "$core" "$expander" || true
           wait "$engine"
 
-      - name: Run the lane
+      - name: Run the tests
         env:
           E2E_LANE: ${{ inputs.lane }}
           E2E_DIAGNOSTICS: ${{ inputs.diagnostics }}

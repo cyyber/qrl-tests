@@ -6,8 +6,8 @@ Two workflows drive the E2E lanes in CI:
   authoritative workflow. Manual dispatches, the nightly, and eventually
   go-qrl/qrysm callers all run lanes through it.
 - [`nightly.yml`](../.github/workflows/nightly.yml) — resolves the latest
-  client revisions, builds or reuses the devnet images, fans the nightly
-  lanes out over the reusable workflow, and publishes one combined result.
+  client revisions, builds or reuses the devnet images, and fans the nightly
+  lanes out over the reusable workflow.
 
 ## The reusable workflow
 
@@ -18,12 +18,8 @@ pull the supplied client images, `make e2e-run`, publish
 artifact. Every run uses a unique enclave name derived from the run id,
 attempt, and lane.
 
-Images resolve in this order:
-
-1. An `*-image` input — an immutable reference (digest, or tag plus digest) —
-   is used as supplied.
-2. Anything still unset falls back to the harness defaults
-   (`local/*:devnet`), which must already exist on the runner.
+All five `*-image` inputs are required and used as supplied. Each must be an
+immutable reference (digest, or tag plus digest).
 
 All five devnet images are built from source by the nightly's `images` job,
 content-addressed by their exact inputs and cached in the repository
