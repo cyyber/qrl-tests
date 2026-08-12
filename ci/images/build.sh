@@ -9,7 +9,7 @@
 # the sources did not invalidate (module downloads in particular).
 #
 # Requires docker with a buildx docker-container builder selected
-# (docker buildx create --use), crane, a registry login, and:
+# (docker buildx create --use), a registry login, and:
 #   REGISTRY_NAMESPACE    e.g. ghcr.io/cyyber
 #   GO_QRL_GIT_REPO       go-qrl clone URL
 #   GO_QRL_GIT_COMMIT     resolved go-qrl revision under test
@@ -80,13 +80,15 @@ recipe_hash() {
 # functions read BUILD_CACHE_REF for their layer cache and push on success.
 ensure() {
 	local reference="${REGISTRY_NAMESPACE}/$1:$2"
-	if crane manifest "${reference}" >/dev/null 2>&1; then
+	local digest
+	if docker buildx imagetools inspect "${reference}" >/dev/null 2>&1; then
 		echo "cache hit: ${reference}"
 	else
 		echo "cache miss, building: ${reference}"
 		BUILD_CACHE_REF="${REGISTRY_NAMESPACE}/$1:buildcache-${architecture}" "$4" "${reference}"
 	fi
-	echo "$3=${REGISTRY_NAMESPACE}/$1@$(crane digest "${reference}")" >>"${GITHUB_OUTPUT}"
+	digest=$(docker buildx imagetools inspect "${reference}" --format '{{.Manifest.Digest}}')
+	echo "$3=${REGISTRY_NAMESPACE}/$1@${digest}" >>"${GITHUB_OUTPUT}"
 }
 
 build_node() {

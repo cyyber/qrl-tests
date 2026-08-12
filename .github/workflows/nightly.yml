@@ -5,8 +5,8 @@ on:
     - cron: "30 2 * * *"
   workflow_dispatch:
     inputs:
-      go-qrl-ref:
-        description: go-qrl ref to build and test
+      go-qrl-branch:
+        description: go-qrl branch to build and test
         type: string
         default: main
 
@@ -14,15 +14,14 @@ permissions:
   contents: read
 
 jobs:
-  # One job decides and provides what tonight tests: it resolves every source
-  # repository to its upstream tip (only base images and builders stay pinned,
-  # in ci/images/sources.env) and builds or reuses every devnet image —
-  # content-addressed by sources, recipe, and architecture in the repository
-  # owner's GHCR namespace. The runner label must stay in lockstep with the
-  # lane jobs so image and runner architectures match.
+  # Image and lane runners must use the same architecture.
   images:
     runs-on: ${{ vars.E2E_RUNNER || 'ubuntu-24.04-arm' }}
     timeout-minutes: 45
+    env:
+      GO_QRL_REPOSITORY: ${{ vars.E2E_GO_QRL_REPOSITORY || 'cyyber/go-qrl' }}
+      QRYSM_REPOSITORY: ${{ vars.E2E_QRYSM_REPOSITORY || 'cyyber/qrysm' }}
+      GENERATOR_REPOSITORY: ${{ vars.E2E_GENERATOR_REPOSITORY || 'cyyber/qrl-genesis-generator' }}
     permissions:
       contents: read
       packages: write
@@ -42,10 +41,7 @@ jobs:
       - name: Resolve the source revisions
         id: refs
         env:
-          GO_QRL_REPOSITORY: ${{ vars.E2E_GO_QRL_REPOSITORY || 'cyyber/go-qrl' }}
-          QRYSM_REPOSITORY: ${{ vars.E2E_QRYSM_REPOSITORY || 'cyyber/qrysm' }}
-          GENERATOR_REPOSITORY: ${{ vars.E2E_GENERATOR_REPOSITORY || 'cyyber/qrl-genesis-generator' }}
-          GO_QRL_REF: ${{ inputs.go-qrl-ref || 'main' }}
+          GO_QRL_BRANCH: ${{ inputs.go-qrl-branch || 'main' }}
         run: |
           resolve() {
             local sha
@@ -54,22 +50,10 @@ jobs:
             echo "$sha"
           }
           {
-            echo "go-qrl-sha=$(resolve "${GO_QRL_REPOSITORY}" "${GO_QRL_REF}")"
+            echo "go-qrl-sha=$(resolve "${GO_QRL_REPOSITORY}" "${GO_QRL_BRANCH}")"
             echo "qrysm-sha=$(resolve "${QRYSM_REPOSITORY}" main)"
             echo "generator-sha=$(resolve "${GENERATOR_REPOSITORY}" main)"
           } >> "$GITHUB_OUTPUT"
-
-      - name: Install crane
-        run: |
-          case "$(uname -m)" in
-            aarch64) arch=arm64 sha256=fc0515857bc38e4ddd2d37a5ab03fb5959449c7b2d4ad759bcc1174ac0cad91b ;;
-            x86_64) arch=x86_64 sha256=c1d593d01551f2c9a3df5ca0a0be4385a839bd9b86d4a76e18d7b17d16559127 ;;
-            *) echo "unsupported architecture $(uname -m)" >&2; exit 1 ;;
-          esac
-          curl -fsSL -o crane.tar.gz "https://github.com/google/go-containerregistry/releases/download/v0.20.6/go-containerregistry_Linux_${arch}.tar.gz"
-          echo "${sha256}  crane.tar.gz" | sha256sum -c -
-          sudo tar -xzf crane.tar.gz -C /usr/local/bin crane
-          rm crane.tar.gz
 
       - name: Log in to GHCR
         env:
@@ -85,11 +69,11 @@ jobs:
         id: build
         env:
           REGISTRY_NAMESPACE: ghcr.io/${{ github.repository_owner }}
-          GO_QRL_GIT_REPO: https://github.com/${{ vars.E2E_GO_QRL_REPOSITORY || 'cyyber/go-qrl' }}.git
+          GO_QRL_GIT_REPO: https://github.com/${{ env.GO_QRL_REPOSITORY }}.git
           GO_QRL_GIT_COMMIT: ${{ steps.refs.outputs.go-qrl-sha }}
-          QRYSM_GIT_REPO: https://github.com/${{ vars.E2E_QRYSM_REPOSITORY || 'cyyber/qrysm' }}.git
+          QRYSM_GIT_REPO: https://github.com/${{ env.QRYSM_REPOSITORY }}.git
           QRYSM_GIT_COMMIT: ${{ steps.refs.outputs.qrysm-sha }}
-          GENERATOR_GIT_REPO: https://github.com/${{ vars.E2E_GENERATOR_REPOSITORY || 'cyyber/qrl-genesis-generator' }}.git
+          GENERATOR_GIT_REPO: https://github.com/${{ env.GENERATOR_REPOSITORY }}.git
           GENERATOR_GIT_COMMIT: ${{ steps.refs.outputs.generator-sha }}
         run: ci/images/build.sh
 
@@ -116,7 +100,7 @@ jobs:
 
   report:
     needs: [images, e2e]
-    if: ${{ always() }}
+    if: always()
     runs-on: ubuntu-latest
     steps:
       - name: Publish the combined result

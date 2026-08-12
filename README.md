@@ -46,6 +46,5 @@ go run ./cmd/qrltest list
 Docker and Kubernetes are supported. Kubernetes requires registry-backed images
 and an active Kurtosis gateway.
 
-See [development network configuration](devnet/README.md), the
-[end-to-end suites](e2e/README.md), and the
-[CI orchestration](docs/ci-e2e.md).
+See [development network configuration](devnet/README.md) and the
+[end-to-end suites](e2e/README.md).

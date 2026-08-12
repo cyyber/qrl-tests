@@ -63,6 +63,10 @@ on:
         description: immutable execution image reference
         type: string
         required: true
+      source-go-qrl:
+        description: go-qrl revision recorded in the run manifest
+        type: string
+        default: ""
       clef-image:
         description: immutable Clef image reference
         type: string
@@ -79,6 +83,14 @@ on:
         description: immutable genesis generator image reference
         type: string
         required: true
+      source-qrysm:
+        description: qrysm revision recorded in the run manifest
+        type: string
+        default: ""
+      source-generator:
+        description: genesis generator revision recorded in the run manifest
+        type: string
+        default: ""
       lane:
         description: E2E lane to run
         type: string
@@ -106,7 +118,7 @@ env:
 
 jobs:
   e2e:
-    runs-on: ${{ inputs.runner || 'ubuntu-24.04-arm' }}
+    runs-on: ${{ inputs.runner }}
     timeout-minutes: ${{ inputs.timeout-minutes || 60 }}
     steps:
       - name: Check out qrl-tests
@@ -154,7 +166,7 @@ jobs:
         run: make e2e-run
 
       - name: Publish the job summary
-        if: ${{ always() }}
+        if: always()
         run: |
           if [ -f reports/summary.md ]; then
             cat reports/summary.md >> "$GITHUB_STEP_SUMMARY"
@@ -163,8 +175,8 @@ jobs:
           fi
 
       - name: Upload the reports
-        if: ${{ always() }}
-        uses: actions/upload-artifact@v4
+        if: always()
+        uses: actions/upload-artifact@v7
         with:
           name: e2e-reports-${{ inputs.lane }}-${{ github.run_attempt }}
           path: reports/
