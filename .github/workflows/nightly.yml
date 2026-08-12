@@ -44,7 +44,7 @@ jobs:
       genesis-image: ${{ steps.build.outputs.genesis-image }}
     steps:
       - name: Check out qrl-tests
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
 
       - name: Resolve the source revisions
         id: refs
@@ -116,14 +116,13 @@ jobs:
         lane: ${{ fromJSON(needs.images.outputs.lanes) }}
     uses: ./.github/workflows/e2e-reusable.yml
     with:
-      # Immutable digest references from the images job; repository variables
-      # override any of them without a code change.
-      execution-image: ${{ vars.E2E_EXECUTION_IMAGE || needs.images.outputs.execution-image }}
+      # Immutable digest references from the images job.
+      execution-image: ${{ needs.images.outputs.execution-image }}
       source-go-qrl: ${{ needs.images.outputs.go-qrl-sha }}
-      clef-image: ${{ vars.E2E_CLEF_IMAGE || needs.images.outputs.clef-image }}
-      consensus-image: ${{ vars.E2E_CONSENSUS_IMAGE || needs.images.outputs.consensus-image }}
-      validator-image: ${{ vars.E2E_VALIDATOR_IMAGE || needs.images.outputs.validator-image }}
-      genesis-image: ${{ vars.E2E_GENESIS_IMAGE || needs.images.outputs.genesis-image }}
+      clef-image: ${{ needs.images.outputs.clef-image }}
+      consensus-image: ${{ needs.images.outputs.consensus-image }}
+      validator-image: ${{ needs.images.outputs.validator-image }}
+      genesis-image: ${{ needs.images.outputs.genesis-image }}
       source-qrysm: ${{ needs.images.outputs.qrysm-sha }}
       source-generator: ${{ needs.images.outputs.generator-sha }}
       lane: ${{ matrix.lane }}

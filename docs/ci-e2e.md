@@ -12,7 +12,7 @@ Two workflows drive the E2E lanes in CI:
 ## The reusable workflow
 
 One call runs one lane: check out qrl-tests, install the pinned Kurtosis CLI,
-resolve or build the client images, `make e2e-run`, publish
+pull the supplied client images, `make e2e-run`, publish
 `reports/summary.md` as the job summary, and upload the whole `reports/` tree
 (run manifest, summaries, per-lane Ginkgo reports, diagnostics) as an
 artifact. Every run uses a unique enclave name derived from the run id,
@@ -22,11 +22,7 @@ Images resolve in this order:
 
 1. An `*-image` input — an immutable reference (digest, or tag plus digest) —
    is used as supplied.
-2. For the execution client only: with no image but a `go-qrl-ref`, the
-   workflow checks out go-qrl and builds `local/go-qrl:devnet` from the
-   repository's own Dockerfile, recording the built revision in the run
-   manifest.
-3. Anything still unset falls back to the harness defaults
+2. Anything still unset falls back to the harness defaults
    (`local/*:devnet`), which must already exist on the runner.
 
 All five devnet images are built from source by the nightly's `images` job,
@@ -40,7 +36,6 @@ resolved generator revision plus the qrysm one (it embeds qrysm tooling).
 Only immutable base and builder images stay pinned, in
 [`ci/images/sources.env`](../ci/images/sources.env); bumping one is a
 reviewed one-line change that triggers a rebuild on the next nightly.
-Repository variables override any image with an immutable reference.
 
 Builds go through buildx with a registry-backed layer cache (each package's
 per-architecture `:buildcache-*` tag), so a cold rebuild reuses every layer
@@ -60,11 +55,6 @@ public fallbacks.
 | --- | --- |
 | `E2E_RUNNER` | Runner label for lanes (defaults to `ubuntu-24.04-arm`) |
 | `E2E_NIGHTLY_LANES` | JSON array of lanes the nightly runs |
-| `E2E_EXECUTION_IMAGE` | Immutable execution client image reference |
-| `E2E_CLEF_IMAGE` | Immutable Clef image reference |
-| `E2E_CONSENSUS_IMAGE` | Immutable consensus client image reference |
-| `E2E_VALIDATOR_IMAGE` | Immutable validator client image reference |
-| `E2E_GENESIS_IMAGE` | Immutable genesis generator image reference |
 | `E2E_GO_QRL_REPOSITORY` | go-qrl repository (defaults to `cyyber/go-qrl`) |
 | `E2E_QRYSM_REPOSITORY` | qrysm repository (defaults to `cyyber/qrysm`) |
 | `E2E_GENERATOR_REPOSITORY` | genesis generator repository (defaults to `cyyber/qrl-genesis-generator`) |
