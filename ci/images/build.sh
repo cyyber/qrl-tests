@@ -3,11 +3,13 @@ set -euo pipefail
 
 script_dir=$(cd -- "$(dirname -- "$0")" && pwd)
 
-targets=(go-qrl go-qrl-clef qrysm-beacon qrysm-validator qrl-genesis-generator)
-tag_variables=(GO_QRL_IMAGE_TAG GO_QRL_CLEF_IMAGE_TAG QRYSM_BEACON_IMAGE_TAG QRYSM_VALIDATOR_IMAGE_TAG GENESIS_IMAGE_TAG)
-output_keys=(execution-image clef-image consensus-image validator-image genesis-image)
-build_types=(bake bake qrysm qrysm bake)
-status_variables=(GO_QRL_IMAGE_STATUS GO_QRL_CLEF_IMAGE_STATUS QRYSM_BEACON_IMAGE_STATUS QRYSM_VALIDATOR_IMAGE_STATUS GENESIS_IMAGE_STATUS)
+image_inventory=(
+	'go-qrl|GO_QRL_IMAGE_TAG|execution-image|bake|GO_QRL_IMAGE_STATUS'
+	'go-qrl-clef|GO_QRL_CLEF_IMAGE_TAG|clef-image|bake|GO_QRL_CLEF_IMAGE_STATUS'
+	'qrysm-beacon|QRYSM_BEACON_IMAGE_TAG|consensus-image|qrysm|QRYSM_BEACON_IMAGE_STATUS'
+	'qrysm-validator|QRYSM_VALIDATOR_IMAGE_TAG|validator-image|qrysm|QRYSM_VALIDATOR_IMAGE_STATUS'
+	'qrl-genesis-generator|GENESIS_IMAGE_TAG|genesis-image|bake|GENESIS_IMAGE_STATUS'
+)
 
 require_build_inputs() {
 	: "${REGISTRY_NAMESPACE:?set REGISTRY_NAMESPACE to the registry prefix}"
@@ -68,11 +70,10 @@ plan() {
 			GENESIS_IMAGE_TAG "${GENESIS_IMAGE_TAG}"
 	} >>"${GITHUB_ENV}"
 
-	local missing_bake_targets="" missing_qrysm_targets=""
-	local index tag_variable status_variable reference status missing_variable
-	for index in "${!targets[@]}"; do
-		tag_variable=${tag_variables[index]}
-		status_variable=${status_variables[index]}
+	local -a missing_bake_targets=() missing_qrysm_targets=()
+	local image target tag_variable build_type status_variable reference status
+	for image in "${image_inventory[@]}"; do
+		IFS='|' read -r target tag_variable _ build_type status_variable <<<"${image}"
 		reference=${!tag_variable}
 		if docker buildx imagetools inspect "${reference}" >/dev/null 2>&1; then
 			echo "cache hit: ${reference}"
@@ -80,32 +81,28 @@ plan() {
 		else
 			echo "cache miss: ${reference}"
 			status=built
-			case "${build_types[index]}" in
-				bake) missing_variable=missing_bake_targets ;;
-				qrysm) missing_variable=missing_qrysm_targets ;;
+			case "${build_type}" in
+				bake) missing_bake_targets+=("${target}") ;;
+				qrysm) missing_qrysm_targets+=("${target}") ;;
+				*) echo "unknown build type: ${build_type}" >&2; return 2 ;;
 			esac
-			if [ -n "${!missing_variable}" ]; then
-				printf -v "${missing_variable}" '%s,' "${!missing_variable}"
-			fi
-			printf -v "${missing_variable}" '%s%s' "${!missing_variable}" "${targets[index]}"
 		fi
 		printf '%s=%s\n' "${status_variable}" "${status}" >>"${GITHUB_ENV}"
 	done
+	local IFS=,
 	{
-		printf 'bake-targets=%s\n' "${missing_bake_targets}"
-		printf 'qrysm-targets=%s\n' "${missing_qrysm_targets}"
+		printf 'bake-targets=%s\n' "${missing_bake_targets[*]-}"
+		printf 'qrysm-targets=%s\n' "${missing_qrysm_targets[*]-}"
 	} >>"${GITHUB_OUTPUT}"
 }
 
 build_qrysm() {
 	: "${QRYSM_TARGETS:?set QRYSM_TARGETS to the missing Qrysm targets}"
-	: "${QRYSM_GIT_COMMIT:?set QRYSM_GIT_COMMIT to the Qrysm revision}"
 	: "${QRYSM_BEACON_IMAGE_TAG:?set QRYSM_BEACON_IMAGE_TAG to the beacon image tag}"
 	: "${QRYSM_VALIDATOR_IMAGE_TAG:?set QRYSM_VALIDATOR_IMAGE_TAG to the validator image tag}"
 
 	local source_dir=${QRYSM_SOURCE_DIR:-.build/qrysm}
 	source_dir=$(cd -- "${source_dir}" && pwd)
-	test "$(git -C "${source_dir}" rev-parse HEAD)" = "${QRYSM_GIT_COMMIT}"
 
 	local source_epoch arch requested target
 	local -a requested_targets=() bazel_targets=() archives=() image_tags=() platform_args=()
@@ -149,7 +146,7 @@ build_qrysm() {
 collect() {
 	: "${GITHUB_OUTPUT:?set GITHUB_OUTPUT to the outputs file}"
 	local metadata=${BAKE_METADATA:-}
-	local index target tag_variable status_variable reference digest repository immutable status
+	local image target tag_variable output_key status_variable reference digest repository immutable status
 	if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
 		{
 			echo "### Nightly images"
@@ -158,10 +155,8 @@ collect() {
 			echo "| --- | --- | --- |"
 		} >>"${GITHUB_STEP_SUMMARY}"
 	fi
-	for index in "${!targets[@]}"; do
-		target=${targets[index]}
-		tag_variable=${tag_variables[index]}
-		status_variable=${status_variables[index]}
+	for image in "${image_inventory[@]}"; do
+		IFS='|' read -r target tag_variable output_key _ status_variable <<<"${image}"
 		reference=${!tag_variable}
 		digest=""
 		if [ -n "${metadata}" ]; then
@@ -172,7 +167,7 @@ collect() {
 		fi
 		repository=${reference%:*}
 		immutable=${repository}@${digest}
-		echo "${output_keys[index]}=${immutable}" >>"${GITHUB_OUTPUT}"
+		echo "${output_key}=${immutable}" >>"${GITHUB_OUTPUT}"
 		if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
 			status=$(printenv "${status_variable}" || printf resolved)
 			printf "| \`%s\` | %s | \`%s\` |\n" "${target}" "${status}" "${immutable}" >>"${GITHUB_STEP_SUMMARY}"

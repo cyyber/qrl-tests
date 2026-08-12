@@ -30,8 +30,8 @@ type laneLease struct {
 	release     func() error
 }
 
-func (runner *Runner) acquireLane(ctx context.Context, planned laneRun) (laneLease, error) {
-	if !planned.provision {
+func (runner *Runner) acquireLane(ctx context.Context, plan runPlan, planned laneRun) (laneLease, error) {
+	if !plan.mode.provisions() {
 		environment, err := runner.networks.Inspect(ctx, planned.enclaveName)
 		if err != nil {
 			return laneLease{}, fmt.Errorf("inspect network: %w", err)
@@ -46,7 +46,7 @@ func (runner *Runner) acquireLane(ctx context.Context, planned laneRun) (laneLea
 		Parameters:  runner.configuration.Parameters,
 		Profile:     planned.lane.Profile,
 	}
-	if runner.diagnosticsMode() != DiagnosticsNever {
+	if runner.configuration.Diagnostics != DiagnosticsNever {
 		options.FailureDiagnosticsDir = planned.diagnosticsDir
 	}
 
@@ -61,7 +61,7 @@ func (runner *Runner) acquireLane(ctx context.Context, planned laneRun) (laneLea
 		release: func() error {
 			stopCtx, cancel := context.WithTimeout(context.Background(), laneCleanupTimeout)
 			defer cancel()
-			if err := runner.networks.Stop(stopCtx, planned.enclaveName); err != nil {
+			if err := runner.networks.Stop(stopCtx, environment.EnclaveName); err != nil {
 				return fmt.Errorf("stop network: %w", err)
 			}
 			return nil
@@ -76,82 +76,87 @@ func (lease laneLease) close() error {
 	return lease.release()
 }
 
-func (runner *Runner) runLane(ctx context.Context, planned laneRun) error {
-	if err := runner.executeLane(ctx, planned); err != nil {
-		return fmt.Errorf("lane %s: %w", planned.lane.Name, err)
+func (runner *Runner) runLane(ctx context.Context, plan runPlan, planned laneRun) results.Outcome {
+	outcome := runner.executeLane(ctx, plan, planned)
+	if outcome.Err != nil {
+		outcome.Err = fmt.Errorf("lane %s: %w", planned.lane.Name, outcome.Err)
 	}
-	return nil
+	return outcome
 }
 
-func (runner *Runner) executeLane(ctx context.Context, planned laneRun) (result error) {
+func (runner *Runner) executeLane(ctx context.Context, plan runPlan, planned laneRun) (outcome results.Outcome) {
+	outcome.Name = planned.lane.Name
 	lane := planned.lane
-	// The sentinels feed failure classification: everything before the test
-	// process starts is either network bootstrap or harness infrastructure.
-	lease, err := runner.acquireLane(ctx, planned)
+	lease, err := runner.acquireLane(ctx, plan, planned)
 	if err != nil {
-		return fmt.Errorf("%w: %w", results.ErrBootstrap, err)
+		outcome.ClassHint = results.ClassBootstrap
+		outcome.Err = fmt.Errorf("network bootstrap failed: %w", err)
+		return outcome
 	}
-	defer func() { result = errors.Join(result, lease.close()) }()
+	var logFile *os.File
+	diagnosticsOutput := runner.stderr
+	defer func() {
+		// Finalize while the enclave still exists. This covers command/report
+		// failures as well as any harness failure after a successful acquire.
+		failed := !outcome.Passed()
+		if diagnosticsErr := runner.collectDiagnostics(planned, lease.environment, failed); diagnosticsErr != nil {
+			if failed {
+				outcome.Err = errors.Join(outcome.Err, fmt.Errorf("collect diagnostics: %w", diagnosticsErr))
+			} else {
+				fmt.Fprintf(diagnosticsOutput, "collect diagnostics: %v\n", diagnosticsErr)
+			}
+		}
+		outcome.Err = errors.Join(outcome.Err, lease.close())
+		if logFile != nil {
+			outcome.Err = errors.Join(outcome.Err, logFile.Close())
+		}
+	}()
 
 	if err := os.MkdirAll(planned.reportDir, 0o755); err != nil {
-		return fmt.Errorf("%w: create report directory: %w", results.ErrInfrastructure, err)
+		outcome.ClassHint = results.ClassInfrastructure
+		outcome.Err = fmt.Errorf("test infrastructure failed: create report directory: %w", err)
+		return outcome
 	}
-	logFile, err := os.OpenFile(filepath.Join(planned.reportDir, "output.log"), os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
+	logFile, err = os.OpenFile(filepath.Join(planned.reportDir, "output.log"), os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
 	if err != nil {
-		return fmt.Errorf("%w: create output log: %w", results.ErrInfrastructure, err)
+		outcome.ClassHint = results.ClassInfrastructure
+		outcome.Err = fmt.Errorf("test infrastructure failed: create output log: %w", err)
+		return outcome
 	}
-	defer func() { result = errors.Join(result, logFile.Close()) }()
-
 	laneLog := &lockedWriter{lock: new(sync.Mutex), writer: logFile}
 	stdout := io.MultiWriter(runner.stdout, laneLog)
 	stderr := io.MultiWriter(runner.stderr, laneLog)
+	diagnosticsOutput = stderr
 
-	if err := manifest.Write(planned.manifestPath, manifest.Manifest{
+	manifestPath := planned.manifestPath()
+	if err := manifest.Write(manifestPath, manifest.Manifest{
 		Lane:        lane.Name,
 		Profile:     lane.Profile,
 		Environment: lease.environment,
 	}); err != nil {
-		return fmt.Errorf("%w: %w", results.ErrInfrastructure, err)
+		outcome.ClassHint = results.ClassInfrastructure
+		outcome.Err = fmt.Errorf("test infrastructure failed: %w", err)
+		return outcome
 	}
 
 	laneCtx, cancelLane := context.WithTimeout(ctx, lane.Timeout+laneReportSlack)
 	defer cancelLane()
 	fmt.Fprintf(stdout, "=== RUN lane=%s profile=%s ===\n", lane.Name, lane.Profile)
-	processEnvironment := append(os.Environ(), manifest.PathEnv+"="+planned.manifestPath)
-	runErr := runner.runCommand(laneCtx, commandSpec{
+	processEnvironment := append(os.Environ(), manifest.PathEnv+"="+manifestPath)
+	outcome.Err = runner.runCommand(laneCtx, commandSpec{
 		Path:   "go",
-		Args:   planned.arguments,
-		Dir:    planned.testsDir,
+		Args:   planned.ginkgoArguments(),
+		Dir:    plan.testsDir,
 		Env:    processEnvironment,
 		Stdout: stdout,
 		Stderr: stderr,
 	})
-
-	// Diagnostics happen here, before the deferred release destroys the
-	// enclave, and on the report verdict rather than the exit code alone: a
-	// process that exited cleanly with a failing or unusable report is
-	// still a failure worth capturing. A collection problem never converts
-	// a passing lane into a failing one; on a failing lane it is reported
-	// alongside the failure.
-	failed := runErr != nil || !results.LaneHealthy(planned.reportDir)
-	if err := runner.collectDiagnostics(planned, lease.environment, failed); err != nil {
-		if runErr != nil {
-			return errors.Join(runErr, fmt.Errorf("collect diagnostics: %w", err))
-		}
-		fmt.Fprintf(stderr, "collect diagnostics: %v\n", err)
-	}
-	return runErr
-}
-
-func (runner *Runner) diagnosticsMode() DiagnosticsMode {
-	if runner.configuration.Diagnostics == "" {
-		return DiagnosticsOnFailure
-	}
-	return runner.configuration.Diagnostics
+	outcome.Observation = results.Observe(planned.reportDir)
+	return outcome
 }
 
 func (runner *Runner) collectDiagnostics(planned laneRun, environment devnet.Environment, failed bool) error {
-	mode := runner.diagnosticsMode()
+	mode := runner.configuration.Diagnostics
 	if mode == DiagnosticsNever || (mode == DiagnosticsOnFailure && !failed) {
 		return nil
 	}
@@ -161,5 +166,5 @@ func (runner *Runner) collectDiagnostics(planned laneRun, environment devnet.Env
 	collectCtx, cancel := context.WithTimeout(context.Background(), laneDiagnosticsTimeout)
 	defer cancel()
 	backend := cmp.Or(environment.Backend, runner.configuration.Backend)
-	return runner.networks.Collect(collectCtx, backend, planned.enclaveName, planned.diagnosticsDir)
+	return runner.networks.Collect(collectCtx, backend, environment.EnclaveName, planned.diagnosticsDir)
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"os"
 	"path/filepath"
 	"runtime"
 	"testing"
@@ -38,18 +39,18 @@ func TestCollect(t *testing.T) {
 	started := time.Date(2026, 8, 7, 12, 0, 0, 0, time.UTC)
 
 	images := devnet.DefaultImages()
-	manifest := Collect(t.Context(), Options{
+	manifest := collect(t.Context(), "/checkout", Manifest{
 		Backend:        devnet.BackendDocker,
 		Images:         &images,
 		PackageLocator: devnet.PackageLocator,
 		Enclave:        "qrl-tests",
-		TestsDir:       "/checkout",
 		Lanes: []Lane{
 			{Name: "execution-abi", Profile: devnet.ProfileSingle, Suites: []string{"execution-abi"}, Seed: 42},
 		},
-		Environ: func(key string) string { return environment[key] },
-		Command: command,
-		Now:     func() time.Time { return started },
+	}, dependencies{
+		environ: func(key string) string { return environment[key] },
+		command: command,
+		now:     func() time.Time { return started },
 	})
 
 	require.Equal(t, "1111111111111111111111111111111111111111", manifest.Sources.GoQRL)
@@ -69,11 +70,12 @@ func TestCollect(t *testing.T) {
 }
 
 func TestCollectSurvivesMissingTools(t *testing.T) {
-	manifest := Collect(t.Context(), Options{
-		Environ: func(string) string { return "" },
-		Command: func(context.Context, string, ...string) (string, error) {
+	manifest := collect(t.Context(), ".", Manifest{}, dependencies{
+		environ: func(string) string { return "" },
+		command: func(context.Context, string, ...string) (string, error) {
 			return "", errors.New("not installed")
 		},
+		now: time.Now,
 	})
 	require.Empty(t, manifest.Versions.Docker)
 	require.Empty(t, manifest.Versions.Kurtosis)
@@ -96,7 +98,7 @@ func TestFinish(t *testing.T) {
 	require.Empty(t, manifest.Lanes[1].Result)
 }
 
-func TestWriteAndRead(t *testing.T) {
+func TestWrite(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "reports", FileName)
 	written := Manifest{
 		PackageLocator: devnet.PackageLocator,
@@ -106,8 +108,10 @@ func TestWriteAndRead(t *testing.T) {
 	}
 	require.NoError(t, written.Write(path))
 
-	read, err := Read(path)
+	payload, err := os.ReadFile(path)
 	require.NoError(t, err)
+	var read Manifest
+	require.NoError(t, json.Unmarshal(payload, &read))
 	require.Equal(t, written, read)
 }
 

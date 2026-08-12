@@ -75,69 +75,45 @@ type Manifest struct {
 	Result           string         `json:"result,omitempty"`
 }
 
-// Options carries the run configuration into Collect. The injection points
-// default to the live environment and real commands when unset.
-type Options struct {
-	Backend          devnet.Backend
-	Images           *devnet.Images
-	CustomParameters bool
-	ParametersSHA256 string
-	PackageLocator   string
-	Enclave          string
-	TestsDir         string
-	Lanes            []Lane
-
-	Environ func(string) string
-	Command func(ctx context.Context, name string, arguments ...string) (string, error)
-	Now     func() time.Time
+type dependencies struct {
+	environ func(string) string
+	command func(ctx context.Context, name string, arguments ...string) (string, error)
+	now     func() time.Time
 }
 
-// Collect assembles the manifest for a starting run. Version and revision
-// probes are best-effort: a missing tool leaves its field empty rather than
+// Collect enriches a starting manifest with source, tool, and CI metadata.
+// Probes are best-effort: a missing tool leaves its field empty rather than
 // failing the run the manifest is meant to explain.
-func Collect(ctx context.Context, options Options) Manifest {
-	environ := options.Environ
-	if environ == nil {
-		environ = os.Getenv
-	}
-	command := options.Command
-	if command == nil {
-		command = runCommand
-	}
-	now := options.Now
-	if now == nil {
-		now = time.Now
-	}
+func Collect(ctx context.Context, testsDir string, manifest Manifest) Manifest {
+	return collect(ctx, testsDir, manifest, dependencies{
+		environ: os.Getenv,
+		command: runCommand,
+		now:     time.Now,
+	})
+}
 
-	testsRevision, _ := command(ctx, "git", "-C", options.TestsDir, "rev-parse", "HEAD")
+func collect(ctx context.Context, testsDir string, manifest Manifest, deps dependencies) Manifest {
+	testsRevision, _ := deps.command(ctx, "git", "-C", testsDir, "rev-parse", "HEAD")
 
-	return Manifest{
-		Sources: Sources{
-			GoQRL:     environ(SourceGoQRLEnv),
-			Qrysm:     environ(SourceQrysmEnv),
-			Generator: environ(SourceGeneratorEnv),
-			QRLTests:  testsRevision,
-		},
-		Images:           options.Images,
-		CustomParameters: options.CustomParameters,
-		ParametersSHA256: options.ParametersSHA256,
-		PackageLocator:   options.PackageLocator,
-		Backend:          options.Backend,
-		Enclave:          options.Enclave,
-		Lanes:            options.Lanes,
-		Versions: Versions{
-			Go:       runtime.Version(),
-			Docker:   dockerVersion(ctx, command),
-			Kurtosis: kurtosisVersion(ctx, command),
-		},
-		GitHub: GitHub{
-			Repository: environ("GITHUB_REPOSITORY"),
-			Workflow:   environ("GITHUB_WORKFLOW"),
-			RunID:      environ("GITHUB_RUN_ID"),
-			RunAttempt: environ("GITHUB_RUN_ATTEMPT"),
-		},
-		StartedAt: now().UTC(),
+	manifest.Sources = Sources{
+		GoQRL:     deps.environ(SourceGoQRLEnv),
+		Qrysm:     deps.environ(SourceQrysmEnv),
+		Generator: deps.environ(SourceGeneratorEnv),
+		QRLTests:  testsRevision,
 	}
+	manifest.Versions = Versions{
+		Go:       runtime.Version(),
+		Docker:   dockerVersion(ctx, deps.command),
+		Kurtosis: kurtosisVersion(ctx, deps.command),
+	}
+	manifest.GitHub = GitHub{
+		Repository: deps.environ("GITHUB_REPOSITORY"),
+		Workflow:   deps.environ("GITHUB_WORKFLOW"),
+		RunID:      deps.environ("GITHUB_RUN_ID"),
+		RunAttempt: deps.environ("GITHUB_RUN_ATTEMPT"),
+	}
+	manifest.StartedAt = deps.now().UTC()
+	return manifest
 }
 
 // Finish records the per-lane and overall outcomes; lanes without an entry in
@@ -168,19 +144,6 @@ func (manifest Manifest) Write(path string) error {
 		return fmt.Errorf("write run manifest: %w", err)
 	}
 	return nil
-}
-
-func Read(path string) (Manifest, error) {
-	payload, err := os.ReadFile(path)
-	if err != nil {
-		return Manifest{}, fmt.Errorf("read run manifest: %w", err)
-	}
-
-	var manifest Manifest
-	if err := json.Unmarshal(payload, &manifest); err != nil {
-		return Manifest{}, fmt.Errorf("decode run manifest: %w", err)
-	}
-	return manifest, nil
 }
 
 func dockerVersion(ctx context.Context, command func(context.Context, string, ...string) (string, error)) string {

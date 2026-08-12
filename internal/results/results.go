@@ -4,7 +4,6 @@ package results
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -18,13 +17,6 @@ const (
 	MarkdownFileName = "summary.md"
 )
 
-// The runner tags lane errors with these sentinels so failures that happened
-// before Ginkgo could run are classified without consulting spec reports.
-var (
-	ErrBootstrap      = errors.New("network bootstrap failed")
-	ErrInfrastructure = errors.New("test infrastructure failed")
-)
-
 // Classifications, from most to least fundamental: a lane gets the first one
 // that applies.
 const (
@@ -36,11 +28,32 @@ const (
 	ClassPassed         = "passed"
 )
 
-// Lane pairs a finished lane with the error its run returned.
-type Lane struct {
-	Name      string
-	ReportDir string
-	Err       error
+// Observation is a lane's parsed Ginkgo report. Observe creates it once, while
+// the lane still owns its network; summaries then consume the same snapshot.
+type Observation struct {
+	reports []types.Report
+	err     error
+}
+
+// Observe reads and decodes the Ginkgo report under reportDir.
+func Observe(reportDir string) Observation {
+	reports, err := readReports(filepath.Join(reportDir, "report.json"))
+	return Observation{reports: reports, err: err}
+}
+
+// Outcome is the complete result of running one lane. ClassHint is reserved
+// for failures that happen before Ginkgo can provide authoritative evidence.
+type Outcome struct {
+	Name        string
+	Observation Observation
+	Err         error
+	ClassHint   string
+}
+
+// Passed reports the verdict represented by this outcome without reading any
+// files or discarding its process error.
+func (outcome Outcome) Passed() bool {
+	return summarizeOutcome(outcome).Class == ClassPassed
 }
 
 type Counts struct {
@@ -73,14 +86,13 @@ type Summary struct {
 	Lanes  []LaneSummary `json:"lanes"`
 }
 
-// Summarize reads every lane's Ginkgo JSON report, writes summary.json and
-// summary.md under reportRoot, and returns the assembled summary. The
-// returned error covers reading and writing only; test failures live in the
-// summary itself and VerdictError.
-func Summarize(reportRoot string, lanes []Lane) (Summary, error) {
-	summary := Summary{Result: "passed", Lanes: make([]LaneSummary, len(lanes))}
-	for index, lane := range lanes {
-		summary.Lanes[index] = summarizeLane(lane)
+// Summarize writes summary.json and summary.md from the observations captured
+// by each outcome. The returned error covers writing only; test failures live
+// in the summary itself and VerdictError.
+func Summarize(reportRoot string, outcomes []Outcome) (Summary, error) {
+	summary := Summary{Result: "passed", Lanes: make([]LaneSummary, len(outcomes))}
+	for index, outcome := range outcomes {
+		summary.Lanes[index] = summarizeOutcome(outcome)
 
 		counts := summary.Lanes[index].Counts
 		summary.Totals.Specs += counts.Specs
@@ -112,14 +124,6 @@ func Summarize(reportRoot string, lanes []Lane) (Summary, error) {
 	return summary, nil
 }
 
-// LaneHealthy reports whether the report on disk describes a fully passing
-// lane. This is the pre-cleanup verdict: it lets diagnostics run while the
-// network still exists, instead of discovering a bad report after the
-// enclave is gone.
-func LaneHealthy(reportDir string) bool {
-	return summarizeLane(Lane{ReportDir: reportDir}).Class == ClassPassed
-}
-
 // VerdictError converts a non-passing summary into an error, so the process
 // exit can never contradict the published verdict: a lane that exited
 // cleanly but produced no usable report still fails the run.
@@ -127,7 +131,11 @@ func (summary Summary) VerdictError() error {
 	var failed []string
 	for _, lane := range summary.Lanes {
 		if lane.Class != ClassPassed {
-			failed = append(failed, fmt.Sprintf("%s (%s)", lane.Name, lane.Class))
+			detail := fmt.Sprintf("%s (%s)", lane.Name, lane.Class)
+			if lane.Error != "" {
+				detail += ": " + lane.Error
+			}
+			failed = append(failed, detail)
 		}
 	}
 	if len(failed) == 0 {
@@ -136,20 +144,19 @@ func (summary Summary) VerdictError() error {
 	return fmt.Errorf("lanes did not pass: %s", strings.Join(failed, "; "))
 }
 
-func summarizeLane(lane Lane) LaneSummary {
-	result := LaneSummary{Name: lane.Name, Class: ClassPassed}
-	if lane.Err != nil {
-		result.Error = lane.Err.Error()
+func summarizeOutcome(outcome Outcome) LaneSummary {
+	result := LaneSummary{Name: outcome.Name, Class: ClassPassed}
+	if outcome.Err != nil {
+		result.Error = outcome.Err.Error()
 	}
 
-	reports, reportErr := readReports(filepath.Join(lane.ReportDir, "report.json"))
-	for _, report := range reports {
+	for _, report := range outcome.Observation.reports {
 		for _, spec := range report.SpecReports {
 			result.tally(spec)
 		}
 	}
 
-	result.Class = classify(lane, reports, reportErr, result)
+	result.Class = classify(outcome, result)
 	return result
 }
 
@@ -184,17 +191,17 @@ func (lane *LaneSummary) tally(spec types.SpecReport) {
 	}
 }
 
-func classify(lane Lane, reports []types.Report, reportErr error, tallied LaneSummary) string {
-	switch {
-	case errors.Is(lane.Err, ErrBootstrap):
+func classify(outcome Outcome, tallied LaneSummary) string {
+	switch outcome.ClassHint {
+	case ClassBootstrap:
 		return ClassBootstrap
-	case errors.Is(lane.Err, ErrInfrastructure):
+	case ClassInfrastructure:
 		return ClassInfrastructure
 	}
 
 	// Without a readable report, nothing distinguishes a product failure from
 	// a broken harness — and a passing lane always has a report.
-	if reportErr != nil || len(reports) == 0 {
+	if outcome.Observation.err != nil || len(outcome.Observation.reports) == 0 {
 		return ClassInfrastructure
 	}
 
@@ -215,7 +222,7 @@ func classify(lane Lane, reports []types.Report, reportErr error, tallied LaneSu
 		// with --fail-on-pending, so a pending or skipped spec also fails
 		// the process, and that exit says nothing new.
 		return ClassSkipped
-	case lane.Err != nil:
+	case outcome.Err != nil:
 		// The test process failed without a failing spec on record.
 		return ClassInfrastructure
 	case tallied.Counts.Passed == 0:

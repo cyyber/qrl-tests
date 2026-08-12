@@ -71,12 +71,51 @@ func singleParticipant() map[string]kurtosis.Service {
 	}
 }
 
-func TestStartCleansCreatedEnclave(t *testing.T) {
-	client := &fakeClient{runErr: errors.New("package failed")}
+func TestStartCleansUpEveryPostCreateFailure(t *testing.T) {
+	tests := []struct {
+		name      string
+		client    *fakeClient
+		configure func(*testing.T, *Manager) context.Context
+		wantError string
+	}{
+		{
+			name:      "package run",
+			client:    &fakeClient{runErr: errors.New("package failed")},
+			wantError: "run qrl-package: package failed",
+		},
+		{
+			name:      "endpoint resolution",
+			client:    new(fakeClient),
+			wantError: "resolve network endpoints: no qrl-package participants found",
+		},
+		{
+			name:   "readiness",
+			client: &fakeClient{services: singleParticipant()},
+			configure: func(t *testing.T, manager *Manager) context.Context {
+				manager.probe = func(context.Context, string, string) error {
+					return errors.New("not ready")
+				}
+				ctx, cancel := context.WithCancel(t.Context())
+				cancel()
+				return ctx
+			},
+			wantError: "wait for network readiness: not ready",
+		},
+	}
 
-	_, err := testManager(client).Start(t.Context(), startOptions())
-	require.ErrorContains(t, err, "package failed")
-	require.True(t, client.destroyed)
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			manager := testManager(test.client)
+			ctx := t.Context()
+			if test.configure != nil {
+				ctx = test.configure(t, manager)
+			}
+
+			_, err := manager.Start(ctx, startOptions())
+			require.ErrorContains(t, err, test.wantError)
+			require.True(t, test.client.destroyed)
+		})
+	}
 }
 
 func TestStartCollectsDiagnosticsBeforeCleanup(t *testing.T) {

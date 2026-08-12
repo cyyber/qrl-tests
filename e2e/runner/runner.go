@@ -2,7 +2,6 @@
 package runner
 
 import (
-	"cmp"
 	"context"
 	"crypto/sha256"
 	"errors"
@@ -105,7 +104,7 @@ type Runner struct {
 func New(configuration Config, stdout, stderr io.Writer) *Runner {
 	outputLock := new(sync.Mutex)
 	return &Runner{
-		configuration: configuration,
+		configuration: configuration.withDefaults(),
 		networks:      devnet.NewManager(),
 		runCommand:    execute,
 		stdout:        &lockedWriter{lock: outputLock, writer: stdout},
@@ -201,63 +200,50 @@ func (runner *Runner) selectedLane(name string) (lanes.Lane, error) {
 }
 
 func (runner *Runner) run(ctx context.Context, selected []lanes.Lane, mode runMode) error {
-	planned, reportRoot, err := planLanes(runner.configuration, selected, mode)
+	plan, err := planLanes(runner.configuration, selected, mode)
 	if err != nil {
 		return err
 	}
 
-	record := runner.collectManifest(ctx, planned, mode)
-	manifestPath := filepath.Join(reportRoot, runmanifest.FileName)
+	record := runner.collectManifest(ctx, plan)
+	manifestPath := filepath.Join(plan.reportRoot, runmanifest.FileName)
 	// The starting snapshot survives even a run the harness cannot finish.
 	manifestErr := record.Write(manifestPath)
 
-	laneErrors := runner.runLanes(ctx, planned)
-
-	laneResults := make(map[string]string, len(planned))
-	summaryLanes := make([]results.Lane, len(planned))
-	for index, lane := range planned {
-		laneResults[lane.lane.Name] = "passed"
-		if laneErrors[index] != nil {
-			laneResults[lane.lane.Name] = "failed"
-		}
-		summaryLanes[index] = results.Lane{
-			Name:      lane.lane.Name,
-			ReportDir: lane.reportDir,
-			Err:       laneErrors[index],
-		}
-	}
-
-	summary, summarizeErr := results.Summarize(reportRoot, summaryLanes)
+	outcomes := runner.runLanes(ctx, plan)
+	summary, summarizeErr := results.Summarize(plan.reportRoot, outcomes)
 
 	// The summary is the verdict authority: a lane whose process exited
 	// cleanly but whose report is missing or unusable is a failure, in the
 	// manifest and in the exit code alike.
+	laneResults := make(map[string]string, len(summary.Lanes))
 	for _, lane := range summary.Lanes {
-		if lane.Class != results.ClassPassed {
-			laneResults[lane.Name] = "failed"
+		laneResults[lane.Name] = "failed"
+		if lane.Class == results.ClassPassed {
+			laneResults[lane.Name] = "passed"
 		}
 	}
 	record.Finish(laneResults, time.Now())
 	manifestErr = errors.Join(manifestErr, record.Write(manifestPath))
 
-	// Reporting problems never mask the test result, and vice versa.
-	return errors.Join(errors.Join(laneErrors...), summary.VerdictError(), manifestErr, summarizeErr)
+	// Reporting problems never mask the test result, and vice versa. The
+	// summary carries each lane's raw error, so it is the sole verdict source.
+	return errors.Join(summary.VerdictError(), manifestErr, summarizeErr)
 }
 
-func (runner *Runner) collectManifest(ctx context.Context, planned []laneRun, mode runMode) runmanifest.Manifest {
+func (runner *Runner) collectManifest(ctx context.Context, plan runPlan) runmanifest.Manifest {
 	configuration := runner.configuration
-	options := runmanifest.Options{
-		Backend:  cmp.Or(configuration.Backend, devnet.BackendDocker),
-		Enclave:  cmp.Or(configuration.BaseName, devnet.DefaultEnclaveName),
-		TestsDir: cmp.Or(configuration.TestsDir, "."),
-		Lanes:    make([]runmanifest.Lane, len(planned)),
+	record := runmanifest.Manifest{
+		Backend: configuration.Backend,
+		Enclave: configuration.BaseName,
+		Lanes:   make([]runmanifest.Lane, len(plan.lanes)),
 	}
-	for index, lane := range planned {
+	for index, lane := range plan.lanes {
 		suites := make([]string, len(lane.lane.Suites))
 		for position, id := range lane.lane.Suites {
 			suites[position] = string(id)
 		}
-		options.Lanes[index] = runmanifest.Lane{
+		record.Lanes[index] = runmanifest.Lane{
 			Name:    lane.lane.Name,
 			Profile: lane.lane.Profile,
 			Suites:  suites,
@@ -267,41 +253,41 @@ func (runner *Runner) collectManifest(ctx context.Context, planned []laneRun, mo
 
 	// Attached networks run whatever they were provisioned with; recording
 	// this run's image configuration there would only mislead.
-	if mode.provisions() {
-		options.PackageLocator = devnet.PackageLocator
+	if plan.mode.provisions() {
+		record.PackageLocator = devnet.PackageLocator
 		if len(configuration.Parameters) != 0 {
-			options.CustomParameters = true
-			options.ParametersSHA256 = fmt.Sprintf("%x", sha256.Sum256(configuration.Parameters))
+			record.CustomParameters = true
+			record.ParametersSHA256 = fmt.Sprintf("%x", sha256.Sum256(configuration.Parameters))
 		} else if images, err := configuration.Images.Resolved(); err == nil {
-			options.Images = &images
+			record.Images = &images
 		} else {
 			raw := configuration.Images
-			options.Images = &raw
+			record.Images = &raw
 		}
 	}
 
-	return runmanifest.Collect(ctx, options)
+	return runmanifest.Collect(ctx, plan.testsDir, record)
 }
 
-func (runner *Runner) runLanes(ctx context.Context, planned []laneRun) []error {
+func (runner *Runner) runLanes(ctx context.Context, plan runPlan) []results.Outcome {
 	limit := runner.configuration.MaxParallel
-	outcomes := make([]error, len(planned))
+	outcomes := make([]results.Outcome, len(plan.lanes))
 
-	if limit < 2 || len(planned) < 2 {
-		for index, lane := range planned {
-			outcomes[index] = runner.runLane(ctx, lane)
+	if limit < 2 || len(plan.lanes) < 2 {
+		for index, lane := range plan.lanes {
+			outcomes[index] = runner.runLane(ctx, plan, lane)
 		}
 		return outcomes
 	}
 
 	semaphore := make(chan struct{}, limit)
 	var group sync.WaitGroup
-	for index, lane := range planned {
+	for index, lane := range plan.lanes {
 		group.Go(func() {
 			semaphore <- struct{}{}
 			defer func() { <-semaphore }()
 
-			outcomes[index] = runner.runLane(ctx, lane)
+			outcomes[index] = runner.runLane(ctx, plan, lane)
 		})
 	}
 	group.Wait()

@@ -1,7 +1,6 @@
 package runner
 
 import (
-	"cmp"
 	"fmt"
 	"math/rand/v2"
 	"os"
@@ -10,27 +9,30 @@ import (
 	"github.com/cyyber/qrl-tests/e2e/internal/lanes"
 )
 
+type runPlan struct {
+	testsDir   string
+	reportRoot string
+	mode       runMode
+	lanes      []laneRun
+}
+
 type laneRun struct {
 	lane           lanes.Lane
 	enclaveName    string
 	reportDir      string
 	diagnosticsDir string
-	manifestPath   string
 	seed           int64
-	arguments      []string
-	provision      bool
-	testsDir       string
 }
 
-func planLanes(configuration Config, selected []lanes.Lane, mode runMode) ([]laneRun, string, error) {
-	testsDir, err := filepath.Abs(cmp.Or(configuration.TestsDir, "."))
+func planLanes(configuration Config, selected []lanes.Lane, mode runMode) (runPlan, error) {
+	testsDir, err := filepath.Abs(configuration.TestsDir)
 	if err != nil {
-		return nil, "", fmt.Errorf("resolve test source directory: %w", err)
+		return runPlan{}, fmt.Errorf("resolve test source directory: %w", err)
 	}
 
-	reportRoot, err := filepath.Abs(cmp.Or(configuration.ReportDir, DefaultReportDir))
+	reportRoot, err := filepath.Abs(configuration.ReportDir)
 	if err != nil {
-		return nil, "", fmt.Errorf("resolve report directory: %w", err)
+		return runPlan{}, fmt.Errorf("resolve report directory: %w", err)
 	}
 
 	planned := make([]laneRun, len(selected))
@@ -45,7 +47,7 @@ func planLanes(configuration Config, selected []lanes.Lane, mode runMode) ([]lan
 		// earlier run must never feed this run's verdict.
 		for _, directory := range []string{reportDir, diagnosticsDir} {
 			if err := os.RemoveAll(directory); err != nil {
-				return nil, "", fmt.Errorf("clear %s: %w", directory, err)
+				return runPlan{}, fmt.Errorf("clear %s: %w", directory, err)
 			}
 		}
 		// The seed randomizes ginkgo's spec order; recording it in the run
@@ -60,14 +62,18 @@ func planLanes(configuration Config, selected []lanes.Lane, mode runMode) ([]lan
 			enclaveName:    enclaveName,
 			reportDir:      reportDir,
 			diagnosticsDir: diagnosticsDir,
-			manifestPath:   filepath.Join(reportDir, "manifest.json"),
 			seed:           seed,
-			arguments:      ginkgoArguments(lane, reportDir, seed),
-			provision:      mode.provisions(),
-			testsDir:       testsDir,
 		}
 	}
-	return planned, reportRoot, nil
+	return runPlan{testsDir: testsDir, reportRoot: reportRoot, mode: mode, lanes: planned}, nil
+}
+
+func (planned laneRun) manifestPath() string {
+	return filepath.Join(planned.reportDir, "manifest.json")
+}
+
+func (planned laneRun) ginkgoArguments() []string {
+	return ginkgoArguments(planned.lane, planned.reportDir, planned.seed)
 }
 
 func ginkgoArguments(lane lanes.Lane, reportDir string, seed int64) []string {
