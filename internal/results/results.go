@@ -3,6 +3,7 @@
 package results
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -24,6 +25,7 @@ const (
 	ClassBootstrap      = "bootstrap"      // the network never became ready
 	ClassInfrastructure = "infrastructure" // the harness or its tools broke
 	ClassTimeout        = "timeout"        // specs hit the lane deadline
+	ClassCanceled       = "canceled"       // the caller interrupted the run
 	ClassAssertion      = "assertion"      // the product failed a spec
 	ClassSkipped        = "skipped"        // only unexpected skips or pendings
 	ClassPassed         = "passed"
@@ -78,6 +80,7 @@ type LaneSummary struct {
 	Counts          Counts    `json:"counts"`
 	Error           string    `json:"error,omitempty"`
 	Failures        []Failure `json:"failures,omitempty"`
+	SuiteFailures   []string  `json:"suite_failures,omitempty"`
 	UnexpectedSkips []string  `json:"unexpected_skips,omitempty"`
 }
 
@@ -152,6 +155,7 @@ func summarizeOutcome(outcome Outcome) LaneSummary {
 	}
 
 	for _, report := range outcome.Observation.reports {
+		result.SuiteFailures = append(result.SuiteFailures, report.SpecialSuiteFailureReasons...)
 		for _, spec := range report.SpecReports {
 			result.tally(spec)
 		}
@@ -196,6 +200,12 @@ func classify(outcome Outcome, tallied LaneSummary) string {
 	if outcome.BootstrapFailure {
 		return ClassBootstrap
 	}
+	if errors.Is(outcome.Err, context.Canceled) {
+		return ClassCanceled
+	}
+	if errors.Is(outcome.Err, context.DeadlineExceeded) {
+		return ClassTimeout
+	}
 
 	// Without a readable report, nothing distinguishes a product failure from
 	// a broken harness — and a passing lane always has a report.
@@ -203,16 +213,21 @@ func classify(outcome Outcome, tallied LaneSummary) string {
 		return ClassInfrastructure
 	}
 
-	timedOut := false
+	timedOut := reportTimedOut(outcome.Observation.reports)
+	interrupted := false
 	for _, failure := range tallied.Failures {
 		switch failure.State {
-		case types.SpecStateTimedout.String(), types.SpecStateInterrupted.String():
+		case types.SpecStateTimedout.String():
 			timedOut = true
+		case types.SpecStateInterrupted.String():
+			interrupted = true
 		}
 	}
 	switch {
 	case timedOut:
 		return ClassTimeout
+	case interrupted:
+		return ClassInfrastructure
 	case tallied.Counts.Failed > 0 || len(tallied.Failures) > 0:
 		return ClassAssertion
 	case len(tallied.UnexpectedSkips) > 0:
@@ -220,6 +235,8 @@ func classify(outcome Outcome, tallied LaneSummary) string {
 		// with --fail-on-pending, so a pending or skipped spec also fails
 		// the process, and that exit says nothing new.
 		return ClassSkipped
+	case reportFailed(outcome.Observation.reports):
+		return ClassInfrastructure
 	case outcome.Err != nil:
 		// The test process failed without a failing spec on record.
 		return ClassInfrastructure
@@ -228,6 +245,26 @@ func classify(outcome Outcome, tallied LaneSummary) string {
 		return ClassInfrastructure
 	}
 	return ClassPassed
+}
+
+func reportTimedOut(reports []types.Report) bool {
+	for _, report := range reports {
+		for _, reason := range report.SpecialSuiteFailureReasons {
+			if strings.Contains(strings.ToLower(reason), "timeout") {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func reportFailed(reports []types.Report) bool {
+	for _, report := range reports {
+		if !report.SuiteSucceeded {
+			return true
+		}
+	}
+	return false
 }
 
 func readReports(path string) ([]types.Report, error) {

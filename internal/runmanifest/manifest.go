@@ -51,6 +51,7 @@ type GitHub struct {
 
 type Lane struct {
 	Name    string         `json:"name"`
+	Enclave string         `json:"enclave"`
 	Profile devnet.Profile `json:"profile"`
 	Suites  []string       `json:"suites"`
 	Seed    int64          `json:"seed"`
@@ -65,7 +66,6 @@ type Manifest struct {
 	ParametersSHA256 string         `json:"custom_parameters_sha256,omitempty"`
 	PackageLocator   string         `json:"qrl_package"`
 	Backend          devnet.Backend `json:"backend"`
-	Enclave          string         `json:"enclave"`
 	Lanes            []Lane         `json:"lanes"`
 	Versions         Versions       `json:"versions"`
 	GitHub           GitHub         `json:"github"`

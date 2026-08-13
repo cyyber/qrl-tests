@@ -187,6 +187,10 @@ func (runner *Runner) run(ctx context.Context, selected []lanes.Lane, mode runMo
 
 	outcomes := runner.runLanes(ctx, plan)
 	summary, summarizeErr := results.Summarize(plan.reportRoot, outcomes)
+	laneErrors := make([]error, len(outcomes))
+	for index, outcome := range outcomes {
+		laneErrors[index] = outcome.Err
+	}
 
 	// The summary is the verdict authority: a lane whose process exited
 	// cleanly but whose report is missing or unusable is a failure, in the
@@ -201,16 +205,15 @@ func (runner *Runner) run(ctx context.Context, selected []lanes.Lane, mode runMo
 	record.Finish(laneResults, time.Now())
 	manifestErr = errors.Join(manifestErr, record.Write(manifestPath))
 
-	// Reporting problems never mask the test result, and vice versa. The
-	// summary carries each lane's raw error, so it is the sole verdict source.
-	return errors.Join(summary.VerdictError(), manifestErr, summarizeErr)
+	// Reporting problems never mask the test result, and vice versa. Preserve
+	// raw lane errors as well so callers can inspect cancellation and timeout.
+	return errors.Join(summary.VerdictError(), errors.Join(laneErrors...), manifestErr, summarizeErr)
 }
 
 func (runner *Runner) collectManifest(ctx context.Context, plan runPlan) runmanifest.Manifest {
 	configuration := runner.configuration
 	record := runmanifest.Manifest{
 		Backend: configuration.Backend,
-		Enclave: configuration.BaseName,
 		Lanes:   make([]runmanifest.Lane, len(plan.lanes)),
 	}
 	for index, lane := range plan.lanes {
@@ -220,6 +223,7 @@ func (runner *Runner) collectManifest(ctx context.Context, plan runPlan) runmani
 		}
 		record.Lanes[index] = runmanifest.Lane{
 			Name:    lane.lane.Name,
+			Enclave: lane.enclaveName,
 			Profile: lane.lane.Profile,
 			Suites:  suites,
 			Seed:    lane.seed,

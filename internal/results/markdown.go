@@ -20,7 +20,7 @@ func (summary Summary) Markdown() string {
 	}
 
 	for _, lane := range summary.Lanes {
-		if len(lane.Failures) == 0 && len(lane.UnexpectedSkips) == 0 && lane.Error == "" {
+		if len(lane.Failures) == 0 && len(lane.SuiteFailures) == 0 && len(lane.UnexpectedSkips) == 0 && lane.Error == "" {
 			continue
 		}
 		fmt.Fprintf(&report, "\n## %s\n\n", lane.Name)
@@ -36,6 +36,9 @@ func (summary Summary) Markdown() string {
 				fmt.Fprintf(&report, "\n  %s", indent(failure.Message))
 			}
 			report.WriteString("\n")
+		}
+		for _, failure := range lane.SuiteFailures {
+			fmt.Fprintf(&report, "- **suite** %s\n", failure)
 		}
 		for _, skipped := range lane.UnexpectedSkips {
 			fmt.Fprintf(&report, "- **skipped** `%s`\n", skipped)

@@ -124,7 +124,7 @@ func passingCommand(t *testing.T, reports string) func(context.Context, commandS
 
 func writeGinkgoReport(t *testing.T, laneDir string, state types.SpecState) {
 	t.Helper()
-	report := types.Report{SpecReports: []types.SpecReport{{
+	report := types.Report{SuiteSucceeded: state == types.SpecStatePassed, SpecReports: []types.SpecReport{{
 		LeafNodeText: "encodes calls",
 		LeafNodeType: types.NodeTypeIt,
 		State:        state,
@@ -209,6 +209,26 @@ func TestRunFailsOnUnexpectedSkips(t *testing.T) {
 	record := readRunManifest(t, filepath.Join(reports, runmanifest.FileName))
 	require.Equal(t, "failed", record.Lanes[0].Result,
 		"the manifest records the verdict, not the process exit")
+}
+
+func TestRunPreservesCancellation(t *testing.T) {
+	reports := t.TempDir()
+	laneDir := filepath.Join(reports, "lanes", "execution-abi")
+	tests := New(Config{ReportDir: reports}, io.Discard, io.Discard)
+	tests.networks = new(recordingNetworks)
+	tests.runCommand = func(context.Context, commandSpec) error {
+		writeGinkgoReport(t, laneDir, types.SpecStateInterrupted)
+		return context.Canceled
+	}
+
+	err := tests.Run(t.Context(), "execution-abi")
+	require.ErrorIs(t, err, context.Canceled)
+
+	payload, readErr := os.ReadFile(filepath.Join(reports, results.SummaryFileName))
+	require.NoError(t, readErr)
+	var summary results.Summary
+	require.NoError(t, json.Unmarshal(payload, &summary))
+	require.Equal(t, results.ClassCanceled, summary.Lanes[0].Class)
 }
 
 func TestRunFailsWithoutAUsableReport(t *testing.T) {
@@ -315,6 +335,8 @@ func TestRunAllProvisionsPerLane(t *testing.T) {
 	require.Equal(t, devnet.ProfileSingle, networks.started.Profile)
 	require.Equal(t, []string{"qrl-tests-execution-abi"}, networks.stopped)
 	require.Contains(t, command.Args, "./e2e/suites/execution/abi")
+	record := readRunManifest(t, filepath.Join(reports, runmanifest.FileName))
+	require.Equal(t, "qrl-tests-execution-abi", record.Lanes[0].Enclave)
 }
 
 func TestRunReturnsCleanupFailure(t *testing.T) {

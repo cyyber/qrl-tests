@@ -43,9 +43,8 @@ func TestCollect(t *testing.T) {
 		Backend:        devnet.BackendDocker,
 		Images:         &images,
 		PackageLocator: devnet.PackageLocator,
-		Enclave:        "qrl-tests",
 		Lanes: []Lane{
-			{Name: "execution-abi", Profile: devnet.ProfileSingle, Suites: []string{"execution-abi"}, Seed: 42},
+			{Name: "execution-abi", Enclave: "qrl-tests", Profile: devnet.ProfileSingle, Suites: []string{"execution-abi"}, Seed: 42},
 		},
 	}, dependencies{
 		environ: func(key string) string { return environment[key] },
@@ -103,7 +102,7 @@ func TestWrite(t *testing.T) {
 	written := Manifest{
 		PackageLocator: devnet.PackageLocator,
 		Backend:        devnet.BackendDocker,
-		Lanes:          []Lane{{Name: "execution-abi", Profile: devnet.ProfileSingle, Seed: 42}},
+		Lanes:          []Lane{{Name: "execution-abi", Enclave: "qrl-tests", Profile: devnet.ProfileSingle, Seed: 42}},
 		StartedAt:      time.Date(2026, 8, 7, 12, 0, 0, 0, time.UTC),
 	}
 	require.NoError(t, written.Write(path))

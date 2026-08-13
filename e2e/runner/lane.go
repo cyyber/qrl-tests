@@ -130,6 +130,7 @@ func (runner *Runner) executeLane(ctx context.Context, plan runPlan, planned lan
 		Stdout: stdout,
 		Stderr: stderr,
 	})
+	outcome.Err = errors.Join(outcome.Err, laneCtx.Err())
 	outcome.Observation = results.Observe(planned.reportDir)
 	return outcome
 }

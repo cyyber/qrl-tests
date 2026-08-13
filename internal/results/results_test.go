@@ -1,6 +1,7 @@
 package results
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"os"
@@ -29,7 +30,12 @@ func spec(state types.SpecState, text string) types.SpecReport {
 
 func writeReport(t *testing.T, laneDir string, specs ...types.SpecReport) {
 	t.Helper()
-	payload, err := json.Marshal([]types.Report{{SuitePath: laneDir, SpecReports: specs}})
+	writeReports(t, laneDir, types.Report{SuitePath: laneDir, SuiteSucceeded: true, SpecReports: specs})
+}
+
+func writeReports(t *testing.T, laneDir string, reports ...types.Report) {
+	t.Helper()
+	payload, err := json.Marshal(reports)
 	require.NoError(t, err)
 	require.NoError(t, os.MkdirAll(laneDir, 0o755))
 	require.NoError(t, os.WriteFile(filepath.Join(laneDir, "report.json"), payload, 0o600))
@@ -103,6 +109,45 @@ func TestSummarizeClassifiesTimeouts(t *testing.T) {
 	summary := summarizeOne(t, root, observedOutcome("execution-abi", laneDir, errors.New("exit status 1")))
 	require.Equal(t, ClassTimeout, summary.Lanes[0].Class,
 		"a lane that hit its deadline is a timeout even when other specs failed")
+}
+
+func TestSummarizeClassifiesSuiteTimeouts(t *testing.T) {
+	root := t.TempDir()
+	laneDir := filepath.Join(root, "lanes", "execution-abi")
+	writeReports(t, laneDir, types.Report{
+		SpecialSuiteFailureReasons: []string{"Suite did not run because the timeout elapsed"},
+	})
+
+	summary := summarizeOne(t, root, observedOutcome("execution-abi", laneDir, errors.New("exit status 1")))
+	lane := summary.Lanes[0]
+	require.Equal(t, ClassTimeout, lane.Class)
+	require.Equal(t, []string{"Suite did not run because the timeout elapsed"}, lane.SuiteFailures)
+	require.Contains(t, lane.Error, "exit status 1")
+
+	markdown, err := os.ReadFile(filepath.Join(root, MarkdownFileName))
+	require.NoError(t, err)
+	require.Contains(t, string(markdown), "**suite** Suite did not run because the timeout elapsed")
+}
+
+func TestSummarizeDistinguishesCancellationFromTimeout(t *testing.T) {
+	root := t.TempDir()
+	laneDir := filepath.Join(root, "lanes", "execution-abi")
+	writeReport(t, laneDir, spec(types.SpecStateInterrupted, "streams blocks"))
+
+	summary := summarizeOne(t, root, observedOutcome("execution-abi", laneDir, context.Canceled))
+	require.Equal(t, ClassCanceled, summary.Lanes[0].Class)
+}
+
+func TestSummarizeHonorsFailedSuiteReport(t *testing.T) {
+	root := t.TempDir()
+	laneDir := filepath.Join(root, "lanes", "execution-abi")
+	writeReports(t, laneDir, types.Report{
+		SuiteSucceeded: false,
+		SpecReports:    []types.SpecReport{spec(types.SpecStatePassed, "encodes calls")},
+	})
+
+	summary := summarizeOne(t, root, observedOutcome("execution-abi", laneDir, nil))
+	require.Equal(t, ClassInfrastructure, summary.Lanes[0].Class)
 }
 
 func TestSummarizeRejectsUnexpectedSkips(t *testing.T) {
