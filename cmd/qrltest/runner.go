@@ -113,6 +113,11 @@ func runnerFlags() []cli.Flag {
 			Value:   devnet.DefaultStartTimeout,
 			EnvVars: []string{"DEVNET_START_TIMEOUT"},
 		},
+		&cli.Int64Flag{
+			Name:    "seed",
+			Usage:   "ginkgo spec-order seed; 0 draws a fresh seed per lane",
+			EnvVars: []string{"E2E_SEED"},
+		},
 	}
 
 	return append(flags, imageFlags()...)
@@ -144,5 +149,6 @@ func runnerConfig(command *cli.Context) (runner.Config, error) {
 		StartTimeout: command.Duration("start-timeout"),
 		MaxParallel:  maxParallel,
 		Images:       imagesFromFlags(command),
+		Seed:         command.Int64("seed"),
 	}, nil
 }

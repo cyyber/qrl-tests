@@ -25,8 +25,10 @@ make network-stop
 ```
 
 The Ginkgo runner writes JUnit, JSON, logs, and the resolved environment
-manifest under `reports/execution-abi/`. Inspect the registered lane and suite with
-`go run ./cmd/qrltest list`.
+manifest under `reports/lanes/execution-abi/`, next to the run manifest and
+result summaries at the report root. Every run records its Ginkgo seed in
+`reports/run-manifest.json`; unexpected skipped or pending specs fail the run.
+Inspect the registered lane and suite with `go run ./cmd/qrltest list`.
 
 Files that register or execute live scenarios use the `e2e` build tag.
 Deterministic fixture, encoding, and helper tests remain untagged so the default

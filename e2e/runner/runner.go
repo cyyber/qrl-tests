@@ -3,17 +3,21 @@ package runner
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/cyyber/qrl-tests/devnet"
 	"github.com/cyyber/qrl-tests/e2e/internal/lanes"
+	"github.com/cyyber/qrl-tests/internal/results"
+	"github.com/cyyber/qrl-tests/internal/runmanifest"
 )
 
 const DefaultReportDir = "reports"
@@ -28,6 +32,9 @@ type Config struct {
 	Suites       []string
 	StartTimeout time.Duration
 	MaxParallel  int
+	// Seed fixes ginkgo's spec ordering for every lane; zero draws a fresh
+	// seed per lane, and the run manifest records whichever was used.
+	Seed int64
 }
 
 type networkManager interface {
@@ -72,7 +79,7 @@ type Runner struct {
 func New(configuration Config, stdout, stderr io.Writer) *Runner {
 	outputLock := new(sync.Mutex)
 	return &Runner{
-		configuration: configuration,
+		configuration: configuration.withDefaults(),
 		networks:      devnet.NewManager(),
 		runCommand:    execute,
 		stdout:        &lockedWriter{lock: outputLock, writer: stdout},
@@ -168,35 +175,96 @@ func (runner *Runner) selectedLane(name string) (lanes.Lane, error) {
 }
 
 func (runner *Runner) run(ctx context.Context, selected []lanes.Lane, mode runMode) error {
-	planned, err := planLanes(runner.configuration, selected, mode)
+	plan, err := planLanes(runner.configuration, selected, mode)
 	if err != nil {
 		return err
 	}
-	return runner.runLanes(ctx, planned)
+
+	record := runner.collectManifest(ctx, plan)
+	manifestPath := filepath.Join(plan.reportRoot, runmanifest.FileName)
+	// The starting snapshot survives even a run the harness cannot finish.
+	manifestErr := record.Write(manifestPath)
+
+	outcomes := runner.runLanes(ctx, plan)
+	summary, summarizeErr := results.Summarize(plan.reportRoot, outcomes)
+
+	// The summary is the verdict authority: a lane whose process exited
+	// cleanly but whose report is missing or unusable is a failure, in the
+	// manifest and in the exit code alike.
+	laneResults := make(map[string]string, len(summary.Lanes))
+	for _, lane := range summary.Lanes {
+		laneResults[lane.Name] = "failed"
+		if lane.Class == results.ClassPassed {
+			laneResults[lane.Name] = "passed"
+		}
+	}
+	record.Finish(laneResults, time.Now())
+	manifestErr = errors.Join(manifestErr, record.Write(manifestPath))
+
+	// Reporting problems never mask the test result, and vice versa. The
+	// summary carries each lane's raw error, so it is the sole verdict source.
+	return errors.Join(summary.VerdictError(), manifestErr, summarizeErr)
 }
 
-func (runner *Runner) runLanes(ctx context.Context, planned []laneRun) error {
-	limit := runner.configuration.MaxParallel
-	results := make([]error, len(planned))
-
-	if limit < 2 || len(planned) < 2 {
-		for index, lane := range planned {
-			results[index] = runner.runLane(ctx, lane)
+func (runner *Runner) collectManifest(ctx context.Context, plan runPlan) runmanifest.Manifest {
+	configuration := runner.configuration
+	record := runmanifest.Manifest{
+		Backend: configuration.Backend,
+		Enclave: configuration.BaseName,
+		Lanes:   make([]runmanifest.Lane, len(plan.lanes)),
+	}
+	for index, lane := range plan.lanes {
+		suites := make([]string, len(lane.lane.Suites))
+		for position, id := range lane.lane.Suites {
+			suites[position] = string(id)
 		}
-		return errors.Join(results...)
+		record.Lanes[index] = runmanifest.Lane{
+			Name:    lane.lane.Name,
+			Profile: lane.lane.Profile,
+			Suites:  suites,
+			Seed:    lane.seed,
+		}
+	}
+
+	// Attached networks run whatever they were provisioned with; recording
+	// this run's image configuration there would only mislead.
+	if plan.mode.provisions() {
+		record.PackageLocator = devnet.PackageLocator
+		if len(configuration.Parameters) != 0 {
+			record.ParametersSHA256 = fmt.Sprintf("%x", sha256.Sum256(configuration.Parameters))
+		} else if images, err := configuration.Images.Resolved(); err == nil {
+			record.Images = &images
+		} else {
+			raw := configuration.Images
+			record.Images = &raw
+		}
+	}
+
+	return runmanifest.Collect(ctx, plan.testsDir, record)
+}
+
+func (runner *Runner) runLanes(ctx context.Context, plan runPlan) []results.Outcome {
+	limit := runner.configuration.MaxParallel
+	outcomes := make([]results.Outcome, len(plan.lanes))
+
+	if limit < 2 || len(plan.lanes) < 2 {
+		for index, lane := range plan.lanes {
+			outcomes[index] = runner.runLane(ctx, plan, lane)
+		}
+		return outcomes
 	}
 
 	semaphore := make(chan struct{}, limit)
 	var group sync.WaitGroup
-	for index, lane := range planned {
+	for index, lane := range plan.lanes {
 		group.Go(func() {
 			semaphore <- struct{}{}
 			defer func() { <-semaphore }()
 
-			results[index] = runner.runLane(ctx, lane)
+			outcomes[index] = runner.runLane(ctx, plan, lane)
 		})
 	}
 	group.Wait()
 
-	return errors.Join(results...)
+	return outcomes
 }

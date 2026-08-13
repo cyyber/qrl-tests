@@ -12,6 +12,7 @@ import (
 
 	"github.com/cyyber/qrl-tests/devnet"
 	"github.com/cyyber/qrl-tests/e2e/internal/manifest"
+	"github.com/cyyber/qrl-tests/internal/results"
 )
 
 const (
@@ -27,8 +28,8 @@ type laneLease struct {
 	release     func() error
 }
 
-func (runner *Runner) acquireLane(ctx context.Context, planned laneRun) (laneLease, error) {
-	if !planned.provision {
+func (runner *Runner) acquireLane(ctx context.Context, plan runPlan, planned laneRun) (laneLease, error) {
+	if !plan.mode.provisions() {
 		environment, err := runner.networks.Inspect(ctx, planned.enclaveName)
 		if err != nil {
 			return laneLease{}, fmt.Errorf("inspect network: %w", err)
@@ -36,14 +37,16 @@ func (runner *Runner) acquireLane(ctx context.Context, planned laneRun) (laneLea
 		return laneLease{environment: environment}, nil
 	}
 
-	startCtx, cancelStart := context.WithTimeout(ctx, runner.configuration.StartTimeout)
-	environment, err := runner.networks.Start(startCtx, devnet.StartOptions{
+	options := devnet.StartOptions{
 		EnclaveName: planned.enclaveName,
 		Backend:     runner.configuration.Backend,
 		Images:      runner.configuration.Images,
 		Parameters:  runner.configuration.Parameters,
 		Profile:     planned.lane.Profile,
-	})
+	}
+
+	startCtx, cancelStart := context.WithTimeout(ctx, runner.configuration.StartTimeout)
+	environment, err := runner.networks.Start(startCtx, options)
 	cancelStart()
 	if err != nil {
 		return laneLease{}, fmt.Errorf("start network: %w", err)
@@ -53,7 +56,7 @@ func (runner *Runner) acquireLane(ctx context.Context, planned laneRun) (laneLea
 		release: func() error {
 			stopCtx, cancel := context.WithTimeout(context.Background(), laneCleanupTimeout)
 			defer cancel()
-			if err := runner.networks.Stop(stopCtx, planned.enclaveName); err != nil {
+			if err := runner.networks.Stop(stopCtx, environment.EnclaveName); err != nil {
 				return fmt.Errorf("stop network: %w", err)
 			}
 			return nil
@@ -68,52 +71,65 @@ func (lease laneLease) close() error {
 	return lease.release()
 }
 
-func (runner *Runner) runLane(ctx context.Context, planned laneRun) error {
-	if err := runner.executeLane(ctx, planned); err != nil {
-		return fmt.Errorf("lane %s: %w", planned.lane.Name, err)
+func (runner *Runner) runLane(ctx context.Context, plan runPlan, planned laneRun) results.Outcome {
+	outcome := runner.executeLane(ctx, plan, planned)
+	if outcome.Err != nil {
+		outcome.Err = fmt.Errorf("lane %s: %w", planned.lane.Name, outcome.Err)
 	}
-	return nil
+	return outcome
 }
 
-func (runner *Runner) executeLane(ctx context.Context, planned laneRun) (result error) {
+func (runner *Runner) executeLane(ctx context.Context, plan runPlan, planned laneRun) (outcome results.Outcome) {
+	outcome.Name = planned.lane.Name
 	lane := planned.lane
-	lease, err := runner.acquireLane(ctx, planned)
+	lease, err := runner.acquireLane(ctx, plan, planned)
 	if err != nil {
-		return err
+		outcome.BootstrapFailure = true
+		outcome.Err = fmt.Errorf("network bootstrap failed: %w", err)
+		return outcome
 	}
-	defer func() { result = errors.Join(result, lease.close()) }()
+	var logFile *os.File
+	defer func() {
+		outcome.Err = errors.Join(outcome.Err, lease.close())
+		if logFile != nil {
+			outcome.Err = errors.Join(outcome.Err, logFile.Close())
+		}
+	}()
 
 	if err := os.MkdirAll(planned.reportDir, 0o755); err != nil {
-		return fmt.Errorf("create report directory: %w", err)
+		outcome.Err = fmt.Errorf("test infrastructure failed: create report directory: %w", err)
+		return outcome
 	}
-	logFile, err := os.OpenFile(filepath.Join(planned.reportDir, "output.log"), os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
+	logFile, err = os.OpenFile(filepath.Join(planned.reportDir, "output.log"), os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
 	if err != nil {
-		return fmt.Errorf("create output log: %w", err)
+		outcome.Err = fmt.Errorf("test infrastructure failed: create output log: %w", err)
+		return outcome
 	}
-	defer func() { result = errors.Join(result, logFile.Close()) }()
-
 	laneLog := &lockedWriter{lock: new(sync.Mutex), writer: logFile}
 	stdout := io.MultiWriter(runner.stdout, laneLog)
 	stderr := io.MultiWriter(runner.stderr, laneLog)
-
-	if err := manifest.Write(planned.manifestPath, manifest.Manifest{
+	manifestPath := planned.manifestPath()
+	if err := manifest.Write(manifestPath, manifest.Manifest{
 		Lane:        lane.Name,
 		Profile:     lane.Profile,
 		Environment: lease.environment,
 	}); err != nil {
-		return err
+		outcome.Err = fmt.Errorf("test infrastructure failed: %w", err)
+		return outcome
 	}
 
 	laneCtx, cancelLane := context.WithTimeout(ctx, lane.Timeout+laneReportSlack)
 	defer cancelLane()
 	fmt.Fprintf(stdout, "=== RUN lane=%s profile=%s ===\n", lane.Name, lane.Profile)
-	processEnvironment := append(os.Environ(), manifest.PathEnv+"="+planned.manifestPath)
-	return runner.runCommand(laneCtx, commandSpec{
+	processEnvironment := append(os.Environ(), manifest.PathEnv+"="+manifestPath)
+	outcome.Err = runner.runCommand(laneCtx, commandSpec{
 		Path:   "go",
-		Args:   planned.arguments,
-		Dir:    planned.testsDir,
+		Args:   planned.ginkgoArguments(),
+		Dir:    plan.testsDir,
 		Env:    processEnvironment,
 		Stdout: stdout,
 		Stderr: stderr,
 	})
+	outcome.Observation = results.Observe(planned.reportDir)
+	return outcome
 }
