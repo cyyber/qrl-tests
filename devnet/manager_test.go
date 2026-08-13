@@ -134,6 +134,17 @@ func TestStartRunsPinnedPackageLocator(t *testing.T) {
 	require.Equal(t, PackageLocator, client.runLocator)
 }
 
+func TestStartRejectsInvalidImages(t *testing.T) {
+	client := new(fakeClient)
+	options := startOptions()
+	options.Images.Consensus = "local/QRYSM-BEACON:devnet"
+
+	_, err := testManager(client).Start(t.Context(), options)
+	require.ErrorContains(t, err, "prepare qrl-package parameters")
+	require.ErrorContains(t, err, "consensus image")
+	require.Empty(t, client.createdName, "no enclave may be created for a rejected image")
+}
+
 func TestStop(t *testing.T) {
 	missing := new(fakeClient)
 	require.NoError(t, testManager(missing).Stop(t.Context(), "missing"))
