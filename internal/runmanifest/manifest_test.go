@@ -45,7 +45,7 @@ func TestCollect(t *testing.T) {
 		PackageLocator: devnet.PackageLocator,
 		Enclave:        "qrl-tests",
 		Lanes: []Lane{
-			{Name: "execution-abi", Profile: devnet.ProfileSingle, Suites: []string{"execution-abi"}, Seed: 42},
+			{Name: "execution", Profile: devnet.ProfileSingle, Suites: []string{"execution-abi"}, Seed: 42},
 		},
 	}, dependencies{
 		environ: func(key string) string { return environment[key] },
@@ -83,17 +83,17 @@ func TestCollectSurvivesMissingTools(t *testing.T) {
 }
 
 func TestFinish(t *testing.T) {
-	manifest := Manifest{Lanes: []Lane{{Name: "execution-abi"}, {Name: "consensus"}}}
+	manifest := Manifest{Lanes: []Lane{{Name: "execution"}, {Name: "consensus"}}}
 	finished := time.Date(2026, 8, 7, 13, 0, 0, 0, time.UTC)
 
-	manifest.Finish(map[string]string{"execution-abi": "passed", "consensus": "passed"}, finished)
+	manifest.Finish(map[string]string{"execution": "passed", "consensus": "passed"}, finished)
 	require.Equal(t, "passed", manifest.Result)
 	require.Equal(t, finished, manifest.FinishedAt)
 
-	manifest.Finish(map[string]string{"execution-abi": "passed", "consensus": "failed"}, finished)
+	manifest.Finish(map[string]string{"execution": "passed", "consensus": "failed"}, finished)
 	require.Equal(t, "failed", manifest.Result)
 
-	manifest.Finish(map[string]string{"execution-abi": "passed"}, finished)
+	manifest.Finish(map[string]string{"execution": "passed"}, finished)
 	require.Equal(t, "failed", manifest.Result, "a lane without a result never ran")
 	require.Empty(t, manifest.Lanes[1].Result)
 }
@@ -103,7 +103,7 @@ func TestWrite(t *testing.T) {
 	written := Manifest{
 		PackageLocator: devnet.PackageLocator,
 		Backend:        devnet.BackendDocker,
-		Lanes:          []Lane{{Name: "execution-abi", Profile: devnet.ProfileSingle, Seed: 42}},
+		Lanes:          []Lane{{Name: "execution", Profile: devnet.ProfileSingle, Seed: 42}},
 		StartedAt:      time.Date(2026, 8, 7, 12, 0, 0, 0, time.UTC),
 	}
 	require.NoError(t, written.Write(path))

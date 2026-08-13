@@ -123,7 +123,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        lane: ${{ fromJSON(vars.E2E_NIGHTLY_LANES || '["execution-abi"]') }}
+        lane: ${{ fromJSON(vars.E2E_NIGHTLY_LANES || '["execution"]') }}
     uses: ./.github/workflows/e2e-reusable.yml
     with:
       # Immutable digest references from the images job.
@@ -148,7 +148,7 @@ jobs:
           GO_QRL_SHA: ${{ needs.images.outputs.go-qrl-sha }}
           QRYSM_SHA: ${{ needs.images.outputs.qrysm-sha }}
           GENERATOR_SHA: ${{ needs.images.outputs.generator-sha }}
-          LANES: ${{ vars.E2E_NIGHTLY_LANES || '["execution-abi"]' }}
+          LANES: ${{ vars.E2E_NIGHTLY_LANES || '["execution"]' }}
         run: |
           {
             echo "# Nightly E2E: ${RESULT}"

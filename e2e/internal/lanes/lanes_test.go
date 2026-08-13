@@ -40,21 +40,21 @@ func TestRegistry(t *testing.T) {
 }
 
 func TestLaneWithSuites(t *testing.T) {
-	executionABI, err := Named("execution-abi")
+	execution, err := Named("execution")
 	require.NoError(t, err)
-	require.Equal(t, []SuiteID{suiteExecutionABI, suiteExecutionConsole}, executionABI.Suites)
+	require.Equal(t, []SuiteID{suiteExecutionABI, suiteExecutionConsole}, execution.Suites)
 	require.Equal(t, []string{
 		"./e2e/suites/execution/abi",
 		"./e2e/suites/execution/console",
-	}, executionABI.Packages())
-	require.Equal(t, 30*time.Minute, executionABI.Timeout)
-	require.True(t, executionABI.NeedsGQRL())
+	}, execution.Packages())
+	require.Equal(t, 30*time.Minute, execution.Timeout)
+	require.True(t, execution.NeedsGQRL())
 
-	unchanged, err := executionABI.WithSuites(nil)
+	unchanged, err := execution.WithSuites(nil)
 	require.NoError(t, err)
-	require.Equal(t, executionABI, unchanged)
+	require.Equal(t, execution, unchanged)
 
-	selected, err := executionABI.WithSuites([]string{
+	selected, err := execution.WithSuites([]string{
 		"execution-console",
 		"execution-abi",
 		"execution-console",
@@ -62,17 +62,17 @@ func TestLaneWithSuites(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, []SuiteID{suiteExecutionABI, suiteExecutionConsole}, selected.Suites)
 
-	selected, err = executionABI.WithSuites([]string{"execution-console"})
+	selected, err = execution.WithSuites([]string{"execution-console"})
 	require.NoError(t, err)
 	require.Equal(t, []SuiteID{suiteExecutionConsole}, selected.Suites)
 	require.Equal(t, []string{"./e2e/suites/execution/console"}, selected.Packages())
 	require.True(t, selected.NeedsGQRL())
 
-	selected, err = executionABI.WithSuites([]string{"execution-abi"})
+	selected, err = execution.WithSuites([]string{"execution-abi"})
 	require.NoError(t, err)
 	require.False(t, selected.NeedsGQRL())
 
-	_, err = executionABI.WithSuites([]string{"unknown"})
+	_, err = execution.WithSuites([]string{"unknown"})
 	require.ErrorContains(t, err, "unknown E2E suite")
 }
 

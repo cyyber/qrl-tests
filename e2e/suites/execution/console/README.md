@@ -8,7 +8,7 @@ go test -tags=e2e -run '^$' ./e2e/suites/execution/console
 go generate ./e2e/internal/consolefixture
 
 # Run against an already-running development network.
-make e2e E2E_LANE=execution-abi E2E_SUITE=execution-console
+make e2e E2E_LANE=execution E2E_SUITE=execution-console
 ```
 
 ## Coverage contract

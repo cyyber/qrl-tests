@@ -125,13 +125,13 @@ func TestStartCollectsDiagnosticsBeforeCleanup(t *testing.T) {
 	manager.collect = func(_ context.Context, enclave, outputDir string) error {
 		require.False(t, client.destroyed, "diagnostics must run before the enclave is destroyed")
 		require.Equal(t, "failed-start", enclave)
-		require.Equal(t, "reports/diagnostics/execution-abi", outputDir)
+		require.Equal(t, "reports/diagnostics/execution", outputDir)
 		order = append(order, "collect")
 		return nil
 	}
 
 	options := startOptions()
-	options.FailureDiagnosticsDir = "reports/diagnostics/execution-abi"
+	options.FailureDiagnosticsDir = "reports/diagnostics/execution"
 	_, err := manager.Start(t.Context(), options)
 	require.ErrorContains(t, err, "package failed")
 	require.Equal(t, []string{"collect"}, order)
@@ -146,7 +146,7 @@ func TestStartReportsDiagnosticsFailureAlongsideCause(t *testing.T) {
 	}
 
 	options := startOptions()
-	options.FailureDiagnosticsDir = "reports/diagnostics/execution-abi"
+	options.FailureDiagnosticsDir = "reports/diagnostics/execution"
 	_, err := manager.Start(t.Context(), options)
 	require.ErrorContains(t, err, "package failed")
 	require.ErrorContains(t, err, "collect start diagnostics: logs unavailable")

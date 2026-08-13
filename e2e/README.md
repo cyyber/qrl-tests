@@ -8,7 +8,7 @@ endpoints; suites do not provision infrastructure.
 
 | Lane | Profile | Coverage |
 | --- | --- | --- |
-| `execution-abi` | `single` | Execution ABI plus CLI and embedded-console behavior |
+| `execution` | `single` | Execution ABI plus CLI and embedded-console behavior |
 
 The lane runs these suites in order:
 
@@ -32,7 +32,7 @@ make network-stop
 ```
 
 The Ginkgo runner writes JUnit, JSON, logs, and the resolved environment
-manifest under `reports/lanes/execution-abi/`, next to the run manifest and
+manifest under `reports/lanes/execution/`, next to the run manifest and
 result summaries at the report root. Every run records its Ginkgo seed in
 `reports/run-manifest.json`; unexpected skipped or pending specs fail the run.
 Inspect the registered lane and suites with `go run ./cmd/qrltest list`.

@@ -13,11 +13,11 @@ import (
 func TestManifestRoundTrip(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "manifest.json")
 	want := Manifest{
-		Lane:    "execution-abi",
+		Lane:    "execution",
 		Profile: devnet.ProfileSingle,
 		Tools:   Tools{GQRL: "/tmp/gqrl"},
 		Environment: devnet.Environment{
-			EnclaveName: "qrl-tests-execution-abi",
+			EnclaveName: "qrl-tests-execution",
 			Backend:     devnet.BackendDocker,
 			Participants: []devnet.Participant{{
 				Index:     1,

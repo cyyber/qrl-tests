@@ -17,7 +17,7 @@ go generate ./e2e/internal/abifixture
 Run against an already-running development network:
 
 ```bash
-make e2e E2E_LANE=execution-abi E2E_SUITE=execution-abi
+make e2e E2E_LANE=execution E2E_SUITE=execution-abi
 ```
 
 ## Coverage contract

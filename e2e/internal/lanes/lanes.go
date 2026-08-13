@@ -32,7 +32,7 @@ var suitePackages = map[SuiteID]string{
 
 var registry = []Lane{
 	{
-		Name:    "execution-abi",
+		Name:    "execution",
 		Profile: devnet.ProfileSingle,
 		Suites:  []SuiteID{suiteExecutionABI, suiteExecutionConsole},
 		Timeout: 30 * time.Minute,
