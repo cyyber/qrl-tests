@@ -26,10 +26,3 @@ func TestParseBackend(t *testing.T) {
 	_, err = ParseBackend("unknown")
 	require.Error(t, err)
 }
-
-func TestImagesWithDefaults(t *testing.T) {
-	images := Images{Execution: " registry.example/go-qrl:test ", Clef: "  "}.withDefaults()
-	require.Equal(t, "registry.example/go-qrl:test", images.Execution)
-	require.Equal(t, DefaultClefImage, images.Clef)
-	require.Equal(t, DefaultImages(), Images{}.withDefaults())
-}

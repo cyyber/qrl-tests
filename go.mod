@@ -3,6 +3,7 @@ module github.com/cyyber/qrl-tests
 go 1.26.5
 
 require (
+	github.com/distribution/reference v0.6.0
 	github.com/kurtosis-tech/kurtosis/api/golang v1.20.0
 	github.com/onsi/ginkgo/v2 v2.32.0
 	github.com/onsi/gomega v1.42.1
@@ -61,6 +62,7 @@ require (
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/nxadm/tail v1.4.11 // indirect
 	github.com/olekukonko/tablewriter v0.0.5 // indirect
+	github.com/opencontainers/go-digest v1.0.0 // indirect
 	github.com/opentracing/opentracing-go v1.1.0 // indirect
 	github.com/peterh/liner v1.2.0 // indirect
 	github.com/pkg/errors v0.9.1 // indirect

@@ -14,7 +14,7 @@ import (
 
 func TestDefaultParameters(t *testing.T) {
 	address := "Q" + strings.Repeat("a", 128)
-	const executionImage = "local/go-qrl:test"
+	executionImage := "ghcr.io/example/go-qrl@sha256:" + strings.Repeat("0af1", 16)
 	payload, err := resolveParameters(address, StartOptions{
 		Images:  Images{Execution: executionImage},
 		Profile: ProfileSingle,

@@ -70,6 +70,11 @@ Kurtosis restricts enclave names to letters, digits, and dashes. Operations
 using the same name must run serially. Concurrent networks need different names.
 Networks testing different client builds also need different image references.
 
+Image references may name a tag, a digest, or both
+(`registry.example/go-qrl:v1@sha256:<64 hex>`); malformed references fail the
+start before any enclave is created. The qrl-package revision is pinned in code
+(`devnet.PackageLocator`) and is not configurable.
+
 ## Custom parameters
 
 `DEVNET_PARAMS_FILE` replaces the selected built-in profile with a complete
