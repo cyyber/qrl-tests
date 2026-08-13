@@ -30,7 +30,12 @@ func spec(state types.SpecState, text string) types.SpecReport {
 
 func writeReport(t *testing.T, laneDir string, specs ...types.SpecReport) {
 	t.Helper()
-	writeReports(t, laneDir, types.Report{SuitePath: laneDir, SuiteSucceeded: true, SpecReports: specs})
+	writeReports(t, laneDir, types.Report{
+		SuitePath:        laneDir,
+		SuiteDescription: filepath.Base(laneDir),
+		SuiteSucceeded:   true,
+		SpecReports:      specs,
+	})
 }
 
 func writeReports(t *testing.T, laneDir string, reports ...types.Report) {
@@ -66,17 +71,29 @@ func TestSummarizePassedLane(t *testing.T) {
 	require.Equal(t, "passed", summary.Result)
 	require.Equal(t, ClassPassed, summary.Lanes[0].Class)
 	require.Equal(t, Counts{Specs: 2, Passed: 2}, summary.Lanes[0].Counts)
+	require.Equal(t, []suiteSummary{{
+		Name:   "execution-abi",
+		Class:  ClassPassed,
+		Counts: Counts{Specs: 2, Passed: 2},
+	}}, summary.Lanes[0].suites)
 
 	var written Summary
 	payload, err := os.ReadFile(filepath.Join(root, SummaryFileName))
 	require.NoError(t, err)
+	require.NotContains(t, string(payload), `"suites"`)
 	require.NoError(t, json.Unmarshal(payload, &written))
-	require.Equal(t, summary, written)
+	require.Equal(t, summary.Result, written.Result)
+	require.Equal(t, summary.Totals, written.Totals)
+	require.Equal(t, summary.Lanes[0].Name, written.Lanes[0].Name)
+	require.Equal(t, summary.Lanes[0].Class, written.Lanes[0].Class)
+	require.Equal(t, summary.Lanes[0].Counts, written.Lanes[0].Counts)
 
 	markdown, err := os.ReadFile(filepath.Join(root, MarkdownFileName))
 	require.NoError(t, err)
-	require.Contains(t, string(markdown), "# E2E result: passed")
-	require.Contains(t, string(markdown), "| execution-abi | passed | 2 | 2 | 0 | 0 | 0 |")
+	require.Contains(t, string(markdown), "## E2E: passed")
+	require.Contains(t, string(markdown), "### execution-abi")
+	require.Contains(t, string(markdown), "| execution-abi | 2/2 |")
+	require.NotContains(t, string(markdown), "| Failed |")
 }
 
 func TestSummarizeClassifiesAssertionFailures(t *testing.T) {
@@ -92,10 +109,11 @@ func TestSummarizeClassifiesAssertionFailures(t *testing.T) {
 	lane := summary.Lanes[0]
 	require.Equal(t, ClassAssertion, lane.Class)
 	require.Equal(t, Counts{Specs: 2, Passed: 1, Failed: 1}, lane.Counts)
-	require.Len(t, lane.Failures, 1)
-	require.Equal(t, "ABI decodes events", lane.Failures[0].Spec)
-	require.Equal(t, "expected 1, got 2", lane.Failures[0].Message)
-	require.Equal(t, "calls_test.go:12", lane.Failures[0].Location)
+	suite := lane.suites[0]
+	require.Len(t, suite.Failures, 1)
+	require.Equal(t, "ABI decodes events", suite.Failures[0].Spec)
+	require.Equal(t, "expected 1, got 2", suite.Failures[0].Message)
+	require.Equal(t, "calls_test.go:12", suite.Failures[0].Location)
 }
 
 func TestSummarizeClassifiesTimeouts(t *testing.T) {
@@ -121,7 +139,7 @@ func TestSummarizeClassifiesSuiteTimeouts(t *testing.T) {
 	summary := summarizeOne(t, root, observedOutcome("execution-abi", laneDir, errors.New("exit status 1")))
 	lane := summary.Lanes[0]
 	require.Equal(t, ClassTimeout, lane.Class)
-	require.Equal(t, []string{"Suite did not run because the timeout elapsed"}, lane.SuiteFailures)
+	require.Equal(t, []string{"Suite did not run because the timeout elapsed"}, lane.suites[0].SuiteFailures)
 	require.Contains(t, lane.Error, "exit status 1")
 
 	markdown, err := os.ReadFile(filepath.Join(root, MarkdownFileName))
@@ -217,7 +235,7 @@ func TestSummarizeCountsSetupFailures(t *testing.T) {
 	summary := summarizeOne(t, root, observedOutcome("execution-abi", laneDir, errors.New("exit status 1")))
 	lane := summary.Lanes[0]
 	require.Equal(t, ClassAssertion, lane.Class)
-	require.Len(t, lane.Failures, 1)
+	require.Len(t, lane.suites[0].Failures, 1)
 	require.Equal(t, Counts{Specs: 1, Skipped: 1}, lane.Counts,
 		"setup nodes are not specs; the skipped spec still counts")
 }
@@ -236,10 +254,40 @@ func TestSummarizeAggregatesLanes(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "failed", summary.Result)
 	require.Equal(t, Counts{Specs: 2, Passed: 1, Failed: 1}, summary.Totals)
+}
+
+func TestSummarizeReportsSuitesWithinLane(t *testing.T) {
+	root := t.TempDir()
+	laneDir := filepath.Join(root, "lanes", "execution")
+	writeReports(t, laneDir,
+		types.Report{
+			SuiteDescription: "ABI E2E suite",
+			SuiteSucceeded:   true,
+			SpecReports:      []types.SpecReport{spec(types.SpecStatePassed, "encodes calls")},
+		},
+		types.Report{
+			SuiteDescription: "Console E2E suite",
+			SpecReports:      []types.SpecReport{spec(types.SpecStateFailed, "decodes events")},
+		},
+	)
+
+	summary := summarizeOne(t, root, observedOutcome("execution", laneDir, errors.New("exit status 1")))
+	lane := summary.Lanes[0]
+	require.Equal(t, ClassAssertion, lane.Class)
+	require.Equal(t, Counts{Specs: 2, Passed: 1, Failed: 1}, lane.Counts)
+	require.Len(t, lane.suites, 2)
+	require.Equal(t, "ABI E2E suite", lane.suites[0].Name)
+	require.Equal(t, ClassPassed, lane.suites[0].Class)
+	require.Equal(t, "Console E2E suite", lane.suites[1].Name)
+	require.Equal(t, ClassAssertion, lane.suites[1].Class)
 
 	markdown, err := os.ReadFile(filepath.Join(root, MarkdownFileName))
 	require.NoError(t, err)
-	require.Contains(t, string(markdown), "| total | failed | 2 | 1 | 1 | 0 | 0 |")
+	require.Contains(t, string(markdown), "| ABI E2E suite | 1/1 |")
+	require.Contains(t, string(markdown), "| Console E2E suite | 0/1 failed |")
+	require.NotContains(t, string(markdown), "lane total")
+	require.NotContains(t, string(markdown), "exit status 1")
+	require.Contains(t, string(markdown), "#### Console E2E suite failures")
 }
 
 func TestSummarizeEmptyReportIsInfrastructure(t *testing.T) {

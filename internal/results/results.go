@@ -75,6 +75,15 @@ type Failure struct {
 	Location string `json:"location,omitempty"`
 }
 
+type suiteSummary struct {
+	Name            string
+	Class           string
+	Counts          Counts
+	Failures        []Failure
+	SuiteFailures   []string
+	UnexpectedSkips []string
+}
+
 type LaneSummary struct {
 	Name            string    `json:"name"`
 	Class           string    `json:"class"`
@@ -83,6 +92,7 @@ type LaneSummary struct {
 	Failures        []Failure `json:"failures,omitempty"`
 	SuiteFailures   []string  `json:"suite_failures,omitempty"`
 	UnexpectedSkips []string  `json:"unexpected_skips,omitempty"`
+	suites          []suiteSummary
 }
 
 type Summary struct {
@@ -99,12 +109,7 @@ func Summarize(reportRoot string, outcomes []Outcome) (Summary, error) {
 	for index, outcome := range outcomes {
 		summary.Lanes[index] = summarizeOutcome(outcome)
 
-		counts := summary.Lanes[index].Counts
-		summary.Totals.Specs += counts.Specs
-		summary.Totals.Passed += counts.Passed
-		summary.Totals.Failed += counts.Failed
-		summary.Totals.Pending += counts.Pending
-		summary.Totals.Skipped += counts.Skipped
+		summary.Totals.add(summary.Lanes[index].Counts)
 		if summary.Lanes[index].Class != ClassPassed {
 			summary.Result = "failed"
 		}
@@ -156,35 +161,60 @@ func summarizeOutcome(outcome Outcome) LaneSummary {
 	}
 
 	for _, report := range outcome.Observation.reports {
-		result.SuiteFailures = append(result.SuiteFailures, report.SpecialSuiteFailureReasons...)
-		for _, spec := range report.SpecReports {
-			result.tally(spec)
-		}
+		suite := summarizeSuite(report)
+		result.suites = append(result.suites, suite)
+		result.Counts.add(suite.Counts)
+		result.Failures = append(result.Failures, suite.Failures...)
+		result.SuiteFailures = append(result.SuiteFailures, suite.SuiteFailures...)
+		result.UnexpectedSkips = append(result.UnexpectedSkips, suite.UnexpectedSkips...)
 	}
 
 	result.Class = classify(outcome, result)
 	return result
 }
 
-func (lane *LaneSummary) tally(spec types.SpecReport) {
+func summarizeSuite(report types.Report) suiteSummary {
+	result := suiteSummary{
+		Name:          suiteName(report),
+		Class:         ClassPassed,
+		SuiteFailures: report.SpecialSuiteFailureReasons,
+	}
+	for _, spec := range report.SpecReports {
+		result.tally(spec)
+	}
+	result.Class = classifyReports([]types.Report{report}, result.Counts, result.Failures, result.UnexpectedSkips, nil)
+	return result
+}
+
+func suiteName(report types.Report) string {
+	if name := strings.TrimSpace(report.SuiteDescription); name != "" {
+		return name
+	}
+	if path := strings.TrimSpace(report.SuitePath); path != "" {
+		return filepath.Base(path)
+	}
+	return "suite"
+}
+
+func (suite *suiteSummary) tally(spec types.SpecReport) {
 	name := strings.Join(append(append([]string{}, spec.ContainerHierarchyTexts...), spec.LeafNodeText), " ")
 	if name == "" {
 		name = spec.LeafNodeType.String()
 	}
 
 	if spec.LeafNodeType == types.NodeTypeIt {
-		lane.Counts.Specs++
+		suite.Counts.Specs++
 		switch spec.State {
 		case types.SpecStatePassed:
-			lane.Counts.Passed++
+			suite.Counts.Passed++
 		case types.SpecStatePending:
-			lane.Counts.Pending++
-			lane.UnexpectedSkips = append(lane.UnexpectedSkips, name)
+			suite.Counts.Pending++
+			suite.UnexpectedSkips = append(suite.UnexpectedSkips, name)
 		case types.SpecStateSkipped:
-			lane.Counts.Skipped++
-			lane.UnexpectedSkips = append(lane.UnexpectedSkips, name)
+			suite.Counts.Skipped++
+			suite.UnexpectedSkips = append(suite.UnexpectedSkips, name)
 		default:
-			lane.Counts.Failed++
+			suite.Counts.Failed++
 		}
 	}
 
@@ -193,11 +223,19 @@ func (lane *LaneSummary) tally(spec types.SpecReport) {
 		if location := spec.Failure.Location.FileName; location != "" {
 			failure.Location = fmt.Sprintf("%s:%d", location, spec.Failure.Location.LineNumber)
 		}
-		lane.Failures = append(lane.Failures, failure)
+		suite.Failures = append(suite.Failures, failure)
 	}
 }
 
-func classify(outcome Outcome, tallied LaneSummary) string {
+func (counts *Counts) add(other Counts) {
+	counts.Specs += other.Specs
+	counts.Passed += other.Passed
+	counts.Failed += other.Failed
+	counts.Pending += other.Pending
+	counts.Skipped += other.Skipped
+}
+
+func classify(outcome Outcome, summary LaneSummary) string {
 	if outcome.BootstrapFailure {
 		return ClassBootstrap
 	}
@@ -214,9 +252,19 @@ func classify(outcome Outcome, tallied LaneSummary) string {
 		return ClassInfrastructure
 	}
 
-	timedOut := reportTimedOut(outcome.Observation.reports)
+	return classifyReports(
+		outcome.Observation.reports,
+		summary.Counts,
+		summary.Failures,
+		summary.UnexpectedSkips,
+		outcome.Err,
+	)
+}
+
+func classifyReports(reports []types.Report, counts Counts, failures []Failure, unexpectedSkips []string, err error) string {
+	timedOut := reportTimedOut(reports)
 	interrupted := false
-	for _, failure := range tallied.Failures {
+	for _, failure := range failures {
 		switch failure.State {
 		case types.SpecStateTimedout.String():
 			timedOut = true
@@ -229,19 +277,19 @@ func classify(outcome Outcome, tallied LaneSummary) string {
 		return ClassTimeout
 	case interrupted:
 		return ClassInfrastructure
-	case tallied.Counts.Failed > 0 || len(tallied.Failures) > 0:
+	case counts.Failed > 0 || len(failures) > 0:
 		return ClassAssertion
-	case len(tallied.UnexpectedSkips) > 0:
+	case len(unexpectedSkips) > 0:
 		// Report-backed evidence outranks the bare exit code: ginkgo runs
 		// with --fail-on-pending, so a pending or skipped spec also fails
 		// the process, and that exit says nothing new.
 		return ClassSkipped
-	case reportFailed(outcome.Observation.reports):
+	case reportFailed(reports):
 		return ClassInfrastructure
-	case outcome.Err != nil:
+	case err != nil:
 		// The test process failed without a failing spec on record.
 		return ClassInfrastructure
-	case tallied.Counts.Passed == 0:
+	case counts.Passed == 0:
 		// An empty report means the suites never ran.
 		return ClassInfrastructure
 	}

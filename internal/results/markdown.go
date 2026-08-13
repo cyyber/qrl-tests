@@ -9,47 +9,97 @@ import (
 // it to $GITHUB_STEP_SUMMARY.
 func (summary Summary) markdown() string {
 	var report strings.Builder
-	fmt.Fprintf(&report, "# E2E result: %s\n\n", summary.Result)
-	report.WriteString("| Lane | Class | Specs | Passed | Failed | Pending | Skipped |\n")
-	report.WriteString("| --- | --- | --- | --- | --- | --- | --- |\n")
+	fmt.Fprintf(&report, "## E2E: %s\n", summary.Result)
 	for _, lane := range summary.Lanes {
-		writeCountsRow(&report, lane.Name, lane.Class, lane.Counts)
-	}
-	if len(summary.Lanes) > 1 {
-		writeCountsRow(&report, "total", summary.Result, summary.Totals)
+		fmt.Fprintf(&report, "\n### %s\n\n", lane.Name)
+		if len(lane.suites) == 0 {
+			fmt.Fprintf(&report, "**Result:** %s\n", displayClass(lane.Class))
+			continue
+		}
+		report.WriteString("| Suite | Result |\n")
+		report.WriteString("| --- | ---: |\n")
+		for _, suite := range lane.suites {
+			fmt.Fprintf(&report, "| %s | %s |\n", suite.Name, suiteResult(suite))
+		}
 	}
 
 	for _, lane := range summary.Lanes {
-		if len(lane.Failures) == 0 && len(lane.SuiteFailures) == 0 && len(lane.UnexpectedSkips) == 0 && lane.Error == "" {
+		if !lane.hasDetails() {
 			continue
 		}
-		fmt.Fprintf(&report, "\n## %s\n\n", lane.Name)
-		if lane.Error != "" {
+		if showLaneError(lane) {
+			fmt.Fprintf(&report, "\n### %s details\n\n", lane.Name)
 			fmt.Fprintf(&report, "```\n%s\n```\n", lane.Error)
 		}
-		for _, failure := range lane.Failures {
-			fmt.Fprintf(&report, "- **%s** `%s`", failure.State, failure.Spec)
-			if failure.Location != "" {
-				fmt.Fprintf(&report, " (%s)", failure.Location)
+		for _, suite := range lane.suites {
+			if !suite.hasDetails() {
+				continue
 			}
-			if failure.Message != "" {
-				fmt.Fprintf(&report, "\n  %s", indent(failure.Message))
-			}
-			report.WriteString("\n")
-		}
-		for _, failure := range lane.SuiteFailures {
-			fmt.Fprintf(&report, "- **suite** %s\n", failure)
-		}
-		for _, skipped := range lane.UnexpectedSkips {
-			fmt.Fprintf(&report, "- **skipped** `%s`\n", skipped)
+			fmt.Fprintf(&report, "\n#### %s failures\n\n", suite.Name)
+			writeSuiteDetails(&report, suite)
 		}
 	}
 	return report.String()
 }
 
-func writeCountsRow(report *strings.Builder, name, class string, counts Counts) {
-	fmt.Fprintf(report, "| %s | %s | %d | %d | %d | %d | %d |\n",
-		name, class, counts.Specs, counts.Passed, counts.Failed, counts.Pending, counts.Skipped)
+func (lane LaneSummary) hasDetails() bool {
+	if showLaneError(lane) {
+		return true
+	}
+	for _, suite := range lane.suites {
+		if suite.hasDetails() {
+			return true
+		}
+	}
+	return false
+}
+
+func (suite suiteSummary) hasDetails() bool {
+	return len(suite.Failures) > 0 || len(suite.SuiteFailures) > 0 || len(suite.UnexpectedSkips) > 0
+}
+
+func writeSuiteDetails(report *strings.Builder, suite suiteSummary) {
+	for _, failure := range suite.Failures {
+		fmt.Fprintf(report, "- **%s** `%s`", failure.State, failure.Spec)
+		if failure.Location != "" {
+			fmt.Fprintf(report, " (%s)", failure.Location)
+		}
+		if failure.Message != "" {
+			fmt.Fprintf(report, "\n  %s", indent(failure.Message))
+		}
+		report.WriteString("\n")
+	}
+	for _, failure := range suite.SuiteFailures {
+		fmt.Fprintf(report, "- **suite** %s\n", failure)
+	}
+	for _, skipped := range suite.UnexpectedSkips {
+		fmt.Fprintf(report, "- **skipped** `%s`\n", skipped)
+	}
+}
+
+func suiteResult(suite suiteSummary) string {
+	result := fmt.Sprintf("%d/%d", suite.Counts.Passed, suite.Counts.Specs)
+	if suite.Class != ClassPassed {
+		result += " " + displayClass(suite.Class)
+	}
+	return result
+}
+
+func displayClass(class string) string {
+	switch class {
+	case ClassAssertion:
+		return "failed"
+	case ClassTimeout:
+		return "timed out"
+	case ClassInfrastructure:
+		return "error"
+	default:
+		return class
+	}
+}
+
+func showLaneError(lane LaneSummary) bool {
+	return lane.Error != "" && lane.Class != ClassAssertion && lane.Class != ClassSkipped
 }
 
 func indent(message string) string {
