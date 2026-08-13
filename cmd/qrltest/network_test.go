@@ -5,6 +5,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/cyyber/qrl-tests/devnet"
@@ -54,6 +55,19 @@ func TestNetworkStart(t *testing.T) {
 		Parameters: parameters,
 		Profile:    devnet.ProfileSingle,
 	}, controller.startOptions)
+}
+
+func TestNetworkStartEnvironmentOverrides(t *testing.T) {
+	digested := "ghcr.io/example/qrysm-beacon@sha256:" + strings.Repeat("0af1", 16)
+	t.Setenv("DEVNET_CONSENSUS_IMAGE", digested)
+	t.Setenv("DEVNET_EXECUTION_IMAGE", "registry.example/go-qrl:env")
+
+	controller := new(recordingController)
+	runCommand(t, controller, "network", "start", "--execution-image", "registry.example/go-qrl:flag")
+
+	require.Equal(t, digested, controller.startOptions.Images.Consensus)
+	require.Equal(t, "registry.example/go-qrl:flag", controller.startOptions.Images.Execution,
+		"a flag must take precedence over its environment variable")
 }
 
 func TestNetworkStop(t *testing.T) {

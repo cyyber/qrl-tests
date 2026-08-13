@@ -21,7 +21,8 @@ const (
 	destroyConfirmationTimeout = time.Minute // confirm loop in destroyAndConfirm
 	retryInterval              = 500 * time.Millisecond
 
-	packageLocator = "github.com/rgeraldes24/qrl-package@3892c3d2596403c080424d9e8fc99ff172483fe0"
+	// PackageLocator pins the qrl-package revision every network runs.
+	PackageLocator = "github.com/cyyber/qrl-package@bcb7370dc416606a2982d1f9192073232281154f"
 )
 
 type kurtosisClient interface {
@@ -112,7 +113,7 @@ func (manager *Manager) Start(ctx context.Context, options StartOptions) (Enviro
 	if err := client.CreateEnclave(ctx, options.EnclaveName); err != nil {
 		return Environment{}, fmt.Errorf("create enclave: %w", err)
 	}
-	if err := client.RunRemotePackage(ctx, options.EnclaveName, packageLocator, parameters); err != nil {
+	if err := client.RunRemotePackage(ctx, options.EnclaveName, PackageLocator, parameters); err != nil {
 		return Environment{}, manager.startFailure(client, options.EnclaveName, "run pinned qrl-package", err)
 	}
 

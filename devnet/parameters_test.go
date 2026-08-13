@@ -43,6 +43,28 @@ func TestDefaultParameters(t *testing.T) {
 	require.Equal(t, "2000000QRL", prefund["balance"])
 }
 
+func TestProfileParametersCarryDigestReferences(t *testing.T) {
+	address := "Q" + strings.Repeat("d", 128)
+	digested := "ghcr.io/example/go-qrl@sha256:" + strings.Repeat("0af1", 16)
+	payload, err := resolveParameters(address, StartOptions{
+		Images:  Images{Execution: digested},
+		Profile: ProfileSingle,
+	})
+	require.NoError(t, err)
+
+	view := decodedParametersFile(t, payload)
+	require.Equal(t, digested, view.Participants[0].ExecutionImage)
+}
+
+func TestProfileParametersRejectInvalidImages(t *testing.T) {
+	address := "Q" + strings.Repeat("f", 128)
+	_, err := resolveParameters(address, StartOptions{
+		Images:  Images{Execution: "local/go qrl:devnet"},
+		Profile: ProfileSingle,
+	})
+	require.ErrorContains(t, err, "execution image")
+}
+
 func TestFileParametersPassThroughUnchanged(t *testing.T) {
 	address := "Q" + strings.Repeat("b", 128)
 	custom := []byte(fmt.Sprintf(`participants:

@@ -16,6 +16,7 @@ type fakeClient struct {
 	destroyErr  error
 	services    map[string]kurtosis.Service
 	createdName string
+	runLocator  string
 	destroyed   bool
 }
 
@@ -28,7 +29,8 @@ func (client *fakeClient) CreateEnclave(_ context.Context, name string) error {
 	return client.createErr
 }
 
-func (client *fakeClient) RunRemotePackage(context.Context, string, string, string) error {
+func (client *fakeClient) RunRemotePackage(_ context.Context, _, locator, _ string) error {
+	client.runLocator = locator
 	return client.runErr
 }
 
@@ -122,7 +124,14 @@ func TestInspect(t *testing.T) {
 }
 
 func TestPackageLocatorIsPinned(t *testing.T) {
-	require.Regexp(t, `^github\.com/.+/qrl-package@[0-9a-f]{40}$`, packageLocator)
+	require.Regexp(t, `^github\.com/.+/qrl-package@[0-9a-f]{40}$`, PackageLocator)
+}
+
+func TestStartRunsPinnedPackageLocator(t *testing.T) {
+	client := &fakeClient{services: singleParticipant()}
+	_, err := testManager(client).Start(t.Context(), startOptions())
+	require.NoError(t, err)
+	require.Equal(t, PackageLocator, client.runLocator)
 }
 
 func TestStop(t *testing.T) {

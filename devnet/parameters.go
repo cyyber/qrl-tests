@@ -71,7 +71,10 @@ func resolveParameters(address string, options StartOptions) (string, error) {
 }
 
 func profileParameters(address string, options StartOptions) (string, error) {
-	images := options.Images.withDefaults()
+	images, err := options.Images.Resolved()
+	if err != nil {
+		return "", err
+	}
 	spec := profileSpecs[options.Profile]
 	participants := make([]participant, len(spec.participants))
 	for index := range participants {
