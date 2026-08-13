@@ -50,11 +50,9 @@ on:
       lane: *lane
       seed:
         description: ginkgo spec-order seed (empty draws a fresh one per lane)
-        type: string
       runner:
         description: runner label the lane executes on; its architecture must
           match the supplied images
-        type: string
         default: ubuntu-24.04-arm
 
 permissions:
