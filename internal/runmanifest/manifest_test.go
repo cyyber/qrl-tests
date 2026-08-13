@@ -45,7 +45,7 @@ func TestEnrich(t *testing.T) {
 		Images:         &images,
 		PackageLocator: devnet.PackageLocator,
 		Lanes: []Lane{
-			{Name: "execution", Enclave: "qrl-tests", Profile: devnet.ProfileSingle, Suites: []string{"execution-abi"}, Seed: 42},
+			{Name: "execution", Enclave: "qrl-tests-execution", Profile: devnet.ProfileSingle, Suites: []string{"execution-abi", "execution-console"}, Seed: 42},
 		},
 	}, dependencies{
 		getenv: func(key string) string { return environment[key] },
@@ -119,7 +119,7 @@ func TestWrite(t *testing.T) {
 	want := Manifest{
 		PackageLocator: devnet.PackageLocator,
 		Backend:        devnet.BackendDocker,
-		Lanes:          []Lane{{Name: "execution", Enclave: "qrl-tests", Profile: devnet.ProfileSingle, Seed: 42}},
+		Lanes:          []Lane{{Name: "execution", Enclave: "qrl-tests-execution", Profile: devnet.ProfileSingle, Seed: 42}},
 		StartedAt:      time.Date(2026, 8, 7, 12, 0, 0, 0, time.UTC),
 	}
 	require.NoError(t, want.Write(path))
