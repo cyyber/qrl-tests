@@ -123,7 +123,7 @@ func Summarize(reportRoot string, outcomes []Outcome) (Summary, error) {
 	if err := os.WriteFile(filepath.Join(reportRoot, SummaryFileName), append(payload, '\n'), 0o600); err != nil {
 		return summary, fmt.Errorf("write summary: %w", err)
 	}
-	if err := os.WriteFile(filepath.Join(reportRoot, MarkdownFileName), []byte(summary.Markdown()), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(reportRoot, MarkdownFileName), []byte(summary.markdown()), 0o600); err != nil {
 		return summary, fmt.Errorf("write markdown summary: %w", err)
 	}
 	return summary, nil

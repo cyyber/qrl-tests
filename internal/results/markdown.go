@@ -5,9 +5,9 @@ import (
 	"strings"
 )
 
-// Markdown renders the summary for the GitHub job summary; workflows append
+// markdown renders the summary for the GitHub job summary; workflows append
 // it to $GITHUB_STEP_SUMMARY.
-func (summary Summary) Markdown() string {
+func (summary Summary) markdown() string {
 	var report strings.Builder
 	fmt.Fprintf(&report, "# E2E result: %s\n\n", summary.Result)
 	report.WriteString("| Lane | Class | Specs | Passed | Failed | Pending | Skipped |\n")
