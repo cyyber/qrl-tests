@@ -9,6 +9,10 @@ on:
         description: go-qrl branch to build and test
         default: main
 
+concurrency:
+  group: qrl-tests-ghcr
+  cancel-in-progress: false
+
 permissions:
   contents: read
 
@@ -108,7 +112,9 @@ jobs:
         uses: docker/bake-action@v7
         with:
           source: .
-          files: ./ci/images/docker-bake.hcl
+          files: |
+            ./ci/images/docker-bake.hcl
+            ./ci/images/qrl-genesis-generator.hcl
           targets: ${{ steps.plan.outputs.bake-targets }}
           push: true
           provenance: false
@@ -145,14 +151,20 @@ jobs:
     steps:
       - name: Publish the combined result
         env:
-          RESULT: ${{ needs.e2e.result }}
+          IMAGE_RESULT: ${{ needs.images.result }}
+          E2E_RESULT: ${{ needs.e2e.result }}
           GO_QRL_SHA: ${{ needs.images.outputs.go-qrl-sha }}
           QRYSM_SHA: ${{ needs.images.outputs.qrysm-sha }}
           GENERATOR_SHA: ${{ needs.images.outputs.generator-sha }}
           LANES: ${{ vars.E2E_NIGHTLY_LANES || '["execution"]' }}
         run: |
           {
-            echo "# Nightly E2E: ${RESULT}"
+            echo "# Nightly E2E"
+            echo
+            echo "| Stage | Result |"
+            echo "| --- | --- |"
+            echo "| Images | ${IMAGE_RESULT} |"
+            echo "| E2E | ${E2E_RESULT} |"
             echo
             echo "| Source | Revision |"
             echo "| --- | --- |"

@@ -122,3 +122,4 @@ jobs:
         with:
           name: e2e-reports-${{ inputs.lane }}-${{ github.run_attempt }}
           path: reports/
+          retention-days: 14

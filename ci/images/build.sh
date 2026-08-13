@@ -1,10 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# These values are part of the image tags. Bump only the matching revision
-# when its local build recipe changes in a way that can alter image contents.
-QRYSM_RECIPE_REVISION=5f15e680
-GENESIS_RECIPE_REVISION=5f15e680
+script_dir=$(cd -- "$(dirname -- "$0")" && pwd)
 
 image_inventory=(
 	'go-qrl|GO_QRL_IMAGE_TAG|execution-image|bake|GO_QRL_IMAGE_STATUS'
@@ -36,19 +33,29 @@ architecture() {
 	esac
 }
 
+recipe_revision() {
+	if command -v sha256sum >/dev/null 2>&1; then
+		sha256sum "$1" | cut -c1-8
+	else
+		shasum -a 256 "$1" | cut -c1-8
+	fi
+}
+
 plan() {
 	require_build_inputs
 	: "${GITHUB_ENV:?set GITHUB_ENV to the environment file}"
 	: "${GITHUB_OUTPUT:?set GITHUB_OUTPUT to the outputs file}"
 
-	local arch
+	local arch qrysm_recipe_revision genesis_recipe_revision
 	arch=$(architecture)
+	qrysm_recipe_revision=$(recipe_revision "${script_dir}/build-qrysm.sh")
+	genesis_recipe_revision=$(recipe_revision "${script_dir}/qrl-genesis-generator.hcl")
 
 	GO_QRL_IMAGE_TAG="${REGISTRY_NAMESPACE}/go-qrl:src-${GO_QRL_GIT_COMMIT:0:12}-${arch}"
 	GO_QRL_CLEF_IMAGE_TAG="${REGISTRY_NAMESPACE}/go-qrl-clef:src-${GO_QRL_GIT_COMMIT:0:12}-tests-${QRL_TESTS_GIT_COMMIT}-${arch}"
-	QRYSM_BEACON_IMAGE_TAG="${REGISTRY_NAMESPACE}/qrysm-beacon:src-${QRYSM_GIT_COMMIT:0:12}-r${QRYSM_RECIPE_REVISION}-${arch}"
-	QRYSM_VALIDATOR_IMAGE_TAG="${REGISTRY_NAMESPACE}/qrysm-validator:src-${QRYSM_GIT_COMMIT:0:12}-r${QRYSM_RECIPE_REVISION}-${arch}"
-	GENESIS_IMAGE_TAG="${REGISTRY_NAMESPACE}/qrl-genesis-generator:src-${GENERATOR_GIT_COMMIT:0:12}-q${QRYSM_GIT_COMMIT:0:12}-r${GENESIS_RECIPE_REVISION}-${arch}"
+	QRYSM_BEACON_IMAGE_TAG="${REGISTRY_NAMESPACE}/qrysm-beacon:src-${QRYSM_GIT_COMMIT:0:12}-r${qrysm_recipe_revision}-${arch}"
+	QRYSM_VALIDATOR_IMAGE_TAG="${REGISTRY_NAMESPACE}/qrysm-validator:src-${QRYSM_GIT_COMMIT:0:12}-r${qrysm_recipe_revision}-${arch}"
+	GENESIS_IMAGE_TAG="${REGISTRY_NAMESPACE}/qrl-genesis-generator:src-${GENERATOR_GIT_COMMIT:0:12}-q${QRYSM_GIT_COMMIT:0:12}-r${genesis_recipe_revision}-${arch}"
 
 	{
 		printf 'ARCHITECTURE=%s\n' "${arch}"
@@ -94,53 +101,6 @@ plan() {
 	} >>"${GITHUB_OUTPUT}"
 }
 
-build_qrysm() {
-	: "${QRYSM_TARGETS:?set QRYSM_TARGETS to the missing Qrysm targets}"
-	: "${QRYSM_BEACON_IMAGE_TAG:?set QRYSM_BEACON_IMAGE_TAG to the beacon image tag}"
-	: "${QRYSM_VALIDATOR_IMAGE_TAG:?set QRYSM_VALIDATOR_IMAGE_TAG to the validator image tag}"
-
-	local source_dir=${QRYSM_SOURCE_DIR:-.build/qrysm}
-	source_dir=$(cd -- "${source_dir}" && pwd)
-
-	local source_epoch arch requested target
-	local -a requested_targets=() bazel_targets=() archives=() image_tags=() platform_args=()
-	source_epoch=$(git -C "${source_dir}" show -s --format=%ct HEAD)
-	arch=$(architecture)
-	if [ "${arch}" = arm64 ]; then
-		platform_args=(--platforms=@io_bazel_rules_go//go/toolchain:linux_arm64_cgo)
-	fi
-
-	IFS=',' read -r -a requested_targets <<<"${QRYSM_TARGETS}"
-	for requested in "${requested_targets[@]}"; do
-		case "${requested}" in
-			qrysm-beacon)
-			target=cmd/beacon-chain
-			image_tags+=("${QRYSM_BEACON_IMAGE_TAG}")
-			;;
-			qrysm-validator)
-			target=cmd/validator
-			image_tags+=("${QRYSM_VALIDATOR_IMAGE_TAG}")
-			;;
-			*) echo "unknown Qrysm target: ${requested}" >&2; return 2 ;;
-		esac
-		bazel_targets+=("//${target}:oci_image_tarball")
-		archives+=("${source_dir}/bazel-bin/${target}/oci_image_tarball/tarball.tar")
-	done
-
-	(
-		cd "${source_dir}"
-		SOURCE_DATE_EPOCH="${source_epoch}" bazel build \
-			"${bazel_targets[@]}" "${platform_args[@]}" --config=release
-	)
-
-	local index
-	for index in "${!archives[@]}"; do
-		docker load --input "${archives[index]}"
-		docker tag index.docker.io/qrledger/qrysm:latest "${image_tags[index]}"
-		docker push "${image_tags[index]}"
-	done
-}
-
 collect() {
 	: "${GITHUB_OUTPUT:?set GITHUB_OUTPUT to the outputs file}"
 	local metadata=${BAKE_METADATA:-}
@@ -175,7 +135,7 @@ collect() {
 
 case "${1:-}" in
 	plan) plan ;;
-	build-qrysm) build_qrysm ;;
+	build-qrysm) exec "${script_dir}/build-qrysm.sh" ;;
 	collect) collect ;;
 	*) echo "usage: $0 <plan|build-qrysm|collect>" >&2; exit 2 ;;
 esac

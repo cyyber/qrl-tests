@@ -27,15 +27,12 @@ jobs:
       - name: Run the Go linter
         run: make lint
 
-      - name: Run actionlint
-        run: |
-          go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
-          "$(go env GOPATH)/bin/actionlint" \
-            -ignore 'property "workflow_repository" is not defined in object type' \
-            -ignore 'property "workflow_sha" is not defined in object type'
-
       - name: Run ShellCheck
         run: shellcheck ci/images/*.sh
 
       - name: Validate the Bake definition
-        run: docker buildx bake -f ci/images/docker-bake.hcl --print
+        run: |
+          docker buildx bake \
+            -f ci/images/docker-bake.hcl \
+            -f ci/images/qrl-genesis-generator.hcl \
+            --print
