@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"io/fs"
-	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -16,11 +15,13 @@ type blockingConsole struct {
 	once    sync.Once
 }
 
-type completedConsole struct{}
+type immediateConsole struct {
+	evaluated chan struct{}
+}
 
-func (completedConsole) Evaluate(string) {}
+func (console *immediateConsole) Evaluate(string) { close(console.evaluated) }
 
-func (completedConsole) Stop(bool) error { return nil }
+func (*immediateConsole) Stop(bool) error { return nil }
 
 func (console *blockingConsole) Evaluate(string) {
 	close(console.started)
@@ -88,15 +89,32 @@ func TestEvaluateWatchedSuiteStopsBlockedEvaluation(t *testing.T) {
 	}
 }
 
-func TestEvaluateWatchedSuiteRejectsMissingResult(t *testing.T) {
-	err := evaluateWatchedSuite(
-		t.Context(),
-		completedConsole{},
-		func() {},
-		&synchronizedBuffer{},
-		"events",
-	)
-	if err == nil || !strings.Contains(err.Error(), "emitted 0 success markers") {
-		t.Fatalf("got %v, want missing result error", err)
+func TestEvaluateWatchedSuiteWaitsForAsynchronousResult(t *testing.T) {
+	console := &immediateConsole{evaluated: make(chan struct{})}
+	output := &synchronizedBuffer{}
+	done := make(chan error, 1)
+	go func() {
+		done <- evaluateWatchedSuite(t.Context(), console, func() {}, output, "events")
+	}()
+
+	select {
+	case <-console.evaluated:
+	case <-time.After(time.Second):
+		t.Fatal("evaluation did not return")
+	}
+	select {
+	case err := <-done:
+		t.Fatalf("suite completed before its asynchronous result: %v", err)
+	case <-time.After(20 * time.Millisecond):
+	}
+	_, _ = output.Write([]byte("CONSOLE_E2E_PASS events\n"))
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("suite did not observe its asynchronous result")
 	}
 }

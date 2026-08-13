@@ -150,16 +150,6 @@ func evaluateWatchedSuite(
 		select {
 		case <-ctx.Done():
 			return fmt.Errorf("console suite %s: %w\n%s", name, ctx.Err(), result)
-		case <-evaluationDone:
-			result = output.Bytes()
-			if bytes.Contains(result, []byte(failurePrefix+name)) ||
-				bytes.Contains(result, []byte("GoError:")) {
-				return fmt.Errorf("console suite %s failed\n%s", name, result)
-			}
-			if err := parseSuiteResult(name, result); err != nil {
-				return fmt.Errorf("%w\n%s", err, result)
-			}
-			return nil
 		case <-ticker.C:
 		}
 	}
