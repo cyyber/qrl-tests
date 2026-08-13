@@ -7,7 +7,6 @@ on:
     inputs:
       go-qrl-branch:
         description: go-qrl branch to build and test
-        type: string
         default: main
 
 permissions:
