@@ -3,6 +3,7 @@ set -euo pipefail
 
 # These values are part of the image tags. Bump only the matching revision
 # when its local build recipe changes in a way that can alter image contents.
+CLEF_RECIPE_REVISION=1
 QRYSM_RECIPE_REVISION=5f15e680
 GENESIS_RECIPE_REVISION=5f15e680
 
@@ -41,7 +42,7 @@ plan() {
 	arch=$(architecture)
 
 	GO_QRL_IMAGE_TAG="${REGISTRY_NAMESPACE}/go-qrl:src-${GO_QRL_GIT_COMMIT:0:12}-${arch}"
-	GO_QRL_CLEF_IMAGE_TAG="${REGISTRY_NAMESPACE}/go-qrl-clef:src-${GO_QRL_GIT_COMMIT:0:12}-${arch}"
+	GO_QRL_CLEF_IMAGE_TAG="${REGISTRY_NAMESPACE}/go-qrl-clef:src-${GO_QRL_GIT_COMMIT:0:12}-r${CLEF_RECIPE_REVISION}-${arch}"
 	QRYSM_BEACON_IMAGE_TAG="${REGISTRY_NAMESPACE}/qrysm-beacon:src-${QRYSM_GIT_COMMIT:0:12}-r${QRYSM_RECIPE_REVISION}-${arch}"
 	QRYSM_VALIDATOR_IMAGE_TAG="${REGISTRY_NAMESPACE}/qrysm-validator:src-${QRYSM_GIT_COMMIT:0:12}-r${QRYSM_RECIPE_REVISION}-${arch}"
 	GENESIS_IMAGE_TAG="${REGISTRY_NAMESPACE}/qrl-genesis-generator:src-${GENERATOR_GIT_COMMIT:0:12}-q${QRYSM_GIT_COMMIT:0:12}-r${GENESIS_RECIPE_REVISION}-${arch}"

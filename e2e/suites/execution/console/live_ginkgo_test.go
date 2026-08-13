@@ -43,6 +43,8 @@ var _ = ginkgo.Describe(
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 			jsPath = filepath.Join(workDir, "js")
+			ginkgo.By("funding the node-managed console account")
+			gomega.Expect(fundManagedAccount(ctx, session)).To(gomega.Succeed())
 			ginkgo.By("preparing the console scripts and deployment transaction")
 			gomega.Expect(prepareWorkspace(ctx, jsPath, session)).To(gomega.Succeed())
 		})
@@ -54,7 +56,7 @@ var _ = ginkgo.Describe(
 					if scenario.webSocket {
 						gomega.Expect(runWatchedSuite(
 							ctx,
-							session.ExecutionWebSocket.Client(),
+							session.Participant.Execution.WebSocketURL,
 							jsPath,
 							scenario.name,
 						)).To(gomega.Succeed())

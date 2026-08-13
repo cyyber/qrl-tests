@@ -94,7 +94,16 @@ func (buffer *synchronizedBuffer) Bytes() []byte {
 	return bytes.Clone(buffer.data.Bytes())
 }
 
-func runWatchedSuite(ctx context.Context, client *rpc.Client, jsPath, name string) error {
+type watchedConsole interface {
+	Evaluate(string)
+	Stop(bool) error
+}
+
+func runWatchedSuite(ctx context.Context, webSocketURL, jsPath, name string) error {
+	client, err := rpc.DialContext(ctx, webSocketURL)
+	if err != nil {
+		return fmt.Errorf("connect console suite %s: %w", name, err)
+	}
 	var output synchronizedBuffer
 	console, err := qrlconsole.New(qrlconsole.Config{
 		DataDir: filepath.Join(jsPath, "console-data"),
@@ -103,11 +112,29 @@ func runWatchedSuite(ctx context.Context, client *rpc.Client, jsPath, name strin
 		Printer: &output,
 	})
 	if err != nil {
+		client.Close()
 		return fmt.Errorf("create console suite %s: %w", name, err)
 	}
-	defer console.Stop(false)
+	return evaluateWatchedSuite(ctx, console, client.Close, &output, name)
+}
 
-	console.Evaluate("loadScript('harness.js');loadScript('" + name + ".js')")
+func evaluateWatchedSuite(
+	ctx context.Context,
+	console watchedConsole,
+	closeClient func(),
+	output *synchronizedBuffer,
+	name string,
+) error {
+	evaluationDone := make(chan struct{})
+	go func() {
+		defer close(evaluationDone)
+		console.Evaluate("loadScript('harness.js');loadScript('" + name + ".js')")
+	}()
+	defer func() {
+		closeClient()
+		_ = console.Stop(false)
+		<-evaluationDone
+	}()
 
 	ticker := time.NewTicker(100 * time.Millisecond)
 	defer ticker.Stop()
@@ -123,6 +150,16 @@ func runWatchedSuite(ctx context.Context, client *rpc.Client, jsPath, name strin
 		select {
 		case <-ctx.Done():
 			return fmt.Errorf("console suite %s: %w\n%s", name, ctx.Err(), result)
+		case <-evaluationDone:
+			result = output.Bytes()
+			if bytes.Contains(result, []byte(failurePrefix+name)) ||
+				bytes.Contains(result, []byte("GoError:")) {
+				return fmt.Errorf("console suite %s failed\n%s", name, result)
+			}
+			if err := parseSuiteResult(name, result); err != nil {
+				return fmt.Errorf("%w\n%s", err, result)
+			}
+			return nil
 		case <-ticker.C:
 		}
 	}
