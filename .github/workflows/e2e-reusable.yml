@@ -113,7 +113,7 @@ jobs:
           if [ -f reports/summary.md ]; then
             cat reports/summary.md >> "$GITHUB_STEP_SUMMARY"
           else
-            echo "## E2E result: no summary produced" >> "$GITHUB_STEP_SUMMARY"
+            echo "## E2E: no summary produced" >> "$GITHUB_STEP_SUMMARY"
           fi
 
       - name: Upload the reports

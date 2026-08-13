@@ -4,11 +4,11 @@ set -euo pipefail
 script_dir=$(cd -- "$(dirname -- "$0")" && pwd)
 
 image_inventory=(
-	'go-qrl|GO_QRL_IMAGE_TAG|execution-image|bake|GO_QRL_IMAGE_STATUS'
-	'go-qrl-clef|GO_QRL_CLEF_IMAGE_TAG|clef-image|bake|GO_QRL_CLEF_IMAGE_STATUS'
-	'qrysm-beacon|QRYSM_BEACON_IMAGE_TAG|consensus-image|qrysm|QRYSM_BEACON_IMAGE_STATUS'
-	'qrysm-validator|QRYSM_VALIDATOR_IMAGE_TAG|validator-image|qrysm|QRYSM_VALIDATOR_IMAGE_STATUS'
-	'qrl-genesis-generator|GENESIS_IMAGE_TAG|genesis-image|bake|GENESIS_IMAGE_STATUS'
+	'go-qrl|GO_QRL_IMAGE_TAG|execution-image|bake'
+	'go-qrl-clef|GO_QRL_CLEF_IMAGE_TAG|clef-image|bake'
+	'qrysm-beacon|QRYSM_BEACON_IMAGE_TAG|consensus-image|qrysm'
+	'qrysm-validator|QRYSM_VALIDATOR_IMAGE_TAG|validator-image|qrysm'
+	'qrl-genesis-generator|GENESIS_IMAGE_TAG|genesis-image|bake'
 )
 
 require_build_inputs() {
@@ -71,23 +71,20 @@ plan() {
 	} >>"${GITHUB_ENV}"
 
 	local -a missing_bake_targets=() missing_qrysm_targets=()
-	local image target tag_variable build_type status_variable reference status
+	local image target tag_variable build_type reference
 	for image in "${image_inventory[@]}"; do
-		IFS='|' read -r target tag_variable _ build_type status_variable <<<"${image}"
+		IFS='|' read -r target tag_variable _ build_type <<<"${image}"
 		reference=${!tag_variable}
 		if docker buildx imagetools inspect "${reference}" >/dev/null 2>&1; then
 			echo "cache hit: ${reference}"
-			status=reused
 		else
 			echo "cache miss: ${reference}"
-			status=built
 			case "${build_type}" in
 				bake) missing_bake_targets+=("${target}") ;;
 				qrysm) missing_qrysm_targets+=("${target}") ;;
 				*) echo "unknown build type: ${build_type}" >&2; return 2 ;;
 			esac
 		fi
-		printf '%s=%s\n' "${status_variable}" "${status}" >>"${GITHUB_ENV}"
 	done
 	local IFS=,
 	{
@@ -99,17 +96,9 @@ plan() {
 collect() {
 	: "${GITHUB_OUTPUT:?set GITHUB_OUTPUT to the outputs file}"
 	local metadata=${BAKE_METADATA:-}
-	local image target tag_variable output_key status_variable reference digest repository immutable status
-	if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
-		{
-			echo "### Nightly images"
-			echo
-			echo "| Image | Result | Immutable reference |"
-			echo "| --- | --- | --- |"
-		} >>"${GITHUB_STEP_SUMMARY}"
-	fi
+	local image target tag_variable output_key reference digest repository immutable
 	for image in "${image_inventory[@]}"; do
-		IFS='|' read -r target tag_variable output_key _ status_variable <<<"${image}"
+		IFS='|' read -r target tag_variable output_key _ <<<"${image}"
 		reference=${!tag_variable}
 		digest=""
 		if [ -n "${metadata}" ]; then
@@ -121,10 +110,6 @@ collect() {
 		repository=${reference%:*}
 		immutable=${repository}@${digest}
 		echo "${output_key}=${immutable}" >>"${GITHUB_OUTPUT}"
-		if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
-			status=$(printenv "${status_variable}" || printf resolved)
-			printf "| \`%s\` | %s | \`%s\` |\n" "${target}" "${status}" "${immutable}" >>"${GITHUB_STEP_SUMMARY}"
-		fi
 	done
 }
 
