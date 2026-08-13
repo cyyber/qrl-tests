@@ -22,7 +22,7 @@ reports/
 ├── summary.json          # spec counts and classified failures
 ├── summary.md            # the same, rendered for GitHub job summaries
 ├── lanes/<lane>/         # junit.xml, report.json, output.log, manifest.json
-└── diagnostics/<lane>/   # enclave inspection and client log tails, before cleanup
+└── diagnostics/<lane>/   # enclave inspection and per-service logs, before cleanup
 ```
 
 Diagnostics are collected for failing lanes before their enclave is destroyed,
