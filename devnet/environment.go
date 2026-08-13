@@ -12,13 +12,8 @@ import (
 	"github.com/cyyber/qrl-tests/devnet/internal/kurtosis"
 )
 
-// Contracts shared with qrl-package runs: the pinned engine secret, service
-// port identifiers, and service labels.
+// Contracts shared with qrl-package runs: service port identifiers and labels.
 const (
-	// engineJWTSecret mirrors static_files/jwt/jwtsecret in the qrl-package
-	// revision pinned by PackageLocator; re-verify it when bumping the pin.
-	engineJWTSecret = "0xdc49981516e8e72b401a63e6405495a32dafc3939b5d6d83cc319ac0388bca1b"
-
 	rpcPortID           = "rpc"
 	webSocketPortID     = "ws"
 	engineRPCPortID     = "engine-rpc"
@@ -35,10 +30,9 @@ const (
 )
 
 type Environment struct {
-	EnclaveName     string        `json:"enclave_name"`
-	Backend         Backend       `json:"backend,omitempty"`
-	EngineJWTSecret string        `json:"engine_jwt_secret"`
-	Participants    []Participant `json:"participants"`
+	EnclaveName  string        `json:"enclave_name"`
+	Backend      Backend       `json:"backend,omitempty"`
+	Participants []Participant `json:"participants"`
 }
 
 // Primary returns the lowest-indexed participant. Readiness probes and
@@ -96,9 +90,8 @@ func resolveEnvironment(ctx context.Context, client kurtosisClient, name string)
 	}
 
 	return Environment{
-		EnclaveName:     name,
-		EngineJWTSecret: engineJWTSecret,
-		Participants:    participants,
+		EnclaveName:  name,
+		Participants: participants,
 	}, nil
 }
 
