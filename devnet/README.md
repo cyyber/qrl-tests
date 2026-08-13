@@ -72,8 +72,7 @@ Networks testing different client builds also need different image references.
 
 Image references may name a tag, a digest, or both
 (`registry.example/go-qrl:v1@sha256:<64 hex>`); malformed references fail the
-start before any enclave is created. CI should supply digests so every run is
-reproducible. The qrl-package revision is pinned in code
+start before any enclave is created. The qrl-package revision is pinned in code
 (`devnet.PackageLocator`) and is not configurable.
 
 ## Custom parameters
