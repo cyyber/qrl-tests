@@ -21,19 +21,21 @@ type Lane struct {
 type SuiteID string
 
 const (
-	suiteExecutionABI SuiteID = "execution-abi"
+	suiteExecutionABI     SuiteID = "execution-abi"
+	suiteExecutionConsole SuiteID = "execution-console"
 )
 
 var suitePackages = map[SuiteID]string{
-	suiteExecutionABI: "./e2e/suites/execution/abi",
+	suiteExecutionABI:     "./e2e/suites/execution/abi",
+	suiteExecutionConsole: "./e2e/suites/execution/console",
 }
 
 var registry = []Lane{
 	{
 		Name:    "execution-abi",
 		Profile: devnet.ProfileSingle,
-		Suites:  []SuiteID{suiteExecutionABI},
-		Timeout: 15 * time.Minute,
+		Suites:  []SuiteID{suiteExecutionABI, suiteExecutionConsole},
+		Timeout: 30 * time.Minute,
 	},
 }
 
@@ -83,6 +85,10 @@ func (lane Lane) Packages() []string {
 		result[index] = id.Package()
 	}
 	return result
+}
+
+func (lane Lane) NeedsGQRL() bool {
+	return slices.Contains(lane.Suites, suiteExecutionConsole)
 }
 
 func RegisteredSuites() []SuiteID {

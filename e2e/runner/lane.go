@@ -118,11 +118,24 @@ func (runner *Runner) executeLane(ctx context.Context, plan runPlan, planned lan
 	laneLog := &lockedWriter{lock: new(sync.Mutex), writer: logFile}
 	stdout := io.MultiWriter(runner.stdout, laneLog)
 	stderr := io.MultiWriter(runner.stderr, laneLog)
+
+	tools, cleanupTools, err := runner.prepareLaneTools(ctx, plan, planned)
+	if err != nil {
+		outcome.Err = fmt.Errorf("test infrastructure failed: %w", err)
+		return outcome
+	}
+	if cleanupTools != nil {
+		defer func() {
+			outcome.Err = errors.Join(outcome.Err, cleanupTools())
+		}()
+	}
+
 	manifestPath := planned.manifestPath()
 	if err := manifest.Write(manifestPath, manifest.Manifest{
 		Lane:        lane.Name,
 		Profile:     lane.Profile,
 		Environment: lease.environment,
+		Tools:       tools,
 	}); err != nil {
 		outcome.Err = fmt.Errorf("test infrastructure failed: %w", err)
 		return outcome

@@ -6,6 +6,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -41,14 +42,35 @@ func TestRegistry(t *testing.T) {
 func TestLaneWithSuites(t *testing.T) {
 	executionABI, err := Named("execution-abi")
 	require.NoError(t, err)
+	require.Equal(t, []SuiteID{suiteExecutionABI, suiteExecutionConsole}, executionABI.Suites)
+	require.Equal(t, []string{
+		"./e2e/suites/execution/abi",
+		"./e2e/suites/execution/console",
+	}, executionABI.Packages())
+	require.Equal(t, 30*time.Minute, executionABI.Timeout)
+	require.True(t, executionABI.NeedsGQRL())
 
 	unchanged, err := executionABI.WithSuites(nil)
 	require.NoError(t, err)
 	require.Equal(t, executionABI, unchanged)
 
-	selected, err := executionABI.WithSuites([]string{"execution-abi", "execution-abi"})
+	selected, err := executionABI.WithSuites([]string{
+		"execution-console",
+		"execution-abi",
+		"execution-console",
+	})
 	require.NoError(t, err)
-	require.Equal(t, []SuiteID{suiteExecutionABI}, selected.Suites)
+	require.Equal(t, []SuiteID{suiteExecutionABI, suiteExecutionConsole}, selected.Suites)
+
+	selected, err = executionABI.WithSuites([]string{"execution-console"})
+	require.NoError(t, err)
+	require.Equal(t, []SuiteID{suiteExecutionConsole}, selected.Suites)
+	require.Equal(t, []string{"./e2e/suites/execution/console"}, selected.Packages())
+	require.True(t, selected.NeedsGQRL())
+
+	selected, err = executionABI.WithSuites([]string{"execution-abi"})
+	require.NoError(t, err)
+	require.False(t, selected.NeedsGQRL())
 
 	_, err = executionABI.WithSuites([]string{"unknown"})
 	require.ErrorContains(t, err, "unknown E2E suite")

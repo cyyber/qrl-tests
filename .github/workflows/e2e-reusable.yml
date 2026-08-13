@@ -7,10 +7,6 @@ on:
         description: immutable execution image reference
         type: string
         required: true
-      source-go-qrl: &source-go-qrl
-        description: go-qrl revision recorded in the run manifest when the
-          execution image arrives pre-built
-        type: string
       clef-image: &clef-image
         description: immutable Clef image reference
         type: string
@@ -27,6 +23,10 @@ on:
         description: immutable genesis generator image reference
         type: string
         required: true
+      source-go-qrl: &source-go-qrl
+        description: go-qrl revision recorded in the run manifest when the
+          execution image arrives pre-built
+        type: string
       source-qrysm: &source-qrysm
         description: qrysm revision recorded in the run manifest
         type: string
@@ -40,11 +40,11 @@ on:
   workflow_dispatch:
     inputs:
       execution-image: *execution-image
-      source-go-qrl: *source-go-qrl
       clef-image: *clef-image
       consensus-image: *consensus-image
       validator-image: *validator-image
       genesis-image: *genesis-image
+      source-go-qrl: *source-go-qrl
       source-qrysm: *source-qrysm
       source-generator: *source-generator
       lane: *lane
@@ -59,7 +59,6 @@ permissions:
   contents: read
 
 env:
-  # The Makefile preflight requires the 1.20.x CLI series.
   KURTOSIS_VERSION: 1.20.0
 
 jobs:
@@ -78,8 +77,6 @@ jobs:
         with:
           go-version-file: go.mod
 
-      # The apt repository stopped receiving releases at 1.15.x; the pinned
-      # tarballs from kurtosis-cli-release-artifacts are the current channel.
       - name: Install Kurtosis CLI
         run: |
           case "$(uname -m)" in

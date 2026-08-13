@@ -8,7 +8,14 @@ endpoints; suites do not provision infrastructure.
 
 | Lane | Profile | Coverage |
 | --- | --- | --- |
-| `execution-abi` | `single` | Execution ABI calls, events, errors, and WebSocket filters |
+| `execution-abi` | `single` | Execution ABI plus CLI and embedded-console behavior |
+
+The lane runs these suites in order:
+
+| Suite | Coverage |
+| --- | --- |
+| `execution-abi` | ABI calls, events, errors, and WebSocket filters |
+| `execution-console` | `gqrl attach` and embedded web3 APIs, contract deployment and calls, receipts, event filters, and WebSocket watches |
 
 Run one lane with a fresh network:
 
@@ -28,7 +35,7 @@ The Ginkgo runner writes JUnit, JSON, logs, and the resolved environment
 manifest under `reports/lanes/execution-abi/`, next to the run manifest and
 result summaries at the report root. Every run records its Ginkgo seed in
 `reports/run-manifest.json`; unexpected skipped or pending specs fail the run.
-Inspect the registered lane and suite with `go run ./cmd/qrltest list`.
+Inspect the registered lane and suites with `go run ./cmd/qrltest list`.
 
 Files that register or execute live scenarios use the `e2e` build tag.
 Deterministic fixture, encoding, and helper tests remain untagged so the default
