@@ -110,6 +110,8 @@ jobs:
         id: bake
         if: steps.plan.outputs.bake-targets != ''
         uses: docker/bake-action@v7
+        env:
+          DOCKER_BUILD_RECORD_UPLOAD: false
         with:
           source: .
           files: |
