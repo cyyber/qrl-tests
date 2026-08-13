@@ -51,6 +51,7 @@ type networkManager interface {
 	Start(ctx context.Context, options devnet.StartOptions) (devnet.Environment, error)
 	Inspect(ctx context.Context, name string) (devnet.Environment, error)
 	Stop(ctx context.Context, name string) error
+	Collect(ctx context.Context, enclave, outputDir string) error
 }
 
 type commandSpec struct {
@@ -226,6 +227,7 @@ func (runner *Runner) run(ctx context.Context, selected []lanes.Lane, mode runMo
 // Remove only runner-owned outputs because ReportDir may contain unrelated files.
 func clearReportArtifacts(reportRoot string) error {
 	artifacts := []string{
+		filepath.Join(reportRoot, diagnosticsDirectory),
 		filepath.Join(reportRoot, laneReportsDirectory),
 		filepath.Join(reportRoot, results.SummaryFileName),
 		filepath.Join(reportRoot, results.MarkdownFileName),

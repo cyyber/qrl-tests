@@ -16,7 +16,8 @@ import (
 )
 
 const (
-	laneCleanupTimeout = 2 * time.Minute
+	laneCleanupTimeout     = 2 * time.Minute
+	laneDiagnosticsTimeout = 5 * time.Minute
 
 	// laneReportSlack extends the lane context past ginkgo's own --timeout so
 	// it can report and clean up before the context interrupts the process.
@@ -45,11 +46,12 @@ func (runner *Runner) acquireLane(ctx context.Context, plan runPlan, lane laneRu
 	}
 
 	options := devnet.StartOptions{
-		EnclaveName: lane.enclaveName,
-		Backend:     runner.configuration.Backend,
-		Images:      runner.configuration.Images,
-		Parameters:  runner.configuration.Parameters,
-		Profile:     lane.definition.Profile,
+		EnclaveName:           lane.enclaveName,
+		Backend:               runner.configuration.Backend,
+		Images:                runner.configuration.Images,
+		Parameters:            runner.configuration.Parameters,
+		Profile:               lane.definition.Profile,
+		FailureDiagnosticsDir: lane.diagnosticsDir,
 	}
 
 	startCtx, cancelStart := context.WithTimeout(ctx, runner.configuration.StartTimeout)
@@ -90,6 +92,14 @@ func (runner *Runner) executeLane(ctx context.Context, plan runPlan, lane laneRu
 	}
 	var logFile *os.File
 	defer func() {
+		// Finalize while the enclave still exists. This covers command/report
+		// failures as well as any harness failure after a successful acquire.
+		failed := !outcome.Passed()
+		if failed {
+			if diagnosticsErr := runner.collectDiagnostics(lane, lease.environment); diagnosticsErr != nil {
+				outcome.Err = errors.Join(outcome.Err, fmt.Errorf("collect diagnostics: %w", diagnosticsErr))
+			}
+		}
 		outcome.Err = errors.Join(outcome.Err, lease.close())
 		if logFile != nil {
 			outcome.Err = errors.Join(outcome.Err, logFile.Close())
@@ -134,4 +144,12 @@ func (runner *Runner) executeLane(ctx context.Context, plan runPlan, lane laneRu
 	outcome.Err = outcome.ExecutionErr
 	outcome.CaptureReports(lane.reportDir)
 	return outcome
+}
+
+func (runner *Runner) collectDiagnostics(lane laneRun, environment devnet.Environment) error {
+	// A fresh context: the lane context is already canceled when the lane
+	// timed out, which is exactly when diagnostics matter most.
+	collectCtx, cancel := context.WithTimeout(context.Background(), laneDiagnosticsTimeout)
+	defer cancel()
+	return runner.networks.Collect(collectCtx, environment.EnclaveName, lane.diagnosticsDir)
 }

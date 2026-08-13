@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -23,12 +24,14 @@ import (
 )
 
 type recordingNetworks struct {
-	mutex     sync.Mutex
-	started   devnet.StartOptions
-	inspected string
-	stopped   []string
-	startErr  error
-	stopErr   error
+	mutex      sync.Mutex
+	started    devnet.StartOptions
+	inspected  string
+	stopped    []string
+	collected  []string
+	startErr   error
+	stopErr    error
+	collectErr error
 }
 
 func (networks *recordingNetworks) Start(_ context.Context, options devnet.StartOptions) (devnet.Environment, error) {
@@ -60,6 +63,18 @@ func captureCommand(command *commandSpec) func(context.Context, commandSpec) err
 		*command = specification
 		return nil
 	}
+}
+
+func (networks *recordingNetworks) Collect(_ context.Context, enclave, outputDir string) error {
+	networks.mutex.Lock()
+	defer networks.mutex.Unlock()
+	// Tests assert on the recorded value: collecting after the enclave is
+	// gone is an ordering bug, not a different output directory.
+	if slices.Contains(networks.stopped, enclave) {
+		outputDir = "after-stop:" + outputDir
+	}
+	networks.collected = append(networks.collected, outputDir)
+	return networks.collectErr
 }
 
 func TestRunBuildsCommandAndCleansUp(t *testing.T) {
@@ -282,6 +297,43 @@ func TestRunManifestSurvivesBootstrapFailure(t *testing.T) {
 	var summary results.Summary
 	require.NoError(t, json.Unmarshal(payload, &summary))
 	require.Equal(t, results.VerdictBootstrap, summary.Lanes[0].Verdict)
+}
+
+func TestRunCollectsDiagnosticsOnFailureBeforeCleanup(t *testing.T) {
+	reports := t.TempDir()
+	networks := new(recordingNetworks)
+	tests := New(Config{
+		BaseName:     "qrl-tests",
+		ReportDir:    reports,
+		Backend:      devnet.BackendDocker,
+		StartTimeout: time.Minute,
+	}, io.Discard, io.Discard)
+	tests.networks = networks
+	tests.runCommand = func(context.Context, commandSpec) error { return errors.New("exit status 1") }
+
+	require.Error(t, tests.Run(t.Context(), "execution-abi"))
+	require.Equal(t, []string{filepath.Join(reports, "diagnostics", "execution-abi")}, networks.collected)
+	require.Equal(t, []string{"qrl-tests"}, networks.stopped, "the enclave must still be destroyed")
+	require.Equal(t, networks.started.FailureDiagnosticsDir, filepath.Join(reports, "diagnostics", "execution-abi"))
+}
+
+func TestRunDiagnosticsFailureNeverMasksTheResult(t *testing.T) {
+	networks := &recordingNetworks{collectErr: errors.New("logs unavailable")}
+	reports := t.TempDir()
+	configuration := Config{
+		BaseName:     "qrl-tests",
+		ReportDir:    reports,
+		Backend:      devnet.BackendDocker,
+		StartTimeout: time.Minute,
+	}
+
+	tests := New(configuration, io.Discard, io.Discard)
+	tests.networks = networks
+	tests.runCommand = func(context.Context, commandSpec) error { return errors.New("exit status 1") }
+	err := tests.Run(t.Context(), "execution-abi")
+	require.ErrorContains(t, err, "exit status 1")
+	require.ErrorContains(t, err, "collect diagnostics: logs unavailable")
+	require.Equal(t, []string{"qrl-tests"}, networks.stopped)
 }
 
 func TestNewResolvesConfigurationDefaults(t *testing.T) {

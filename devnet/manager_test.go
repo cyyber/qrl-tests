@@ -50,6 +50,9 @@ func testManager(client *fakeClient) *Manager {
 	return &Manager{
 		newClient: func() (kurtosisClient, error) { return client, nil },
 		probe:     func(context.Context, string, string) error { return nil },
+		collect: func(context.Context, string, string) error {
+			return errors.New("no diagnostics were requested")
+		},
 	}
 }
 
@@ -68,12 +71,86 @@ func singleParticipant() map[string]kurtosis.Service {
 	}
 }
 
-func TestStartCleansCreatedEnclave(t *testing.T) {
-	client := &fakeClient{runErr: errors.New("package failed")}
+func TestStartCleansUpEveryPostCreateFailure(t *testing.T) {
+	tests := []struct {
+		name      string
+		client    *fakeClient
+		configure func(*testing.T, *Manager) context.Context
+		wantError string
+	}{
+		{
+			name:      "package run",
+			client:    &fakeClient{runErr: errors.New("package failed")},
+			wantError: "run qrl-package: package failed",
+		},
+		{
+			name:      "endpoint resolution",
+			client:    new(fakeClient),
+			wantError: "resolve network endpoints: no qrl-package participants found",
+		},
+		{
+			name:   "readiness",
+			client: &fakeClient{services: singleParticipant()},
+			configure: func(t *testing.T, manager *Manager) context.Context {
+				manager.probe = func(context.Context, string, string) error {
+					return errors.New("not ready")
+				}
+				ctx, cancel := context.WithCancel(t.Context())
+				cancel()
+				return ctx
+			},
+			wantError: "wait for network readiness: not ready",
+		},
+	}
 
-	_, err := testManager(client).Start(t.Context(), startOptions())
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			manager := testManager(test.client)
+			ctx := t.Context()
+			if test.configure != nil {
+				ctx = test.configure(t, manager)
+			}
+
+			_, err := manager.Start(ctx, startOptions())
+			require.ErrorContains(t, err, test.wantError)
+			require.True(t, test.client.destroyed)
+		})
+	}
+}
+
+func TestStartCollectsDiagnosticsBeforeCleanup(t *testing.T) {
+	client := &fakeClient{runErr: errors.New("package failed")}
+	manager := testManager(client)
+	var order []string
+	manager.collect = func(_ context.Context, enclave, outputDir string) error {
+		require.False(t, client.destroyed, "diagnostics must run before the enclave is destroyed")
+		require.Equal(t, "failed-start", enclave)
+		require.Equal(t, "reports/diagnostics/execution-abi", outputDir)
+		order = append(order, "collect")
+		return nil
+	}
+
+	options := startOptions()
+	options.FailureDiagnosticsDir = "reports/diagnostics/execution-abi"
+	_, err := manager.Start(t.Context(), options)
 	require.ErrorContains(t, err, "package failed")
+	require.Equal(t, []string{"collect"}, order)
 	require.True(t, client.destroyed)
+}
+
+func TestStartReportsDiagnosticsFailureAlongsideCause(t *testing.T) {
+	client := &fakeClient{runErr: errors.New("package failed")}
+	manager := testManager(client)
+	manager.collect = func(context.Context, string, string) error {
+		return errors.New("logs unavailable")
+	}
+
+	options := startOptions()
+	options.FailureDiagnosticsDir = "reports/diagnostics/execution-abi"
+	_, err := manager.Start(t.Context(), options)
+	require.ErrorContains(t, err, "package failed")
+	require.ErrorContains(t, err, "collect start diagnostics: logs unavailable")
+	require.True(t, client.destroyed, "a diagnostics failure must not leak the enclave")
 }
 
 func TestStartCreateFailureSkipsCleanup(t *testing.T) {

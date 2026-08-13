@@ -11,7 +11,10 @@ import (
 	"github.com/cyyber/qrl-tests/internal/results"
 )
 
-const laneReportsDirectory = "lanes"
+const (
+	diagnosticsDirectory = "diagnostics"
+	laneReportsDirectory = "lanes"
+)
 
 type runPlan struct {
 	testsDir   string
@@ -21,10 +24,11 @@ type runPlan struct {
 }
 
 type laneRun struct {
-	definition  lanes.Lane
-	enclaveName string
-	reportDir   string
-	seed        int64
+	definition     lanes.Lane
+	enclaveName    string
+	reportDir      string
+	diagnosticsDir string
+	seed           int64
 }
 
 func (lane laneRun) manifestPath() string {
@@ -72,6 +76,7 @@ func planLanes(configuration Config, selected []lanes.Lane, mode runMode) (runPl
 			enclaveName += "-" + lane.Name
 		}
 		reportDir := filepath.Join(reportRoot, laneReportsDirectory, lane.Name)
+		diagnosticsDir := filepath.Join(reportRoot, diagnosticsDirectory, lane.Name)
 
 		// The seed randomizes ginkgo's spec order; recording it in the run
 		// manifest keeps every ordering reproducible, and a configured seed
@@ -81,10 +86,11 @@ func planLanes(configuration Config, selected []lanes.Lane, mode runMode) (runPl
 			seed = 1 + rand.Int64N(math.MaxInt32)
 		}
 		laneRuns[index] = laneRun{
-			definition:  lane,
-			enclaveName: enclaveName,
-			reportDir:   reportDir,
-			seed:        seed,
+			definition:     lane,
+			enclaveName:    enclaveName,
+			reportDir:      reportDir,
+			diagnosticsDir: diagnosticsDir,
+			seed:           seed,
 		}
 	}
 	return runPlan{testsDir: testsDir, reportRoot: reportRoot, mode: mode, lanes: laneRuns}, nil
