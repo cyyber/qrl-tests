@@ -38,8 +38,11 @@ target "go-qrl" {
 }
 
 target "go-qrl-clef" {
-  inherits   = ["_go-qrl"]
-  dockerfile = "Dockerfile.alltools"
+  context    = "."
+  dockerfile = "ci/images/clef/Dockerfile"
+  contexts = {
+    go-qrl-source = "${GO_QRL_GIT_REPO}#${GO_QRL_GIT_COMMIT}"
+  }
   tags       = [GO_QRL_CLEF_IMAGE_TAG]
   cache-from = [buildcache("go-qrl-clef")]
   cache-to   = ["${buildcache("go-qrl-clef")},mode=max"]

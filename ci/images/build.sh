@@ -12,7 +12,11 @@ image_inventory=(
 )
 
 require_build_inputs() {
+	if [ -z "${QRL_TESTS_GIT_COMMIT:-}" ]; then
+		QRL_TESTS_GIT_COMMIT=$(git -C "$(dirname "${BASH_SOURCE[0]}")/../.." rev-parse HEAD)
+	fi
 	: "${REGISTRY_NAMESPACE:?set REGISTRY_NAMESPACE to the registry prefix}"
+	: "${QRL_TESTS_GIT_COMMIT:?set QRL_TESTS_GIT_COMMIT to the qrl-tests revision}"
 	: "${GO_QRL_GIT_REPO:?set GO_QRL_GIT_REPO to the go-qrl clone URL}"
 	: "${GO_QRL_GIT_COMMIT:?set GO_QRL_GIT_COMMIT to the go-qrl revision}"
 	: "${QRYSM_GIT_REPO:?set QRYSM_GIT_REPO to the qrysm clone URL}"
@@ -48,7 +52,7 @@ plan() {
 	bake_recipe_revision=$(recipe_revision "${script_dir}/docker-bake.hcl")
 
 	GO_QRL_IMAGE_TAG="${REGISTRY_NAMESPACE}/go-qrl:src-${GO_QRL_GIT_COMMIT:0:12}-r${bake_recipe_revision}-${arch}"
-	GO_QRL_CLEF_IMAGE_TAG="${REGISTRY_NAMESPACE}/go-qrl-clef:src-${GO_QRL_GIT_COMMIT:0:12}-r${bake_recipe_revision}-${arch}"
+	GO_QRL_CLEF_IMAGE_TAG="${REGISTRY_NAMESPACE}/go-qrl-clef:src-${GO_QRL_GIT_COMMIT:0:12}-tests-${QRL_TESTS_GIT_COMMIT}-r${bake_recipe_revision}-${arch}"
 	QRYSM_BEACON_IMAGE_TAG="${REGISTRY_NAMESPACE}/qrysm-beacon:src-${QRYSM_GIT_COMMIT:0:12}-r${qrysm_recipe_revision}-${arch}"
 	QRYSM_VALIDATOR_IMAGE_TAG="${REGISTRY_NAMESPACE}/qrysm-validator:src-${QRYSM_GIT_COMMIT:0:12}-r${qrysm_recipe_revision}-${arch}"
 	GENESIS_IMAGE_TAG="${REGISTRY_NAMESPACE}/qrl-genesis-generator:src-${GENERATOR_GIT_COMMIT:0:12}-q${QRYSM_GIT_COMMIT:0:12}-r${bake_recipe_revision}-${arch}"
@@ -57,6 +61,7 @@ plan() {
 		printf 'ARCHITECTURE=%s\n' "${arch}"
 		printf '%s=%s\n' \
 			REGISTRY_NAMESPACE "${REGISTRY_NAMESPACE}" \
+			QRL_TESTS_GIT_COMMIT "${QRL_TESTS_GIT_COMMIT}" \
 			GO_QRL_GIT_REPO "${GO_QRL_GIT_REPO}" \
 			GO_QRL_GIT_COMMIT "${GO_QRL_GIT_COMMIT}" \
 			QRYSM_GIT_REPO "${QRYSM_GIT_REPO}" \
