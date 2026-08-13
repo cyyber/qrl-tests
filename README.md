@@ -20,8 +20,8 @@ backend.
 reports/
 ├── run-manifest.json     # provenance and replay metadata for the run
 ├── summary.json          # spec counts and classified failures
-├── summary.md            # the same, rendered for GitHub job summaries
-└── lanes/<lane>/         # Ginkgo reports, output log, and network manifest
+├── summary.md            # Markdown result summary
+└── lanes/<lane>/         # Ginkgo reports, output log, and resolved environment manifest
 ```
 
 For iterative development:
