@@ -18,8 +18,5 @@ func (configuration Config) withDefaults() Config {
 	if configuration.StartTimeout == 0 {
 		configuration.StartTimeout = devnet.DefaultStartTimeout
 	}
-	if configuration.Diagnostics == "" {
-		configuration.Diagnostics = DiagnosticsOnFailure
-	}
 	return configuration
 }

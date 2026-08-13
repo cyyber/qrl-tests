@@ -22,12 +22,11 @@ reports/
 ├── summary.json          # spec counts and classified failures
 ├── summary.md            # the same, rendered for GitHub job summaries
 ├── lanes/<lane>/         # junit.xml, report.json, output.log, manifest.json
-└── diagnostics/<lane>/   # enclave dump and runtime state, before cleanup
+└── diagnostics/<lane>/   # enclave inspection and service logs, before cleanup
 ```
 
-Diagnostics are collected for failing lanes before their enclave is destroyed
-(`E2E_DIAGNOSTICS=always|on-failure|never` overrides this), and a collection
-problem never masks the test result.
+Diagnostics are collected for failing lanes before their enclave is destroyed,
+and a collection problem never masks the test result.
 
 For iterative development:
 

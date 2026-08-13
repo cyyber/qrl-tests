@@ -113,12 +113,6 @@ func runnerFlags() []cli.Flag {
 			Value:   devnet.DefaultStartTimeout,
 			EnvVars: []string{"DEVNET_START_TIMEOUT"},
 		},
-		&cli.StringFlag{
-			Name:    "diagnostics",
-			Usage:   "network diagnostics collection: on-failure, always, or never",
-			Value:   string(runner.DiagnosticsOnFailure),
-			EnvVars: []string{"E2E_DIAGNOSTICS"},
-		},
 		&cli.Int64Flag{
 			Name:    "seed",
 			Usage:   "ginkgo spec-order seed; 0 draws a fresh seed per lane",
@@ -140,11 +134,6 @@ func runnerConfig(command *cli.Context) (runner.Config, error) {
 		return runner.Config{}, fmt.Errorf("max-parallel must be at least 1")
 	}
 
-	diagnostics, err := runner.ParseDiagnosticsMode(command.String("diagnostics"))
-	if err != nil {
-		return runner.Config{}, err
-	}
-
 	parameters, err := readParametersFile(command)
 	if err != nil {
 		return runner.Config{}, err
@@ -160,7 +149,6 @@ func runnerConfig(command *cli.Context) (runner.Config, error) {
 		StartTimeout: command.Duration("start-timeout"),
 		MaxParallel:  maxParallel,
 		Images:       imagesFromFlags(command),
-		Diagnostics:  diagnostics,
 		Seed:         command.Int64("seed"),
 	}, nil
 }

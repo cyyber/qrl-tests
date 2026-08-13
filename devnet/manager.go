@@ -19,7 +19,7 @@ const (
 
 	startCleanupTimeout        = time.Minute     // destroy call after a failed start
 	destroyConfirmationTimeout = time.Minute     // confirm loop in destroyAndConfirm
-	startDiagnosticsTimeout    = 2 * time.Minute // enclave dump before a failed start is cleaned up
+	startDiagnosticsTimeout    = 2 * time.Minute // inspection and logs before a failed start is cleaned up
 	retryInterval              = 500 * time.Millisecond
 
 	// PackageLocator pins the qrl-package revision every network runs.
@@ -49,7 +49,7 @@ type StartOptions struct {
 type Manager struct {
 	newClient func() (kurtosisClient, error)
 	probe     func(ctx context.Context, rpcURL, address string) error
-	collect   func(ctx context.Context, backend Backend, enclave, outputDir string) error
+	collect   func(ctx context.Context, enclave, outputDir string) error
 }
 
 func NewManager() *Manager {
@@ -62,8 +62,8 @@ func NewManager() *Manager {
 			return client, nil
 		},
 		probe: probeNetwork,
-		collect: func(ctx context.Context, backend Backend, enclave, outputDir string) error {
-			return collectDiagnostics(ctx, runDiagnosticsCommand, backend, enclave, outputDir)
+		collect: func(ctx context.Context, enclave, outputDir string) error {
+			return collectDiagnostics(ctx, runDiagnosticsCommand, enclave, outputDir)
 		},
 	}
 }
@@ -168,8 +168,8 @@ func (manager *Manager) finishFailedStart(client kurtosisClient, options StartOp
 	// Diagnostics and cleanup run on fresh contexts: the start context is
 	// typically already canceled or expired by the time the failure gets here.
 	if options.FailureDiagnosticsDir != "" {
-		dumpCtx, cancel := context.WithTimeout(context.Background(), startDiagnosticsTimeout)
-		if err := manager.collect(dumpCtx, options.Backend, options.EnclaveName, options.FailureDiagnosticsDir); err != nil {
+		collectCtx, cancel := context.WithTimeout(context.Background(), startDiagnosticsTimeout)
+		if err := manager.collect(collectCtx, options.EnclaveName, options.FailureDiagnosticsDir); err != nil {
 			result = errors.Join(result, fmt.Errorf("collect start diagnostics: %w", err))
 		}
 		cancel()

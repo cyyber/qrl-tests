@@ -10,22 +10,18 @@ import (
 	"strings"
 )
 
-// The CLI is already a hard requirement of the network lifecycle, and its
-// enclave dump captures what the SDK offers no single call for: every service
-// log plus the container inspections.
+// The CLI is already a hard requirement of the network lifecycle and exposes
+// inspection and log commands that are not available as one SDK operation.
 type commandRunner func(ctx context.Context, name string, arguments ...string) (string, error)
 
-// Collect gathers the enclave's diagnostics into outputDir before the enclave
-// is destroyed: the Kurtosis inspection and dump under kurtosis/, and — on the
-// Docker backend — container state and resource usage under runtime/. Every
-// step is best-effort; the joined error reports what could not be captured.
-func (manager *Manager) Collect(ctx context.Context, backend Backend, enclave, outputDir string) error {
-	return manager.collect(ctx, backend, enclave, outputDir)
+// Collect captures the enclave inspection and service logs before cleanup.
+// Every step is best-effort; the joined error reports what could not be saved.
+func (manager *Manager) Collect(ctx context.Context, enclave, outputDir string) error {
+	return manager.collect(ctx, enclave, outputDir)
 }
 
-func collectDiagnostics(ctx context.Context, run commandRunner, backend Backend, enclave, outputDir string) error {
-	kurtosisDir := filepath.Join(outputDir, "kurtosis")
-	if err := os.MkdirAll(kurtosisDir, 0o755); err != nil {
+func collectDiagnostics(ctx context.Context, run commandRunner, enclave, outputDir string) error {
+	if err := os.MkdirAll(outputDir, 0o755); err != nil {
 		return fmt.Errorf("create diagnostics directory: %w", err)
 	}
 
@@ -43,33 +39,9 @@ func collectDiagnostics(ctx context.Context, run commandRunner, backend Backend,
 		}
 	}
 
-	capture(filepath.Join(kurtosisDir, "inspect.txt"), "kurtosis", "enclave", "inspect", enclave)
-	// The dump writes its own tree: per-service logs and container inspections.
-	if _, err := run(ctx, "kurtosis", "enclave", "dump", enclave, filepath.Join(kurtosisDir, "dump")); err != nil {
-		problems = append(problems, fmt.Errorf("kurtosis enclave dump: %w", err))
-	}
-
-	if backend == BackendDocker {
-		runtimeDir := filepath.Join(outputDir, "runtime")
-		if err := os.MkdirAll(runtimeDir, 0o755); err != nil {
-			problems = append(problems, err)
-		} else {
-			// Scoped to Kurtosis-managed containers: the host may run
-			// unrelated workloads, and the dump above already covers the
-			// enclave's own services in detail.
-			const kurtosisManaged = "label=com.kurtosistech.app-id=kurtosis"
-			capture(filepath.Join(runtimeDir, "containers.txt"),
-				"docker", "ps", "--all", "--no-trunc", "--filter", kurtosisManaged)
-			// docker stats accepts container identifiers only, not filters.
-			identifiers, err := run(ctx, "docker", "ps", "--all", "--quiet", "--filter", kurtosisManaged)
-			if err != nil {
-				problems = append(problems, fmt.Errorf("docker ps --quiet: %w", err))
-			} else if containers := strings.Fields(identifiers); len(containers) > 0 {
-				capture(filepath.Join(runtimeDir, "stats.txt"),
-					"docker", append([]string{"stats", "--no-stream"}, containers...)...)
-			}
-		}
-	}
+	capture(filepath.Join(outputDir, "inspect.txt"), "kurtosis", "enclave", "inspect", enclave)
+	capture(filepath.Join(outputDir, "services.log"),
+		"kurtosis", "service", "logs", "--all-services", "--all", enclave)
 
 	return errors.Join(problems...)
 }

@@ -65,7 +65,7 @@ func captureCommand(command *commandSpec) func(context.Context, commandSpec) err
 	}
 }
 
-func (networks *recordingNetworks) Collect(_ context.Context, _ devnet.Backend, enclave, outputDir string) error {
+func (networks *recordingNetworks) Collect(_ context.Context, enclave, outputDir string) error {
 	networks.mutex.Lock()
 	defer networks.mutex.Unlock()
 	// Tests assert on the recorded value: collecting after the enclave is
@@ -297,84 +297,23 @@ func TestRunCollectsDiagnosticsOnFailureBeforeCleanup(t *testing.T) {
 	require.Equal(t, networks.started.FailureDiagnosticsDir, filepath.Join(reports, "diagnostics", "execution-abi"))
 }
 
-func TestRunDiagnosticsModes(t *testing.T) {
-	for name, testCase := range map[string]struct {
-		mode      DiagnosticsMode
-		runErr    error
-		collected int
-	}{
-		"always on success":  {mode: DiagnosticsAlways, collected: 1},
-		"never on failure":   {mode: DiagnosticsNever, runErr: errors.New("exit status 1")},
-		"on-failure passing": {mode: DiagnosticsOnFailure},
-	} {
-		t.Run(name, func(t *testing.T) {
-			networks := new(recordingNetworks)
-			reports := t.TempDir()
-			tests := New(Config{
-				BaseName:     "qrl-tests",
-				ReportDir:    reports,
-				Backend:      devnet.BackendDocker,
-				StartTimeout: time.Minute,
-				Diagnostics:  testCase.mode,
-			}, io.Discard, io.Discard)
-			tests.networks = networks
-			tests.runCommand = func(ctx context.Context, spec commandSpec) error {
-				if testCase.runErr == nil {
-					return passingCommand(t, reports)(ctx, spec)
-				}
-				return testCase.runErr
-			}
-
-			err := tests.Run(t.Context(), "execution-abi")
-			require.Equal(t, testCase.runErr == nil, err == nil)
-			require.Len(t, networks.collected, testCase.collected)
-			if testCase.mode == DiagnosticsNever {
-				require.Empty(t, networks.started.FailureDiagnosticsDir)
-			}
-		})
-	}
-}
-
 func TestRunDiagnosticsFailureNeverMasksTheResult(t *testing.T) {
-	networks := &recordingNetworks{collectErr: errors.New("dump broke")}
+	networks := &recordingNetworks{collectErr: errors.New("logs unavailable")}
 	reports := t.TempDir()
 	configuration := Config{
 		BaseName:     "qrl-tests",
 		ReportDir:    reports,
 		Backend:      devnet.BackendDocker,
 		StartTimeout: time.Minute,
-		Diagnostics:  DiagnosticsAlways,
 	}
 
-	var output bytes.Buffer
-	tests := New(configuration, &output, &output)
-	tests.networks = networks
-	tests.runCommand = passingCommand(t, reports)
-	require.NoError(t, tests.Run(t.Context(), "execution-abi"),
-		"a diagnostics failure must not fail a passing lane")
-	require.Contains(t, output.String(), "collect diagnostics: dump broke")
-
-	networks = &recordingNetworks{collectErr: errors.New("dump broke")}
-	tests = New(configuration, io.Discard, io.Discard)
+	tests := New(configuration, io.Discard, io.Discard)
 	tests.networks = networks
 	tests.runCommand = func(context.Context, commandSpec) error { return errors.New("exit status 1") }
 	err := tests.Run(t.Context(), "execution-abi")
 	require.ErrorContains(t, err, "exit status 1")
-	require.ErrorContains(t, err, "collect diagnostics: dump broke")
+	require.ErrorContains(t, err, "collect diagnostics: logs unavailable")
 	require.Equal(t, []string{"qrl-tests"}, networks.stopped)
-}
-
-func TestParseDiagnosticsMode(t *testing.T) {
-	mode, err := ParseDiagnosticsMode("")
-	require.NoError(t, err)
-	require.Equal(t, DiagnosticsOnFailure, mode)
-
-	mode, err = ParseDiagnosticsMode("  always  ")
-	require.NoError(t, err)
-	require.Equal(t, DiagnosticsAlways, mode)
-
-	_, err = ParseDiagnosticsMode("sometimes")
-	require.ErrorContains(t, err, "unsupported diagnostics mode")
 }
 
 func TestNewResolvesConfigurationDefaults(t *testing.T) {
@@ -384,7 +323,6 @@ func TestNewResolvesConfigurationDefaults(t *testing.T) {
 	require.Equal(t, DefaultReportDir, runner.configuration.ReportDir)
 	require.Equal(t, devnet.BackendDocker, runner.configuration.Backend)
 	require.Equal(t, devnet.DefaultStartTimeout, runner.configuration.StartTimeout)
-	require.Equal(t, DiagnosticsOnFailure, runner.configuration.Diagnostics)
 }
 
 func TestListDescribesLanesAndSuites(t *testing.T) {

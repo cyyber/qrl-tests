@@ -53,7 +53,6 @@ cluster. The commands use the currently selected Kurtosis context.
 | `DEVNET_PROFILE` | `single` | Built-in profile used by `network-start` |
 | `DEVNET_START_TIMEOUT` | `5m` | Network startup budget |
 | `DEVNET_PARAMS_FILE` | unset | Complete qrl-package YAML parameters |
-| `E2E_DIAGNOSTICS` | `on-failure` | Collect network diagnostics: `on-failure`, `always`, or `never` |
 
 `e2e-run` derives its network profile from `E2E_LANE` and does not use
 `DEVNET_PROFILE`.

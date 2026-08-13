@@ -50,7 +50,7 @@ func testManager(client *fakeClient) *Manager {
 	return &Manager{
 		newClient: func() (kurtosisClient, error) { return client, nil },
 		probe:     func(context.Context, string, string) error { return nil },
-		collect: func(context.Context, Backend, string, string) error {
+		collect: func(context.Context, string, string) error {
 			return errors.New("no diagnostics were requested")
 		},
 	}
@@ -122,7 +122,7 @@ func TestStartCollectsDiagnosticsBeforeCleanup(t *testing.T) {
 	client := &fakeClient{runErr: errors.New("package failed")}
 	manager := testManager(client)
 	var order []string
-	manager.collect = func(_ context.Context, backend Backend, enclave, outputDir string) error {
+	manager.collect = func(_ context.Context, enclave, outputDir string) error {
 		require.False(t, client.destroyed, "diagnostics must run before the enclave is destroyed")
 		require.Equal(t, "failed-start", enclave)
 		require.Equal(t, "reports/diagnostics/execution-abi", outputDir)
@@ -141,15 +141,15 @@ func TestStartCollectsDiagnosticsBeforeCleanup(t *testing.T) {
 func TestStartReportsDiagnosticsFailureAlongsideCause(t *testing.T) {
 	client := &fakeClient{runErr: errors.New("package failed")}
 	manager := testManager(client)
-	manager.collect = func(context.Context, Backend, string, string) error {
-		return errors.New("dump broke")
+	manager.collect = func(context.Context, string, string) error {
+		return errors.New("logs unavailable")
 	}
 
 	options := startOptions()
 	options.FailureDiagnosticsDir = "reports/diagnostics/execution-abi"
 	_, err := manager.Start(t.Context(), options)
 	require.ErrorContains(t, err, "package failed")
-	require.ErrorContains(t, err, "collect start diagnostics: dump broke")
+	require.ErrorContains(t, err, "collect start diagnostics: logs unavailable")
 	require.True(t, client.destroyed, "a diagnostics failure must not leak the enclave")
 }
 

@@ -1,7 +1,6 @@
 package runner
 
 import (
-	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -40,14 +39,12 @@ func (runner *Runner) acquireLane(ctx context.Context, plan runPlan, planned lan
 	}
 
 	options := devnet.StartOptions{
-		EnclaveName: planned.enclaveName,
-		Backend:     runner.configuration.Backend,
-		Images:      runner.configuration.Images,
-		Parameters:  runner.configuration.Parameters,
-		Profile:     planned.lane.Profile,
-	}
-	if runner.configuration.Diagnostics != DiagnosticsNever {
-		options.FailureDiagnosticsDir = planned.diagnosticsDir
+		EnclaveName:           planned.enclaveName,
+		Backend:               runner.configuration.Backend,
+		Images:                runner.configuration.Images,
+		Parameters:            runner.configuration.Parameters,
+		Profile:               planned.lane.Profile,
+		FailureDiagnosticsDir: planned.diagnosticsDir,
 	}
 
 	startCtx, cancelStart := context.WithTimeout(ctx, runner.configuration.StartTimeout)
@@ -94,16 +91,13 @@ func (runner *Runner) executeLane(ctx context.Context, plan runPlan, planned lan
 		return outcome
 	}
 	var logFile *os.File
-	diagnosticsOutput := runner.stderr
 	defer func() {
 		// Finalize while the enclave still exists. This covers command/report
 		// failures as well as any harness failure after a successful acquire.
 		failed := !outcome.Passed()
-		if diagnosticsErr := runner.collectDiagnostics(planned, lease.environment, failed); diagnosticsErr != nil {
-			if failed {
+		if failed {
+			if diagnosticsErr := runner.collectDiagnostics(planned, lease.environment); diagnosticsErr != nil {
 				outcome.Err = errors.Join(outcome.Err, fmt.Errorf("collect diagnostics: %w", diagnosticsErr))
-			} else {
-				fmt.Fprintf(diagnosticsOutput, "collect diagnostics: %v\n", diagnosticsErr)
 			}
 		}
 		outcome.Err = errors.Join(outcome.Err, lease.close())
@@ -124,8 +118,6 @@ func (runner *Runner) executeLane(ctx context.Context, plan runPlan, planned lan
 	laneLog := &lockedWriter{lock: new(sync.Mutex), writer: logFile}
 	stdout := io.MultiWriter(runner.stdout, laneLog)
 	stderr := io.MultiWriter(runner.stderr, laneLog)
-	diagnosticsOutput = stderr
-
 	manifestPath := planned.manifestPath()
 	if err := manifest.Write(manifestPath, manifest.Manifest{
 		Lane:        lane.Name,
@@ -152,16 +144,10 @@ func (runner *Runner) executeLane(ctx context.Context, plan runPlan, planned lan
 	return outcome
 }
 
-func (runner *Runner) collectDiagnostics(planned laneRun, environment devnet.Environment, failed bool) error {
-	mode := runner.configuration.Diagnostics
-	if mode == DiagnosticsNever || (mode == DiagnosticsOnFailure && !failed) {
-		return nil
-	}
-
+func (runner *Runner) collectDiagnostics(planned laneRun, environment devnet.Environment) error {
 	// A fresh context: the lane context is already canceled when the lane
 	// timed out, which is exactly when diagnostics matter most.
 	collectCtx, cancel := context.WithTimeout(context.Background(), laneDiagnosticsTimeout)
 	defer cancel()
-	backend := cmp.Or(environment.Backend, runner.configuration.Backend)
-	return runner.networks.Collect(collectCtx, backend, environment.EnclaveName, planned.diagnosticsDir)
+	return runner.networks.Collect(collectCtx, environment.EnclaveName, planned.diagnosticsDir)
 }
