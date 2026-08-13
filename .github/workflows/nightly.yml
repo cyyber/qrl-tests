@@ -1,0 +1,178 @@
+name: nightly
+
+on:
+  schedule:
+    - cron: "30 2 * * *"
+  workflow_dispatch:
+    inputs:
+      go-qrl-branch:
+        description: go-qrl branch to build and test
+        default: main
+
+concurrency:
+  group: qrl-tests-ghcr
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  # Image and lane runners must use the same architecture.
+  images:
+    runs-on: ${{ vars.E2E_RUNNER || 'ubuntu-24.04-arm' }}
+    timeout-minutes: 45
+    env:
+      GO_QRL_REPOSITORY: ${{ vars.E2E_GO_QRL_REPOSITORY || 'cyyber/go-qrl' }}
+      QRYSM_REPOSITORY: ${{ vars.E2E_QRYSM_REPOSITORY || 'cyyber/qrysm' }}
+      GENERATOR_REPOSITORY: ${{ vars.E2E_GENERATOR_REPOSITORY || 'cyyber/qrl-genesis-generator' }}
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      go-qrl-sha: ${{ steps.refs.outputs.go-qrl-sha }}
+      qrysm-sha: ${{ steps.refs.outputs.qrysm-sha }}
+      generator-sha: ${{ steps.refs.outputs.generator-sha }}
+      execution-image: ${{ steps.build.outputs.execution-image }}
+      clef-image: ${{ steps.build.outputs.clef-image }}
+      consensus-image: ${{ steps.build.outputs.consensus-image }}
+      validator-image: ${{ steps.build.outputs.validator-image }}
+      genesis-image: ${{ steps.build.outputs.genesis-image }}
+    steps:
+      - name: Check out qrl-tests
+        uses: actions/checkout@v7
+
+      - name: Resolve the source revisions
+        id: refs
+        env:
+          GO_QRL_BRANCH: ${{ inputs.go-qrl-branch || 'main' }}
+        run: |
+          resolve() {
+            local sha
+            sha=$(git ls-remote "https://github.com/$1" "refs/heads/$2" | cut -f1)
+            test -n "$sha" || { echo "cannot resolve $1@$2" >&2; exit 1; }
+            echo "$sha"
+          }
+          {
+            echo "go-qrl-sha=$(resolve "${GO_QRL_REPOSITORY}" "${GO_QRL_BRANCH}")"
+            echo "qrysm-sha=$(resolve "${QRYSM_REPOSITORY}" main)"
+            echo "generator-sha=$(resolve "${GENERATOR_REPOSITORY}" main)"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Plan the image builds
+        id: plan
+        env:
+          REGISTRY_NAMESPACE: ghcr.io/${{ github.repository_owner }}
+          GO_QRL_GIT_REPO: https://github.com/${{ env.GO_QRL_REPOSITORY }}.git
+          GO_QRL_GIT_COMMIT: ${{ steps.refs.outputs.go-qrl-sha }}
+          QRYSM_GIT_REPO: https://github.com/${{ env.QRYSM_REPOSITORY }}.git
+          QRYSM_GIT_COMMIT: ${{ steps.refs.outputs.qrysm-sha }}
+          GENERATOR_GIT_REPO: https://github.com/${{ env.GENERATOR_REPOSITORY }}.git
+          GENERATOR_GIT_COMMIT: ${{ steps.refs.outputs.generator-sha }}
+        run: ci/images/build.sh plan
+
+      - name: Set up buildx
+        if: steps.plan.outputs.bake-targets != ''
+        uses: docker/setup-buildx-action@v4
+
+      - name: Check out Qrysm
+        if: steps.plan.outputs.qrysm-targets != ''
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ env.QRYSM_REPOSITORY }}
+          ref: ${{ steps.refs.outputs.qrysm-sha }}
+          path: .build/qrysm
+          fetch-depth: 0
+
+      - name: Set up Bazel cache
+        if: steps.plan.outputs.qrysm-targets != ''
+        uses: bazel-contrib/setup-bazel@0.19.0
+        with:
+          module-root: .build/qrysm
+          bazelisk-cache: true
+          disk-cache: nightly-qrysm-${{ runner.arch }}
+          repository-cache: true
+
+      - name: Build the missing Qrysm images
+        if: steps.plan.outputs.qrysm-targets != ''
+        env:
+          QRYSM_TARGETS: ${{ steps.plan.outputs.qrysm-targets }}
+        run: ci/images/build.sh build-qrysm
+
+      - name: Build the missing Bake images
+        id: bake
+        if: steps.plan.outputs.bake-targets != ''
+        uses: docker/bake-action@v7
+        env:
+          DOCKER_BUILD_RECORD_UPLOAD: false
+        with:
+          source: .
+          files: |
+            ./ci/images/docker-bake.hcl
+            ./ci/images/qrl-genesis-generator.hcl
+          targets: ${{ steps.plan.outputs.bake-targets }}
+          push: true
+          provenance: false
+
+      - name: Resolve the image digests
+        id: build
+        env:
+          BAKE_METADATA: ${{ steps.bake.outputs.metadata }}
+        run: ci/images/build.sh collect
+
+  e2e:
+    needs: images
+    strategy:
+      fail-fast: false
+      matrix:
+        lane: ${{ fromJSON(vars.E2E_NIGHTLY_LANES || '["execution-abi"]') }}
+    uses: ./.github/workflows/e2e-reusable.yml
+    with:
+      # Immutable digest references from the images job.
+      execution-image: ${{ needs.images.outputs.execution-image }}
+      source-go-qrl: ${{ needs.images.outputs.go-qrl-sha }}
+      clef-image: ${{ needs.images.outputs.clef-image }}
+      consensus-image: ${{ needs.images.outputs.consensus-image }}
+      validator-image: ${{ needs.images.outputs.validator-image }}
+      genesis-image: ${{ needs.images.outputs.genesis-image }}
+      source-qrysm: ${{ needs.images.outputs.qrysm-sha }}
+      source-generator: ${{ needs.images.outputs.generator-sha }}
+      lane: ${{ matrix.lane }}
+
+  report:
+    needs: [images, e2e]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish the combined result
+        env:
+          IMAGE_RESULT: ${{ needs.images.result }}
+          E2E_RESULT: ${{ needs.e2e.result }}
+          GO_QRL_SHA: ${{ needs.images.outputs.go-qrl-sha }}
+          QRYSM_SHA: ${{ needs.images.outputs.qrysm-sha }}
+          GENERATOR_SHA: ${{ needs.images.outputs.generator-sha }}
+          LANES: ${{ vars.E2E_NIGHTLY_LANES || '["execution-abi"]' }}
+        run: |
+          {
+            echo "# Nightly E2E"
+            echo
+            echo "| Stage | Result |"
+            echo "| --- | --- |"
+            echo "| Images | ${IMAGE_RESULT} |"
+            echo "| E2E | ${E2E_RESULT} |"
+            echo
+            echo "| Source | Revision |"
+            echo "| --- | --- |"
+            echo "| go-qrl | \`${GO_QRL_SHA}\` |"
+            echo "| qrysm | \`${QRYSM_SHA}\` |"
+            echo "| genesis-generator | \`${GENERATOR_SHA}\` |"
+            echo "| qrl-tests | \`${GITHUB_SHA}\` |"
+            echo
+            echo "Lanes: \`${LANES}\` — per-lane manifests and diagnostics are in each lane's reports artifact."
+          } >> "$GITHUB_STEP_SUMMARY"
