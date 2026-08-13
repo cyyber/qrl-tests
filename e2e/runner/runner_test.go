@@ -117,6 +117,13 @@ func TestRunBuildsCommandAndCleansUp(t *testing.T) {
 	require.Contains(t, command.Env, manifest.PathEnv+"="+manifestPath)
 	require.FileExists(t, filepath.Join(reports, "lanes", "execution-abi", "output.log"))
 	require.Contains(t, output.String(), "=== RUN lane=execution-abi profile=single ===")
+
+	recordPath := filepath.Join(reports, runmanifest.FileName)
+	record := readRunManifest(t, recordPath)
+	require.Equal(t, "c0b29628173dba03445f2a6b7f07aa6b5958f93af975feefff9ee025d4cc0c10", record.ParametersSHA256)
+	payload, err := os.ReadFile(recordPath)
+	require.NoError(t, err)
+	require.NotContains(t, string(payload), `"custom_parameters":`)
 }
 
 // passingCommand fakes a lane process that succeeds AND leaves a passing

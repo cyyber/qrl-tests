@@ -119,23 +119,16 @@ func TestSummarizeRejectsUnexpectedSkips(t *testing.T) {
 	require.ErrorContains(t, summary.VerdictError(), "execution-abi (skipped)")
 }
 
-func TestSummarizeHonorsClassHints(t *testing.T) {
-	for class, laneErr := range map[string]error{
-		ClassBootstrap:      errors.New("network bootstrap failed: start network: no capacity"),
-		ClassInfrastructure: errors.New("test infrastructure failed: create report directory: denied"),
-	} {
-		t.Run(class, func(t *testing.T) {
-			root := t.TempDir()
-			summary := summarizeOne(t, root, Outcome{
-				Name:      "execution-abi",
-				Err:       laneErr,
-				ClassHint: class,
-			})
-			require.Equal(t, "failed", summary.Result)
-			require.Equal(t, class, summary.Lanes[0].Class)
-			require.NotEmpty(t, summary.Lanes[0].Error)
-		})
-	}
+func TestSummarizeHonorsBootstrapFailure(t *testing.T) {
+	root := t.TempDir()
+	summary := summarizeOne(t, root, Outcome{
+		Name:             "execution-abi",
+		Err:              errors.New("network bootstrap failed: start network: no capacity"),
+		BootstrapFailure: true,
+	})
+	require.Equal(t, "failed", summary.Result)
+	require.Equal(t, ClassBootstrap, summary.Lanes[0].Class)
+	require.NotEmpty(t, summary.Lanes[0].Error)
 }
 
 func TestSummarizeMissingReportIsInfrastructure(t *testing.T) {
@@ -145,8 +138,25 @@ func TestSummarizeMissingReportIsInfrastructure(t *testing.T) {
 		filepath.Join(root, "lanes", "execution-abi"),
 		errors.New("exit status 1"),
 	))
-	require.Equal(t, ClassInfrastructure, summary.Lanes[0].Class,
+	lane := summary.Lanes[0]
+	require.Equal(t, ClassInfrastructure, lane.Class,
 		"without a report nothing distinguishes a product failure from a broken harness")
+	require.Contains(t, lane.Error, "exit status 1")
+	require.Contains(t, lane.Error, "report.json")
+	require.Contains(t, lane.Error, "no such file or directory")
+}
+
+func TestSummarizeCorruptReportIncludesDecodeError(t *testing.T) {
+	root := t.TempDir()
+	laneDir := filepath.Join(root, "lanes", "execution-abi")
+	require.NoError(t, os.MkdirAll(laneDir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(laneDir, "report.json"), []byte("{"), 0o600))
+
+	summary := summarizeOne(t, root, observedOutcome("execution-abi", laneDir, nil))
+	lane := summary.Lanes[0]
+	require.Equal(t, ClassInfrastructure, lane.Class)
+	require.Contains(t, lane.Error, "decode ")
+	require.Contains(t, lane.Error, "report.json")
 }
 
 func TestSummarizeCountsSetupFailures(t *testing.T) {

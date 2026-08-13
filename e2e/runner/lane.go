@@ -89,7 +89,7 @@ func (runner *Runner) executeLane(ctx context.Context, plan runPlan, planned lan
 	lane := planned.lane
 	lease, err := runner.acquireLane(ctx, plan, planned)
 	if err != nil {
-		outcome.ClassHint = results.ClassBootstrap
+		outcome.BootstrapFailure = true
 		outcome.Err = fmt.Errorf("network bootstrap failed: %w", err)
 		return outcome
 	}
@@ -113,13 +113,11 @@ func (runner *Runner) executeLane(ctx context.Context, plan runPlan, planned lan
 	}()
 
 	if err := os.MkdirAll(planned.reportDir, 0o755); err != nil {
-		outcome.ClassHint = results.ClassInfrastructure
 		outcome.Err = fmt.Errorf("test infrastructure failed: create report directory: %w", err)
 		return outcome
 	}
 	logFile, err = os.OpenFile(filepath.Join(planned.reportDir, "output.log"), os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
 	if err != nil {
-		outcome.ClassHint = results.ClassInfrastructure
 		outcome.Err = fmt.Errorf("test infrastructure failed: create output log: %w", err)
 		return outcome
 	}
@@ -134,7 +132,6 @@ func (runner *Runner) executeLane(ctx context.Context, plan runPlan, planned lan
 		Profile:     lane.Profile,
 		Environment: lease.environment,
 	}); err != nil {
-		outcome.ClassHint = results.ClassInfrastructure
 		outcome.Err = fmt.Errorf("test infrastructure failed: %w", err)
 		return outcome
 	}

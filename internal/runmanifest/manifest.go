@@ -1,4 +1,4 @@
-// Package runmanifest records everything needed to reproduce an E2E run:
+// Package runmanifest records provenance and replay metadata for an E2E run:
 // source revisions, image references, the qrl-package locator, lane seeds,
 // tool versions, and the CI coordinates, written to reports/run-manifest.json.
 package runmanifest
@@ -58,9 +58,8 @@ type Lane struct {
 }
 
 type Manifest struct {
-	Sources          Sources        `json:"sources"`
-	Images           *devnet.Images `json:"images,omitempty"`
-	CustomParameters bool           `json:"custom_parameters,omitempty"`
+	Sources Sources        `json:"sources"`
+	Images  *devnet.Images `json:"images,omitempty"`
 	// ParametersSHA256 fingerprints the custom parameters payload, so a
 	// reproduction can verify it is feeding the network the same bytes.
 	ParametersSHA256 string         `json:"custom_parameters_sha256,omitempty"`

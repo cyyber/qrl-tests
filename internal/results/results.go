@@ -4,6 +4,7 @@ package results
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -41,13 +42,13 @@ func Observe(reportDir string) Observation {
 	return Observation{reports: reports, err: err}
 }
 
-// Outcome is the complete result of running one lane. ClassHint is reserved
-// for failures that happen before Ginkgo can provide authoritative evidence.
+// Outcome is the complete result of running one lane. BootstrapFailure records
+// the one failure that cannot be inferred from the Ginkgo report or exit error.
 type Outcome struct {
-	Name        string
-	Observation Observation
-	Err         error
-	ClassHint   string
+	Name             string
+	Observation      Observation
+	Err              error
+	BootstrapFailure bool
 }
 
 // Passed reports the verdict represented by this outcome without reading any
@@ -146,8 +147,8 @@ func (summary Summary) VerdictError() error {
 
 func summarizeOutcome(outcome Outcome) LaneSummary {
 	result := LaneSummary{Name: outcome.Name, Class: ClassPassed}
-	if outcome.Err != nil {
-		result.Error = outcome.Err.Error()
+	if err := errors.Join(outcome.Err, outcome.Observation.err); err != nil {
+		result.Error = err.Error()
 	}
 
 	for _, report := range outcome.Observation.reports {
@@ -192,11 +193,8 @@ func (lane *LaneSummary) tally(spec types.SpecReport) {
 }
 
 func classify(outcome Outcome, tallied LaneSummary) string {
-	switch outcome.ClassHint {
-	case ClassBootstrap:
+	if outcome.BootstrapFailure {
 		return ClassBootstrap
-	case ClassInfrastructure:
-		return ClassInfrastructure
 	}
 
 	// Without a readable report, nothing distinguishes a product failure from

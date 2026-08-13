@@ -18,7 +18,7 @@ backend.
 
 ```
 reports/
-├── run-manifest.json     # everything needed to reproduce the run
+├── run-manifest.json     # provenance and replay metadata for the run
 ├── summary.json          # spec counts and classified failures
 ├── summary.md            # the same, rendered for GitHub job summaries
 ├── lanes/<lane>/         # junit.xml, report.json, output.log, manifest.json

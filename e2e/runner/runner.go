@@ -256,7 +256,6 @@ func (runner *Runner) collectManifest(ctx context.Context, plan runPlan) runmani
 	if plan.mode.provisions() {
 		record.PackageLocator = devnet.PackageLocator
 		if len(configuration.Parameters) != 0 {
-			record.CustomParameters = true
 			record.ParametersSHA256 = fmt.Sprintf("%x", sha256.Sum256(configuration.Parameters))
 		} else if images, err := configuration.Images.Resolved(); err == nil {
 			record.Images = &images

@@ -62,9 +62,6 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Set up buildx
-        uses: docker/setup-buildx-action@v4
-
       - name: Plan the image builds
         id: plan
         env:
@@ -76,6 +73,10 @@ jobs:
           GENERATOR_GIT_REPO: https://github.com/${{ env.GENERATOR_REPOSITORY }}.git
           GENERATOR_GIT_COMMIT: ${{ steps.refs.outputs.generator-sha }}
         run: ci/images/build.sh plan
+
+      - name: Set up buildx
+        if: steps.plan.outputs.bake-targets != ''
+        uses: docker/setup-buildx-action@v4
 
       - name: Check out Qrysm
         if: steps.plan.outputs.qrysm-targets != ''
