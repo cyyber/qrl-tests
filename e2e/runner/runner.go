@@ -2,6 +2,7 @@
 package runner
 
 import (
+	"cmp"
 	"context"
 	"crypto/sha256"
 	"errors"
@@ -38,21 +39,11 @@ type Config struct {
 }
 
 func (configuration Config) withDefaults() Config {
-	if configuration.TestsDir == "" {
-		configuration.TestsDir = "."
-	}
-	if configuration.BaseName == "" {
-		configuration.BaseName = devnet.DefaultEnclaveName
-	}
-	if configuration.ReportDir == "" {
-		configuration.ReportDir = DefaultReportDir
-	}
-	if configuration.Backend == "" {
-		configuration.Backend = devnet.BackendDocker
-	}
-	if configuration.StartTimeout == 0 {
-		configuration.StartTimeout = devnet.DefaultStartTimeout
-	}
+	configuration.TestsDir = cmp.Or(configuration.TestsDir, ".")
+	configuration.BaseName = cmp.Or(configuration.BaseName, devnet.DefaultEnclaveName)
+	configuration.ReportDir = cmp.Or(configuration.ReportDir, DefaultReportDir)
+	configuration.Backend = cmp.Or(configuration.Backend, devnet.BackendDocker)
+	configuration.StartTimeout = cmp.Or(configuration.StartTimeout, devnet.DefaultStartTimeout)
 	return configuration
 }
 
