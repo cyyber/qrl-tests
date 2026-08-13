@@ -37,6 +37,25 @@ type Config struct {
 	Seed int64
 }
 
+func (configuration Config) withDefaults() Config {
+	if configuration.TestsDir == "" {
+		configuration.TestsDir = "."
+	}
+	if configuration.BaseName == "" {
+		configuration.BaseName = devnet.DefaultEnclaveName
+	}
+	if configuration.ReportDir == "" {
+		configuration.ReportDir = DefaultReportDir
+	}
+	if configuration.Backend == "" {
+		configuration.Backend = devnet.BackendDocker
+	}
+	if configuration.StartTimeout == 0 {
+		configuration.StartTimeout = devnet.DefaultStartTimeout
+	}
+	return configuration
+}
+
 type networkManager interface {
 	Start(ctx context.Context, options devnet.StartOptions) (devnet.Environment, error)
 	Inspect(ctx context.Context, name string) (devnet.Environment, error)
