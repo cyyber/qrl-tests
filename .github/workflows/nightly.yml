@@ -65,6 +65,7 @@ jobs:
         id: plan
         env:
           REGISTRY_NAMESPACE: ghcr.io/${{ github.repository_owner }}
+          QRL_TESTS_GIT_COMMIT: ${{ github.sha }}
           GO_QRL_GIT_REPO: https://github.com/${{ env.GO_QRL_REPOSITORY }}.git
           GO_QRL_GIT_COMMIT: ${{ steps.refs.outputs.go-qrl-sha }}
           QRYSM_GIT_REPO: https://github.com/${{ env.QRYSM_REPOSITORY }}.git

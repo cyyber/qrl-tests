@@ -3,7 +3,6 @@ set -euo pipefail
 
 # These values are part of the image tags. Bump only the matching revision
 # when its local build recipe changes in a way that can alter image contents.
-CLEF_RECIPE_REVISION=1
 QRYSM_RECIPE_REVISION=5f15e680
 GENESIS_RECIPE_REVISION=5f15e680
 
@@ -16,7 +15,11 @@ image_inventory=(
 )
 
 require_build_inputs() {
+	if [ -z "${QRL_TESTS_GIT_COMMIT:-}" ]; then
+		QRL_TESTS_GIT_COMMIT=$(git -C "$(dirname "${BASH_SOURCE[0]}")/../.." rev-parse HEAD)
+	fi
 	: "${REGISTRY_NAMESPACE:?set REGISTRY_NAMESPACE to the registry prefix}"
+	: "${QRL_TESTS_GIT_COMMIT:?set QRL_TESTS_GIT_COMMIT to the qrl-tests revision}"
 	: "${GO_QRL_GIT_REPO:?set GO_QRL_GIT_REPO to the go-qrl clone URL}"
 	: "${GO_QRL_GIT_COMMIT:?set GO_QRL_GIT_COMMIT to the go-qrl revision}"
 	: "${QRYSM_GIT_REPO:?set QRYSM_GIT_REPO to the qrysm clone URL}"
@@ -42,7 +45,7 @@ plan() {
 	arch=$(architecture)
 
 	GO_QRL_IMAGE_TAG="${REGISTRY_NAMESPACE}/go-qrl:src-${GO_QRL_GIT_COMMIT:0:12}-${arch}"
-	GO_QRL_CLEF_IMAGE_TAG="${REGISTRY_NAMESPACE}/go-qrl-clef:src-${GO_QRL_GIT_COMMIT:0:12}-r${CLEF_RECIPE_REVISION}-${arch}"
+	GO_QRL_CLEF_IMAGE_TAG="${REGISTRY_NAMESPACE}/go-qrl-clef:src-${GO_QRL_GIT_COMMIT:0:12}-tests-${QRL_TESTS_GIT_COMMIT}-${arch}"
 	QRYSM_BEACON_IMAGE_TAG="${REGISTRY_NAMESPACE}/qrysm-beacon:src-${QRYSM_GIT_COMMIT:0:12}-r${QRYSM_RECIPE_REVISION}-${arch}"
 	QRYSM_VALIDATOR_IMAGE_TAG="${REGISTRY_NAMESPACE}/qrysm-validator:src-${QRYSM_GIT_COMMIT:0:12}-r${QRYSM_RECIPE_REVISION}-${arch}"
 	GENESIS_IMAGE_TAG="${REGISTRY_NAMESPACE}/qrl-genesis-generator:src-${GENERATOR_GIT_COMMIT:0:12}-q${QRYSM_GIT_COMMIT:0:12}-r${GENESIS_RECIPE_REVISION}-${arch}"
@@ -51,6 +54,7 @@ plan() {
 		printf 'ARCHITECTURE=%s\n' "${arch}"
 		printf '%s=%s\n' \
 			REGISTRY_NAMESPACE "${REGISTRY_NAMESPACE}" \
+			QRL_TESTS_GIT_COMMIT "${QRL_TESTS_GIT_COMMIT}" \
 			GO_QRL_GIT_REPO "${GO_QRL_GIT_REPO}" \
 			GO_QRL_GIT_COMMIT "${GO_QRL_GIT_COMMIT}" \
 			QRYSM_GIT_REPO "${QRYSM_GIT_REPO}" \
