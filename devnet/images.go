@@ -35,10 +35,7 @@ func DefaultImages() Images {
 	}
 }
 
-// Resolved trims every reference, falls back to the local development
-// defaults for blank ones, and rejects references no registry could serve,
-// reporting every invalid reference at once so CI surfaces all mistakes in
-// one run.
+// Resolved trims image references, applies defaults, and validates their syntax.
 func (images Images) Resolved() (Images, error) {
 	var problems []error
 	normalize := func(role, value, fallback string) string {
