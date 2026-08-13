@@ -230,14 +230,14 @@ func (runner *Runner) collectManifest(ctx context.Context, plan runPlan) runmani
 		Lanes:   make([]runmanifest.Lane, len(plan.lanes)),
 	}
 	for index, lane := range plan.lanes {
-		suites := make([]string, len(lane.lane.Suites))
-		for position, id := range lane.lane.Suites {
+		suites := make([]string, len(lane.definition.Suites))
+		for position, id := range lane.definition.Suites {
 			suites[position] = string(id)
 		}
 		record.Lanes[index] = runmanifest.Lane{
-			Name:    lane.lane.Name,
+			Name:    lane.definition.Name,
 			Enclave: lane.enclaveName,
-			Profile: lane.lane.Profile,
+			Profile: lane.definition.Profile,
 			Suites:  suites,
 			Seed:    lane.seed,
 		}

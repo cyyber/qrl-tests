@@ -28,9 +28,9 @@ type laneLease struct {
 	release     func() error
 }
 
-func (runner *Runner) acquireLane(ctx context.Context, plan runPlan, planned laneRun) (laneLease, error) {
+func (runner *Runner) acquireLane(ctx context.Context, plan runPlan, lane laneRun) (laneLease, error) {
 	if !plan.mode.provisionsNetwork() {
-		environment, err := runner.networks.Inspect(ctx, planned.enclaveName)
+		environment, err := runner.networks.Inspect(ctx, lane.enclaveName)
 		if err != nil {
 			return laneLease{}, fmt.Errorf("inspect network: %w", err)
 		}
@@ -38,11 +38,11 @@ func (runner *Runner) acquireLane(ctx context.Context, plan runPlan, planned lan
 	}
 
 	options := devnet.StartOptions{
-		EnclaveName: planned.enclaveName,
+		EnclaveName: lane.enclaveName,
 		Backend:     runner.configuration.Backend,
 		Images:      runner.configuration.Images,
 		Parameters:  runner.configuration.Parameters,
-		Profile:     planned.lane.Profile,
+		Profile:     lane.definition.Profile,
 	}
 
 	startCtx, cancelStart := context.WithTimeout(ctx, runner.configuration.StartTimeout)
@@ -71,18 +71,18 @@ func (lease laneLease) close() error {
 	return lease.release()
 }
 
-func (runner *Runner) runLane(ctx context.Context, plan runPlan, planned laneRun) results.Outcome {
-	outcome := runner.executeLane(ctx, plan, planned)
+func (runner *Runner) runLane(ctx context.Context, plan runPlan, lane laneRun) results.Outcome {
+	outcome := runner.executeLane(ctx, plan, lane)
 	if outcome.Err != nil {
-		outcome.Err = fmt.Errorf("lane %s: %w", planned.lane.Name, outcome.Err)
+		outcome.Err = fmt.Errorf("lane %s: %w", lane.definition.Name, outcome.Err)
 	}
 	return outcome
 }
 
-func (runner *Runner) executeLane(ctx context.Context, plan runPlan, planned laneRun) (outcome results.Outcome) {
-	outcome.Name = planned.lane.Name
-	lane := planned.lane
-	lease, err := runner.acquireLane(ctx, plan, planned)
+func (runner *Runner) executeLane(ctx context.Context, plan runPlan, lane laneRun) (outcome results.Outcome) {
+	definition := lane.definition
+	outcome.Name = definition.Name
+	lease, err := runner.acquireLane(ctx, plan, lane)
 	if err != nil {
 		outcome.BootstrapFailure = true
 		outcome.Err = fmt.Errorf("network bootstrap failed: %w", err)
@@ -96,11 +96,11 @@ func (runner *Runner) executeLane(ctx context.Context, plan runPlan, planned lan
 		}
 	}()
 
-	if err := os.MkdirAll(planned.reportDir, 0o755); err != nil {
+	if err := os.MkdirAll(lane.reportDir, 0o755); err != nil {
 		outcome.Err = fmt.Errorf("test infrastructure failed: create report directory: %w", err)
 		return outcome
 	}
-	logFile, err = os.OpenFile(filepath.Join(planned.reportDir, "output.log"), os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
+	logFile, err = os.OpenFile(filepath.Join(lane.reportDir, "output.log"), os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
 	if err != nil {
 		outcome.Err = fmt.Errorf("test infrastructure failed: create output log: %w", err)
 		return outcome
@@ -108,23 +108,23 @@ func (runner *Runner) executeLane(ctx context.Context, plan runPlan, planned lan
 	laneLog := &lockedWriter{lock: new(sync.Mutex), writer: logFile}
 	stdout := io.MultiWriter(runner.stdout, laneLog)
 	stderr := io.MultiWriter(runner.stderr, laneLog)
-	manifestPath := planned.manifestPath()
+	manifestPath := lane.manifestPath()
 	if err := manifest.Write(manifestPath, manifest.Manifest{
-		Lane:        lane.Name,
-		Profile:     lane.Profile,
+		Lane:        definition.Name,
+		Profile:     definition.Profile,
 		Environment: lease.environment,
 	}); err != nil {
 		outcome.Err = fmt.Errorf("test infrastructure failed: %w", err)
 		return outcome
 	}
 
-	laneCtx, cancelLane := context.WithTimeout(ctx, lane.Timeout+laneReportSlack)
+	laneCtx, cancelLane := context.WithTimeout(ctx, definition.Timeout+laneReportSlack)
 	defer cancelLane()
-	fmt.Fprintf(stdout, "=== RUN lane=%s profile=%s ===\n", lane.Name, lane.Profile)
+	fmt.Fprintf(stdout, "=== RUN lane=%s profile=%s ===\n", definition.Name, definition.Profile)
 	processEnvironment := append(os.Environ(), manifest.PathEnv+"="+manifestPath)
 	outcome.ExecutionErr = runner.runCommand(laneCtx, commandSpec{
 		Path:   "go",
-		Args:   planned.ginkgoArguments(),
+		Args:   lane.ginkgoArguments(),
 		Dir:    plan.testsDir,
 		Env:    processEnvironment,
 		Stdout: stdout,
@@ -132,6 +132,6 @@ func (runner *Runner) executeLane(ctx context.Context, plan runPlan, planned lan
 	})
 	outcome.ExecutionErr = errors.Join(outcome.ExecutionErr, laneCtx.Err())
 	outcome.Err = outcome.ExecutionErr
-	outcome.Observation = results.Observe(planned.reportDir)
+	outcome.Observation = results.Observe(lane.reportDir)
 	return outcome
 }

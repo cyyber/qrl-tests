@@ -17,7 +17,7 @@ type runPlan struct {
 }
 
 type laneRun struct {
-	lane        lanes.Lane
+	definition  lanes.Lane
 	enclaveName string
 	reportDir   string
 	seed        int64
@@ -53,7 +53,7 @@ func planLanes(configuration Config, selected []lanes.Lane, mode runMode) (runPl
 			seed = 1 + rand.Int64N(1<<31-1)
 		}
 		planned[index] = laneRun{
-			lane:        lane,
+			definition:  lane,
 			enclaveName: enclaveName,
 			reportDir:   reportDir,
 			seed:        seed,
@@ -62,12 +62,12 @@ func planLanes(configuration Config, selected []lanes.Lane, mode runMode) (runPl
 	return runPlan{testsDir: testsDir, reportRoot: reportRoot, mode: mode, lanes: planned}, nil
 }
 
-func (planned laneRun) manifestPath() string {
-	return filepath.Join(planned.reportDir, "manifest.json")
+func (lane laneRun) manifestPath() string {
+	return filepath.Join(lane.reportDir, "manifest.json")
 }
 
-func (planned laneRun) ginkgoArguments() []string {
-	return ginkgoArguments(planned.lane, planned.reportDir, planned.seed)
+func (lane laneRun) ginkgoArguments() []string {
+	return ginkgoArguments(lane.definition, lane.reportDir, lane.seed)
 }
 
 func ginkgoArguments(lane lanes.Lane, reportDir string, seed int64) []string {

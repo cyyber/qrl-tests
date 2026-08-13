@@ -416,7 +416,7 @@ func testLaneRuns(t *testing.T, reports string, count int) runPlan {
 		name := fmt.Sprintf("lane-%d", index)
 		reportDir := filepath.Join(reports, name)
 		planned[index] = laneRun{
-			lane:        lane,
+			definition:  lane,
 			enclaveName: name,
 			reportDir:   reportDir,
 		}
