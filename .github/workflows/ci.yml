@@ -2,6 +2,13 @@ name: ci
 
 on:
   pull_request:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -9,6 +16,7 @@ permissions:
 jobs:
   validate:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - name: Check out qrl-tests
         uses: actions/checkout@v7
@@ -35,4 +43,5 @@ jobs:
           docker buildx bake \
             -f ci/images/docker-bake.hcl \
             -f ci/images/qrl-genesis-generator.hcl \
-            --print
+            --print \
+            go-qrl go-qrl-clef qrl-genesis-generator
