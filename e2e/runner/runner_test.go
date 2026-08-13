@@ -476,7 +476,7 @@ func TestPlanLanesDescribesEachLane(t *testing.T) {
 	require.Contains(t, planned.ginkgoArguments(), "./e2e/suites/execution/abi")
 	require.Contains(t, planned.ginkgoArguments(), fmt.Sprintf("--seed=%d", planned.seed))
 	require.Positive(t, planned.seed)
-	require.True(t, plan.mode.provisions())
+	require.True(t, plan.mode.provisionsNetwork())
 }
 
 func testEnvironment(name string, backend devnet.Backend) devnet.Environment {

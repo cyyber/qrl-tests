@@ -29,7 +29,7 @@ type laneLease struct {
 }
 
 func (runner *Runner) acquireLane(ctx context.Context, plan runPlan, planned laneRun) (laneLease, error) {
-	if !plan.mode.provisions() {
+	if !plan.mode.provisionsNetwork() {
 		environment, err := runner.networks.Inspect(ctx, planned.enclaveName)
 		if err != nil {
 			return laneLease{}, fmt.Errorf("inspect network: %w", err)

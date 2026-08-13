@@ -70,7 +70,7 @@ const (
 	provisionPerLane
 )
 
-func (mode runMode) provisions() bool {
+func (mode runMode) provisionsNetwork() bool {
 	return mode != useExistingNetwork
 }
 
@@ -245,7 +245,7 @@ func (runner *Runner) collectManifest(ctx context.Context, plan runPlan) runmani
 
 	// Attached networks run whatever they were provisioned with; recording
 	// this run's image configuration there would only mislead.
-	if plan.mode.provisions() {
+	if plan.mode.provisionsNetwork() {
 		record.PackageLocator = devnet.PackageLocator
 		if len(configuration.Parameters) != 0 {
 			record.ParametersSHA256 = fmt.Sprintf("%x", sha256.Sum256(configuration.Parameters))
