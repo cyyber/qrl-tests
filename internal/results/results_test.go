@@ -42,7 +42,7 @@ func writeReports(t *testing.T, laneDir string, reports ...types.Report) {
 }
 
 func observedOutcome(name, reportDir string, err error) Outcome {
-	return Outcome{Name: name, Observation: Observe(reportDir), Err: err}
+	return Outcome{Name: name, Observation: Observe(reportDir), Err: err, ExecutionErr: err}
 }
 
 func summarizeOne(t *testing.T, root string, outcome Outcome) Summary {

@@ -122,7 +122,7 @@ func (runner *Runner) executeLane(ctx context.Context, plan runPlan, planned lan
 	defer cancelLane()
 	fmt.Fprintf(stdout, "=== RUN lane=%s profile=%s ===\n", lane.Name, lane.Profile)
 	processEnvironment := append(os.Environ(), manifest.PathEnv+"="+manifestPath)
-	outcome.Err = runner.runCommand(laneCtx, commandSpec{
+	outcome.ExecutionErr = runner.runCommand(laneCtx, commandSpec{
 		Path:   "go",
 		Args:   planned.ginkgoArguments(),
 		Dir:    plan.testsDir,
@@ -130,7 +130,8 @@ func (runner *Runner) executeLane(ctx context.Context, plan runPlan, planned lan
 		Stdout: stdout,
 		Stderr: stderr,
 	})
-	outcome.Err = errors.Join(outcome.Err, laneCtx.Err())
+	outcome.ExecutionErr = errors.Join(outcome.ExecutionErr, laneCtx.Err())
+	outcome.Err = outcome.ExecutionErr
 	outcome.Observation = results.Observe(planned.reportDir)
 	return outcome
 }

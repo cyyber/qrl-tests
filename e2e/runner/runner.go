@@ -203,6 +203,9 @@ func (runner *Runner) run(ctx context.Context, selected []lanes.Lane, mode runMo
 		}
 	}
 	record.Finish(laneResults, time.Now())
+	if manifestErr != nil || summarizeErr != nil {
+		record.Result = "failed"
+	}
 	manifestErr = errors.Join(manifestErr, record.Write(manifestPath))
 
 	// Reporting problems never mask the test result, and vice versa. Preserve

@@ -340,7 +340,7 @@ func TestRunAllProvisionsPerLane(t *testing.T) {
 }
 
 func TestRunReturnsCleanupFailure(t *testing.T) {
-	networks := &recordingNetworks{stopErr: errors.New("stop failed")}
+	networks := &recordingNetworks{stopErr: context.DeadlineExceeded}
 	reports := t.TempDir()
 	runner := New(Config{
 		BaseName:     "qrl-tests",
@@ -352,7 +352,7 @@ func TestRunReturnsCleanupFailure(t *testing.T) {
 	runner.runCommand = passingCommand(t, reports)
 
 	err := runner.Run(t.Context(), "execution-abi")
-	require.ErrorContains(t, err, "lane execution-abi: stop network: stop failed")
+	require.ErrorIs(t, err, context.DeadlineExceeded)
 
 	record := readRunManifest(t, filepath.Join(reports, runmanifest.FileName))
 	require.Equal(t, "failed", record.Result)
@@ -361,6 +361,22 @@ func TestRunReturnsCleanupFailure(t *testing.T) {
 	var summary results.Summary
 	require.NoError(t, json.Unmarshal(payload, &summary))
 	require.Equal(t, results.ClassInfrastructure, summary.Lanes[0].Class)
+}
+
+func TestRunMarksManifestFailedWhenSummaryWritingFails(t *testing.T) {
+	reports := t.TempDir()
+	require.NoError(t, os.Mkdir(filepath.Join(reports, results.MarkdownFileName), 0o700))
+
+	runner := New(Config{ReportDir: reports}, io.Discard, io.Discard)
+	runner.networks = new(recordingNetworks)
+	runner.runCommand = passingCommand(t, reports)
+
+	err := runner.Run(t.Context(), "execution-abi")
+	require.ErrorContains(t, err, "write markdown summary")
+
+	record := readRunManifest(t, filepath.Join(reports, runmanifest.FileName))
+	require.Equal(t, "failed", record.Result)
+	require.Equal(t, "passed", record.Lanes[0].Result)
 }
 
 func TestAttachBuildsCommandWithoutProvisioning(t *testing.T) {

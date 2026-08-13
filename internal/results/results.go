@@ -44,12 +44,13 @@ func Observe(reportDir string) Observation {
 	return Observation{reports: reports, err: err}
 }
 
-// Outcome is the complete result of running one lane. BootstrapFailure records
-// the one failure that cannot be inferred from the Ginkgo report or exit error.
+// Outcome is the complete result of running one lane. ExecutionErr preserves
+// the test process error separately from lifecycle failures such as cleanup.
 type Outcome struct {
 	Name             string
 	Observation      Observation
 	Err              error
+	ExecutionErr     error
 	BootstrapFailure bool
 }
 
@@ -200,10 +201,10 @@ func classify(outcome Outcome, tallied LaneSummary) string {
 	if outcome.BootstrapFailure {
 		return ClassBootstrap
 	}
-	if errors.Is(outcome.Err, context.Canceled) {
+	if errors.Is(outcome.ExecutionErr, context.Canceled) {
 		return ClassCanceled
 	}
-	if errors.Is(outcome.Err, context.DeadlineExceeded) {
+	if errors.Is(outcome.ExecutionErr, context.DeadlineExceeded) {
 		return ClassTimeout
 	}
 
