@@ -10,14 +10,14 @@ import (
 )
 
 type fakeClient struct {
-	exists      bool
-	createErr   error
-	runErr      error
-	destroyErr  error
-	services    map[string]kurtosis.Service
-	createdName string
-	runLocator  string
-	destroyed   bool
+	exists         bool
+	createErr      error
+	runErr         error
+	destroyErr     error
+	services       map[string]kurtosis.Service
+	createdName    string
+	packageLocator string
+	destroyed      bool
 }
 
 func (client *fakeClient) EnclaveExists(context.Context, string) (bool, error) {
@@ -30,7 +30,7 @@ func (client *fakeClient) CreateEnclave(_ context.Context, name string) error {
 }
 
 func (client *fakeClient) RunRemotePackage(_ context.Context, _, locator, _ string) error {
-	client.runLocator = locator
+	client.packageLocator = locator
 	return client.runErr
 }
 
@@ -123,15 +123,13 @@ func TestInspect(t *testing.T) {
 	require.Len(t, environment.Participants, 1)
 }
 
-func TestPackageLocatorIsPinned(t *testing.T) {
-	require.Regexp(t, `^github\.com/.+/qrl-package@[0-9a-f]{40}$`, PackageLocator)
-}
-
-func TestStartRunsPinnedPackageLocator(t *testing.T) {
+func TestStartUsesPinnedPackage(t *testing.T) {
 	client := &fakeClient{services: singleParticipant()}
+
 	_, err := testManager(client).Start(t.Context(), startOptions())
 	require.NoError(t, err)
-	require.Equal(t, PackageLocator, client.runLocator)
+	require.Regexp(t, `^github\.com/cyyber/qrl-package@[0-9a-f]{40}$`, PackageLocator)
+	require.Equal(t, PackageLocator, client.packageLocator)
 }
 
 func TestStartRejectsInvalidImages(t *testing.T) {
