@@ -42,11 +42,11 @@ func DefaultImages() Images {
 func (images Images) Resolved() (Images, error) {
 	var problems []error
 	normalize := func(role, value, fallback string) string {
-		reference := cmp.Or(strings.TrimSpace(value), fallback)
-		if err := validateImageReference(reference); err != nil {
-			problems = append(problems, fmt.Errorf("%s image: %w", role, err))
+		imageReference := cmp.Or(strings.TrimSpace(value), fallback)
+		if _, err := reference.Parse(imageReference); err != nil {
+			problems = append(problems, fmt.Errorf("%s image reference %q: %w", role, imageReference, err))
 		}
-		return reference
+		return imageReference
 	}
 
 	resolved := Images{
@@ -60,14 +60,4 @@ func (images Images) Resolved() (Images, error) {
 		return Images{}, err
 	}
 	return resolved, nil
-}
-
-// validateImageReference admits exactly what a registry could serve,
-// delegating the name[:tag][@digest] grammar and digest verification to the
-// canonical distribution parser.
-func validateImageReference(value string) error {
-	if _, err := reference.Parse(value); err != nil {
-		return fmt.Errorf("reference %q: %w", value, err)
-	}
-	return nil
 }
