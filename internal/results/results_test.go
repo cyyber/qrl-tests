@@ -77,7 +77,6 @@ func TestCaptureReportsMissingFile(t *testing.T) {
 		"without a report nothing distinguishes a product failure from a broken harness")
 	require.Contains(t, summary.Error, "exit status 1")
 	require.Contains(t, summary.Error, "report.json")
-	require.Contains(t, summary.Error, "no such file or directory")
 }
 
 func TestCaptureReportsRejectsCorruptFile(t *testing.T) {

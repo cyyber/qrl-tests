@@ -155,19 +155,19 @@ func outcomeErrors(outcomes []results.Outcome) []error {
 func TestRunWritesRunManifestAndSummary(t *testing.T) {
 	reports := t.TempDir()
 	laneDir := filepath.Join(reports, "lanes", "execution-abi")
-	tests := New(Config{
+	testRunner := New(Config{
 		BaseName:     "qrl-tests",
 		ReportDir:    reports,
 		Backend:      devnet.BackendDocker,
 		StartTimeout: time.Minute,
 	}, io.Discard, io.Discard)
-	tests.networks = new(recordingNetworks)
-	tests.runCommand = func(context.Context, commandSpec) error {
+	testRunner.networks = new(recordingNetworks)
+	testRunner.runCommand = func(context.Context, commandSpec) error {
 		writeGinkgoReport(t, laneDir, types.SpecStatePassed)
 		return nil
 	}
 
-	require.NoError(t, tests.Run(t.Context(), "execution-abi"))
+	require.NoError(t, testRunner.Run(t.Context(), "execution-abi"))
 
 	record := readRunManifest(t, filepath.Join(reports, runmanifest.FileName))
 	require.Equal(t, "passed", record.Result)
@@ -191,19 +191,19 @@ func TestRunWritesRunManifestAndSummary(t *testing.T) {
 func TestRunFailsOnUnexpectedSkips(t *testing.T) {
 	reports := t.TempDir()
 	laneDir := filepath.Join(reports, "lanes", "execution-abi")
-	tests := New(Config{
+	testRunner := New(Config{
 		BaseName:     "qrl-tests",
 		ReportDir:    reports,
 		Backend:      devnet.BackendDocker,
 		StartTimeout: time.Minute,
 	}, io.Discard, io.Discard)
-	tests.networks = new(recordingNetworks)
-	tests.runCommand = func(context.Context, commandSpec) error {
+	testRunner.networks = new(recordingNetworks)
+	testRunner.runCommand = func(context.Context, commandSpec) error {
 		writeGinkgoReport(t, laneDir, types.SpecStateSkipped)
 		return nil
 	}
 
-	err := tests.Run(t.Context(), "execution-abi")
+	err := testRunner.Run(t.Context(), "execution-abi")
 	require.ErrorContains(t, err, "execution-abi (skipped)")
 
 	record := readRunManifest(t, filepath.Join(reports, runmanifest.FileName))
@@ -214,14 +214,14 @@ func TestRunFailsOnUnexpectedSkips(t *testing.T) {
 func TestRunPreservesCancellation(t *testing.T) {
 	reports := t.TempDir()
 	laneDir := filepath.Join(reports, "lanes", "execution-abi")
-	tests := New(Config{ReportDir: reports}, io.Discard, io.Discard)
-	tests.networks = new(recordingNetworks)
-	tests.runCommand = func(context.Context, commandSpec) error {
+	testRunner := New(Config{ReportDir: reports}, io.Discard, io.Discard)
+	testRunner.networks = new(recordingNetworks)
+	testRunner.runCommand = func(context.Context, commandSpec) error {
 		writeGinkgoReport(t, laneDir, types.SpecStateInterrupted)
 		return context.Canceled
 	}
 
-	err := tests.Run(t.Context(), "execution-abi")
+	err := testRunner.Run(t.Context(), "execution-abi")
 	require.ErrorIs(t, err, context.Canceled)
 
 	payload, readErr := os.ReadFile(filepath.Join(reports, results.SummaryFileName))
@@ -233,17 +233,17 @@ func TestRunPreservesCancellation(t *testing.T) {
 
 func TestRunFailsWithoutAUsableReport(t *testing.T) {
 	reports := t.TempDir()
-	tests := New(Config{
+	testRunner := New(Config{
 		BaseName:     "qrl-tests",
 		ReportDir:    reports,
 		Backend:      devnet.BackendDocker,
 		StartTimeout: time.Minute,
 	}, io.Discard, io.Discard)
-	tests.networks = new(recordingNetworks)
+	testRunner.networks = new(recordingNetworks)
 	// The lane process "succeeds" without ever writing a report.
-	tests.runCommand = func(context.Context, commandSpec) error { return nil }
+	testRunner.runCommand = func(context.Context, commandSpec) error { return nil }
 
-	err := tests.Run(t.Context(), "execution-abi")
+	err := testRunner.Run(t.Context(), "execution-abi")
 	require.ErrorContains(t, err, "lanes did not pass")
 
 	record := readRunManifest(t, filepath.Join(reports, runmanifest.FileName))
@@ -260,15 +260,15 @@ func TestRunFailsWithoutAUsableReport(t *testing.T) {
 func TestRunManifestSurvivesBootstrapFailure(t *testing.T) {
 	reports := t.TempDir()
 	networks := &recordingNetworks{startErr: errors.New("no capacity")}
-	tests := New(Config{
+	testRunner := New(Config{
 		BaseName:     "qrl-tests",
 		ReportDir:    reports,
 		Backend:      devnet.BackendDocker,
 		StartTimeout: time.Minute,
 	}, io.Discard, io.Discard)
-	tests.networks = networks
+	testRunner.networks = networks
 
-	err := tests.Run(t.Context(), "execution-abi")
+	err := testRunner.Run(t.Context(), "execution-abi")
 	require.ErrorContains(t, err, "lane execution-abi: network bootstrap failed: start network: no capacity")
 	require.NoDirExists(t, filepath.Join(reports, "lanes", "execution-abi"))
 	require.Empty(t, networks.stopped, "a lane that never started must not be stopped")
