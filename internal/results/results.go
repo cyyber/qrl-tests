@@ -20,7 +20,7 @@ const (
 	MarkdownFileName = "summary.md"
 )
 
-// Lane result classifications.
+// Lane outcome classifications.
 const (
 	ClassBootstrap      = "bootstrap"      // the network never became ready
 	ClassInfrastructure = "infrastructure" // the harness or its tools broke
