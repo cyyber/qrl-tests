@@ -25,15 +25,17 @@ import (
 )
 
 type recordingNetworks struct {
-	mutex      sync.Mutex
-	started    devnet.StartOptions
-	inspected  string
-	stopped    []string
-	collected  []string
-	events     []string
-	startErr   error
-	stopErr    error
-	collectErr error
+	mutex                     sync.Mutex
+	started                   devnet.StartOptions
+	inspected                 string
+	stopped                   []string
+	collected                 []string
+	events                    []string
+	startErr                  error
+	stopErr                   error
+	collectErr                error
+	observeStopContext        func(context.Context)
+	observeDiagnosticsContext func(context.Context)
 }
 
 func (networks *recordingNetworks) Start(_ context.Context, options devnet.StartOptions) (devnet.Environment, error) {
@@ -53,7 +55,10 @@ func (networks *recordingNetworks) Inspect(_ context.Context, name string) (devn
 	return testEnvironment(name, ""), nil
 }
 
-func (networks *recordingNetworks) Stop(_ context.Context, name string) error {
+func (networks *recordingNetworks) Stop(ctx context.Context, name string) error {
+	if networks.observeStopContext != nil {
+		networks.observeStopContext(ctx)
+	}
 	networks.mutex.Lock()
 	defer networks.mutex.Unlock()
 	networks.stopped = append(networks.stopped, name)
@@ -61,7 +66,10 @@ func (networks *recordingNetworks) Stop(_ context.Context, name string) error {
 	return networks.stopErr
 }
 
-func (networks *recordingNetworks) CollectDiagnostics(_ context.Context, enclaveName, outputDir string) error {
+func (networks *recordingNetworks) CollectDiagnostics(ctx context.Context, enclaveName, outputDir string) error {
+	if networks.observeDiagnosticsContext != nil {
+		networks.observeDiagnosticsContext(ctx)
+	}
 	networks.mutex.Lock()
 	defer networks.mutex.Unlock()
 	networks.collected = append(networks.collected, outputDir)
@@ -200,15 +208,46 @@ func TestRunFailsOnUnexpectedSkips(t *testing.T) {
 func TestRunPreservesCancellation(t *testing.T) {
 	reports := t.TempDir()
 	laneDir := filepath.Join(reports, "lanes", "execution-abi")
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	assertRecoveryContext := func(recoveryCtx context.Context, timeout time.Duration) {
+		require.ErrorIs(t, ctx.Err(), context.Canceled)
+		require.NoError(t, recoveryCtx.Err())
+		deadline, bounded := recoveryCtx.Deadline()
+		require.True(t, bounded)
+		remaining := time.Until(deadline)
+		require.Positive(t, remaining)
+		require.LessOrEqual(t, remaining, timeout)
+	}
+	diagnosticsContexts := 0
+	stopContexts := 0
+	networks := &recordingNetworks{
+		observeDiagnosticsContext: func(recoveryCtx context.Context) {
+			assertRecoveryContext(recoveryCtx, laneDiagnosticsTimeout)
+			diagnosticsContexts++
+		},
+		observeStopContext: func(recoveryCtx context.Context) {
+			assertRecoveryContext(recoveryCtx, laneCleanupTimeout)
+			stopContexts++
+		},
+	}
 	testRunner := New(Config{ReportDir: reports}, io.Discard, io.Discard)
-	testRunner.networks = new(recordingNetworks)
-	testRunner.runCommand = func(context.Context, commandSpec) error {
+	testRunner.networks = networks
+	testRunner.runCommand = func(commandCtx context.Context, _ commandSpec) error {
 		writeGinkgoReport(t, laneDir, types.SpecStateInterrupted)
-		return context.Canceled
+		cancel()
+		<-commandCtx.Done()
+		return commandCtx.Err()
 	}
 
-	err := testRunner.Run(t.Context(), "execution-abi")
+	err := testRunner.Run(ctx, "execution-abi")
 	require.ErrorIs(t, err, context.Canceled)
+	require.Equal(t, 1, diagnosticsContexts)
+	require.Equal(t, 1, stopContexts)
+	require.Equal(t, []string{
+		"collect:" + devnet.DefaultEnclaveName,
+		"stop:" + devnet.DefaultEnclaveName,
+	}, networks.events)
 
 	summary := testutil.ReadJSON[results.Summary](t, filepath.Join(reports, results.SummaryFileName))
 	require.Equal(t, results.VerdictCanceled, summary.Lanes[0].Verdict)
@@ -216,18 +255,20 @@ func TestRunPreservesCancellation(t *testing.T) {
 
 func TestRunFailsWithoutAUsableReport(t *testing.T) {
 	reports := t.TempDir()
+	networks := new(recordingNetworks)
 	testRunner := New(Config{
 		BaseName:     "qrl-tests",
 		ReportDir:    reports,
 		Backend:      devnet.BackendDocker,
 		StartTimeout: time.Minute,
 	}, io.Discard, io.Discard)
-	testRunner.networks = new(recordingNetworks)
+	testRunner.networks = networks
 	// The lane process "succeeds" without ever writing a report.
 	testRunner.runCommand = func(context.Context, commandSpec) error { return nil }
 
 	err := testRunner.Run(t.Context(), "execution-abi")
 	require.ErrorContains(t, err, "lanes did not pass")
+	require.Equal(t, []string{"collect:qrl-tests", "stop:qrl-tests"}, networks.events)
 
 	record := testutil.ReadJSON[runmanifest.Manifest](t, filepath.Join(reports, runmanifest.FileName))
 	require.Equal(t, "failed", record.Result)
@@ -461,10 +502,9 @@ func testLaneRuns(t *testing.T, reports string, count int) runPlan {
 		name := fmt.Sprintf("lane-%d", index)
 		reportDir := filepath.Join(reports, name)
 		laneRuns[index] = laneRun{
-			definition:     lane,
-			enclaveName:    name,
-			reportDir:      reportDir,
-			diagnosticsDir: filepath.Join(reportDir, diagnosticsDirectory),
+			definition:  lane,
+			enclaveName: name,
+			reportDir:   reportDir,
 		}
 	}
 	return runPlan{testsDir: ".", reportRoot: reports, mode: provisionNetwork, lanes: laneRuns}

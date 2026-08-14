@@ -51,7 +51,7 @@ func (runner *Runner) acquireLane(ctx context.Context, plan runPlan, lane laneRu
 		Images:                runner.configuration.Images,
 		Parameters:            runner.configuration.Parameters,
 		Profile:               lane.definition.Profile,
-		FailureDiagnosticsDir: lane.diagnosticsDir,
+		FailureDiagnosticsDir: filepath.Join(lane.reportDir, diagnosticsDirectory),
 	}
 
 	startCtx, cancelStart := context.WithTimeout(ctx, runner.configuration.StartTimeout)
@@ -104,7 +104,7 @@ func (runner *Runner) executeLane(ctx context.Context, plan runPlan, lane laneRu
 			if diagnosticsErr := runner.networks.CollectDiagnostics(
 				collectCtx,
 				lease.environment.EnclaveName,
-				lane.diagnosticsDir,
+				filepath.Join(lane.reportDir, diagnosticsDirectory),
 			); diagnosticsErr != nil {
 				outcome.Err = errors.Join(outcome.Err, fmt.Errorf("collect diagnostics: %w", diagnosticsErr))
 			}

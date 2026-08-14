@@ -12,8 +12,8 @@ import (
 func ReadJSON[T any](t testing.TB, path string) T {
 	t.Helper()
 	payload, err := os.ReadFile(path)
-	require.NoError(t, err)
+	require.NoError(t, err, "read JSON file %s", path)
 	var value T
-	require.NoError(t, json.Unmarshal(payload, &value))
+	require.NoError(t, json.Unmarshal(payload, &value), "decode JSON file %s", path)
 	return value
 }

@@ -70,6 +70,9 @@ func collectInspection(
 
 	var buffer strings.Builder
 	commandErr := run(ctx, &buffer, "kurtosis", "enclave", "inspect", enclaveName)
+	if commandErr != nil {
+		commandErr = fmt.Errorf("kurtosis enclave inspect %s: %w", enclaveName, commandErr)
+	}
 	output := buffer.String()
 	writeErr := writeDiagnostic(filepath.Join(outputDir, inspection.File), output)
 	captureErr := errors.Join(commandErr, writeErr)
@@ -79,11 +82,7 @@ func collectInspection(
 		inspection.Error = captureErr.Error()
 	}
 
-	if commandErr != nil {
-		commandErr = fmt.Errorf("kurtosis enclave inspect %s: %w", enclaveName, commandErr)
-	}
-
-	return inspection, output, errors.Join(commandErr, writeErr)
+	return inspection, output, captureErr
 }
 
 func collectServiceLogs(
@@ -131,6 +130,9 @@ func collectServiceLog(
 		return diagnostic, err
 	}
 	commandErr := run(ctx, output, "kurtosis", "service", "logs", "--all", enclaveName, service)
+	if commandErr != nil {
+		commandErr = fmt.Errorf("kurtosis service logs %s %s: %w", enclaveName, service, commandErr)
+	}
 	closeErr := output.Close()
 	if closeErr != nil {
 		closeErr = fmt.Errorf("write diagnostic %s: %w", path, closeErr)
@@ -141,11 +143,7 @@ func collectServiceLog(
 		diagnostic.Error = captureErr.Error()
 	}
 
-	if commandErr != nil {
-		commandErr = fmt.Errorf("kurtosis service logs %s %s: %w", enclaveName, service, commandErr)
-	}
-
-	return diagnostic, errors.Join(commandErr, closeErr)
+	return diagnostic, captureErr
 }
 
 func serviceNamesFromInspection(inspection string) []string {

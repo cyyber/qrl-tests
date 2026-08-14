@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/cyyber/qrl-tests/devnet/internal/kurtosis"
 	"github.com/stretchr/testify/require"
@@ -20,6 +21,7 @@ type fakeClient struct {
 	createdName    string
 	packageLocator string
 	destroyed      bool
+	onDestroy      func(context.Context)
 }
 
 func (client *fakeClient) EnclaveExists(context.Context, string) (bool, error) {
@@ -40,7 +42,10 @@ func (client *fakeClient) Services(context.Context, string) (map[string]kurtosis
 	return client.services, nil
 }
 
-func (client *fakeClient) DestroyEnclave(context.Context, string) error {
+func (client *fakeClient) DestroyEnclave(ctx context.Context, _ string) error {
+	if client.onDestroy != nil {
+		client.onDestroy(ctx)
+	}
 	if client.destroyErr != nil {
 		return client.destroyErr
 	}
@@ -71,6 +76,16 @@ func singleParticipant() map[string]kurtosis.Service {
 		"el-1-gqrl-qrysm": service("el-1-gqrl-qrysm", "execution", map[string]uint16{"rpc": 3201, "ws": 3301}),
 		"cl-1-qrysm-gqrl": service("cl-1-qrysm-gqrl", "beacon", map[string]uint16{"http": 4201}),
 	}
+}
+
+func requireLiveBoundedContext(t *testing.T, ctx context.Context, timeout time.Duration) {
+	t.Helper()
+	require.NoError(t, ctx.Err())
+	deadline, ok := ctx.Deadline()
+	require.True(t, ok, "recovery context must have a deadline")
+	remaining := time.Until(deadline)
+	require.Positive(t, remaining)
+	require.LessOrEqual(t, remaining, timeout)
 }
 
 func TestStartCleansUpEnclaveAfterPostCreateFailure(t *testing.T) {
@@ -155,10 +170,41 @@ func TestStartReportsDiagnosticsFailureAlongsideCause(t *testing.T) {
 	require.True(t, client.destroyed, "a diagnostics failure must not leak the enclave")
 }
 
+func TestStartRecoveryUsesLiveBoundedContextsAfterCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	client := &fakeClient{services: singleParticipant()}
+	destroyCalls := 0
+	client.onDestroy = func(ctx context.Context) {
+		requireLiveBoundedContext(t, ctx, startCleanupTimeout)
+		destroyCalls++
+	}
+	manager := testManager(client)
+	manager.probe = func(context.Context, string, string) error {
+		cancel()
+		return errors.New("not ready")
+	}
+	diagnosticsCalls := 0
+	manager.collectDiagnostics = func(ctx context.Context, _, _ string) error {
+		requireLiveBoundedContext(t, ctx, startDiagnosticsTimeout)
+		diagnosticsCalls++
+		return nil
+	}
+
+	options := startOptions()
+	options.FailureDiagnosticsDir = failureDiagnosticsDir
+	_, err := manager.Start(ctx, options)
+	require.ErrorIs(t, err, context.Canceled)
+	require.Equal(t, 1, diagnosticsCalls)
+	require.Equal(t, 1, destroyCalls)
+	require.True(t, client.destroyed)
+}
+
 func TestStartCreateFailureSkipsCleanup(t *testing.T) {
 	client := &fakeClient{createErr: errors.New("create failed")}
+	options := startOptions()
+	options.FailureDiagnosticsDir = failureDiagnosticsDir
 
-	_, err := testManager(client).Start(t.Context(), startOptions())
+	_, err := testManager(client).Start(t.Context(), options)
 	require.ErrorContains(t, err, "create failed")
 	require.False(t, client.destroyed)
 	require.Equal(t, "failed-start", client.createdName)
