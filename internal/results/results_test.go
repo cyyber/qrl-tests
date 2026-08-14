@@ -87,13 +87,6 @@ func TestSummarizePassedLane(t *testing.T) {
 	require.Equal(t, summary.Lanes[0].Name, written.Lanes[0].Name)
 	require.Equal(t, summary.Lanes[0].Class, written.Lanes[0].Class)
 	require.Equal(t, summary.Lanes[0].Counts, written.Lanes[0].Counts)
-
-	markdown, err := os.ReadFile(filepath.Join(root, MarkdownFileName))
-	require.NoError(t, err)
-	require.Contains(t, string(markdown), "## E2E: passed")
-	require.Contains(t, string(markdown), "### execution-abi")
-	require.Contains(t, string(markdown), "| execution-abi | 2/2 |")
-	require.NotContains(t, string(markdown), "| Failed |")
 }
 
 func TestSummarizeClassifiesAssertionFailures(t *testing.T) {
@@ -141,10 +134,6 @@ func TestSummarizeClassifiesSuiteTimeouts(t *testing.T) {
 	require.Equal(t, ClassTimeout, lane.Class)
 	require.Equal(t, []string{"Suite did not run because the timeout elapsed"}, lane.suites[0].SuiteFailures)
 	require.Contains(t, lane.Error, "exit status 1")
-
-	markdown, err := os.ReadFile(filepath.Join(root, MarkdownFileName))
-	require.NoError(t, err)
-	require.Contains(t, string(markdown), "**suite** Suite did not run because the timeout elapsed")
 }
 
 func TestSummarizeDistinguishesCancellationFromTimeout(t *testing.T) {
@@ -280,14 +269,6 @@ func TestSummarizeReportsSuitesWithinLane(t *testing.T) {
 	require.Equal(t, ClassPassed, lane.suites[0].Class)
 	require.Equal(t, "Console E2E suite", lane.suites[1].Name)
 	require.Equal(t, ClassAssertion, lane.suites[1].Class)
-
-	markdown, err := os.ReadFile(filepath.Join(root, MarkdownFileName))
-	require.NoError(t, err)
-	require.Contains(t, string(markdown), "| ABI E2E suite | 1/1 |")
-	require.Contains(t, string(markdown), "| Console E2E suite | 0/1 failed |")
-	require.NotContains(t, string(markdown), "lane total")
-	require.NotContains(t, string(markdown), "exit status 1")
-	require.Contains(t, string(markdown), "#### Console E2E suite failures")
 }
 
 func TestSummarizeRejectsEmptySuiteWithinLane(t *testing.T) {

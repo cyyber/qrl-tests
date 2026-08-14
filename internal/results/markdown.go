@@ -11,47 +11,40 @@ func (summary Summary) markdown() string {
 	var report strings.Builder
 	fmt.Fprintf(&report, "## E2E: %s\n", summary.Result)
 	for _, lane := range summary.Lanes {
-		fmt.Fprintf(&report, "\n### %s\n\n", lane.Name)
-		if len(lane.suites) == 0 {
-			fmt.Fprintf(&report, "**Result:** %s\n", displayClass(lane.Class))
-			continue
-		}
-		report.WriteString("| Suite | Result |\n")
-		report.WriteString("| --- | ---: |\n")
-		for _, suite := range lane.suites {
-			fmt.Fprintf(&report, "| %s | %s |\n", suite.Name, suiteResult(suite))
-		}
+		writeLaneSummary(&report, lane)
 	}
 
 	for _, lane := range summary.Lanes {
-		if !lane.hasDetails() {
-			continue
-		}
-		if showLaneError(lane) {
-			fmt.Fprintf(&report, "\n### %s details\n\n", lane.Name)
-			fmt.Fprintf(&report, "```\n%s\n```\n", lane.Error)
-		}
-		for _, suite := range lane.suites {
-			if !suite.hasDetails() {
-				continue
-			}
-			fmt.Fprintf(&report, "\n#### %s failures\n\n", suite.Name)
-			writeSuiteDetails(&report, suite)
-		}
+		writeLaneDetails(&report, lane)
 	}
 	return report.String()
 }
 
-func (lane LaneSummary) hasDetails() bool {
+func writeLaneSummary(report *strings.Builder, lane LaneSummary) {
+	fmt.Fprintf(report, "\n### %s\n\n", lane.Name)
+	if len(lane.suites) == 0 {
+		fmt.Fprintf(report, "**Result:** %s\n", displayClass(lane.Class))
+		return
+	}
+	report.WriteString("| Suite | Result |\n")
+	report.WriteString("| --- | ---: |\n")
+	for _, suite := range lane.suites {
+		fmt.Fprintf(report, "| %s | %s |\n", suite.Name, suiteResult(suite))
+	}
+}
+
+func writeLaneDetails(report *strings.Builder, lane LaneSummary) {
 	if showLaneError(lane) {
-		return true
+		fmt.Fprintf(report, "\n### %s details\n\n", lane.Name)
+		fmt.Fprintf(report, "```\n%s\n```\n", lane.Error)
 	}
 	for _, suite := range lane.suites {
-		if suite.hasDetails() {
-			return true
+		if !suite.hasDetails() {
+			continue
 		}
+		fmt.Fprintf(report, "\n#### %s failures\n\n", suite.Name)
+		writeSuiteDetails(report, suite)
 	}
-	return false
 }
 
 func (suite suiteSummary) hasDetails() bool {
@@ -65,7 +58,7 @@ func writeSuiteDetails(report *strings.Builder, suite suiteSummary) {
 			fmt.Fprintf(report, " (%s)", failure.Location)
 		}
 		if failure.Message != "" {
-			fmt.Fprintf(report, "\n  %s", indent(failure.Message))
+			fmt.Fprintf(report, "\n  %s", indentMarkdown(failure.Message))
 		}
 		report.WriteString("\n")
 	}
@@ -102,6 +95,6 @@ func showLaneError(lane LaneSummary) bool {
 	return lane.Error != "" && lane.Class != ClassAssertion && lane.Class != ClassSkipped
 }
 
-func indent(message string) string {
+func indentMarkdown(message string) string {
 	return strings.ReplaceAll(strings.TrimSpace(message), "\n", "\n  ")
 }
