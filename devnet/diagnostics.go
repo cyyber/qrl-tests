@@ -5,12 +5,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
 )
 
-type diagnosticsCommand func(ctx context.Context, name string, arguments ...string) (string, error)
+type diagnosticsCommand func(ctx context.Context, output io.Writer, name string, arguments ...string) error
 
 type inspectionDiagnostic struct {
 	File     string `json:"file"`
@@ -67,7 +68,9 @@ func collectInspection(
 ) (inspectionDiagnostic, string, error) {
 	inspection := inspectionDiagnostic{File: "inspect.txt"}
 
-	output, commandErr := run(ctx, "kurtosis", "enclave", "inspect", enclaveName)
+	var buffer strings.Builder
+	commandErr := run(ctx, &buffer, "kurtosis", "enclave", "inspect", enclaveName)
+	output := buffer.String()
 	writeErr := writeDiagnostic(filepath.Join(outputDir, inspection.File), output)
 	captureErr := errors.Join(commandErr, writeErr)
 
@@ -119,10 +122,20 @@ func collectServiceLog(
 ) (serviceDiagnostic, error) {
 	relativePath := filepath.Join("services", service+".log")
 	diagnostic := serviceDiagnostic{Name: service, File: filepath.ToSlash(relativePath)}
+	path := filepath.Join(outputDir, relativePath)
 
-	output, commandErr := run(ctx, "kurtosis", "service", "logs", "--all", enclaveName, service)
-	writeErr := writeDiagnostic(filepath.Join(outputDir, relativePath), output)
-	captureErr := errors.Join(commandErr, writeErr)
+	output, err := os.OpenFile(path, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
+	if err != nil {
+		err = fmt.Errorf("write diagnostic %s: %w", path, err)
+		diagnostic.Error = err.Error()
+		return diagnostic, err
+	}
+	commandErr := run(ctx, output, "kurtosis", "service", "logs", "--all", enclaveName, service)
+	closeErr := output.Close()
+	if closeErr != nil {
+		closeErr = fmt.Errorf("write diagnostic %s: %w", path, closeErr)
+	}
+	captureErr := errors.Join(commandErr, closeErr)
 	diagnostic.Captured = captureErr == nil
 	if captureErr != nil {
 		diagnostic.Error = captureErr.Error()
@@ -132,7 +145,7 @@ func collectServiceLog(
 		commandErr = fmt.Errorf("kurtosis service logs %s %s: %w", enclaveName, service, commandErr)
 	}
 
-	return diagnostic, errors.Join(commandErr, writeErr)
+	return diagnostic, errors.Join(commandErr, closeErr)
 }
 
 func serviceNamesFromInspection(inspection string) []string {

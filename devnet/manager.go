@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os/exec"
 	"time"
 
@@ -54,9 +55,11 @@ type Manager struct {
 }
 
 func NewManager() *Manager {
-	runDiagnostics := func(ctx context.Context, name string, arguments ...string) (string, error) {
-		output, err := exec.CommandContext(ctx, name, arguments...).CombinedOutput()
-		return string(output), err
+	runDiagnostics := func(ctx context.Context, output io.Writer, name string, arguments ...string) error {
+		command := exec.CommandContext(ctx, name, arguments...)
+		command.Stdout = output
+		command.Stderr = output
+		return command.Run()
 	}
 
 	return &Manager{
@@ -104,7 +107,9 @@ func (manager *Manager) Inspect(ctx context.Context, name string) (Environment, 
 }
 
 func (manager *Manager) Start(ctx context.Context, options StartOptions) (environment Environment, err error) {
-	options = resolveStartOptions(options)
+	options.EnclaveName = cmp.Or(options.EnclaveName, DefaultEnclaveName)
+	options.Backend = cmp.Or(options.Backend, BackendDocker)
+	options.Profile = cmp.Or(options.Profile, ProfileSingle)
 
 	parameters, err := resolveParameters(devwallet.Address, options)
 	if err != nil {
@@ -155,13 +160,6 @@ func (manager *Manager) Start(ctx context.Context, options StartOptions) (enviro
 	}
 
 	return environment, nil
-}
-
-func resolveStartOptions(options StartOptions) StartOptions {
-	options.EnclaveName = cmp.Or(options.EnclaveName, DefaultEnclaveName)
-	options.Backend = cmp.Or(options.Backend, BackendDocker)
-	options.Profile = cmp.Or(options.Profile, ProfileSingle)
-	return options
 }
 
 // finishFailedStart runs after any failure that follows enclave creation. It

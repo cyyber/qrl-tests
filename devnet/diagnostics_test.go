@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -30,16 +31,19 @@ ffff signer-clef RUNNING
 func TestCollectDiagnostics(t *testing.T) {
 	output := t.TempDir()
 	var commands []string
-	run := func(_ context.Context, name string, arguments ...string) (string, error) {
+	run := func(_ context.Context, output io.Writer, name string, arguments ...string) error {
 		command := name + " " + strings.Join(arguments, " ")
 		commands = append(commands, command)
 		if command == "kurtosis enclave inspect qrl-tests-abi" {
-			return testInspection, nil
+			_, err := io.WriteString(output, testInspection)
+			return err
 		}
 		if strings.Contains(command, "run-generate-genesis") {
-			return "starting genesis\nel_premine_addrs: {\"seed\":\"0x010000abcd\"}\ngenesis failed\n", nil
+			_, err := io.WriteString(output, "starting genesis\nel_premine_addrs: {\"seed\":\"0x010000abcd\"}\ngenesis failed\n")
+			return err
 		}
-		return "captured " + arguments[len(arguments)-1], nil
+		_, err := io.WriteString(output, "captured "+arguments[len(arguments)-1])
+		return err
 	}
 
 	require.NoError(t, collectDiagnostics(t.Context(), run, "qrl-tests-abi", output))
@@ -72,25 +76,33 @@ func TestCollectDiagnosticsKeepsGoingOnFailures(t *testing.T) {
 	output := t.TempDir()
 	failedLog := filepath.Join(output, "services", "run-generate-genesis.log")
 	require.NoError(t, os.MkdirAll(failedLog, 0o755))
-	run := func(_ context.Context, name string, arguments ...string) (string, error) {
+	run := func(_ context.Context, output io.Writer, name string, arguments ...string) error {
 		if name == "kurtosis" && arguments[0] == "enclave" {
-			return testInspection, nil
+			_, err := io.WriteString(output, testInspection)
+			return err
 		}
-		if arguments[len(arguments)-1] == "run-generate-genesis" {
-			return "genesis output", errors.New("logs unavailable")
+		if arguments[len(arguments)-1] == "clef-keystore-generation-el-clef-keystore" {
+			_, _ = io.WriteString(output, "partial output")
+			return errors.New("logs unavailable")
 		}
-		return "captured", nil
+		_, err := io.WriteString(output, "captured")
+		return err
 	}
 
 	err := collectDiagnostics(t.Context(), run, "qrl-tests-abi", output)
-	require.ErrorContains(t, err, "kurtosis service logs qrl-tests-abi run-generate-genesis")
+	require.ErrorContains(t, err, "write diagnostic "+failedLog)
+	require.ErrorContains(t, err, "kurtosis service logs qrl-tests-abi clef-keystore-generation-el-clef-keystore")
+	partialLog, readErr := os.ReadFile(filepath.Join(output, "services", "clef-keystore-generation-el-clef-keystore.log"))
+	require.NoError(t, readErr)
+	require.Equal(t, "partial output", string(partialLog))
 	require.FileExists(t, filepath.Join(output, "services", "el-1-gqrl-qrysm.log"),
 		"a failing service capture must not stop the remaining captures")
 
 	manifest := readDiagnosticsManifest(t, filepath.Join(output, "diagnostics.json"))
 	require.False(t, manifest.Services[0].Captured)
-	require.Contains(t, manifest.Services[0].Error, "logs unavailable")
 	require.Contains(t, manifest.Services[0].Error, "write diagnostic")
+	require.False(t, manifest.Services[1].Captured)
+	require.Contains(t, manifest.Services[1].Error, "logs unavailable")
 	require.True(t, manifest.Services[3].Captured)
 }
 

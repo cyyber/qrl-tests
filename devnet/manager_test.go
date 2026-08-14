@@ -160,6 +160,7 @@ func TestStartCreateFailureSkipsCleanup(t *testing.T) {
 	require.ErrorContains(t, err, "create failed")
 	require.False(t, client.destroyed)
 	require.Equal(t, "failed-start", client.createdName)
+	require.Empty(t, client.packageLocator)
 }
 
 func TestStartReportsCleanupFailure(t *testing.T) {
