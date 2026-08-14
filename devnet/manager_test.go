@@ -50,7 +50,7 @@ func testManager(client *fakeClient) *Manager {
 	return &Manager{
 		newClient: func() (kurtosisClient, error) { return client, nil },
 		probe:     func(context.Context, string, string) error { return nil },
-		collect: func(context.Context, string, string) error {
+		collectDiagnostics: func(context.Context, string, string) error {
 			return errors.New("no diagnostics were requested")
 		},
 	}
@@ -122,7 +122,7 @@ func TestStartCollectsDiagnosticsBeforeCleanup(t *testing.T) {
 	client := &fakeClient{runErr: errors.New("package failed")}
 	manager := testManager(client)
 	var order []string
-	manager.collect = func(_ context.Context, enclave, outputDir string) error {
+	manager.collectDiagnostics = func(_ context.Context, enclave, outputDir string) error {
 		require.False(t, client.destroyed, "diagnostics must run before the enclave is destroyed")
 		require.Equal(t, "failed-start", enclave)
 		require.Equal(t, "reports/lanes/execution-abi/diagnostics", outputDir)
@@ -141,7 +141,7 @@ func TestStartCollectsDiagnosticsBeforeCleanup(t *testing.T) {
 func TestStartReportsDiagnosticsFailureAlongsideCause(t *testing.T) {
 	client := &fakeClient{runErr: errors.New("package failed")}
 	manager := testManager(client)
-	manager.collect = func(context.Context, string, string) error {
+	manager.collectDiagnostics = func(context.Context, string, string) error {
 		return errors.New("logs unavailable")
 	}
 

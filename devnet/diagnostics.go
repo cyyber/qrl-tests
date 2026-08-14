@@ -38,7 +38,7 @@ type diagnosticsManifest struct {
 // CollectDiagnostics captures the enclave inspection and per-service logs.
 // Every step is best-effort; the joined error reports what could not be saved.
 func (manager *Manager) CollectDiagnostics(ctx context.Context, enclaveName, outputDir string) error {
-	return manager.collect(ctx, enclaveName, outputDir)
+	return manager.collectDiagnostics(ctx, enclaveName, outputDir)
 }
 
 func collectDiagnostics(ctx context.Context, run commandRunner, enclave, outputDir string) error {
@@ -46,18 +46,18 @@ func collectDiagnostics(ctx context.Context, run commandRunner, enclave, outputD
 		return fmt.Errorf("create diagnostics directory: %w", err)
 	}
 
-	report := diagnosticsManifest{Enclave: enclave}
+	manifest := diagnosticsManifest{Enclave: enclave}
 	var problems []error
 
 	inspection, inspectErr := run(ctx, "kurtosis", "enclave", "inspect", enclave)
-	report.Inspection = diagnosticCapture{File: "inspect.txt", Captured: inspectErr == nil}
+	manifest.Inspection = diagnosticCapture{File: "inspect.txt", Captured: inspectErr == nil}
 	if inspectErr != nil {
-		report.Inspection.Error = inspectErr.Error()
+		manifest.Inspection.Error = inspectErr.Error()
 		problems = append(problems, fmt.Errorf("kurtosis enclave inspect %s: %w", enclave, inspectErr))
 	}
-	if err := writeDiagnostic(filepath.Join(outputDir, report.Inspection.File), inspection); err != nil {
-		report.Inspection.Captured = false
-		report.Inspection.Error = err.Error()
+	if err := writeDiagnostic(filepath.Join(outputDir, manifest.Inspection.File), inspection); err != nil {
+		manifest.Inspection.Captured = false
+		manifest.Inspection.Error = err.Error()
 		problems = append(problems, err)
 	}
 
@@ -68,7 +68,7 @@ func collectDiagnostics(ctx context.Context, run commandRunner, enclave, outputD
 		} else {
 			for _, service := range services {
 				record, err := collectServiceLog(ctx, run, enclave, outputDir, service)
-				report.Services = append(report.Services, record)
+				manifest.Services = append(manifest.Services, record)
 				if err != nil {
 					problems = append(problems, err)
 				}
@@ -76,7 +76,7 @@ func collectDiagnostics(ctx context.Context, run commandRunner, enclave, outputD
 		}
 	}
 
-	if err := writeDiagnosticsManifest(outputDir, report); err != nil {
+	if err := writeDiagnosticsManifest(outputDir, manifest); err != nil {
 		problems = append(problems, err)
 	}
 	return errors.Join(problems...)
@@ -198,8 +198,8 @@ func writeDiagnostic(path, output string) error {
 	return nil
 }
 
-func writeDiagnosticsManifest(outputDir string, report diagnosticsManifest) error {
-	payload, err := json.MarshalIndent(report, "", "  ")
+func writeDiagnosticsManifest(outputDir string, manifest diagnosticsManifest) error {
+	payload, err := json.MarshalIndent(manifest, "", "  ")
 	if err != nil {
 		return fmt.Errorf("encode diagnostics manifest: %w", err)
 	}

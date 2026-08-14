@@ -47,9 +47,9 @@ type StartOptions struct {
 }
 
 type Manager struct {
-	newClient func() (kurtosisClient, error)
-	probe     func(ctx context.Context, rpcURL, address string) error
-	collect   func(ctx context.Context, enclave, outputDir string) error
+	newClient          func() (kurtosisClient, error)
+	probe              func(ctx context.Context, rpcURL, address string) error
+	collectDiagnostics func(ctx context.Context, enclave, outputDir string) error
 }
 
 func NewManager() *Manager {
@@ -62,7 +62,7 @@ func NewManager() *Manager {
 			return client, nil
 		},
 		probe: probeNetwork,
-		collect: func(ctx context.Context, enclave, outputDir string) error {
+		collectDiagnostics: func(ctx context.Context, enclave, outputDir string) error {
 			return collectDiagnostics(ctx, runDiagnosticsCommand, enclave, outputDir)
 		},
 	}
@@ -169,7 +169,7 @@ func (manager *Manager) finishFailedStart(client kurtosisClient, options StartOp
 	// typically already canceled or expired by the time the failure gets here.
 	if options.FailureDiagnosticsDir != "" {
 		collectCtx, cancel := context.WithTimeout(context.Background(), startDiagnosticsTimeout)
-		if err := manager.collect(collectCtx, options.EnclaveName, options.FailureDiagnosticsDir); err != nil {
+		if err := manager.collectDiagnostics(collectCtx, options.EnclaveName, options.FailureDiagnosticsDir); err != nil {
 			result = errors.Join(result, fmt.Errorf("collect start diagnostics: %w", err))
 		}
 		cancel()
