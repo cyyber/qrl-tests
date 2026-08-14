@@ -9,7 +9,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -29,6 +28,7 @@ type recordingNetworks struct {
 	inspected  string
 	stopped    []string
 	collected  []string
+	events     []string
 	startErr   error
 	stopErr    error
 	collectErr error
@@ -55,6 +55,7 @@ func (networks *recordingNetworks) Stop(_ context.Context, name string) error {
 	networks.mutex.Lock()
 	defer networks.mutex.Unlock()
 	networks.stopped = append(networks.stopped, name)
+	networks.events = append(networks.events, "stop:"+name)
 	return networks.stopErr
 }
 
@@ -65,15 +66,11 @@ func captureCommand(command *commandSpec) func(context.Context, commandSpec) err
 	}
 }
 
-func (networks *recordingNetworks) CollectDiagnostics(_ context.Context, enclave, outputDir string) error {
+func (networks *recordingNetworks) CollectDiagnostics(_ context.Context, enclaveName, outputDir string) error {
 	networks.mutex.Lock()
 	defer networks.mutex.Unlock()
-	// Tests assert on the recorded value: collecting after the enclave is
-	// gone is an ordering bug, not a different output directory.
-	if slices.Contains(networks.stopped, enclave) {
-		outputDir = "after-stop:" + outputDir
-	}
 	networks.collected = append(networks.collected, outputDir)
+	networks.events = append(networks.events, "collect:"+enclaveName)
 	return networks.collectErr
 }
 
@@ -101,6 +98,7 @@ func TestRunBuildsCommandAndCleansUp(t *testing.T) {
 	require.Equal(t, devnet.ProfileSingle, networks.started.Profile)
 	require.Equal(t, []byte(`{"custom":true}`), networks.started.Parameters)
 	require.Equal(t, []string{"qrl-tests"}, networks.stopped)
+	require.Empty(t, networks.collected)
 	require.Equal(t, "go", command.Path)
 	require.Contains(t, command.Args, "./e2e/suites/execution/abi")
 	workingDirectory, err := os.Getwd()
@@ -315,6 +313,7 @@ func TestRunCollectsDiagnosticsOnFailureBeforeCleanup(t *testing.T) {
 	diagnosticsDir := filepath.Join(reports, "lanes", "execution-abi", "diagnostics")
 	require.Equal(t, []string{diagnosticsDir}, networks.collected)
 	require.Equal(t, []string{"qrl-tests"}, networks.stopped, "the enclave must still be destroyed")
+	require.Equal(t, []string{"collect:qrl-tests", "stop:qrl-tests"}, networks.events)
 	require.Equal(t, diagnosticsDir, networks.started.FailureDiagnosticsDir)
 }
 
@@ -406,6 +405,9 @@ func TestRunReturnsCleanupFailure(t *testing.T) {
 
 	err := runner.Run(t.Context(), "execution-abi")
 	require.ErrorIs(t, err, context.DeadlineExceeded)
+	diagnosticsDir := filepath.Join(reports, "lanes", "execution-abi", "diagnostics")
+	require.Equal(t, []string{diagnosticsDir}, networks.collected)
+	require.Equal(t, []string{"stop:qrl-tests", "collect:qrl-tests"}, networks.events)
 
 	record := readRunManifest(t, filepath.Join(reports, runmanifest.FileName))
 	require.Equal(t, "failed", record.Result)

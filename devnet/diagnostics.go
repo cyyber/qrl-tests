@@ -35,7 +35,7 @@ type diagnosticsManifest struct {
 	Services   []serviceDiagnostic `json:"services"`
 }
 
-// Collect captures the enclave inspection and per-service logs before cleanup.
+// CollectDiagnostics captures the enclave inspection and per-service logs.
 // Every step is best-effort; the joined error reports what could not be saved.
 func (manager *Manager) CollectDiagnostics(ctx context.Context, enclaveName, outputDir string) error {
 	return manager.collect(ctx, enclaveName, outputDir)

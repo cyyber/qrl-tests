@@ -42,7 +42,7 @@ type StartOptions struct {
 	Profile     Profile
 
 	// FailureDiagnosticsDir, when set, receives the enclave's diagnostics
-	// before a failed start is cleaned up; the enclave is gone afterwards.
+	// before cleanup of a failed start is attempted.
 	FailureDiagnosticsDir string
 }
 

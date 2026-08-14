@@ -92,18 +92,25 @@ func (runner *Runner) executeLane(ctx context.Context, plan runPlan, lane laneRu
 	}
 	var logFile *os.File
 	defer func() {
-		// Finalize while the enclave still exists. This covers command/report
-		// failures as well as any harness failure after a successful acquire.
-		failed := !outcome.Passed()
-		if failed {
+		if logFile != nil {
+			outcome.Err = errors.Join(outcome.Err, logFile.Close())
+		}
+
+		collectDiagnostics := func() {
 			if diagnosticsErr := runner.collectDiagnostics(lane, lease.environment); diagnosticsErr != nil {
 				outcome.Err = errors.Join(outcome.Err, fmt.Errorf("collect diagnostics: %w", diagnosticsErr))
 			}
 		}
-		outcome.Err = errors.Join(outcome.Err, lease.close())
-		if logFile != nil {
-			outcome.Err = errors.Join(outcome.Err, logFile.Close())
+		failedBeforeCleanup := !outcome.Passed()
+		if failedBeforeCleanup {
+			collectDiagnostics()
 		}
+
+		cleanupErr := lease.close()
+		if cleanupErr != nil && !failedBeforeCleanup {
+			collectDiagnostics()
+		}
+		outcome.Err = errors.Join(outcome.Err, cleanupErr)
 	}()
 
 	if err := os.MkdirAll(lane.reportDir, 0o755); err != nil {

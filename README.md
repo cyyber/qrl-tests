@@ -32,8 +32,9 @@ reports/
             └── <service>.log  # log for each discovered service
 ```
 
-Diagnostics are collected before a failed lane's enclave is removed. Diagnostics
-or cleanup errors are reported without replacing the original failure.
+Diagnostics are collected before cleanup for test and harness failures, and
+after a failed cleanup attempt for cleanup-only failures. Diagnostic or cleanup
+errors are reported without replacing the original failure.
 
 For iterative development:
 
