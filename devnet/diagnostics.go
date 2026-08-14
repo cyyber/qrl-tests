@@ -34,7 +34,7 @@ type diagnosticsManifest struct {
 }
 
 // CollectDiagnostics captures the enclave inspection and per-service logs.
-// It continues after individual capture failures and returns their joined error.
+// Collection continues after individual failures and returns all encountered errors.
 func (manager *Manager) CollectDiagnostics(ctx context.Context, enclaveName, outputDir string) error {
 	return manager.collectDiagnostics(ctx, enclaveName, outputDir)
 }
