@@ -11,8 +11,6 @@ import (
 	"strings"
 )
 
-// The CLI is already a hard requirement of the network lifecycle and exposes
-// inspection and log commands that are not available as one SDK operation.
 type diagnosticsCommand func(ctx context.Context, name string, arguments ...string) (string, error)
 
 type diagnosticCapture struct {
