@@ -10,7 +10,7 @@ import (
 // markdown renders the summary for the GitHub job summary; workflows append
 // it to $GITHUB_STEP_SUMMARY.
 func (summary Summary) markdown() string {
-	report := md.NewMarkdown(nil, md.WithBlockSpacing()).H2f("E2E: %s", summary.Result)
+	report := md.NewMarkdown(nil).H2f("E2E: %s", summary.Result).PlainText("")
 	for _, lane := range summary.Lanes {
 		writeLaneSummary(report, lane)
 	}
@@ -22,33 +22,30 @@ func (summary Summary) markdown() string {
 }
 
 func writeLaneSummary(report *md.Markdown, lane LaneSummary) {
-	report.H3(lane.Name)
+	report.H3(lane.Name).PlainText("")
 	if len(lane.suites) == 0 {
-		report.PlainTextf("%s %s", md.Bold("Result:"), displayVerdict(lane.Verdict))
+		report.PlainTextf("%s %s", md.Bold("Result:"), displayVerdict(lane.Verdict)).PlainText("")
 		return
 	}
 
-	rows := make([][]string, len(lane.suites))
-	for i, suite := range lane.suites {
-		rows[i] = []string{suite.Name, suiteResult(suite)}
+	var table strings.Builder
+	table.WriteString("| Suite | Result |\n|---------|--------:|")
+	for _, suite := range lane.suites {
+		fmt.Fprintf(&table, "\n| %s | %s |", suite.Name, suiteResult(suite))
 	}
-	report.Table(md.TableSet{
-		Header:    []string{"Suite", "Result"},
-		Rows:      rows,
-		Alignment: []md.TableAlignment{md.AlignDefault, md.AlignRight},
-	})
+	report.PlainText(table.String()).PlainText("")
 }
 
 func writeLaneDetails(report *md.Markdown, lane LaneSummary) {
 	if showLaneError(lane) {
-		report.H3f("%s details", lane.Name)
+		report.H3f("%s details", lane.Name).PlainText("")
 		report.CodeBlocks(md.SyntaxHighlightNone, lane.Error)
 	}
 	for _, suite := range lane.suites {
 		if !suite.hasDetails() {
 			continue
 		}
-		report.H4f("%s failures", suite.Name)
+		report.H4f("%s failures", suite.Name).PlainText("")
 		report.BulletList(suiteDetails(suite)...)
 	}
 }
