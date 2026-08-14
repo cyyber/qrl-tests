@@ -152,16 +152,16 @@ func TestSummarizeReturnsVerdictWhenPersistenceFails(t *testing.T) {
 }
 
 func TestSummarizeClassifiesAssertionFailures(t *testing.T) {
-	lane := summarizeTestLane(errors.New("exit status 1"),
+	summary := summarizeTestLane(errors.New("exit status 1"),
 		suiteReport(testLaneName,
 			specReport(types.SpecStatePassed, "encodes calls"),
 			specReport(types.SpecStateFailed, "decodes events"),
 		),
 	)
 
-	require.Equal(t, VerdictAssertion, lane.Verdict)
-	require.Equal(t, Counts{Specs: 2, Passed: 1, Failed: 1}, lane.Counts)
-	suite := lane.suites[0]
+	require.Equal(t, VerdictAssertion, summary.Verdict)
+	require.Equal(t, Counts{Specs: 2, Passed: 1, Failed: 1}, summary.Counts)
+	suite := summary.suites[0]
 	require.Len(t, suite.Failures, 1)
 	require.Equal(t, "ABI decodes events", suite.Failures[0].Spec)
 	require.Equal(t, "expected 1, got 2", suite.Failures[0].Message)
@@ -169,14 +169,14 @@ func TestSummarizeClassifiesAssertionFailures(t *testing.T) {
 }
 
 func TestSummarizeClassifiesTimeouts(t *testing.T) {
-	lane := summarizeTestLane(errors.New("exit status 1"),
+	summary := summarizeTestLane(errors.New("exit status 1"),
 		suiteReport(testLaneName,
 			specReport(types.SpecStateFailed, "decodes events"),
 			specReport(types.SpecStateTimedout, "streams blocks"),
 		),
 	)
 
-	require.Equal(t, VerdictTimeout, lane.Verdict,
+	require.Equal(t, VerdictTimeout, summary.Verdict,
 		"a lane that hit its deadline is a timeout even when other specs failed")
 }
 
@@ -185,11 +185,11 @@ func TestSummarizeClassifiesSuiteTimeouts(t *testing.T) {
 		SuiteDescription:           testLaneName,
 		SpecialSuiteFailureReasons: []string{"Suite did not run because the timeout elapsed"},
 	}
-	lane := summarizeTestLane(errors.New("exit status 1"), report)
+	summary := summarizeTestLane(errors.New("exit status 1"), report)
 
-	require.Equal(t, VerdictTimeout, lane.Verdict)
-	require.Equal(t, report.SpecialSuiteFailureReasons, lane.suites[0].SuiteFailures)
-	require.Contains(t, lane.Error, "exit status 1")
+	require.Equal(t, VerdictTimeout, summary.Verdict)
+	require.Equal(t, report.SpecialSuiteFailureReasons, summary.suites[0].SuiteFailures)
+	require.Contains(t, summary.Error, "exit status 1")
 }
 
 func TestSummarizeClassifiesExecutionContext(t *testing.T) {
@@ -204,23 +204,23 @@ func TestSummarizeClassifiesExecutionContext(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			lane := summarizeTestLane(test.err,
+			summary := summarizeTestLane(test.err,
 				suiteReport(testLaneName, specReport(types.SpecStateInterrupted, "streams blocks")),
 			)
 
-			require.Equal(t, test.want, lane.Verdict)
+			require.Equal(t, test.want, summary.Verdict)
 		})
 	}
 }
 
 func TestSummarizeHonorsFailedSuiteReport(t *testing.T) {
-	lane := summarizeTestLane(nil, types.Report{
+	summary := summarizeTestLane(nil, types.Report{
 		SuiteDescription: testLaneName,
 		SuiteSucceeded:   false,
 		SpecReports:      []types.SpecReport{specReport(types.SpecStatePassed, "encodes calls")},
 	})
 
-	require.Equal(t, VerdictInfrastructure, lane.Verdict)
+	require.Equal(t, VerdictInfrastructure, summary.Verdict)
 }
 
 func TestSummarizeClassifiesUnexpectedSkips(t *testing.T) {
@@ -235,28 +235,28 @@ func TestSummarizeClassifiesUnexpectedSkips(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			lane := summarizeTestLane(test.err,
+			summary := summarizeTestLane(test.err,
 				suiteReport(testLaneName,
 					specReport(types.SpecStatePassed, "encodes calls"),
 					specReport(test.state, "decodes events"),
 				),
 			)
 
-			require.Equal(t, VerdictSkipped, lane.Verdict)
-			require.Equal(t, []string{"ABI decodes events"}, lane.UnexpectedSkips)
+			require.Equal(t, VerdictSkipped, summary.Verdict)
+			require.Equal(t, []string{"ABI decodes events"}, summary.UnexpectedSkips)
 		})
 	}
 }
 
 func TestSummarizeHonorsBootstrapFailure(t *testing.T) {
-	lane := summarizeOutcome(Outcome{
+	summary := summarizeOutcome(Outcome{
 		Name:            testLaneName,
 		Err:             errors.New("network bootstrap failed: start network: no capacity"),
 		BootstrapFailed: true,
 	})
 
-	require.Equal(t, VerdictBootstrap, lane.Verdict)
-	require.NotEmpty(t, lane.Error)
+	require.Equal(t, VerdictBootstrap, summary.Verdict)
+	require.NotEmpty(t, summary.Error)
 }
 
 func TestSummarizeCountsSetupFailures(t *testing.T) {
@@ -265,18 +265,18 @@ func TestSummarizeCountsSetupFailures(t *testing.T) {
 		State:        types.SpecStateFailed,
 		Failure:      types.Failure{Message: "wallet not funded"},
 	}
-	lane := summarizeTestLane(errors.New("exit status 1"),
+	summary := summarizeTestLane(errors.New("exit status 1"),
 		suiteReport(testLaneName, setup, specReport(types.SpecStateSkipped, "decodes events")),
 	)
 
-	require.Equal(t, VerdictAssertion, lane.Verdict)
-	require.Len(t, lane.suites[0].Failures, 1)
-	require.Equal(t, Counts{Specs: 1, Skipped: 1}, lane.Counts,
+	require.Equal(t, VerdictAssertion, summary.Verdict)
+	require.Len(t, summary.suites[0].Failures, 1)
+	require.Equal(t, Counts{Specs: 1, Skipped: 1}, summary.Counts,
 		"setup nodes are not specs; the skipped spec still counts")
 }
 
 func TestSummarizeTreatsLifecycleFailureAsInfrastructure(t *testing.T) {
-	lane := summarizeOutcome(Outcome{
+	summary := summarizeOutcome(Outcome{
 		Name: testLaneName,
 		Err:  errors.New("stop network: context deadline exceeded"),
 		reports: []types.Report{
@@ -284,8 +284,8 @@ func TestSummarizeTreatsLifecycleFailureAsInfrastructure(t *testing.T) {
 		},
 	})
 
-	require.Equal(t, VerdictInfrastructure, lane.Verdict)
-	require.Equal(t, "stop network: context deadline exceeded", lane.Error)
+	require.Equal(t, VerdictInfrastructure, summary.Verdict)
+	require.Equal(t, "stop network: context deadline exceeded", summary.Error)
 }
 
 func TestSummarizeAggregatesLanes(t *testing.T) {
@@ -304,34 +304,34 @@ func TestSummarizeAggregatesLanes(t *testing.T) {
 }
 
 func TestSummarizeReportsSuitesWithinLane(t *testing.T) {
-	lane := summarizeOutcome(executionOutcome("execution", errors.New("exit status 1"),
+	summary := summarizeOutcome(executionOutcome("execution", errors.New("exit status 1"),
 		suiteReport("ABI E2E suite", specReport(types.SpecStatePassed, "encodes calls")),
 		suiteReport("API E2E suite", specReport(types.SpecStateFailed, "decodes events")),
 	))
 
-	require.Equal(t, VerdictAssertion, lane.Verdict)
-	require.Equal(t, Counts{Specs: 2, Passed: 1, Failed: 1}, lane.Counts)
-	require.Len(t, lane.suites, 2)
-	require.Equal(t, "ABI E2E suite", lane.suites[0].Name)
-	require.Equal(t, VerdictPassed, lane.suites[0].Verdict)
-	require.Equal(t, "API E2E suite", lane.suites[1].Name)
-	require.Equal(t, VerdictAssertion, lane.suites[1].Verdict)
+	require.Equal(t, VerdictAssertion, summary.Verdict)
+	require.Equal(t, Counts{Specs: 2, Passed: 1, Failed: 1}, summary.Counts)
+	require.Len(t, summary.suites, 2)
+	require.Equal(t, "ABI E2E suite", summary.suites[0].Name)
+	require.Equal(t, VerdictPassed, summary.suites[0].Verdict)
+	require.Equal(t, "API E2E suite", summary.suites[1].Name)
+	require.Equal(t, VerdictAssertion, summary.suites[1].Verdict)
 }
 
 func TestSummarizeRejectsEmptySuiteWithinLane(t *testing.T) {
-	lane := summarizeOutcome(executionOutcome("execution", nil,
+	summary := summarizeOutcome(executionOutcome("execution", nil,
 		types.Report{SuiteDescription: "Empty E2E suite", SuiteSucceeded: true},
 		suiteReport("ABI E2E suite", specReport(types.SpecStatePassed, "encodes calls")),
 	))
 
-	require.Equal(t, VerdictInfrastructure, lane.Verdict)
-	require.Equal(t, VerdictInfrastructure, lane.suites[0].Verdict)
-	require.Equal(t, VerdictPassed, lane.suites[1].Verdict)
+	require.Equal(t, VerdictInfrastructure, summary.Verdict)
+	require.Equal(t, VerdictInfrastructure, summary.suites[0].Verdict)
+	require.Equal(t, VerdictPassed, summary.suites[1].Verdict)
 }
 
 func TestSummarizeEmptyReportIsInfrastructure(t *testing.T) {
-	lane := summarizeTestLane(nil, suiteReport(testLaneName))
-	require.Equal(t, VerdictInfrastructure, lane.Verdict)
+	summary := summarizeTestLane(nil, suiteReport(testLaneName))
+	require.Equal(t, VerdictInfrastructure, summary.Verdict)
 }
 
 func TestVerdictError(t *testing.T) {
