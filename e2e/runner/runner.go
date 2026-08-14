@@ -223,6 +223,7 @@ func (runner *Runner) run(ctx context.Context, selected []lanes.Lane, mode runMo
 	return errors.Join(summary.VerdictError(), errors.Join(laneErrors...), manifestErr, summarizeErr)
 }
 
+// Remove only runner-owned outputs because ReportDir may contain unrelated files.
 func clearReportArtifacts(reportRoot string) error {
 	artifacts := []string{
 		filepath.Join(reportRoot, laneReportsDirectory),
