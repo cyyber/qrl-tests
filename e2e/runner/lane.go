@@ -97,7 +97,15 @@ func (runner *Runner) executeLane(ctx context.Context, plan runPlan, lane laneRu
 		}
 
 		collectDiagnostics := func() {
-			if diagnosticsErr := runner.collectLaneDiagnostics(lane, lease.environment); diagnosticsErr != nil {
+			// A fresh context: the lane context is already canceled when the lane
+			// timed out, which is exactly when diagnostics matter most.
+			collectCtx, cancel := context.WithTimeout(context.Background(), laneDiagnosticsTimeout)
+			defer cancel()
+			if diagnosticsErr := runner.networks.CollectDiagnostics(
+				collectCtx,
+				lease.environment.EnclaveName,
+				lane.diagnosticsDir,
+			); diagnosticsErr != nil {
 				outcome.Err = errors.Join(outcome.Err, fmt.Errorf("collect diagnostics: %w", diagnosticsErr))
 			}
 		}
@@ -151,12 +159,4 @@ func (runner *Runner) executeLane(ctx context.Context, plan runPlan, lane laneRu
 	outcome.Err = outcome.ExecutionErr
 	outcome.CaptureReports(lane.reportDir)
 	return outcome
-}
-
-func (runner *Runner) collectLaneDiagnostics(lane laneRun, environment devnet.Environment) error {
-	// A fresh context: the lane context is already canceled when the lane
-	// timed out, which is exactly when diagnostics matter most.
-	collectCtx, cancel := context.WithTimeout(context.Background(), laneDiagnosticsTimeout)
-	defer cancel()
-	return runner.networks.CollectDiagnostics(collectCtx, environment.EnclaveName, lane.diagnosticsDir)
 }
