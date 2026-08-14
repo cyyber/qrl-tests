@@ -59,8 +59,8 @@ func writeReportFile(t *testing.T, laneDir string, specs ...types.SpecReport) {
 	require.NoError(t, os.WriteFile(filepath.Join(laneDir, ReportFileName), payload, 0o600))
 }
 
-func outcomeFromReportDir(name, reportDir string, err error) Outcome {
-	outcome := Outcome{Name: name, Err: err, ExecutionErr: err}
+func outcomeFromReportDir(reportDir string, executionErr error) Outcome {
+	outcome := Outcome{Name: testLaneName, Err: executionErr, ExecutionErr: executionErr}
 	outcome.CaptureReports(reportDir)
 	return outcome
 }
@@ -68,7 +68,6 @@ func outcomeFromReportDir(name, reportDir string, err error) Outcome {
 func TestCaptureReportsMissingFile(t *testing.T) {
 	root := t.TempDir()
 	outcome := outcomeFromReportDir(
-		testLaneName,
 		filepath.Join(root, "lanes", testLaneName),
 		errors.New("exit status 1"),
 	)
@@ -85,7 +84,7 @@ func TestCaptureReportsRejectsCorruptFile(t *testing.T) {
 	laneDir := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(laneDir, ReportFileName), []byte("{"), 0o600))
 
-	lane := summarizeOutcome(outcomeFromReportDir(testLaneName, laneDir, nil))
+	lane := summarizeOutcome(outcomeFromReportDir(laneDir, nil))
 	require.Equal(t, ClassInfrastructure, lane.Class)
 	require.Contains(t, lane.Error, "decode ")
 	require.Contains(t, lane.Error, "report.json")
@@ -94,7 +93,7 @@ func TestCaptureReportsRejectsCorruptFile(t *testing.T) {
 func TestCaptureReportsUsesCapturedSnapshot(t *testing.T) {
 	laneDir := t.TempDir()
 	writeReportFile(t, laneDir, specReport(types.SpecStatePassed, "encodes calls"))
-	outcome := outcomeFromReportDir(testLaneName, laneDir, nil)
+	outcome := outcomeFromReportDir(laneDir, nil)
 
 	writeReportFile(t, laneDir, specReport(types.SpecStateFailed, "encodes calls"))
 	lane := summarizeOutcome(outcome)
@@ -109,7 +108,7 @@ func TestSummarizeWritesPassedLane(t *testing.T) {
 		specReport(types.SpecStatePassed, "decodes events"),
 	)
 
-	outcome := outcomeFromReportDir(testLaneName, laneDir, nil)
+	outcome := outcomeFromReportDir(laneDir, nil)
 	require.True(t, outcome.Passed())
 
 	summary, err := Summarize(root, []Outcome{outcome})
