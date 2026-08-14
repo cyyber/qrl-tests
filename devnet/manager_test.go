@@ -81,7 +81,7 @@ func TestStartCleansUpEveryPostCreateFailure(t *testing.T) {
 		{
 			name:      "package run",
 			client:    &fakeClient{runErr: errors.New("package failed")},
-			wantError: "run qrl-package: package failed",
+			wantError: "run pinned qrl-package: package failed",
 		},
 		{
 			name:      "endpoint resolution",

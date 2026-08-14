@@ -133,7 +133,7 @@ func (manager *Manager) Start(ctx context.Context, options StartOptions) (enviro
 	}()
 
 	if err := client.RunRemotePackage(ctx, options.EnclaveName, PackageLocator, parameters); err != nil {
-		return Environment{}, fmt.Errorf("run qrl-package: %w", err)
+		return Environment{}, fmt.Errorf("run pinned qrl-package: %w", err)
 	}
 
 	// Endpoints are fixed once the package run completes; only the probe has to
