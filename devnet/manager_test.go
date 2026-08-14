@@ -9,6 +9,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+const failureDiagnosticsDir = "reports/lanes/execution-abi/diagnostics"
+
 type fakeClient struct {
 	exists         bool
 	createErr      error
@@ -71,7 +73,7 @@ func singleParticipant() map[string]kurtosis.Service {
 	}
 }
 
-func TestStartCleansUpEveryPostCreateFailure(t *testing.T) {
+func TestStartCleansCreatedEnclave(t *testing.T) {
 	tests := []struct {
 		name      string
 		client    *fakeClient
@@ -121,20 +123,20 @@ func TestStartCleansUpEveryPostCreateFailure(t *testing.T) {
 func TestStartCollectsDiagnosticsBeforeCleanup(t *testing.T) {
 	client := &fakeClient{runErr: errors.New("package failed")}
 	manager := testManager(client)
-	var order []string
+	diagnosticsCalls := 0
 	manager.collectDiagnostics = func(_ context.Context, enclave, outputDir string) error {
 		require.False(t, client.destroyed, "diagnostics must run before the enclave is destroyed")
 		require.Equal(t, "failed-start", enclave)
-		require.Equal(t, "reports/lanes/execution-abi/diagnostics", outputDir)
-		order = append(order, "collect")
+		require.Equal(t, failureDiagnosticsDir, outputDir)
+		diagnosticsCalls++
 		return nil
 	}
 
 	options := startOptions()
-	options.FailureDiagnosticsDir = "reports/lanes/execution-abi/diagnostics"
+	options.FailureDiagnosticsDir = failureDiagnosticsDir
 	_, err := manager.Start(t.Context(), options)
 	require.ErrorContains(t, err, "package failed")
-	require.Equal(t, []string{"collect"}, order)
+	require.Equal(t, 1, diagnosticsCalls)
 	require.True(t, client.destroyed)
 }
 
@@ -146,7 +148,7 @@ func TestStartReportsDiagnosticsFailureAlongsideCause(t *testing.T) {
 	}
 
 	options := startOptions()
-	options.FailureDiagnosticsDir = "reports/lanes/execution-abi/diagnostics"
+	options.FailureDiagnosticsDir = failureDiagnosticsDir
 	_, err := manager.Start(t.Context(), options)
 	require.ErrorContains(t, err, "package failed")
 	require.ErrorContains(t, err, "collect start diagnostics: logs unavailable")
@@ -180,6 +182,7 @@ func TestStartDefaults(t *testing.T) {
 	options := startOptions()
 	options.EnclaveName = ""
 	options.Backend = ""
+	options.Profile = ""
 
 	environment, err := testManager(client).Start(t.Context(), options)
 	require.NoError(t, err)
