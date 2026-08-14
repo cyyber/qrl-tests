@@ -14,14 +14,14 @@ func TestSummarizeWritesMarkdown(t *testing.T) {
 	root := t.TempDir()
 	summary, err := Summarize(root, []Outcome{{
 		Name: "execution",
-		Observation: Observation{reports: []types.Report{{
+		reports: []types.Report{{
 			SuiteDescription: "ABI E2E suite",
 			SuiteSucceeded:   true,
 			SpecReports: []types.SpecReport{{
 				LeafNodeType: types.NodeTypeIt,
 				State:        types.SpecStatePassed,
 			}},
-		}}},
+		}},
 	}})
 	require.NoError(t, err)
 

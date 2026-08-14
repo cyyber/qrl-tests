@@ -31,27 +31,23 @@ const (
 	ClassPassed         = "passed"
 )
 
-// Observation is a lane's parsed Ginkgo report. Observe creates it once, while
-// the lane still owns its network; summaries then consume the same snapshot.
-type Observation struct {
-	reports []types.Report
-	err     error
-}
-
-// Observe reads and decodes the Ginkgo report under reportDir.
-func Observe(reportDir string) Observation {
-	reports, err := readReports(filepath.Join(reportDir, ReportFileName))
-	return Observation{reports: reports, err: err}
-}
-
 // Outcome is the complete result of running one lane. ExecutionErr preserves
 // the test process error separately from lifecycle failures such as cleanup.
+// Captured reports remain private because only result classification consumes
+// them.
 type Outcome struct {
 	Name             string
-	Observation      Observation
 	Err              error
 	ExecutionErr     error
 	BootstrapFailure bool
+	reports          []types.Report
+	reportErr        error
+}
+
+// CaptureReports reads and stores the lane's Ginkgo reports so later summary
+// generation consumes the same snapshot.
+func (outcome *Outcome) CaptureReports(reportDir string) {
+	outcome.reports, outcome.reportErr = readReports(filepath.Join(reportDir, ReportFileName))
 }
 
 // Passed reports the verdict represented by this outcome without reading any
@@ -75,7 +71,7 @@ type Failure struct {
 	Location string `json:"location,omitempty"`
 }
 
-type classificationInput struct {
+type classificationEvidence struct {
 	counts          Counts
 	failures        []Failure
 	unexpectedSkips []string
@@ -107,23 +103,23 @@ type Summary struct {
 	Lanes  []LaneSummary `json:"lanes"`
 }
 
-func (summary suiteSummary) classificationInput() classificationInput {
-	return classificationInput{
+func (summary suiteSummary) classificationEvidence() classificationEvidence {
+	return classificationEvidence{
 		counts:          summary.Counts,
 		failures:        summary.Failures,
 		unexpectedSkips: summary.UnexpectedSkips,
 	}
 }
 
-func (summary LaneSummary) classificationInput() classificationInput {
-	return classificationInput{
+func (summary LaneSummary) classificationEvidence() classificationEvidence {
+	return classificationEvidence{
 		counts:          summary.Counts,
 		failures:        summary.Failures,
 		unexpectedSkips: summary.UnexpectedSkips,
 	}
 }
 
-// Summarize writes summary.json and summary.md from the observations captured
+// Summarize writes summary.json and summary.md from the reports captured
 // by each outcome. The returned error covers writing only; test failures live
 // in the summary itself and VerdictError.
 func Summarize(reportRoot string, outcomes []Outcome) (Summary, error) {
@@ -178,11 +174,11 @@ func (summary Summary) VerdictError() error {
 
 func summarizeOutcome(outcome Outcome) LaneSummary {
 	result := LaneSummary{Name: outcome.Name, Class: ClassPassed}
-	if err := errors.Join(outcome.Err, outcome.Observation.err); err != nil {
+	if err := errors.Join(outcome.Err, outcome.reportErr); err != nil {
 		result.Error = err.Error()
 	}
 
-	for _, report := range outcome.Observation.reports {
+	for _, report := range outcome.reports {
 		suite := summarizeSuite(report)
 		result.suites = append(result.suites, suite)
 		result.Counts.add(suite.Counts)
@@ -204,7 +200,7 @@ func summarizeSuite(report types.Report) suiteSummary {
 	for _, spec := range report.SpecReports {
 		result.tally(spec)
 	}
-	result.Class = classifyReports([]types.Report{report}, result.classificationInput(), nil)
+	result.Class = classifyReports([]types.Report{report}, result.classificationEvidence(), nil)
 	return result
 }
 
@@ -277,13 +273,13 @@ func classify(outcome Outcome, summary LaneSummary) string {
 
 	// Without a readable report, nothing distinguishes a product failure from
 	// a broken harness — and a passing lane always has a report.
-	if outcome.Observation.err != nil || len(outcome.Observation.reports) == 0 {
+	if outcome.reportErr != nil || len(outcome.reports) == 0 {
 		return ClassInfrastructure
 	}
 
 	classification := classifyReports(
-		outcome.Observation.reports,
-		summary.classificationInput(),
+		outcome.reports,
+		summary.classificationEvidence(),
 		outcome.Err,
 	)
 	if classification == ClassPassed {
@@ -296,10 +292,10 @@ func classify(outcome Outcome, summary LaneSummary) string {
 	return classification
 }
 
-func classifyReports(reports []types.Report, summary classificationInput, err error) string {
+func classifyReports(reports []types.Report, evidence classificationEvidence, err error) string {
 	timedOut := reportTimedOut(reports)
 	interrupted := false
-	for _, failure := range summary.failures {
+	for _, failure := range evidence.failures {
 		switch failure.State {
 		case types.SpecStateTimedout.String():
 			timedOut = true
@@ -312,9 +308,9 @@ func classifyReports(reports []types.Report, summary classificationInput, err er
 		return ClassTimeout
 	case interrupted:
 		return ClassInfrastructure
-	case summary.counts.Failed > 0 || len(summary.failures) > 0:
+	case evidence.counts.Failed > 0 || len(evidence.failures) > 0:
 		return ClassAssertion
-	case len(summary.unexpectedSkips) > 0:
+	case len(evidence.unexpectedSkips) > 0:
 		// Report-backed evidence outranks the bare exit code: ginkgo runs
 		// with --fail-on-pending, so a pending or skipped spec also fails
 		// the process, and that exit says nothing new.
@@ -324,7 +320,7 @@ func classifyReports(reports []types.Report, summary classificationInput, err er
 	case err != nil:
 		// The test process failed without a failing spec on record.
 		return ClassInfrastructure
-	case summary.counts.Passed == 0:
+	case evidence.counts.Passed == 0:
 		// An empty report means the suites never ran.
 		return ClassInfrastructure
 	}
