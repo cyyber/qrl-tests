@@ -62,9 +62,11 @@ func collectInspection(
 	outputDir string,
 ) (inspectionDiagnostic, string, error) {
 	inspection := inspectionDiagnostic{File: "inspect.txt"}
+
 	output, commandErr := run(ctx, "kurtosis", "enclave", "inspect", enclaveName)
 	writeErr := writeDiagnostic(filepath.Join(outputDir, inspection.File), output)
 	captureErr := errors.Join(commandErr, writeErr)
+
 	inspection.Captured = captureErr == nil
 	if captureErr != nil {
 		inspection.Error = captureErr.Error()
@@ -73,6 +75,7 @@ func collectInspection(
 	if commandErr != nil {
 		commandErr = fmt.Errorf("kurtosis enclave inspect %s: %w", enclaveName, commandErr)
 	}
+
 	return inspection, output, errors.Join(commandErr, writeErr)
 }
 
