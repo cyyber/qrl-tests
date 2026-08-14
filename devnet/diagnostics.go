@@ -44,11 +44,17 @@ func collectDiagnostics(ctx context.Context, run diagnosticsCommand, enclaveName
 
 	inspection, inspectionOutput, inspectionErr := collectInspection(ctx, run, enclaveName, outputDir)
 	services, servicesErr := collectServiceLogs(ctx, run, enclaveName, outputDir, inspectionOutput)
-	manifestErr := writeDiagnosticsManifest(outputDir, diagnosticsManifest{
+	manifest := diagnosticsManifest{
 		Enclave:    enclaveName,
 		Inspection: inspection,
 		Services:   services,
-	})
+	}
+	payload, manifestErr := json.MarshalIndent(manifest, "", "  ")
+	if manifestErr != nil {
+		manifestErr = fmt.Errorf("encode diagnostics manifest: %w", manifestErr)
+	} else {
+		manifestErr = writeDiagnostic(filepath.Join(outputDir, "diagnostics.json"), string(append(payload, '\n')))
+	}
 
 	return errors.Join(inspectionErr, servicesErr, manifestErr)
 }
@@ -170,12 +176,4 @@ func writeDiagnostic(path, output string) error {
 		return fmt.Errorf("write diagnostic %s: %w", path, err)
 	}
 	return nil
-}
-
-func writeDiagnosticsManifest(outputDir string, manifest diagnosticsManifest) error {
-	payload, err := json.MarshalIndent(manifest, "", "  ")
-	if err != nil {
-		return fmt.Errorf("encode diagnostics manifest: %w", err)
-	}
-	return writeDiagnostic(filepath.Join(outputDir, "diagnostics.json"), string(append(payload, '\n')))
 }
