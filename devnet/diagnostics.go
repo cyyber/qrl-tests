@@ -13,7 +13,7 @@ import (
 
 // The CLI is already a hard requirement of the network lifecycle and exposes
 // inspection and log commands that are not available as one SDK operation.
-type commandRunner func(ctx context.Context, name string, arguments ...string) (string, error)
+type diagnosticsCommand func(ctx context.Context, name string, arguments ...string) (string, error)
 
 type diagnosticCapture struct {
 	File     string `json:"file"`
@@ -41,24 +41,27 @@ func (manager *Manager) CollectDiagnostics(ctx context.Context, enclaveName, out
 	return manager.collectDiagnostics(ctx, enclaveName, outputDir)
 }
 
-func collectDiagnostics(ctx context.Context, run commandRunner, enclave, outputDir string) error {
+func collectDiagnostics(ctx context.Context, run diagnosticsCommand, enclaveName, outputDir string) error {
 	if err := os.MkdirAll(outputDir, 0o755); err != nil {
 		return fmt.Errorf("create diagnostics directory: %w", err)
 	}
 
-	manifest := diagnosticsManifest{Enclave: enclave}
+	manifest := diagnosticsManifest{Enclave: enclaveName}
 	var problems []error
 
-	inspection, inspectErr := run(ctx, "kurtosis", "enclave", "inspect", enclave)
-	manifest.Inspection = diagnosticCapture{File: "inspect.txt", Captured: inspectErr == nil}
-	if inspectErr != nil {
-		manifest.Inspection.Error = inspectErr.Error()
-		problems = append(problems, fmt.Errorf("kurtosis enclave inspect %s: %w", enclave, inspectErr))
+	inspection, commandErr := run(ctx, "kurtosis", "enclave", "inspect", enclaveName)
+	manifest.Inspection = diagnosticCapture{File: "inspect.txt"}
+	writeErr := writeDiagnostic(filepath.Join(outputDir, manifest.Inspection.File), inspection)
+	captureErr := errors.Join(commandErr, writeErr)
+	manifest.Inspection.Captured = captureErr == nil
+	if captureErr != nil {
+		manifest.Inspection.Error = captureErr.Error()
 	}
-	if err := writeDiagnostic(filepath.Join(outputDir, manifest.Inspection.File), inspection); err != nil {
-		manifest.Inspection.Captured = false
-		manifest.Inspection.Error = err.Error()
-		problems = append(problems, err)
+	if commandErr != nil {
+		problems = append(problems, fmt.Errorf("kurtosis enclave inspect %s: %w", enclaveName, commandErr))
+	}
+	if writeErr != nil {
+		problems = append(problems, writeErr)
 	}
 
 	services := diagnosticServices(inspection)
@@ -67,7 +70,7 @@ func collectDiagnostics(ctx context.Context, run commandRunner, enclave, outputD
 			problems = append(problems, fmt.Errorf("create service diagnostics directory: %w", err))
 		} else {
 			for _, service := range services {
-				record, err := collectServiceLog(ctx, run, enclave, outputDir, service)
+				record, err := collectServiceLog(ctx, run, enclaveName, outputDir, service)
 				manifest.Services = append(manifest.Services, record)
 				if err != nil {
 					problems = append(problems, err)
@@ -84,8 +87,8 @@ func collectDiagnostics(ctx context.Context, run commandRunner, enclave, outputD
 
 func collectServiceLog(
 	ctx context.Context,
-	run commandRunner,
-	enclave,
+	run diagnosticsCommand,
+	enclaveName,
 	outputDir,
 	service string,
 ) (serviceDiagnostic, error) {
@@ -93,25 +96,25 @@ func collectServiceLog(
 	record := serviceDiagnostic{
 		Name:      service,
 		File:      filepath.ToSlash(relativePath),
-		Captured:  true,
 		Sanitized: !isRuntimeService(service),
 	}
 
-	output, commandErr := run(ctx, "kurtosis", "service", "logs", "--all", enclave, service)
+	output, commandErr := run(ctx, "kurtosis", "service", "logs", "--all", enclaveName, service)
 	if record.Sanitized {
 		output = sanitizeProvisioningLog(output)
 	}
 	writeErr := writeDiagnostic(filepath.Join(outputDir, relativePath), output)
+	captureErr := errors.Join(commandErr, writeErr)
+	record.Captured = captureErr == nil
+	if captureErr != nil {
+		record.Error = captureErr.Error()
+	}
 
 	var problems []error
 	if commandErr != nil {
-		record.Captured = false
-		record.Error = commandErr.Error()
-		problems = append(problems, fmt.Errorf("kurtosis service logs %s %s: %w", enclave, service, commandErr))
+		problems = append(problems, fmt.Errorf("kurtosis service logs %s %s: %w", enclaveName, service, commandErr))
 	}
 	if writeErr != nil {
-		record.Captured = false
-		record.Error = writeErr.Error()
 		problems = append(problems, writeErr)
 	}
 	return record, errors.Join(problems...)

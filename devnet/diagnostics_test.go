@@ -64,15 +64,17 @@ func TestCollectDiagnostics(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "captured el-1-gqrl-qrysm", string(executionLog))
 
-	report := readDiagnosticsManifest(t, filepath.Join(output, "diagnostics.json"))
-	require.True(t, report.Inspection.Captured)
-	require.Len(t, report.Services, 7)
-	require.True(t, report.Services[0].Sanitized)
-	require.False(t, report.Services[3].Sanitized)
+	manifest := readDiagnosticsManifest(t, filepath.Join(output, "diagnostics.json"))
+	require.True(t, manifest.Inspection.Captured)
+	require.Len(t, manifest.Services, 7)
+	require.True(t, manifest.Services[0].Sanitized)
+	require.False(t, manifest.Services[3].Sanitized)
 }
 
 func TestCollectDiagnosticsKeepsGoingOnFailures(t *testing.T) {
 	output := t.TempDir()
+	failedLog := filepath.Join(output, "services", "run-generate-genesis.log")
+	require.NoError(t, os.MkdirAll(failedLog, 0o755))
 	run := func(_ context.Context, name string, arguments ...string) (string, error) {
 		if name == "kurtosis" && arguments[0] == "enclave" {
 			return testInspection, nil
@@ -88,10 +90,11 @@ func TestCollectDiagnosticsKeepsGoingOnFailures(t *testing.T) {
 	require.FileExists(t, filepath.Join(output, "services", "el-1-gqrl-qrysm.log"),
 		"a failing service capture must not stop the remaining captures")
 
-	report := readDiagnosticsManifest(t, filepath.Join(output, "diagnostics.json"))
-	require.False(t, report.Services[0].Captured)
-	require.Equal(t, "logs unavailable", report.Services[0].Error)
-	require.True(t, report.Services[3].Captured)
+	manifest := readDiagnosticsManifest(t, filepath.Join(output, "diagnostics.json"))
+	require.False(t, manifest.Services[0].Captured)
+	require.Contains(t, manifest.Services[0].Error, "logs unavailable")
+	require.Contains(t, manifest.Services[0].Error, "write diagnostic")
+	require.True(t, manifest.Services[3].Captured)
 }
 
 func TestDiagnosticServicesReadsOnlyUserServices(t *testing.T) {
@@ -133,7 +136,7 @@ func readDiagnosticsManifest(t *testing.T, path string) diagnosticsManifest {
 	t.Helper()
 	payload, err := os.ReadFile(path)
 	require.NoError(t, err)
-	var report diagnosticsManifest
-	require.NoError(t, json.Unmarshal(payload, &report))
-	return report
+	var manifest diagnosticsManifest
+	require.NoError(t, json.Unmarshal(payload, &manifest))
+	return manifest
 }
