@@ -18,11 +18,11 @@ backend.
 
 ```
 reports/
-├── run-manifest.json     # provenance and replay metadata for the run
-├── summary.json          # spec counts and classified failures
-├── summary.md            # Markdown result summary
-├── lanes/<lane>/         # junit.xml, report.json, output.log, manifest.json
-└── diagnostics/<lane>/   # enclave inspection and per-service logs, before cleanup
+├── run-manifest.json         # provenance and replay metadata for the run
+├── summary.json              # spec counts and classified failures
+├── summary.md                # Markdown result summary
+└── lanes/<lane>/             # junit.xml, report.json, output.log, manifest.json
+    └── diagnostics/          # failed-run enclave inspection and service logs
 ```
 
 Diagnostics are collected for failing lanes before their enclave is destroyed,

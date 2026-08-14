@@ -302,19 +302,20 @@ func TestRunManifestSurvivesBootstrapFailure(t *testing.T) {
 func TestRunCollectsDiagnosticsOnFailureBeforeCleanup(t *testing.T) {
 	reports := t.TempDir()
 	networks := new(recordingNetworks)
-	tests := New(Config{
+	testRunner := New(Config{
 		BaseName:     "qrl-tests",
 		ReportDir:    reports,
 		Backend:      devnet.BackendDocker,
 		StartTimeout: time.Minute,
 	}, io.Discard, io.Discard)
-	tests.networks = networks
-	tests.runCommand = func(context.Context, commandSpec) error { return errors.New("exit status 1") }
+	testRunner.networks = networks
+	testRunner.runCommand = func(context.Context, commandSpec) error { return errors.New("exit status 1") }
 
-	require.Error(t, tests.Run(t.Context(), "execution-abi"))
-	require.Equal(t, []string{filepath.Join(reports, "diagnostics", "execution-abi")}, networks.collected)
+	require.Error(t, testRunner.Run(t.Context(), "execution-abi"))
+	diagnosticsDir := filepath.Join(reports, "lanes", "execution-abi", "diagnostics")
+	require.Equal(t, []string{diagnosticsDir}, networks.collected)
 	require.Equal(t, []string{"qrl-tests"}, networks.stopped, "the enclave must still be destroyed")
-	require.Equal(t, networks.started.FailureDiagnosticsDir, filepath.Join(reports, "diagnostics", "execution-abi"))
+	require.Equal(t, diagnosticsDir, networks.started.FailureDiagnosticsDir)
 }
 
 func TestRunDiagnosticsFailureNeverMasksTheResult(t *testing.T) {
@@ -327,10 +328,10 @@ func TestRunDiagnosticsFailureNeverMasksTheResult(t *testing.T) {
 		StartTimeout: time.Minute,
 	}
 
-	tests := New(configuration, io.Discard, io.Discard)
-	tests.networks = networks
-	tests.runCommand = func(context.Context, commandSpec) error { return errors.New("exit status 1") }
-	err := tests.Run(t.Context(), "execution-abi")
+	testRunner := New(configuration, io.Discard, io.Discard)
+	testRunner.networks = networks
+	testRunner.runCommand = func(context.Context, commandSpec) error { return errors.New("exit status 1") }
+	err := testRunner.Run(t.Context(), "execution-abi")
 	require.ErrorContains(t, err, "exit status 1")
 	require.ErrorContains(t, err, "collect diagnostics: logs unavailable")
 	require.Equal(t, []string{"qrl-tests"}, networks.stopped)

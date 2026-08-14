@@ -76,7 +76,7 @@ func planLanes(configuration Config, selected []lanes.Lane, mode runMode) (runPl
 			enclaveName += "-" + lane.Name
 		}
 		reportDir := filepath.Join(reportRoot, laneReportsDirectory, lane.Name)
-		diagnosticsDir := filepath.Join(reportRoot, diagnosticsDirectory, lane.Name)
+		diagnosticsDir := filepath.Join(reportDir, diagnosticsDirectory)
 
 		// The seed randomizes ginkgo's spec order; recording it in the run
 		// manifest keeps every ordering reproducible, and a configured seed
