@@ -55,30 +55,26 @@ func (fixture *liveFixture) assertWebSocketWatcher(ctx context.Context) {
 	// indexed-topic rule, then delivers and decodes the event matching all rules.
 	ginkgo.By("watching a filtered event through the generated WebSocket binding")
 	auth := fixture.transactOpts(ctx)
-	watched, err := abifixture.NewEventEmitter(fixture.address, fixture.wsClient)
-	gomega.Expect(err).NotTo(gomega.HaveOccurred())
+	watched := mustSucceed(abifixture.NewEventEmitter(fixture.address, fixture.wsClient))
 	events := make(chan *abifixture.EventEmitterIndexedScalars, 1)
 	code, delta := [5]byte{1, 2, 3, 4, 5}, int16(-777)
-	subscription, err := watched.WatchIndexedScalars(
+	subscription := mustSucceed(watched.WatchIndexedScalars(
 		&bind.WatchOpts{Context: ctx},
 		events,
 		[]bool{false},
 		[][5]byte{code},
 		[]int16{delta},
-	)
-	gomega.Expect(err).NotTo(gomega.HaveOccurred())
+	))
 	ginkgo.DeferCleanup(subscription.Unsubscribe)
 
-	nonMatchingTx, err := fixture.binding.EmitIndexedScalars(
+	nonMatchingTx := mustSucceed(fixture.binding.EmitIndexedScalars(
 		auth,
 		true,
 		code,
 		delta,
-	)
-	gomega.Expect(err).NotTo(gomega.HaveOccurred())
+	))
 	fixture.waitSuccessfulTransaction(ctx, nonMatchingTx)
-	matchingTx, err := fixture.binding.EmitIndexedScalars(auth, false, code, delta)
-	gomega.Expect(err).NotTo(gomega.HaveOccurred())
+	matchingTx := mustSucceed(fixture.binding.EmitIndexedScalars(auth, false, code, delta))
 	receipt := fixture.waitSuccessfulTransaction(ctx, matchingTx)
 
 	awaitEvent(ctx, "generated IndexedScalars", events, subscription, func(received *abifixture.EventEmitterIndexedScalars) {
@@ -96,17 +92,16 @@ func (fixture *liveFixture) assertWebSocketWatcher(ctx context.Context) {
 	// values, rejects a non-matching event, and decodes the matching hashes.
 	ginkgo.By("watching indexed dynamic values through the generated WebSocket binding")
 	dynamicEvents := make(chan *abifixture.EventEmitterDynamic, 1)
-	dynamicSubscription, err := watched.WatchDynamic(
+	dynamicSubscription := mustSucceed(watched.WatchDynamic(
 		&bind.WatchOpts{Context: ctx},
 		dynamicEvents,
 		[][]byte{fixture.inputs.payload},
 		[]string{fixture.inputs.note},
-	)
-	gomega.Expect(err).NotTo(gomega.HaveOccurred())
+	))
 	ginkgo.DeferCleanup(dynamicSubscription.Unsubscribe)
 
 	nonMatchingPayload := []byte("not the watched payload")
-	nonMatchingDynamicTx, err := fixture.binding.Store(
+	nonMatchingDynamicTx := mustSucceed(fixture.binding.Store(
 		auth,
 		fixture.inputs.amount,
 		fixture.inputs.delta,
@@ -115,10 +110,9 @@ func (fixture *liveFixture) assertWebSocketWatcher(ctx context.Context) {
 		nonMatchingPayload,
 		fixture.inputs.note,
 		true,
-	)
-	gomega.Expect(err).NotTo(gomega.HaveOccurred())
+	))
 	fixture.waitSuccessfulTransaction(ctx, nonMatchingDynamicTx)
-	matchingDynamicTx, err := fixture.binding.Store(
+	matchingDynamicTx := mustSucceed(fixture.binding.Store(
 		auth,
 		fixture.inputs.amount,
 		fixture.inputs.delta,
@@ -127,8 +121,7 @@ func (fixture *liveFixture) assertWebSocketWatcher(ctx context.Context) {
 		fixture.inputs.payload,
 		fixture.inputs.note,
 		true,
-	)
-	gomega.Expect(err).NotTo(gomega.HaveOccurred())
+	))
 	dynamicReceipt := fixture.waitSuccessfulTransaction(ctx, matchingDynamicTx)
 	payloadHash := crypto.Keccak256Hash(fixture.inputs.payload)
 	noteHash := crypto.Keccak256Hash([]byte(fixture.inputs.note))

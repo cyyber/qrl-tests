@@ -156,8 +156,7 @@ func (fixture *liveFixture) assertFixedBytesBoundaries(ctx context.Context) {
 	fillPattern(fixedBytes.Bytes63Value[:], 0x44)
 	fillPattern(fixedBytes.Bytes64Value[:], 0x55)
 	fixture.assertCall(ctx, "echoBoundaryEdges", []any{fixedBytes}, []any{fixedBytes})
-	got, err := fixture.binding.EchoBoundaryEdges(fixture.callOpts(ctx), fixedBytes)
-	gomega.Expect(err).NotTo(gomega.HaveOccurred())
+	got := mustSucceed(fixture.binding.EchoBoundaryEdges(fixture.callOpts(ctx), fixedBytes))
 	assertBoundaryEdgesEqual(got, fixedBytes, "fixed bytes")
 }
 

@@ -2,7 +2,6 @@ package devnet
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"io"
 	"os"
@@ -10,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cyyber/qrl-tests/internal/testutil"
 	"github.com/stretchr/testify/require"
 )
 
@@ -67,7 +67,7 @@ func TestCollectDiagnostics(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "captured el-1-gqrl-qrysm", string(executionLog))
 
-	manifest := readDiagnosticsManifest(t, filepath.Join(output, "diagnostics.json"))
+	manifest := testutil.ReadJSON[diagnosticsManifest](t, filepath.Join(output, "diagnostics.json"))
 	require.True(t, manifest.Inspection.Captured)
 	require.Len(t, manifest.Services, 7)
 }
@@ -98,7 +98,7 @@ func TestCollectDiagnosticsKeepsGoingOnFailures(t *testing.T) {
 	require.FileExists(t, filepath.Join(output, "services", "el-1-gqrl-qrysm.log"),
 		"a failing service capture must not stop the remaining captures")
 
-	manifest := readDiagnosticsManifest(t, filepath.Join(output, "diagnostics.json"))
+	manifest := testutil.ReadJSON[diagnosticsManifest](t, filepath.Join(output, "diagnostics.json"))
 	require.False(t, manifest.Services[0].Captured)
 	require.Contains(t, manifest.Services[0].Error, "write diagnostic")
 	require.False(t, manifest.Services[1].Captured)
@@ -116,13 +116,4 @@ func TestServiceNamesFromInspectionReadsOnlyUserServices(t *testing.T) {
 		"signer-clef",
 		"vc-1-gqrl-qrysm",
 	}, serviceNamesFromInspection(testInspection))
-}
-
-func readDiagnosticsManifest(t *testing.T, path string) diagnosticsManifest {
-	t.Helper()
-	payload, err := os.ReadFile(path)
-	require.NoError(t, err)
-	var manifest diagnosticsManifest
-	require.NoError(t, json.Unmarshal(payload, &manifest))
-	return manifest
 }

@@ -181,8 +181,7 @@ func (fixture *liveFixture) assertPayableEntrypoints(ctx context.Context) {
 	)
 	gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	fixture.waitSuccessfulTransaction(ctx, deployTx)
-	deployedBalance, err := fixture.client.BalanceAt(ctx, address, nil)
-	gomega.Expect(err).NotTo(gomega.HaveOccurred())
+	deployedBalance := mustSucceed(fixture.client.BalanceAt(ctx, address, nil))
 	gomega.Expect(deployedBalance).To(gomega.Equal(big.NewInt(23)))
 
 	// Hyperion:
@@ -212,8 +211,7 @@ func (fixture *liveFixture) assertPayableEntrypoints(ctx context.Context) {
 		},
 		want: map[string]any{"amount": amount},
 	})
-	received, err := fixture.binding.ParseReceived(*receipt.Logs[0])
-	gomega.Expect(err).NotTo(gomega.HaveOccurred())
+	received := mustSucceed(fixture.binding.ParseReceived(*receipt.Logs[0]))
 	gomega.Expect(received.Amount).To(gomega.Equal(amount))
 
 	// Hyperion:
@@ -247,8 +245,7 @@ func (fixture *liveFixture) assertPayableEntrypoints(ctx context.Context) {
 			"amount":  amount,
 		},
 	})
-	fallback, err := fixture.binding.ParseFallbackCalled(*receipt.Logs[0])
-	gomega.Expect(err).NotTo(gomega.HaveOccurred())
+	fallback := mustSucceed(fixture.binding.ParseFallbackCalled(*receipt.Logs[0]))
 	gomega.Expect(fallback.Payload).To(gomega.Equal(payload))
 	gomega.Expect(fallback.Amount).To(gomega.Equal(amount))
 
@@ -285,8 +282,7 @@ func (fixture *liveFixture) assertPayableEntrypoints(ctx context.Context) {
 		filter: [][]any{{fixture.from}, {marker}},
 		reject: [][]any{{fixture.from}, {marker + 1}},
 	})
-	paid, err := fixture.binding.ParsePaid(*payReceipt.Logs[0])
-	gomega.Expect(err).NotTo(gomega.HaveOccurred())
+	paid := mustSucceed(fixture.binding.ParsePaid(*payReceipt.Logs[0]))
 	gomega.Expect(paid.Sender).To(gomega.Equal(fixture.from))
 	gomega.Expect(paid.Marker).To(gomega.Equal(marker))
 	gomega.Expect(paid.Amount).To(gomega.Equal(amount))

@@ -141,18 +141,16 @@ func (fixture *liveFixture) assertFunctionValues(ctx context.Context) {
 		},
 	)
 
-	parsedEvent, err := fixture.binding.ParseFunctionObserved(*receipt.Logs[0])
-	gomega.Expect(err).NotTo(gomega.HaveOccurred())
+	parsedEvent := mustSucceed(fixture.binding.ParseFunctionObserved(*receipt.Logs[0]))
 	gomega.Expect(parsedEvent.IndexedCallback).To(gomega.Equal(callbackHash))
 	gomega.Expect(parsedEvent.Callback).To(gomega.Equal(callback))
 	gomega.Expect(parsedEvent.Result).To(gomega.Equal(functionResult))
 
 	block := receipt.BlockNumber.Uint64()
-	iterator, err := fixture.binding.FilterFunctionObserved(
+	iterator := mustSucceed(fixture.binding.FilterFunctionObserved(
 		&bind.FilterOpts{Start: block, End: &block, Context: ctx},
 		[]functionValue{callback},
-	)
-	gomega.Expect(err).NotTo(gomega.HaveOccurred())
+	))
 	defer iterator.Close()
 	gomega.Expect(iterator.Next()).To(gomega.BeTrue())
 	gomega.Expect(iterator.Event.Raw.TxHash).To(gomega.Equal(receipt.TxHash))

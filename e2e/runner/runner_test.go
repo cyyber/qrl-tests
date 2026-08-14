@@ -19,6 +19,7 @@ import (
 	"github.com/cyyber/qrl-tests/e2e/internal/manifest"
 	"github.com/cyyber/qrl-tests/internal/results"
 	"github.com/cyyber/qrl-tests/internal/runmanifest"
+	"github.com/cyyber/qrl-tests/internal/testutil"
 	"github.com/onsi/ginkgo/v2/types"
 	"github.com/stretchr/testify/require"
 )
@@ -112,7 +113,7 @@ func TestRunBuildsCommandAndCleansUp(t *testing.T) {
 	require.Contains(t, output.String(), "=== RUN lane=execution-abi profile=single ===")
 
 	recordPath := filepath.Join(reports, runmanifest.FileName)
-	record := readJSON[runmanifest.Manifest](t, recordPath)
+	record := testutil.ReadJSON[runmanifest.Manifest](t, recordPath)
 	require.Equal(t, "c0b29628173dba03445f2a6b7f07aa6b5958f93af975feefff9ee025d4cc0c10", record.ParametersSHA256)
 	payload, err := os.ReadFile(recordPath)
 	require.NoError(t, err)
@@ -130,15 +131,6 @@ func writeGinkgoReport(t *testing.T, laneDir string, state types.SpecState) {
 	require.NoError(t, err)
 	require.NoError(t, os.MkdirAll(laneDir, 0o755))
 	require.NoError(t, os.WriteFile(filepath.Join(laneDir, results.ReportFileName), payload, 0o600))
-}
-
-func readJSON[T any](t *testing.T, path string) T {
-	t.Helper()
-	payload, err := os.ReadFile(path)
-	require.NoError(t, err)
-	var value T
-	require.NoError(t, json.Unmarshal(payload, &value))
-	return value
 }
 
 func outcomeErrors(outcomes []results.Outcome) []error {
@@ -166,7 +158,7 @@ func TestRunWritesRunManifestAndSummary(t *testing.T) {
 
 	require.NoError(t, testRunner.Run(t.Context(), "execution-abi"))
 
-	record := readJSON[runmanifest.Manifest](t, filepath.Join(reports, runmanifest.FileName))
+	record := testutil.ReadJSON[runmanifest.Manifest](t, filepath.Join(reports, runmanifest.FileName))
 	require.Equal(t, "passed", record.Result)
 	require.Equal(t, devnet.BackendDocker, record.Backend)
 	require.Equal(t, devnet.PackageLocator, record.PackageLocator)
@@ -177,7 +169,7 @@ func TestRunWritesRunManifestAndSummary(t *testing.T) {
 	require.Positive(t, record.Lanes[0].Seed)
 	require.False(t, record.FinishedAt.IsZero())
 
-	summary := readJSON[results.Summary](t, filepath.Join(reports, results.SummaryFileName))
+	summary := testutil.ReadJSON[results.Summary](t, filepath.Join(reports, results.SummaryFileName))
 	require.Equal(t, "passed", summary.Result)
 	require.FileExists(t, filepath.Join(reports, results.MarkdownFileName))
 }
@@ -200,7 +192,7 @@ func TestRunFailsOnUnexpectedSkips(t *testing.T) {
 	err := testRunner.Run(t.Context(), "execution-abi")
 	require.ErrorContains(t, err, "execution-abi (skipped)")
 
-	record := readJSON[runmanifest.Manifest](t, filepath.Join(reports, runmanifest.FileName))
+	record := testutil.ReadJSON[runmanifest.Manifest](t, filepath.Join(reports, runmanifest.FileName))
 	require.Equal(t, "failed", record.Lanes[0].Result,
 		"the manifest records the verdict, not the process exit")
 }
@@ -218,7 +210,7 @@ func TestRunPreservesCancellation(t *testing.T) {
 	err := testRunner.Run(t.Context(), "execution-abi")
 	require.ErrorIs(t, err, context.Canceled)
 
-	summary := readJSON[results.Summary](t, filepath.Join(reports, results.SummaryFileName))
+	summary := testutil.ReadJSON[results.Summary](t, filepath.Join(reports, results.SummaryFileName))
 	require.Equal(t, results.VerdictCanceled, summary.Lanes[0].Verdict)
 }
 
@@ -237,11 +229,11 @@ func TestRunFailsWithoutAUsableReport(t *testing.T) {
 	err := testRunner.Run(t.Context(), "execution-abi")
 	require.ErrorContains(t, err, "lanes did not pass")
 
-	record := readJSON[runmanifest.Manifest](t, filepath.Join(reports, runmanifest.FileName))
+	record := testutil.ReadJSON[runmanifest.Manifest](t, filepath.Join(reports, runmanifest.FileName))
 	require.Equal(t, "failed", record.Result)
 	require.Equal(t, "failed", record.Lanes[0].Result)
 
-	summary := readJSON[results.Summary](t, filepath.Join(reports, results.SummaryFileName))
+	summary := testutil.ReadJSON[results.Summary](t, filepath.Join(reports, results.SummaryFileName))
 	require.Equal(t, results.VerdictInfrastructure, summary.Lanes[0].Verdict)
 }
 
@@ -261,11 +253,11 @@ func TestRunManifestSurvivesBootstrapFailure(t *testing.T) {
 	require.NoDirExists(t, filepath.Join(reports, "lanes", "execution-abi"))
 	require.Empty(t, networks.stopped, "a lane that never started must not be stopped")
 
-	record := readJSON[runmanifest.Manifest](t, filepath.Join(reports, runmanifest.FileName))
+	record := testutil.ReadJSON[runmanifest.Manifest](t, filepath.Join(reports, runmanifest.FileName))
 	require.Equal(t, "failed", record.Result)
 	require.Equal(t, "failed", record.Lanes[0].Result)
 
-	summary := readJSON[results.Summary](t, filepath.Join(reports, results.SummaryFileName))
+	summary := testutil.ReadJSON[results.Summary](t, filepath.Join(reports, results.SummaryFileName))
 	require.Equal(t, results.VerdictBootstrap, summary.Lanes[0].Verdict)
 }
 
@@ -358,7 +350,7 @@ func TestRunAllProvisionsPerLane(t *testing.T) {
 	require.Equal(t, devnet.ProfileSingle, networks.started.Profile)
 	require.Equal(t, []string{"qrl-tests-execution-abi"}, networks.stopped)
 	require.Contains(t, command.Args, "./e2e/suites/execution/abi")
-	record := readJSON[runmanifest.Manifest](t, filepath.Join(reports, runmanifest.FileName))
+	record := testutil.ReadJSON[runmanifest.Manifest](t, filepath.Join(reports, runmanifest.FileName))
 	require.Equal(t, "qrl-tests-execution-abi", record.Lanes[0].Enclave)
 }
 
@@ -383,9 +375,9 @@ func TestRunReturnsCleanupFailure(t *testing.T) {
 	require.Equal(t, []string{diagnosticsDir}, networks.collected)
 	require.Equal(t, []string{"stop:qrl-tests", "collect:qrl-tests"}, networks.events)
 
-	record := readJSON[runmanifest.Manifest](t, filepath.Join(reports, runmanifest.FileName))
+	record := testutil.ReadJSON[runmanifest.Manifest](t, filepath.Join(reports, runmanifest.FileName))
 	require.Equal(t, "failed", record.Result)
-	summary := readJSON[results.Summary](t, filepath.Join(reports, results.SummaryFileName))
+	summary := testutil.ReadJSON[results.Summary](t, filepath.Join(reports, results.SummaryFileName))
 	require.Equal(t, results.VerdictInfrastructure, summary.Lanes[0].Verdict)
 }
 
@@ -403,7 +395,7 @@ func TestRunMarksManifestFailedWhenSummaryWritingFails(t *testing.T) {
 	err := runner.Run(t.Context(), "execution-abi")
 	require.ErrorContains(t, err, "write markdown summary")
 
-	record := readJSON[runmanifest.Manifest](t, filepath.Join(reports, runmanifest.FileName))
+	record := testutil.ReadJSON[runmanifest.Manifest](t, filepath.Join(reports, runmanifest.FileName))
 	require.Equal(t, "failed", record.Result)
 	require.Equal(t, "passed", record.Lanes[0].Result)
 }
