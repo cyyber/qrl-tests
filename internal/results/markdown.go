@@ -3,47 +3,53 @@ package results
 import (
 	"fmt"
 	"strings"
+
+	md "github.com/nao1215/markdown"
 )
 
 // markdown renders the summary for the GitHub job summary; workflows append
 // it to $GITHUB_STEP_SUMMARY.
 func (summary Summary) markdown() string {
-	var report strings.Builder
-	fmt.Fprintf(&report, "## E2E: %s\n", summary.Result)
+	report := md.NewMarkdown(nil, md.WithBlockSpacing()).H2f("E2E: %s", summary.Result)
 	for _, lane := range summary.Lanes {
-		writeLaneSummary(&report, lane)
+		writeLaneSummary(report, lane)
 	}
 
 	for _, lane := range summary.Lanes {
-		writeLaneDetails(&report, lane)
+		writeLaneDetails(report, lane)
 	}
-	return report.String()
+	return strings.TrimRight(report.String(), "\n") + "\n"
 }
 
-func writeLaneSummary(report *strings.Builder, lane LaneSummary) {
-	fmt.Fprintf(report, "\n### %s\n\n", lane.Name)
+func writeLaneSummary(report *md.Markdown, lane LaneSummary) {
+	report.H3(lane.Name)
 	if len(lane.suites) == 0 {
-		fmt.Fprintf(report, "**Result:** %s\n", displayClass(lane.Class))
+		report.PlainTextf("%s %s", md.Bold("Result:"), displayClass(lane.Class))
 		return
 	}
-	report.WriteString("| Suite | Result |\n")
-	report.WriteString("| --- | ---: |\n")
-	for _, suite := range lane.suites {
-		fmt.Fprintf(report, "| %s | %s |\n", suite.Name, suiteResult(suite))
+
+	rows := make([][]string, len(lane.suites))
+	for i, suite := range lane.suites {
+		rows[i] = []string{suite.Name, suiteResult(suite)}
 	}
+	report.Table(md.TableSet{
+		Header:    []string{"Suite", "Result"},
+		Rows:      rows,
+		Alignment: []md.TableAlignment{md.AlignDefault, md.AlignRight},
+	})
 }
 
-func writeLaneDetails(report *strings.Builder, lane LaneSummary) {
+func writeLaneDetails(report *md.Markdown, lane LaneSummary) {
 	if showLaneError(lane) {
-		fmt.Fprintf(report, "\n### %s details\n\n", lane.Name)
-		fmt.Fprintf(report, "```\n%s\n```\n", lane.Error)
+		report.H3f("%s details", lane.Name)
+		report.CodeBlocks(md.SyntaxHighlightNone, lane.Error)
 	}
 	for _, suite := range lane.suites {
 		if !suite.hasDetails() {
 			continue
 		}
-		fmt.Fprintf(report, "\n#### %s failures\n\n", suite.Name)
-		writeSuiteDetails(report, suite)
+		report.H4f("%s failures", suite.Name)
+		report.BulletList(suiteDetails(suite)...)
 	}
 }
 
@@ -51,23 +57,25 @@ func (suite suiteSummary) hasDetails() bool {
 	return len(suite.Failures) > 0 || len(suite.SuiteFailures) > 0 || len(suite.UnexpectedSkips) > 0
 }
 
-func writeSuiteDetails(report *strings.Builder, suite suiteSummary) {
+func suiteDetails(suite suiteSummary) []string {
+	details := make([]string, 0, len(suite.Failures)+len(suite.SuiteFailures)+len(suite.UnexpectedSkips))
 	for _, failure := range suite.Failures {
-		fmt.Fprintf(report, "- **%s** `%s`", failure.State, failure.Spec)
+		detail := fmt.Sprintf("%s %s", md.Bold(failure.State), md.Code(failure.Spec))
 		if failure.Location != "" {
-			fmt.Fprintf(report, " (%s)", failure.Location)
+			detail += fmt.Sprintf(" (%s)", failure.Location)
 		}
 		if failure.Message != "" {
-			fmt.Fprintf(report, "\n  %s", indentMarkdown(failure.Message))
+			detail += "\n  " + indentMarkdown(failure.Message)
 		}
-		report.WriteString("\n")
+		details = append(details, detail)
 	}
 	for _, failure := range suite.SuiteFailures {
-		fmt.Fprintf(report, "- **suite** %s\n", failure)
+		details = append(details, fmt.Sprintf("%s %s", md.Bold("suite"), failure))
 	}
 	for _, skipped := range suite.UnexpectedSkips {
-		fmt.Fprintf(report, "- **skipped** `%s`\n", skipped)
+		details = append(details, fmt.Sprintf("%s %s", md.Bold("skipped"), md.Code(skipped)))
 	}
+	return details
 }
 
 func suiteResult(suite suiteSummary) string {

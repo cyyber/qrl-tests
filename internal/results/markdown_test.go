@@ -48,7 +48,7 @@ func TestMarkdownPassingSuites(t *testing.T) {
 ### execution
 
 | Suite | Result |
-| --- | ---: |
+|---------|--------:|
 | ABI E2E suite | 2/2 |
 | API E2E suite | 3/3 |
 `
@@ -88,7 +88,7 @@ func TestMarkdownFailedSuiteDetails(t *testing.T) {
 		"### execution",
 		"",
 		"| Suite | Result |",
-		"| --- | ---: |",
+		"|---------|--------:|",
 		"| ABI E2E suite | 1/2 failed |",
 		"",
 		"#### ABI E2E suite failures",
