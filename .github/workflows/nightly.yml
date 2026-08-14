@@ -114,9 +114,7 @@ jobs:
           DOCKER_BUILD_RECORD_UPLOAD: false
         with:
           source: .
-          files: |
-            ./ci/images/docker-bake.hcl
-            ./ci/images/qrl-genesis-generator.hcl
+          files: ./ci/images/docker-bake.hcl
           targets: ${{ steps.plan.outputs.bake-targets }}
           push: true
           provenance: false

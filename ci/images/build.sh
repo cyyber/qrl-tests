@@ -45,7 +45,7 @@ plan() {
 	local arch qrysm_recipe_revision genesis_recipe_revision
 	arch=$(architecture)
 	qrysm_recipe_revision=$(recipe_revision "${script_dir}/build-qrysm.sh")
-	genesis_recipe_revision=$(recipe_revision "${script_dir}/qrl-genesis-generator.hcl")
+	genesis_recipe_revision=$(recipe_revision "${script_dir}/docker-bake.hcl")
 
 	GO_QRL_IMAGE_TAG="${REGISTRY_NAMESPACE}/go-qrl:src-${GO_QRL_GIT_COMMIT:0:12}-${arch}"
 	GO_QRL_CLEF_IMAGE_TAG="${REGISTRY_NAMESPACE}/go-qrl-clef:src-${GO_QRL_GIT_COMMIT:0:12}-${arch}"

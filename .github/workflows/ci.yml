@@ -42,6 +42,5 @@ jobs:
         run: |
           docker buildx bake \
             -f ci/images/docker-bake.hcl \
-            -f ci/images/qrl-genesis-generator.hcl \
             --print \
             go-qrl go-qrl-clef qrl-genesis-generator
