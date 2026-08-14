@@ -22,7 +22,11 @@ reports/
 ├── summary.json              # spec counts and classified failures
 ├── summary.md                # Markdown result summary
 └── lanes/<lane>/             # junit.xml, report.json, output.log, manifest.json
-    └── diagnostics/          # failed-run enclave inspection and service logs
+    └── diagnostics/
+        ├── diagnostics.json   # capture status and errors
+        ├── inspect.txt        # Kurtosis enclave inspection
+        └── services/
+            └── <service>.log  # log for each discovered service
 ```
 
 Diagnostics are collected before a failed lane's enclave is removed. Diagnostics
