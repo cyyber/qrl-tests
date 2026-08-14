@@ -53,7 +53,7 @@ func testManager(client *fakeClient) *Manager {
 		newClient: func() (kurtosisClient, error) { return client, nil },
 		probe:     func(context.Context, string, string) error { return nil },
 		collectDiagnostics: func(context.Context, string, string) error {
-			return errors.New("no diagnostics were requested")
+			panic("unexpected diagnostics collection")
 		},
 	}
 }
