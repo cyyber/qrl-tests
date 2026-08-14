@@ -38,7 +38,7 @@ func TestMarkdownPassingSuites(t *testing.T) {
 			Class: ClassPassed,
 			suites: []suiteSummary{
 				{Name: "ABI E2E suite", Class: ClassPassed, Counts: Counts{Specs: 2, Passed: 2}},
-				{Name: "Console E2E suite", Class: ClassPassed, Counts: Counts{Specs: 3, Passed: 3}},
+				{Name: "API E2E suite", Class: ClassPassed, Counts: Counts{Specs: 3, Passed: 3}},
 			},
 		}},
 	}
@@ -50,7 +50,7 @@ func TestMarkdownPassingSuites(t *testing.T) {
 | Suite | Result |
 | --- | ---: |
 | ABI E2E suite | 2/2 |
-| Console E2E suite | 3/3 |
+| API E2E suite | 3/3 |
 `
 	require.Equal(t, want, summary.markdown())
 }

@@ -255,7 +255,7 @@ func TestSummarizeReportsSuitesWithinLane(t *testing.T) {
 			SpecReports:      []types.SpecReport{spec(types.SpecStatePassed, "encodes calls")},
 		},
 		types.Report{
-			SuiteDescription: "Console E2E suite",
+			SuiteDescription: "API E2E suite",
 			SpecReports:      []types.SpecReport{spec(types.SpecStateFailed, "decodes events")},
 		},
 	)
@@ -267,7 +267,7 @@ func TestSummarizeReportsSuitesWithinLane(t *testing.T) {
 	require.Len(t, lane.suites, 2)
 	require.Equal(t, "ABI E2E suite", lane.suites[0].Name)
 	require.Equal(t, ClassPassed, lane.suites[0].Class)
-	require.Equal(t, "Console E2E suite", lane.suites[1].Name)
+	require.Equal(t, "API E2E suite", lane.suites[1].Name)
 	require.Equal(t, ClassAssertion, lane.suites[1].Class)
 }
 
