@@ -114,31 +114,28 @@ func collectServiceLog(
 	service string,
 ) (serviceDiagnostic, error) {
 	relativePath := filepath.Join("services", service+".log")
-	record := serviceDiagnostic{
+	diagnostic := serviceDiagnostic{
 		Name:      service,
 		File:      filepath.ToSlash(relativePath),
 		Sanitized: !isRuntimeService(service),
 	}
 
 	output, commandErr := run(ctx, "kurtosis", "service", "logs", "--all", enclaveName, service)
-	if record.Sanitized {
+	if diagnostic.Sanitized {
 		output = sanitizeProvisioningLog(output)
 	}
 	writeErr := writeDiagnostic(filepath.Join(outputDir, relativePath), output)
 	captureErr := errors.Join(commandErr, writeErr)
-	record.Captured = captureErr == nil
+	diagnostic.Captured = captureErr == nil
 	if captureErr != nil {
-		record.Error = captureErr.Error()
+		diagnostic.Error = captureErr.Error()
 	}
 
-	var problems []error
 	if commandErr != nil {
-		problems = append(problems, fmt.Errorf("kurtosis service logs %s %s: %w", enclaveName, service, commandErr))
+		commandErr = fmt.Errorf("kurtosis service logs %s %s: %w", enclaveName, service, commandErr)
 	}
-	if writeErr != nil {
-		problems = append(problems, writeErr)
-	}
-	return record, errors.Join(problems...)
+
+	return diagnostic, errors.Join(commandErr, writeErr)
 }
 
 func diagnosticServices(inspection string) []string {
