@@ -84,7 +84,7 @@ func (runner *Runner) executeLane(ctx context.Context, plan runPlan, lane laneRu
 	outcome.Name = definition.Name
 	lease, err := runner.acquireLane(ctx, plan, lane)
 	if err != nil {
-		outcome.BootstrapFailure = true
+		outcome.BootstrapFailed = true
 		outcome.Err = fmt.Errorf("network bootstrap failed: %w", err)
 		return outcome
 	}

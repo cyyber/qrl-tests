@@ -36,12 +36,12 @@ const (
 // Captured reports remain private because only result classification consumes
 // them.
 type Outcome struct {
-	Name             string
-	Err              error
-	ExecutionErr     error
-	BootstrapFailure bool
-	reports          []types.Report
-	reportErr        error
+	Name            string
+	Err             error
+	ExecutionErr    error
+	BootstrapFailed bool
+	reports         []types.Report
+	reportErr       error
 }
 
 // CaptureReports reads and stores the lane's Ginkgo reports so later summary
@@ -119,8 +119,8 @@ func (summary LaneSummary) classificationEvidence() classificationEvidence {
 	}
 }
 
-// Summarize writes summary.json and summary.md from the reports captured
-// by each outcome. The returned error covers writing only; test failures live
+// Summarize writes summary.json and summary.md from the reports captured by
+// each outcome. The returned error covers persistence only; test failures live
 // in the summary itself and VerdictError.
 func Summarize(reportRoot string, outcomes []Outcome) (Summary, error) {
 	summary := Summary{Result: "passed", Lanes: make([]LaneSummary, len(outcomes))}
@@ -261,7 +261,7 @@ func (counts *Counts) add(other Counts) {
 }
 
 func classify(outcome Outcome, summary LaneSummary) string {
-	if outcome.BootstrapFailure {
+	if outcome.BootstrapFailed {
 		return ClassBootstrap
 	}
 	if errors.Is(outcome.ExecutionErr, context.Canceled) {
@@ -292,8 +292,8 @@ func classify(outcome Outcome, summary LaneSummary) string {
 	return classification
 }
 
-func classifyReports(reports []types.Report, evidence classificationEvidence, err error) string {
-	timedOut := reportTimedOut(reports)
+func classifyReports(reports []types.Report, evidence classificationEvidence, runErr error) string {
+	timedOut := anyReportTimedOut(reports)
 	interrupted := false
 	for _, failure := range evidence.failures {
 		switch failure.State {
@@ -315,9 +315,9 @@ func classifyReports(reports []types.Report, evidence classificationEvidence, er
 		// with --fail-on-pending, so a pending or skipped spec also fails
 		// the process, and that exit says nothing new.
 		return ClassSkipped
-	case reportFailed(reports):
+	case anyReportFailed(reports):
 		return ClassInfrastructure
-	case err != nil:
+	case runErr != nil:
 		// The test process failed without a failing spec on record.
 		return ClassInfrastructure
 	case evidence.counts.Passed == 0:
@@ -327,7 +327,7 @@ func classifyReports(reports []types.Report, evidence classificationEvidence, er
 	return ClassPassed
 }
 
-func reportTimedOut(reports []types.Report) bool {
+func anyReportTimedOut(reports []types.Report) bool {
 	for _, report := range reports {
 		for _, reason := range report.SpecialSuiteFailureReasons {
 			if strings.Contains(strings.ToLower(reason), "timeout") {
@@ -338,7 +338,7 @@ func reportTimedOut(reports []types.Report) bool {
 	return false
 }
 
-func reportFailed(reports []types.Report) bool {
+func anyReportFailed(reports []types.Report) bool {
 	for _, report := range reports {
 		if !report.SuiteSucceeded {
 			return true

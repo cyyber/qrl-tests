@@ -176,9 +176,9 @@ func TestSummarizeRejectsUnexpectedSkips(t *testing.T) {
 func TestSummarizeHonorsBootstrapFailure(t *testing.T) {
 	root := t.TempDir()
 	summary := summarizeOne(t, root, Outcome{
-		Name:             "execution-abi",
-		Err:              errors.New("network bootstrap failed: start network: no capacity"),
-		BootstrapFailure: true,
+		Name:            "execution-abi",
+		Err:             errors.New("network bootstrap failed: start network: no capacity"),
+		BootstrapFailed: true,
 	})
 	require.Equal(t, "failed", summary.Result)
 	require.Equal(t, ClassBootstrap, summary.Lanes[0].Class)
