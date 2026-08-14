@@ -24,7 +24,7 @@ func (summary Summary) markdown() string {
 func writeLaneSummary(report *md.Markdown, lane LaneSummary) {
 	report.H3(lane.Name)
 	if len(lane.suites) == 0 {
-		report.PlainTextf("%s %s", md.Bold("Result:"), displayClass(lane.Class))
+		report.PlainTextf("%s %s", md.Bold("Result:"), displayVerdict(lane.Verdict))
 		return
 	}
 
@@ -80,27 +80,27 @@ func suiteDetails(suite suiteSummary) []string {
 
 func suiteResult(suite suiteSummary) string {
 	result := fmt.Sprintf("%d/%d", suite.Counts.Passed, suite.Counts.Specs)
-	if suite.Class != ClassPassed {
-		result += " " + displayClass(suite.Class)
+	if suite.Verdict != VerdictPassed {
+		result += " " + displayVerdict(suite.Verdict)
 	}
 	return result
 }
 
-func displayClass(class string) string {
-	switch class {
-	case ClassAssertion:
+func displayVerdict(verdict string) string {
+	switch verdict {
+	case VerdictAssertion:
 		return "failed"
-	case ClassTimeout:
+	case VerdictTimeout:
 		return "timed out"
-	case ClassInfrastructure:
+	case VerdictInfrastructure:
 		return "error"
 	default:
-		return class
+		return verdict
 	}
 }
 
 func showLaneError(lane LaneSummary) bool {
-	return lane.Error != "" && lane.Class != ClassAssertion && lane.Class != ClassSkipped
+	return lane.Error != "" && lane.Verdict != VerdictAssertion && lane.Verdict != VerdictSkipped
 }
 
 func indentListContinuation(message string) string {

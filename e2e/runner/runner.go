@@ -210,7 +210,7 @@ func (runner *Runner) run(ctx context.Context, selected []lanes.Lane, mode runMo
 	// manifest and in the exit code alike.
 	laneResults := make(map[string]bool, len(summary.Lanes))
 	for _, lane := range summary.Lanes {
-		laneResults[lane.Name] = lane.Class == results.ClassPassed
+		laneResults[lane.Name] = lane.Verdict == results.VerdictPassed
 	}
 	record.Finish(laneResults, time.Now())
 	if manifestErr != nil || summarizeErr != nil {

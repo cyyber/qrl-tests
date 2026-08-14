@@ -34,11 +34,11 @@ func TestMarkdownPassingSuites(t *testing.T) {
 	summary := Summary{
 		Result: "passed",
 		Lanes: []LaneSummary{{
-			Name:  "execution",
-			Class: ClassPassed,
+			Name:    "execution",
+			Verdict: VerdictPassed,
 			suites: []suiteSummary{
-				{Name: "ABI E2E suite", Class: ClassPassed, Counts: Counts{Specs: 2, Passed: 2}},
-				{Name: "API E2E suite", Class: ClassPassed, Counts: Counts{Specs: 3, Passed: 3}},
+				{Name: "ABI E2E suite", Verdict: VerdictPassed, Counts: Counts{Specs: 2, Passed: 2}},
+				{Name: "API E2E suite", Verdict: VerdictPassed, Counts: Counts{Specs: 3, Passed: 3}},
 			},
 		}},
 	}
@@ -61,12 +61,12 @@ func TestMarkdownFailedSuiteDetails(t *testing.T) {
 	summary := Summary{
 		Result: "failed",
 		Lanes: []LaneSummary{{
-			Name:  "execution",
-			Class: ClassAssertion,
-			Error: "exit status 1",
+			Name:    "execution",
+			Verdict: VerdictAssertion,
+			Error:   "exit status 1",
 			suites: []suiteSummary{{
-				Name:  "ABI E2E suite",
-				Class: ClassAssertion,
+				Name:    "ABI E2E suite",
+				Verdict: VerdictAssertion,
 				Counts: Counts{
 					Specs:  2,
 					Passed: 1,
@@ -108,9 +108,9 @@ func TestMarkdownInfrastructureFailureWithoutSuites(t *testing.T) {
 	summary := Summary{
 		Result: "failed",
 		Lanes: []LaneSummary{{
-			Name:  "consensus",
-			Class: ClassInfrastructure,
-			Error: "network did not become ready\nconsensus REST unavailable",
+			Name:    "consensus",
+			Verdict: VerdictInfrastructure,
+			Error:   "network did not become ready\nconsensus REST unavailable",
 		}},
 	}
 

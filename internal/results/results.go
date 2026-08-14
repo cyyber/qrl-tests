@@ -20,15 +20,15 @@ const (
 	MarkdownFileName = "summary.md"
 )
 
-// Lane outcome classifications.
+// Lane verdicts.
 const (
-	ClassBootstrap      = "bootstrap"      // the network never became ready
-	ClassInfrastructure = "infrastructure" // the harness or its tools broke
-	ClassTimeout        = "timeout"        // specs hit the lane deadline
-	ClassCanceled       = "canceled"       // the caller interrupted the run
-	ClassAssertion      = "assertion"      // the product failed a spec
-	ClassSkipped        = "skipped"        // only unexpected skips or pendings
-	ClassPassed         = "passed"
+	VerdictBootstrap      = "bootstrap"      // the network never became ready
+	VerdictInfrastructure = "infrastructure" // the harness or its tools broke
+	VerdictTimeout        = "timeout"        // specs hit the lane deadline
+	VerdictCanceled       = "canceled"       // the caller interrupted the run
+	VerdictAssertion      = "assertion"      // the product failed a spec
+	VerdictSkipped        = "skipped"        // only unexpected skips or pendings
+	VerdictPassed         = "passed"
 )
 
 // Outcome is the complete result of running one lane. ExecutionErr preserves
@@ -68,7 +68,7 @@ func (outcome *Outcome) CaptureReports(reportDir string) {
 // Passed reports the verdict represented by this outcome without reading any
 // files or discarding its process error.
 func (outcome Outcome) Passed() bool {
-	return summarizeOutcome(outcome).Class == ClassPassed
+	return summarizeOutcome(outcome).Verdict == VerdictPassed
 }
 
 type Counts struct {
@@ -94,7 +94,7 @@ type classificationEvidence struct {
 
 type suiteSummary struct {
 	Name            string
-	Class           string
+	Verdict         string
 	Counts          Counts
 	Failures        []Failure
 	SuiteFailures   []string
@@ -111,7 +111,7 @@ func (summary suiteSummary) classificationEvidence() classificationEvidence {
 
 type LaneSummary struct {
 	Name            string    `json:"name"`
-	Class           string    `json:"class"`
+	Verdict         string    `json:"verdict"`
 	Counts          Counts    `json:"counts"`
 	Error           string    `json:"error,omitempty"`
 	Failures        []Failure `json:"failures,omitempty"`
@@ -140,8 +140,8 @@ type Summary struct {
 func (summary Summary) VerdictError() error {
 	var failed []string
 	for _, lane := range summary.Lanes {
-		if lane.Class != ClassPassed {
-			detail := fmt.Sprintf("%s (%s)", lane.Name, lane.Class)
+		if lane.Verdict != VerdictPassed {
+			detail := fmt.Sprintf("%s (%s)", lane.Name, lane.Verdict)
 			if lane.Error != "" {
 				detail += ": " + lane.Error
 			}
@@ -163,7 +163,7 @@ func Summarize(reportRoot string, outcomes []Outcome) (Summary, error) {
 		summary.Lanes[index] = summarizeOutcome(outcome)
 
 		summary.Totals.add(summary.Lanes[index].Counts)
-		if summary.Lanes[index].Class != ClassPassed {
+		if summary.Lanes[index].Verdict != VerdictPassed {
 			summary.Result = "failed"
 		}
 	}
@@ -188,7 +188,7 @@ func Summarize(reportRoot string, outcomes []Outcome) (Summary, error) {
 }
 
 func summarizeOutcome(outcome Outcome) LaneSummary {
-	result := LaneSummary{Name: outcome.Name, Class: ClassPassed}
+	result := LaneSummary{Name: outcome.Name, Verdict: VerdictPassed}
 	if err := errors.Join(outcome.Err, outcome.reportErr); err != nil {
 		result.Error = err.Error()
 	}
@@ -202,20 +202,20 @@ func summarizeOutcome(outcome Outcome) LaneSummary {
 		result.UnexpectedSkips = append(result.UnexpectedSkips, suite.UnexpectedSkips...)
 	}
 
-	result.Class = classify(outcome, result)
+	result.Verdict = classify(outcome, result)
 	return result
 }
 
 func summarizeSuite(report types.Report) suiteSummary {
 	result := suiteSummary{
 		Name:          suiteName(report),
-		Class:         ClassPassed,
+		Verdict:       VerdictPassed,
 		SuiteFailures: report.SpecialSuiteFailureReasons,
 	}
 	for _, spec := range report.SpecReports {
 		result.tally(spec)
 	}
-	result.Class = classifyReports([]types.Report{report}, result.classificationEvidence(), nil)
+	result.Verdict = classifyReports([]types.Report{report}, result.classificationEvidence(), nil)
 	return result
 }
 
@@ -277,19 +277,19 @@ func (counts *Counts) add(other Counts) {
 
 func classify(outcome Outcome, summary LaneSummary) string {
 	if outcome.BootstrapFailed {
-		return ClassBootstrap
+		return VerdictBootstrap
 	}
 	if errors.Is(outcome.ExecutionErr, context.Canceled) {
-		return ClassCanceled
+		return VerdictCanceled
 	}
 	if errors.Is(outcome.ExecutionErr, context.DeadlineExceeded) {
-		return ClassTimeout
+		return VerdictTimeout
 	}
 
 	// Without a readable report, nothing distinguishes a product failure from
 	// a broken harness — and a passing lane always has a report.
 	if outcome.reportErr != nil || len(outcome.reports) == 0 {
-		return ClassInfrastructure
+		return VerdictInfrastructure
 	}
 
 	classification := classifyReports(
@@ -297,10 +297,10 @@ func classify(outcome Outcome, summary LaneSummary) string {
 		summary.classificationEvidence(),
 		outcome.Err,
 	)
-	if classification == ClassPassed {
+	if classification == VerdictPassed {
 		for _, suite := range summary.suites {
-			if suite.Class != ClassPassed {
-				return suite.Class
+			if suite.Verdict != VerdictPassed {
+				return suite.Verdict
 			}
 		}
 	}
@@ -320,26 +320,26 @@ func classifyReports(reports []types.Report, evidence classificationEvidence, ru
 	}
 	switch {
 	case timedOut:
-		return ClassTimeout
+		return VerdictTimeout
 	case interrupted:
-		return ClassInfrastructure
+		return VerdictInfrastructure
 	case evidence.counts.Failed > 0 || len(evidence.failures) > 0:
-		return ClassAssertion
+		return VerdictAssertion
 	case len(evidence.unexpectedSkips) > 0:
 		// Report-backed evidence outranks the bare exit code: ginkgo runs
 		// with --fail-on-pending, so a pending or skipped spec also fails
 		// the process, and that exit says nothing new.
-		return ClassSkipped
+		return VerdictSkipped
 	case anyReportFailed(reports):
-		return ClassInfrastructure
+		return VerdictInfrastructure
 	case runErr != nil:
 		// The test process failed without a failing spec on record.
-		return ClassInfrastructure
+		return VerdictInfrastructure
 	case evidence.counts.Passed == 0:
 		// An empty report means the suites never ran.
-		return ClassInfrastructure
+		return VerdictInfrastructure
 	}
-	return ClassPassed
+	return VerdictPassed
 }
 
 func anyReportTimedOut(reports []types.Report) bool {

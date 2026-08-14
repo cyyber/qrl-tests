@@ -228,7 +228,7 @@ func TestRunPreservesCancellation(t *testing.T) {
 	require.NoError(t, readErr)
 	var summary results.Summary
 	require.NoError(t, json.Unmarshal(payload, &summary))
-	require.Equal(t, results.ClassCanceled, summary.Lanes[0].Class)
+	require.Equal(t, results.VerdictCanceled, summary.Lanes[0].Verdict)
 }
 
 func TestRunFailsWithoutAUsableReport(t *testing.T) {
@@ -254,7 +254,7 @@ func TestRunFailsWithoutAUsableReport(t *testing.T) {
 	require.NoError(t, readErr)
 	var summary results.Summary
 	require.NoError(t, json.Unmarshal(payload, &summary))
-	require.Equal(t, results.ClassInfrastructure, summary.Lanes[0].Class)
+	require.Equal(t, results.VerdictInfrastructure, summary.Lanes[0].Verdict)
 }
 
 func TestRunManifestSurvivesBootstrapFailure(t *testing.T) {
@@ -281,7 +281,7 @@ func TestRunManifestSurvivesBootstrapFailure(t *testing.T) {
 	require.NoError(t, err)
 	var summary results.Summary
 	require.NoError(t, json.Unmarshal(payload, &summary))
-	require.Equal(t, results.ClassBootstrap, summary.Lanes[0].Class)
+	require.Equal(t, results.VerdictBootstrap, summary.Lanes[0].Verdict)
 }
 
 func TestNewResolvesConfigurationDefaults(t *testing.T) {
@@ -360,7 +360,7 @@ func TestRunReturnsCleanupFailure(t *testing.T) {
 	require.NoError(t, readErr)
 	var summary results.Summary
 	require.NoError(t, json.Unmarshal(payload, &summary))
-	require.Equal(t, results.ClassInfrastructure, summary.Lanes[0].Class)
+	require.Equal(t, results.VerdictInfrastructure, summary.Lanes[0].Verdict)
 }
 
 func TestRunMarksManifestFailedWhenSummaryWritingFails(t *testing.T) {
