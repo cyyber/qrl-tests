@@ -169,14 +169,12 @@ func resolveStartOptions(options StartOptions) StartOptions {
 // provisioned network. Diagnostics and cleanup problems are reported alongside
 // the start failure, never instead of it.
 func (manager *Manager) finishFailedStart(client kurtosisClient, options StartOptions, failure error) error {
-	result := failure
-
 	// Diagnostics and cleanup run on fresh contexts: the start context is
 	// typically already canceled or expired by the time the failure gets here.
 	if options.FailureDiagnosticsDir != "" {
 		collectCtx, cancel := context.WithTimeout(context.Background(), startDiagnosticsTimeout)
 		if err := manager.collectDiagnostics(collectCtx, options.EnclaveName, options.FailureDiagnosticsDir); err != nil {
-			result = errors.Join(result, fmt.Errorf("collect start diagnostics: %w", err))
+			failure = errors.Join(failure, fmt.Errorf("collect start diagnostics: %w", err))
 		}
 		cancel()
 	}
@@ -184,9 +182,9 @@ func (manager *Manager) finishFailedStart(client kurtosisClient, options StartOp
 	cleanupCtx, cancel := context.WithTimeout(context.Background(), startCleanupTimeout)
 	defer cancel()
 	if err := manager.destroyAndConfirm(cleanupCtx, client, options.EnclaveName); err != nil {
-		return errors.Join(result, fmt.Errorf("clean up failed network: %w", err))
+		return errors.Join(failure, fmt.Errorf("clean up failed network: %w", err))
 	}
-	return result
+	return failure
 }
 
 func (manager *Manager) Stop(ctx context.Context, name string) error {
