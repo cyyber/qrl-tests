@@ -22,9 +22,9 @@ const (
 
 	// The CI workflow records the client revisions it built or resolved;
 	// local runs leave them unset.
-	SourceGoQRLEnv     = "E2E_SOURCE_GO_QRL"
-	SourceQrysmEnv     = "E2E_SOURCE_QRYSM"
-	SourceGeneratorEnv = "E2E_SOURCE_GENERATOR"
+	sourceGoQRLEnv     = "E2E_SOURCE_GO_QRL"
+	sourceQrysmEnv     = "E2E_SOURCE_QRYSM"
+	sourceGeneratorEnv = "E2E_SOURCE_GENERATOR"
 
 	probeTimeout = 10 * time.Second
 )
@@ -77,9 +77,9 @@ type Manifest struct {
 type commandFunc func(context.Context, string, ...string) (string, error)
 
 type dependencies struct {
-	environ func(string) string
-	command commandFunc
-	now     func() time.Time
+	getenv func(string) string
+	probe  commandFunc
+	now    func() time.Time
 }
 
 // Collect enriches a starting manifest with source, tool, and CI metadata.
@@ -87,31 +87,31 @@ type dependencies struct {
 // failing the run the manifest is meant to explain.
 func Collect(ctx context.Context, testsDir string, manifest Manifest) Manifest {
 	return collect(ctx, testsDir, manifest, dependencies{
-		environ: os.Getenv,
-		command: runCommand,
-		now:     time.Now,
+		getenv: os.Getenv,
+		probe:  probeCommand,
+		now:    time.Now,
 	})
 }
 
 func collect(ctx context.Context, testsDir string, manifest Manifest, deps dependencies) Manifest {
-	testsRevision, _ := deps.command(ctx, "git", "-C", testsDir, "rev-parse", "HEAD")
+	testsRevision, _ := deps.probe(ctx, "git", "-C", testsDir, "rev-parse", "HEAD")
 
 	manifest.Sources = Sources{
-		GoQRL:     deps.environ(SourceGoQRLEnv),
-		Qrysm:     deps.environ(SourceQrysmEnv),
-		Generator: deps.environ(SourceGeneratorEnv),
+		GoQRL:     deps.getenv(sourceGoQRLEnv),
+		Qrysm:     deps.getenv(sourceQrysmEnv),
+		Generator: deps.getenv(sourceGeneratorEnv),
 		QRLTests:  testsRevision,
 	}
 	manifest.Versions = Versions{
 		Go:       runtime.Version(),
-		Docker:   dockerVersion(ctx, deps.command),
-		Kurtosis: kurtosisVersion(ctx, deps.command),
+		Docker:   dockerVersion(ctx, deps.probe),
+		Kurtosis: kurtosisVersion(ctx, deps.probe),
 	}
 	manifest.GitHub = GitHub{
-		Repository: deps.environ("GITHUB_REPOSITORY"),
-		Workflow:   deps.environ("GITHUB_WORKFLOW"),
-		RunID:      deps.environ("GITHUB_RUN_ID"),
-		RunAttempt: deps.environ("GITHUB_RUN_ATTEMPT"),
+		Repository: deps.getenv("GITHUB_REPOSITORY"),
+		Workflow:   deps.getenv("GITHUB_WORKFLOW"),
+		RunID:      deps.getenv("GITHUB_RUN_ID"),
+		RunAttempt: deps.getenv("GITHUB_RUN_ATTEMPT"),
 	}
 	manifest.StartedAt = deps.now().UTC()
 	return manifest
@@ -170,7 +170,7 @@ func kurtosisVersion(ctx context.Context, command commandFunc) string {
 	return ""
 }
 
-func runCommand(ctx context.Context, name string, arguments ...string) (string, error) {
+func probeCommand(ctx context.Context, name string, arguments ...string) (string, error) {
 	probeCtx, cancel := context.WithTimeout(ctx, probeTimeout)
 	defer cancel()
 

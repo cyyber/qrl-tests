@@ -16,8 +16,8 @@ import (
 
 func TestCollect(t *testing.T) {
 	environment := map[string]string{
-		SourceGoQRLEnv:       "1111111111111111111111111111111111111111",
-		SourceQrysmEnv:       "2222222222222222222222222222222222222222",
+		sourceGoQRLEnv:       "1111111111111111111111111111111111111111",
+		sourceQrysmEnv:       "2222222222222222222222222222222222222222",
 		"GITHUB_REPOSITORY":  "cyyber/qrl-tests",
 		"GITHUB_WORKFLOW":    "nightly",
 		"GITHUB_RUN_ID":      "12345",
@@ -47,9 +47,9 @@ func TestCollect(t *testing.T) {
 			{Name: "execution-abi", Enclave: "qrl-tests", Profile: devnet.ProfileSingle, Suites: []string{"execution-abi"}, Seed: 42},
 		},
 	}, dependencies{
-		environ: func(key string) string { return environment[key] },
-		command: command,
-		now:     func() time.Time { return started },
+		getenv: func(key string) string { return environment[key] },
+		probe:  command,
+		now:    func() time.Time { return started },
 	})
 
 	require.Equal(t, "1111111111111111111111111111111111111111", manifest.Sources.GoQRL)
@@ -70,8 +70,8 @@ func TestCollect(t *testing.T) {
 
 func TestCollectSurvivesMissingTools(t *testing.T) {
 	manifest := collect(t.Context(), ".", Manifest{}, dependencies{
-		environ: func(string) string { return "" },
-		command: func(context.Context, string, ...string) (string, error) {
+		getenv: func(string) string { return "" },
+		probe: func(context.Context, string, ...string) (string, error) {
 			return "", errors.New("not installed")
 		},
 		now: time.Now,
