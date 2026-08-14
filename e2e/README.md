@@ -24,7 +24,7 @@ make e2e
 make network-stop
 ```
 
-The Ginkgo runner writes JUnit, JSON, logs, and the resolved environment
+The Ginkgo runner writes its JSON report, output log, and resolved environment
 manifest under `reports/lanes/<lane>/`, next to the run manifest and result
 summaries at the report root. Every run records its Ginkgo seed in
 `reports/run-manifest.json`; unexpected skipped or pending specs fail the run.

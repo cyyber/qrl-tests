@@ -49,7 +49,6 @@ func (lane laneRun) ginkgoArguments() []string {
 		fmt.Sprintf("--seed=%d", lane.seed),
 		"--timeout=" + lane.definition.Timeout.String(),
 		"--output-dir=" + lane.reportDir,
-		"--junit-report=junit.xml",
 		"--json-report=" + results.ReportFileName,
 	}
 	arguments = append(arguments, lane.definition.Packages()...)
