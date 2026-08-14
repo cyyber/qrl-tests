@@ -101,6 +101,14 @@ type suiteSummary struct {
 	UnexpectedSkips []string
 }
 
+func (summary suiteSummary) classificationEvidence() classificationEvidence {
+	return classificationEvidence{
+		counts:          summary.Counts,
+		failures:        summary.Failures,
+		unexpectedSkips: summary.UnexpectedSkips,
+	}
+}
+
 type LaneSummary struct {
 	Name            string    `json:"name"`
 	Class           string    `json:"class"`
@@ -112,26 +120,38 @@ type LaneSummary struct {
 	suites          []suiteSummary
 }
 
-type Summary struct {
-	Result string        `json:"result"`
-	Totals Counts        `json:"totals"`
-	Lanes  []LaneSummary `json:"lanes"`
-}
-
-func (summary suiteSummary) classificationEvidence() classificationEvidence {
-	return classificationEvidence{
-		counts:          summary.Counts,
-		failures:        summary.Failures,
-		unexpectedSkips: summary.UnexpectedSkips,
-	}
-}
-
 func (summary LaneSummary) classificationEvidence() classificationEvidence {
 	return classificationEvidence{
 		counts:          summary.Counts,
 		failures:        summary.Failures,
 		unexpectedSkips: summary.UnexpectedSkips,
 	}
+}
+
+type Summary struct {
+	Result string        `json:"result"`
+	Totals Counts        `json:"totals"`
+	Lanes  []LaneSummary `json:"lanes"`
+}
+
+// VerdictError converts a non-passing summary into an error, so the process
+// exit can never contradict the published verdict: a lane that exited
+// cleanly but produced no usable report still fails the run.
+func (summary Summary) VerdictError() error {
+	var failed []string
+	for _, lane := range summary.Lanes {
+		if lane.Class != ClassPassed {
+			detail := fmt.Sprintf("%s (%s)", lane.Name, lane.Class)
+			if lane.Error != "" {
+				detail += ": " + lane.Error
+			}
+			failed = append(failed, detail)
+		}
+	}
+	if len(failed) == 0 {
+		return nil
+	}
+	return fmt.Errorf("lanes did not pass: %s", strings.Join(failed, "; "))
 }
 
 // Summarize writes summary.json and summary.md from the reports captured by
@@ -165,26 +185,6 @@ func Summarize(reportRoot string, outcomes []Outcome) (Summary, error) {
 		return summary, fmt.Errorf("write markdown summary: %w", err)
 	}
 	return summary, nil
-}
-
-// VerdictError converts a non-passing summary into an error, so the process
-// exit can never contradict the published verdict: a lane that exited
-// cleanly but produced no usable report still fails the run.
-func (summary Summary) VerdictError() error {
-	var failed []string
-	for _, lane := range summary.Lanes {
-		if lane.Class != ClassPassed {
-			detail := fmt.Sprintf("%s (%s)", lane.Name, lane.Class)
-			if lane.Error != "" {
-				detail += ": " + lane.Error
-			}
-			failed = append(failed, detail)
-		}
-	}
-	if len(failed) == 0 {
-		return nil
-	}
-	return fmt.Errorf("lanes did not pass: %s", strings.Join(failed, "; "))
 }
 
 func summarizeOutcome(outcome Outcome) LaneSummary {
