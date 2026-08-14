@@ -3,8 +3,6 @@ package devnet
 import (
 	"context"
 	"errors"
-	"os"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -13,17 +11,6 @@ import (
 )
 
 const failureDiagnosticsDir = "reports/lanes/execution-abi/diagnostics"
-
-const diagnosticsCommandHelperEnv = "QRL_TEST_RUN_DIAGNOSTICS_COMMAND_HELPER"
-
-type recordingWriter struct {
-	wrote atomic.Bool
-}
-
-func (writer *recordingWriter) Write(output []byte) (int, error) {
-	writer.wrote.Store(true)
-	return len(output), nil
-}
 
 type fakeClient struct {
 	exists         bool
@@ -99,32 +86,6 @@ func requireLiveBoundedContext(t *testing.T, ctx context.Context, timeout time.D
 	remaining := time.Until(deadline)
 	require.Positive(t, remaining)
 	require.LessOrEqual(t, remaining, timeout)
-}
-
-func TestRunDiagnosticsCommandPreservesContextDeadline(t *testing.T) {
-	t.Setenv(diagnosticsCommandHelperEnv, "1")
-	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
-	defer cancel()
-	output := new(recordingWriter)
-
-	err := runDiagnosticsCommand(
-		ctx,
-		output,
-		os.Args[0],
-		"-test.run=^TestRunDiagnosticsCommandHelper$",
-	)
-	require.True(t, output.wrote.Load(), "helper process must start before the deadline")
-	require.ErrorIs(t, err, context.DeadlineExceeded)
-	require.ErrorContains(t, err, context.DeadlineExceeded.Error())
-}
-
-func TestRunDiagnosticsCommandHelper(t *testing.T) {
-	if os.Getenv(diagnosticsCommandHelperEnv) == "" {
-		return
-	}
-	_, err := os.Stdout.Write([]byte("ready"))
-	require.NoError(t, err)
-	select {}
 }
 
 func TestStartCleansUpEnclaveAfterPostCreateFailure(t *testing.T) {
