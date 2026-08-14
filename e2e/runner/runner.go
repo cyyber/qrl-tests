@@ -193,7 +193,7 @@ func (runner *Runner) run(ctx context.Context, selected []lanes.Lane, mode runMo
 		return err
 	}
 
-	record := runner.collectRunManifest(ctx, plan)
+	record := runner.initialRunManifest(ctx, plan)
 	manifestPath := filepath.Join(plan.reportRoot, runmanifest.FileName)
 	// The starting snapshot survives even a run the harness cannot finish.
 	manifestErr := record.Write(manifestPath)
@@ -239,7 +239,7 @@ func clearReportArtifacts(reportRoot string) error {
 	return nil
 }
 
-func (runner *Runner) collectRunManifest(ctx context.Context, plan runPlan) runmanifest.Manifest {
+func (runner *Runner) initialRunManifest(ctx context.Context, plan runPlan) runmanifest.Manifest {
 	configuration := runner.configuration
 	record := runmanifest.Manifest{
 		Backend: configuration.Backend,
