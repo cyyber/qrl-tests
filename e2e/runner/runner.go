@@ -225,7 +225,7 @@ func (runner *Runner) run(ctx context.Context, selected []lanes.Lane, mode runMo
 
 func clearReportArtifacts(reportRoot string) error {
 	paths := []string{
-		filepath.Join(reportRoot, "lanes"),
+		filepath.Join(reportRoot, laneReportsDirectory),
 		filepath.Join(reportRoot, results.SummaryFileName),
 		filepath.Join(reportRoot, results.MarkdownFileName),
 		filepath.Join(reportRoot, runmanifest.FileName),

@@ -436,17 +436,17 @@ func testLaneRuns(t *testing.T, reports string, count int) runPlan {
 	lane, err := lanes.Named("execution-abi")
 	require.NoError(t, err)
 
-	planned := make([]laneRun, count)
-	for index := range planned {
+	laneRuns := make([]laneRun, count)
+	for index := range laneRuns {
 		name := fmt.Sprintf("lane-%d", index)
 		reportDir := filepath.Join(reports, name)
-		planned[index] = laneRun{
+		laneRuns[index] = laneRun{
 			definition:  lane,
 			enclaveName: name,
 			reportDir:   reportDir,
 		}
 	}
-	return runPlan{testsDir: ".", reportRoot: reports, mode: provisionNetwork, lanes: planned}
+	return runPlan{testsDir: ".", reportRoot: reports, mode: provisionNetwork, lanes: laneRuns}
 }
 
 func TestRunLanesRunsConcurrently(t *testing.T) {
@@ -495,12 +495,12 @@ func TestPlanLanesDescribesEachLane(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, reports, plan.reportRoot)
 	require.Len(t, plan.lanes, 1)
-	planned := plan.lanes[0]
-	require.Equal(t, "qrl-tests-execution-abi", planned.enclaveName)
-	require.Equal(t, filepath.Join(reports, "lanes", "execution-abi", manifest.FileName), planned.manifestPath())
-	require.Contains(t, planned.ginkgoArguments(), "./e2e/suites/execution/abi")
-	require.Contains(t, planned.ginkgoArguments(), fmt.Sprintf("--seed=%d", planned.seed))
-	require.Positive(t, planned.seed)
+	laneRun := plan.lanes[0]
+	require.Equal(t, "qrl-tests-execution-abi", laneRun.enclaveName)
+	require.Equal(t, filepath.Join(reports, laneReportsDirectory, "execution-abi", manifest.FileName), laneRun.manifestPath())
+	require.Contains(t, laneRun.ginkgoArguments(), "./e2e/suites/execution/abi")
+	require.Contains(t, laneRun.ginkgoArguments(), fmt.Sprintf("--seed=%d", laneRun.seed))
+	require.Positive(t, laneRun.seed)
 	require.True(t, plan.mode.provisionsNetwork())
 }
 

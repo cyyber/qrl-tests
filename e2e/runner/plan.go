@@ -10,6 +10,8 @@ import (
 	"github.com/cyyber/qrl-tests/internal/results"
 )
 
+const laneReportsDirectory = "lanes"
+
 type runPlan struct {
 	testsDir   string
 	reportRoot string
@@ -35,13 +37,13 @@ func planLanes(configuration Config, selected []lanes.Lane, mode runMode) (runPl
 		return runPlan{}, fmt.Errorf("resolve report directory: %w", err)
 	}
 
-	planned := make([]laneRun, len(selected))
+	laneRuns := make([]laneRun, len(selected))
 	for index, lane := range selected {
 		enclaveName := configuration.BaseName
 		if mode.suffixesEnclave() {
 			enclaveName += "-" + lane.Name
 		}
-		reportDir := filepath.Join(reportRoot, "lanes", lane.Name)
+		reportDir := filepath.Join(reportRoot, laneReportsDirectory, lane.Name)
 		// The seed randomizes ginkgo's spec order; recording it in the run
 		// manifest keeps every ordering reproducible, and a configured seed
 		// replays a recorded one exactly.
@@ -49,14 +51,14 @@ func planLanes(configuration Config, selected []lanes.Lane, mode runMode) (runPl
 		if seed == 0 {
 			seed = 1 + rand.Int64N(1<<31-1)
 		}
-		planned[index] = laneRun{
+		laneRuns[index] = laneRun{
 			definition:  lane,
 			enclaveName: enclaveName,
 			reportDir:   reportDir,
 			seed:        seed,
 		}
 	}
-	return runPlan{testsDir: testsDir, reportRoot: reportRoot, mode: mode, lanes: planned}, nil
+	return runPlan{testsDir: testsDir, reportRoot: reportRoot, mode: mode, lanes: laneRuns}, nil
 }
 
 func (lane laneRun) manifestPath() string {
@@ -64,10 +66,6 @@ func (lane laneRun) manifestPath() string {
 }
 
 func (lane laneRun) ginkgoArguments() []string {
-	return ginkgoArguments(lane.definition, lane.reportDir, lane.seed)
-}
-
-func ginkgoArguments(lane lanes.Lane, reportDir string, seed int64) []string {
 	arguments := []string{
 		"tool", "ginkgo",
 		"--tags=e2e",
@@ -78,13 +76,13 @@ func ginkgoArguments(lane lanes.Lane, reportDir string, seed int64) []string {
 		"--require-suite",
 		"--fail-on-empty",
 		"--fail-on-pending",
-		fmt.Sprintf("--seed=%d", seed),
-		"--timeout=" + lane.Timeout.String(),
-		"--output-dir=" + reportDir,
+		fmt.Sprintf("--seed=%d", lane.seed),
+		"--timeout=" + lane.definition.Timeout.String(),
+		"--output-dir=" + lane.reportDir,
 		"--junit-report=junit.xml",
 		"--json-report=" + results.ReportFileName,
 	}
-	arguments = append(arguments, lane.Packages()...)
+	arguments = append(arguments, lane.definition.Packages()...)
 	// Every suite package defines exactly one Go test entrypoint named TestE2E;
 	// --fail-on-empty turns a misnamed entrypoint into a failed lane.
 	return append(arguments, "--", "-test.run=^TestE2E$")
