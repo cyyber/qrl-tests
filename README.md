@@ -25,8 +25,8 @@ reports/
     └── diagnostics/          # failed-run enclave inspection and service logs
 ```
 
-Diagnostics are collected for failing lanes before their enclave is destroyed,
-and a collection problem never masks the test result.
+Diagnostics are collected before a failed lane's enclave is removed. Diagnostics
+or cleanup errors are reported without replacing the original failure.
 
 For iterative development:
 
