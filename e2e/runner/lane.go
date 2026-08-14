@@ -17,7 +17,7 @@ import (
 
 const (
 	laneCleanupTimeout     = 2 * time.Minute
-	laneDiagnosticsTimeout = 5 * time.Minute
+	laneDiagnosticsTimeout = 2 * time.Minute
 
 	// laneReportSlack extends the lane context past ginkgo's own --timeout so
 	// it can report and clean up before the context interrupts the process.
