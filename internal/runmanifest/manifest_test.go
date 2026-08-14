@@ -18,13 +18,14 @@ func TestEnrich(t *testing.T) {
 	environment := map[string]string{
 		sourceGoQRLEnv:       "1111111111111111111111111111111111111111",
 		sourceQrysmEnv:       "2222222222222222222222222222222222222222",
+		sourceGeneratorEnv:   "4444444444444444444444444444444444444444",
 		"GITHUB_REPOSITORY":  "cyyber/qrl-tests",
 		"GITHUB_WORKFLOW":    "nightly",
 		"GITHUB_RUN_ID":      "12345",
 		"GITHUB_RUN_ATTEMPT": "2",
 	}
 	var probes [][]string
-	command := func(_ context.Context, name string, arguments ...string) (string, error) {
+	probe := func(_ context.Context, name string, arguments ...string) (string, error) {
 		probes = append(probes, append([]string{name}, arguments...))
 		switch name {
 		case "git":
@@ -48,22 +49,35 @@ func TestEnrich(t *testing.T) {
 		},
 	}, dependencies{
 		getenv: func(key string) string { return environment[key] },
-		probe:  command,
+		probe:  probe,
 		now:    func() time.Time { return started },
 	})
 
-	require.Equal(t, "1111111111111111111111111111111111111111", manifest.Sources.GoQRL)
-	require.Equal(t, "2222222222222222222222222222222222222222", manifest.Sources.Qrysm)
-	require.Equal(t, "3333333333333333333333333333333333333333", manifest.Sources.QRLTests)
-	require.Contains(t, probes, []string{"git", "-C", "/checkout", "rev-parse", "HEAD"})
+	require.Equal(t, Sources{
+		GoQRL:     "1111111111111111111111111111111111111111",
+		Qrysm:     "2222222222222222222222222222222222222222",
+		Generator: "4444444444444444444444444444444444444444",
+		QRLTests:  "3333333333333333333333333333333333333333",
+	}, manifest.Sources)
+	require.Equal(t, Versions{
+		Go:       runtime.Version(),
+		Docker:   "28.0.1",
+		Kurtosis: "1.20.1",
+	}, manifest.Versions)
+	require.Equal(t, GitHub{
+		Repository: "cyyber/qrl-tests",
+		Workflow:   "nightly",
+		RunID:      "12345",
+		RunAttempt: "2",
+	}, manifest.GitHub)
+	require.Equal(t, [][]string{
+		{"git", "-C", "/checkout", "rev-parse", "HEAD"},
+		{"docker", "version", "--format", "{{.Server.Version}}"},
+		{"kurtosis", "version"},
+	}, probes)
+	require.NotNil(t, manifest.Images)
 	require.Equal(t, devnet.DefaultImages(), *manifest.Images)
 	require.Equal(t, devnet.PackageLocator, manifest.PackageLocator)
-	require.Equal(t, runtime.Version(), manifest.Versions.Go)
-	require.Equal(t, "28.0.1", manifest.Versions.Docker)
-	require.Equal(t, "1.20.1", manifest.Versions.Kurtosis)
-	require.Equal(t, "cyyber/qrl-tests", manifest.GitHub.Repository)
-	require.Equal(t, "12345", manifest.GitHub.RunID)
-	require.Equal(t, "2", manifest.GitHub.RunAttempt)
 	require.Equal(t, started, manifest.StartedAt)
 	require.Empty(t, manifest.Result, "a starting manifest must not claim a result")
 }
@@ -87,6 +101,8 @@ func TestFinish(t *testing.T) {
 
 	manifest.Finish(map[string]bool{"execution-abi": true, "consensus": true}, finished)
 	require.Equal(t, "passed", manifest.Result)
+	require.Equal(t, "passed", manifest.Lanes[0].Result)
+	require.Equal(t, "passed", manifest.Lanes[1].Result)
 	require.Equal(t, finished, manifest.FinishedAt)
 
 	manifest.Finish(map[string]bool{"execution-abi": true, "consensus": false}, finished)
@@ -116,14 +132,14 @@ func TestWrite(t *testing.T) {
 }
 
 func TestKurtosisVersionParsing(t *testing.T) {
-	command := func(_ context.Context, name string, _ ...string) (string, error) {
+	probe := func(_ context.Context, name string, _ ...string) (string, error) {
 		require.Equal(t, "kurtosis", name)
 		return "no version header", nil
 	}
-	require.Empty(t, kurtosisVersion(t.Context(), command))
+	require.Empty(t, kurtosisVersion(t.Context(), probe))
 }
 
-func TestManifestOmitsUnsetSections(t *testing.T) {
+func TestManifestOmitsUnsetFields(t *testing.T) {
 	payload, err := json.Marshal(Manifest{})
 	require.NoError(t, err)
 	body := string(payload)
