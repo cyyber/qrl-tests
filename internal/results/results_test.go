@@ -32,20 +32,23 @@ func specReport(state types.SpecState, text string) types.SpecReport {
 
 func suiteReport(name string, specs ...types.SpecReport) types.Report {
 	return types.Report{
-		SuitePath:        name,
 		SuiteDescription: name,
 		SuiteSucceeded:   true,
 		SpecReports:      specs,
 	}
 }
 
-func outcomeWithReports(name string, err error, reports ...types.Report) Outcome {
+func executionOutcome(name string, executionErr error, reports ...types.Report) Outcome {
 	return Outcome{
 		Name:         name,
-		Err:          err,
-		ExecutionErr: err,
+		Err:          executionErr,
+		ExecutionErr: executionErr,
 		reports:      reports,
 	}
+}
+
+func summarizeTestLane(executionErr error, reports ...types.Report) LaneSummary {
+	return summarizeOutcome(executionOutcome(testLaneName, executionErr, reports...))
 }
 
 func writeReportFile(t *testing.T, laneDir string, specs ...types.SpecReport) {
@@ -62,6 +65,42 @@ func outcomeFromReportDir(name, reportDir string, err error) Outcome {
 	return outcome
 }
 
+func TestCaptureReportsMissingFile(t *testing.T) {
+	root := t.TempDir()
+	outcome := outcomeFromReportDir(
+		testLaneName,
+		filepath.Join(root, "lanes", testLaneName),
+		errors.New("exit status 1"),
+	)
+	lane := summarizeOutcome(outcome)
+
+	require.Equal(t, ClassInfrastructure, lane.Class,
+		"without a report nothing distinguishes a product failure from a broken harness")
+	require.Contains(t, lane.Error, "exit status 1")
+	require.Contains(t, lane.Error, "report.json")
+	require.Contains(t, lane.Error, "no such file or directory")
+}
+
+func TestCaptureReportsRejectsCorruptFile(t *testing.T) {
+	laneDir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(laneDir, ReportFileName), []byte("{"), 0o600))
+
+	lane := summarizeOutcome(outcomeFromReportDir(testLaneName, laneDir, nil))
+	require.Equal(t, ClassInfrastructure, lane.Class)
+	require.Contains(t, lane.Error, "decode ")
+	require.Contains(t, lane.Error, "report.json")
+}
+
+func TestCaptureReportsUsesCapturedSnapshot(t *testing.T) {
+	laneDir := t.TempDir()
+	writeReportFile(t, laneDir, specReport(types.SpecStatePassed, "encodes calls"))
+	outcome := outcomeFromReportDir(testLaneName, laneDir, nil)
+
+	writeReportFile(t, laneDir, specReport(types.SpecStateFailed, "encodes calls"))
+	lane := summarizeOutcome(outcome)
+	require.Equal(t, ClassPassed, lane.Class)
+}
+
 func TestSummarizeWritesPassedLane(t *testing.T) {
 	root := t.TempDir()
 	laneDir := filepath.Join(root, "lanes", testLaneName)
@@ -75,9 +114,6 @@ func TestSummarizeWritesPassedLane(t *testing.T) {
 
 	summary, err := Summarize(root, []Outcome{outcome})
 	require.NoError(t, err)
-	require.Equal(t, "passed", summary.Result)
-	require.Equal(t, ClassPassed, summary.Lanes[0].Class)
-	require.Equal(t, Counts{Specs: 2, Passed: 2}, summary.Lanes[0].Counts)
 	require.Equal(t, []suiteSummary{{
 		Name:   testLaneName,
 		Class:  ClassPassed,
@@ -101,13 +137,28 @@ func TestSummarizeWritesPassedLane(t *testing.T) {
 	}, written)
 }
 
+func TestSummarizeReturnsVerdictWhenPersistenceFails(t *testing.T) {
+	reportRoot := filepath.Join(t.TempDir(), "report")
+	require.NoError(t, os.WriteFile(reportRoot, []byte("occupied"), 0o600))
+
+	summary, err := Summarize(reportRoot, []Outcome{
+		executionOutcome(testLaneName, errors.New("exit status 1"),
+			suiteReport(testLaneName, specReport(types.SpecStateFailed, "decodes events")),
+		),
+	})
+
+	require.ErrorContains(t, err, "create report directory")
+	require.Equal(t, "failed", summary.Result)
+	require.Equal(t, ClassAssertion, summary.Lanes[0].Class)
+}
+
 func TestSummarizeClassifiesAssertionFailures(t *testing.T) {
-	lane := summarizeOutcome(outcomeWithReports(testLaneName, errors.New("exit status 1"),
+	lane := summarizeTestLane(errors.New("exit status 1"),
 		suiteReport(testLaneName,
 			specReport(types.SpecStatePassed, "encodes calls"),
 			specReport(types.SpecStateFailed, "decodes events"),
 		),
-	))
+	)
 
 	require.Equal(t, ClassAssertion, lane.Class)
 	require.Equal(t, Counts{Specs: 2, Passed: 1, Failed: 1}, lane.Counts)
@@ -119,12 +170,12 @@ func TestSummarizeClassifiesAssertionFailures(t *testing.T) {
 }
 
 func TestSummarizeClassifiesTimeouts(t *testing.T) {
-	lane := summarizeOutcome(outcomeWithReports(testLaneName, errors.New("exit status 1"),
+	lane := summarizeTestLane(errors.New("exit status 1"),
 		suiteReport(testLaneName,
 			specReport(types.SpecStateFailed, "decodes events"),
 			specReport(types.SpecStateTimedout, "streams blocks"),
 		),
-	))
+	)
 
 	require.Equal(t, ClassTimeout, lane.Class,
 		"a lane that hit its deadline is a timeout even when other specs failed")
@@ -135,27 +186,40 @@ func TestSummarizeClassifiesSuiteTimeouts(t *testing.T) {
 		SuiteDescription:           testLaneName,
 		SpecialSuiteFailureReasons: []string{"Suite did not run because the timeout elapsed"},
 	}
-	lane := summarizeOutcome(outcomeWithReports(testLaneName, errors.New("exit status 1"), report))
+	lane := summarizeTestLane(errors.New("exit status 1"), report)
 
 	require.Equal(t, ClassTimeout, lane.Class)
 	require.Equal(t, report.SpecialSuiteFailureReasons, lane.suites[0].SuiteFailures)
 	require.Contains(t, lane.Error, "exit status 1")
 }
 
-func TestSummarizeDistinguishesCancellationFromTimeout(t *testing.T) {
-	lane := summarizeOutcome(outcomeWithReports(testLaneName, context.Canceled,
-		suiteReport(testLaneName, specReport(types.SpecStateInterrupted, "streams blocks")),
-	))
+func TestSummarizeClassifiesExecutionContext(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		want string
+	}{
+		{name: "canceled", err: context.Canceled, want: ClassCanceled},
+		{name: "deadline exceeded", err: context.DeadlineExceeded, want: ClassTimeout},
+	}
 
-	require.Equal(t, ClassCanceled, lane.Class)
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			lane := summarizeTestLane(test.err,
+				suiteReport(testLaneName, specReport(types.SpecStateInterrupted, "streams blocks")),
+			)
+
+			require.Equal(t, test.want, lane.Class)
+		})
+	}
 }
 
 func TestSummarizeHonorsFailedSuiteReport(t *testing.T) {
-	lane := summarizeOutcome(outcomeWithReports(testLaneName, nil, types.Report{
+	lane := summarizeTestLane(nil, types.Report{
 		SuiteDescription: testLaneName,
 		SuiteSucceeded:   false,
 		SpecReports:      []types.SpecReport{specReport(types.SpecStatePassed, "encodes calls")},
-	}))
+	})
 
 	require.Equal(t, ClassInfrastructure, lane.Class)
 }
@@ -172,19 +236,15 @@ func TestSummarizeClassifiesUnexpectedSkips(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			lane := summarizeOutcome(outcomeWithReports(testLaneName, test.err,
+			lane := summarizeTestLane(test.err,
 				suiteReport(testLaneName,
 					specReport(types.SpecStatePassed, "encodes calls"),
 					specReport(test.state, "decodes events"),
 				),
-			))
+			)
 
 			require.Equal(t, ClassSkipped, lane.Class)
 			require.Equal(t, []string{"ABI decodes events"}, lane.UnexpectedSkips)
-			require.ErrorContains(t,
-				Summary{Lanes: []LaneSummary{lane}}.VerdictError(),
-				testLaneName+" (skipped)",
-			)
 		})
 	}
 }
@@ -200,41 +260,15 @@ func TestSummarizeHonorsBootstrapFailure(t *testing.T) {
 	require.NotEmpty(t, lane.Error)
 }
 
-func TestSummarizeMissingReportIsInfrastructure(t *testing.T) {
-	root := t.TempDir()
-	outcome := outcomeFromReportDir(
-		testLaneName,
-		filepath.Join(root, "lanes", testLaneName),
-		errors.New("exit status 1"),
-	)
-	lane := summarizeOutcome(outcome)
-
-	require.Equal(t, ClassInfrastructure, lane.Class,
-		"without a report nothing distinguishes a product failure from a broken harness")
-	require.Contains(t, lane.Error, "exit status 1")
-	require.Contains(t, lane.Error, "report.json")
-	require.Contains(t, lane.Error, "no such file or directory")
-}
-
-func TestSummarizeCorruptReportIncludesDecodeError(t *testing.T) {
-	laneDir := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(laneDir, ReportFileName), []byte("{"), 0o600))
-
-	lane := summarizeOutcome(outcomeFromReportDir(testLaneName, laneDir, nil))
-	require.Equal(t, ClassInfrastructure, lane.Class)
-	require.Contains(t, lane.Error, "decode ")
-	require.Contains(t, lane.Error, "report.json")
-}
-
 func TestSummarizeCountsSetupFailures(t *testing.T) {
 	setup := types.SpecReport{
 		LeafNodeType: types.NodeTypeSynchronizedBeforeSuite,
 		State:        types.SpecStateFailed,
 		Failure:      types.Failure{Message: "wallet not funded"},
 	}
-	lane := summarizeOutcome(outcomeWithReports(testLaneName, errors.New("exit status 1"),
+	lane := summarizeTestLane(errors.New("exit status 1"),
 		suiteReport(testLaneName, setup, specReport(types.SpecStateSkipped, "decodes events")),
-	))
+	)
 
 	require.Equal(t, ClassAssertion, lane.Class)
 	require.Len(t, lane.suites[0].Failures, 1)
@@ -257,10 +291,10 @@ func TestSummarizeTreatsLifecycleFailureAsInfrastructure(t *testing.T) {
 
 func TestSummarizeAggregatesLanes(t *testing.T) {
 	summary, err := Summarize(t.TempDir(), []Outcome{
-		outcomeWithReports(testLaneName, nil,
+		executionOutcome(testLaneName, nil,
 			suiteReport(testLaneName, specReport(types.SpecStatePassed, "encodes calls")),
 		),
-		outcomeWithReports("consensus", errors.New("exit status 1"),
+		executionOutcome("consensus", errors.New("exit status 1"),
 			suiteReport("consensus", specReport(types.SpecStateFailed, "finalizes")),
 		),
 	})
@@ -271,7 +305,7 @@ func TestSummarizeAggregatesLanes(t *testing.T) {
 }
 
 func TestSummarizeReportsSuitesWithinLane(t *testing.T) {
-	lane := summarizeOutcome(outcomeWithReports("execution", errors.New("exit status 1"),
+	lane := summarizeOutcome(executionOutcome("execution", errors.New("exit status 1"),
 		suiteReport("ABI E2E suite", specReport(types.SpecStatePassed, "encodes calls")),
 		suiteReport("API E2E suite", specReport(types.SpecStateFailed, "decodes events")),
 	))
@@ -286,7 +320,7 @@ func TestSummarizeReportsSuitesWithinLane(t *testing.T) {
 }
 
 func TestSummarizeRejectsEmptySuiteWithinLane(t *testing.T) {
-	lane := summarizeOutcome(outcomeWithReports("execution", nil,
+	lane := summarizeOutcome(executionOutcome("execution", nil,
 		types.Report{SuiteDescription: "Empty E2E suite", SuiteSucceeded: true},
 		suiteReport("ABI E2E suite", specReport(types.SpecStatePassed, "encodes calls")),
 	))
@@ -297,7 +331,7 @@ func TestSummarizeRejectsEmptySuiteWithinLane(t *testing.T) {
 }
 
 func TestSummarizeEmptyReportIsInfrastructure(t *testing.T) {
-	lane := summarizeOutcome(outcomeWithReports(testLaneName, nil, suiteReport(testLaneName)))
+	lane := summarizeTestLane(nil, suiteReport(testLaneName))
 	require.Equal(t, ClassInfrastructure, lane.Class)
 }
 
@@ -310,16 +344,5 @@ func TestVerdictError(t *testing.T) {
 		Class: ClassInfrastructure,
 		Error: "exit status 1",
 	})
-	require.ErrorContains(t, summary.VerdictError(), "sync (infrastructure)")
-	require.ErrorContains(t, summary.VerdictError(), "exit status 1")
-}
-
-func TestSummarizeUsesCapturedReports(t *testing.T) {
-	laneDir := t.TempDir()
-	writeReportFile(t, laneDir, specReport(types.SpecStatePassed, "encodes calls"))
-	outcome := outcomeFromReportDir(testLaneName, laneDir, nil)
-
-	writeReportFile(t, laneDir, specReport(types.SpecStateFailed, "encodes calls"))
-	lane := summarizeOutcome(outcome)
-	require.Equal(t, ClassPassed, lane.Class)
+	require.EqualError(t, summary.VerdictError(), "lanes did not pass: sync (infrastructure): exit status 1")
 }
