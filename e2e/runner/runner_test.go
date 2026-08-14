@@ -65,7 +65,7 @@ func captureCommand(command *commandSpec) func(context.Context, commandSpec) err
 	}
 }
 
-func (networks *recordingNetworks) Collect(_ context.Context, enclave, outputDir string) error {
+func (networks *recordingNetworks) CollectDiagnostics(_ context.Context, enclave, outputDir string) error {
 	networks.mutex.Lock()
 	defer networks.mutex.Unlock()
 	// Tests assert on the recorded value: collecting after the enclave is

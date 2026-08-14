@@ -37,8 +37,8 @@ type diagnosticsManifest struct {
 
 // Collect captures the enclave inspection and per-service logs before cleanup.
 // Every step is best-effort; the joined error reports what could not be saved.
-func (manager *Manager) Collect(ctx context.Context, enclave, outputDir string) error {
-	return manager.collect(ctx, enclave, outputDir)
+func (manager *Manager) CollectDiagnostics(ctx context.Context, enclaveName, outputDir string) error {
+	return manager.collect(ctx, enclaveName, outputDir)
 }
 
 func collectDiagnostics(ctx context.Context, run commandRunner, enclave, outputDir string) error {

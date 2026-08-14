@@ -51,7 +51,7 @@ type networkManager interface {
 	Start(ctx context.Context, options devnet.StartOptions) (devnet.Environment, error)
 	Inspect(ctx context.Context, name string) (devnet.Environment, error)
 	Stop(ctx context.Context, name string) error
-	Collect(ctx context.Context, enclave, outputDir string) error
+	CollectDiagnostics(ctx context.Context, enclaveName, outputDir string) error
 }
 
 type commandSpec struct {

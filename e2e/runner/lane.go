@@ -151,5 +151,5 @@ func (runner *Runner) collectDiagnostics(lane laneRun, environment devnet.Enviro
 	// timed out, which is exactly when diagnostics matter most.
 	collectCtx, cancel := context.WithTimeout(context.Background(), laneDiagnosticsTimeout)
 	defer cancel()
-	return runner.networks.Collect(collectCtx, environment.EnclaveName, lane.diagnosticsDir)
+	return runner.networks.CollectDiagnostics(collectCtx, environment.EnclaveName, lane.diagnosticsDir)
 }
