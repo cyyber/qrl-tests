@@ -193,7 +193,7 @@ func (runner *Runner) run(ctx context.Context, selected []lanes.Lane, mode runMo
 		return err
 	}
 
-	record := runner.collectManifest(ctx, plan)
+	record := runner.collectRunManifest(ctx, plan)
 	manifestPath := filepath.Join(plan.reportRoot, runmanifest.FileName)
 	// The starting snapshot survives even a run the harness cannot finish.
 	manifestErr := record.Write(manifestPath)
@@ -224,13 +224,13 @@ func (runner *Runner) run(ctx context.Context, selected []lanes.Lane, mode runMo
 }
 
 func clearReportArtifacts(reportRoot string) error {
-	paths := []string{
+	artifacts := []string{
 		filepath.Join(reportRoot, laneReportsDirectory),
 		filepath.Join(reportRoot, results.SummaryFileName),
 		filepath.Join(reportRoot, results.MarkdownFileName),
 		filepath.Join(reportRoot, runmanifest.FileName),
 	}
-	for _, path := range paths {
+	for _, path := range artifacts {
 		if err := os.RemoveAll(path); err != nil {
 			return fmt.Errorf("clear report artifact %s: %w", path, err)
 		}
@@ -238,7 +238,7 @@ func clearReportArtifacts(reportRoot string) error {
 	return nil
 }
 
-func (runner *Runner) collectManifest(ctx context.Context, plan runPlan) runmanifest.Manifest {
+func (runner *Runner) collectRunManifest(ctx context.Context, plan runPlan) runmanifest.Manifest {
 	configuration := runner.configuration
 	record := runmanifest.Manifest{
 		Backend: configuration.Backend,
