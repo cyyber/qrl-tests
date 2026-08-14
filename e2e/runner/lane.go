@@ -28,6 +28,13 @@ type laneLease struct {
 	release     func() error
 }
 
+func (lease laneLease) close() error {
+	if lease.release == nil {
+		return nil
+	}
+	return lease.release()
+}
+
 func (runner *Runner) acquireLane(ctx context.Context, plan runPlan, lane laneRun) (laneLease, error) {
 	if !plan.mode.provisionsNetwork() {
 		environment, err := runner.networks.Inspect(ctx, lane.enclaveName)
@@ -62,13 +69,6 @@ func (runner *Runner) acquireLane(ctx context.Context, plan runPlan, lane laneRu
 			return nil
 		},
 	}, nil
-}
-
-func (lease laneLease) close() error {
-	if lease.release == nil {
-		return nil
-	}
-	return lease.release()
 }
 
 func (runner *Runner) runLane(ctx context.Context, plan runPlan, lane laneRun) results.Outcome {

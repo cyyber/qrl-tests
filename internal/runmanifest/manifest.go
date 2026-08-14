@@ -74,6 +74,44 @@ type Manifest struct {
 	Result           string         `json:"result,omitempty"`
 }
 
+// Finish records the per-lane and overall outcomes; lanes without an entry in
+// results keep an empty result, marking runs that never reached them.
+func (manifest *Manifest) Finish(results map[string]bool, finishedAt time.Time) {
+	overall := "passed"
+	for index := range manifest.Lanes {
+		lane := &manifest.Lanes[index]
+		passed, found := results[lane.Name]
+		if !found {
+			lane.Result = ""
+			overall = "failed"
+			continue
+		}
+		if passed {
+			lane.Result = "passed"
+		} else {
+			lane.Result = "failed"
+			overall = "failed"
+		}
+	}
+	manifest.FinishedAt = finishedAt.UTC()
+	manifest.Result = overall
+}
+
+func (manifest Manifest) Write(path string) error {
+	payload, err := json.MarshalIndent(manifest, "", "  ")
+	if err != nil {
+		return fmt.Errorf("encode run manifest: %w", err)
+	}
+
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return fmt.Errorf("create run manifest directory: %w", err)
+	}
+	if err := os.WriteFile(path, append(payload, '\n'), 0o600); err != nil {
+		return fmt.Errorf("write run manifest: %w", err)
+	}
+	return nil
+}
+
 type commandFunc func(context.Context, string, ...string) (string, error)
 
 type dependencies struct {
@@ -116,44 +154,6 @@ func enrich(ctx context.Context, testsDir string, manifest Manifest, deps depend
 	manifest.StartedAt = deps.now().UTC()
 
 	return manifest
-}
-
-// Finish records the per-lane and overall outcomes; lanes without an entry in
-// results keep an empty result, marking runs that never reached them.
-func (manifest *Manifest) Finish(results map[string]bool, finishedAt time.Time) {
-	overall := "passed"
-	for index := range manifest.Lanes {
-		lane := &manifest.Lanes[index]
-		passed, found := results[lane.Name]
-		if !found {
-			lane.Result = ""
-			overall = "failed"
-			continue
-		}
-		if passed {
-			lane.Result = "passed"
-		} else {
-			lane.Result = "failed"
-			overall = "failed"
-		}
-	}
-	manifest.FinishedAt = finishedAt.UTC()
-	manifest.Result = overall
-}
-
-func (manifest Manifest) Write(path string) error {
-	payload, err := json.MarshalIndent(manifest, "", "  ")
-	if err != nil {
-		return fmt.Errorf("encode run manifest: %w", err)
-	}
-
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return fmt.Errorf("create run manifest directory: %w", err)
-	}
-	if err := os.WriteFile(path, append(payload, '\n'), 0o600); err != nil {
-		return fmt.Errorf("write run manifest: %w", err)
-	}
-	return nil
 }
 
 func dockerVersion(ctx context.Context, command commandFunc) string {

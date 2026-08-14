@@ -27,6 +27,33 @@ type laneRun struct {
 	seed        int64
 }
 
+func (lane laneRun) manifestPath() string {
+	return filepath.Join(lane.reportDir, manifest.FileName)
+}
+
+func (lane laneRun) ginkgoArguments() []string {
+	arguments := []string{
+		"tool", "ginkgo",
+		"--tags=e2e",
+		// --procs=1: suites share one funded wallet, so specs must stay in a
+		// single process to keep its nonce sequence serial.
+		"--procs=1",
+		"--keep-going",
+		"--require-suite",
+		"--fail-on-empty",
+		"--fail-on-pending",
+		fmt.Sprintf("--seed=%d", lane.seed),
+		"--timeout=" + lane.definition.Timeout.String(),
+		"--output-dir=" + lane.reportDir,
+		"--junit-report=junit.xml",
+		"--json-report=" + results.ReportFileName,
+	}
+	arguments = append(arguments, lane.definition.Packages()...)
+	// Every suite package defines exactly one Go test entrypoint named TestE2E;
+	// --fail-on-empty turns a misnamed entrypoint into a failed lane.
+	return append(arguments, "--", "-test.run=^TestE2E$")
+}
+
 func planLanes(configuration Config, selected []lanes.Lane, mode runMode) (runPlan, error) {
 	testsDir, err := filepath.Abs(configuration.TestsDir)
 	if err != nil {
@@ -61,31 +88,4 @@ func planLanes(configuration Config, selected []lanes.Lane, mode runMode) (runPl
 		}
 	}
 	return runPlan{testsDir: testsDir, reportRoot: reportRoot, mode: mode, lanes: laneRuns}, nil
-}
-
-func (lane laneRun) manifestPath() string {
-	return filepath.Join(lane.reportDir, manifest.FileName)
-}
-
-func (lane laneRun) ginkgoArguments() []string {
-	arguments := []string{
-		"tool", "ginkgo",
-		"--tags=e2e",
-		// --procs=1: suites share one funded wallet, so specs must stay in a
-		// single process to keep its nonce sequence serial.
-		"--procs=1",
-		"--keep-going",
-		"--require-suite",
-		"--fail-on-empty",
-		"--fail-on-pending",
-		fmt.Sprintf("--seed=%d", lane.seed),
-		"--timeout=" + lane.definition.Timeout.String(),
-		"--output-dir=" + lane.reportDir,
-		"--junit-report=junit.xml",
-		"--json-report=" + results.ReportFileName,
-	}
-	arguments = append(arguments, lane.definition.Packages()...)
-	// Every suite package defines exactly one Go test entrypoint named TestE2E;
-	// --fail-on-empty turns a misnamed entrypoint into a failed lane.
-	return append(arguments, "--", "-test.run=^TestE2E$")
 }
