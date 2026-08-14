@@ -32,9 +32,10 @@ reports/
             └── <service>.log  # log for each discovered service
 ```
 
-Diagnostics are collected before cleanup for test and harness failures, and
-after a failed cleanup attempt for cleanup-only failures. Diagnostic or cleanup
-errors are reported without replacing the original failure.
+After enclave creation succeeds or an existing enclave is attached, diagnostics
+are collected before cleanup for test and harness failures, and after a failed
+cleanup attempt for cleanup-only failures. Diagnostic or cleanup errors are
+reported without replacing the original failure.
 
 For iterative development:
 

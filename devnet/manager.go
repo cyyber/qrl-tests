@@ -54,14 +54,17 @@ type Manager struct {
 	collectDiagnostics func(ctx context.Context, enclave, outputDir string) error
 }
 
-func NewManager() *Manager {
-	runDiagnostics := func(ctx context.Context, output io.Writer, name string, arguments ...string) error {
-		command := exec.CommandContext(ctx, name, arguments...)
-		command.Stdout = output
-		command.Stderr = output
-		return command.Run()
+func runDiagnosticsCommand(ctx context.Context, output io.Writer, name string, arguments ...string) error {
+	command := exec.CommandContext(ctx, name, arguments...)
+	command.Stdout = output
+	command.Stderr = output
+	if err := command.Run(); err != nil {
+		return errors.Join(err, ctx.Err())
 	}
+	return nil
+}
 
+func NewManager() *Manager {
 	return &Manager{
 		newClient: func() (kurtosisClient, error) {
 			client, err := kurtosis.NewClient()
@@ -72,7 +75,7 @@ func NewManager() *Manager {
 		},
 		probe: probeNetwork,
 		collectDiagnostics: func(ctx context.Context, enclave, outputDir string) error {
-			return collectDiagnostics(ctx, runDiagnostics, enclave, outputDir)
+			return collectDiagnostics(ctx, runDiagnosticsCommand, enclave, outputDir)
 		},
 	}
 }

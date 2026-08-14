@@ -3,6 +3,8 @@ package devnet
 import (
 	"context"
 	"errors"
+	"os"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -11,6 +13,17 @@ import (
 )
 
 const failureDiagnosticsDir = "reports/lanes/execution-abi/diagnostics"
+
+const diagnosticsCommandHelperEnv = "QRL_TEST_RUN_DIAGNOSTICS_COMMAND_HELPER"
+
+type recordingWriter struct {
+	wrote atomic.Bool
+}
+
+func (writer *recordingWriter) Write(output []byte) (int, error) {
+	writer.wrote.Store(true)
+	return len(output), nil
+}
 
 type fakeClient struct {
 	exists         bool
@@ -88,11 +101,36 @@ func requireLiveBoundedContext(t *testing.T, ctx context.Context, timeout time.D
 	require.LessOrEqual(t, remaining, timeout)
 }
 
+func TestRunDiagnosticsCommandPreservesContextDeadline(t *testing.T) {
+	t.Setenv(diagnosticsCommandHelperEnv, "1")
+	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+	defer cancel()
+	output := new(recordingWriter)
+
+	err := runDiagnosticsCommand(
+		ctx,
+		output,
+		os.Args[0],
+		"-test.run=^TestRunDiagnosticsCommandHelper$",
+	)
+	require.True(t, output.wrote.Load(), "helper process must start before the deadline")
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+	require.ErrorContains(t, err, context.DeadlineExceeded.Error())
+}
+
+func TestRunDiagnosticsCommandHelper(t *testing.T) {
+	if os.Getenv(diagnosticsCommandHelperEnv) == "" {
+		return
+	}
+	_, err := os.Stdout.Write([]byte("ready"))
+	require.NoError(t, err)
+	select {}
+}
+
 func TestStartCleansUpEnclaveAfterPostCreateFailure(t *testing.T) {
 	tests := []struct {
 		name      string
 		client    *fakeClient
-		configure func(*testing.T, *Manager) context.Context
 		wantError string
 	}{
 		{
@@ -105,30 +143,11 @@ func TestStartCleansUpEnclaveAfterPostCreateFailure(t *testing.T) {
 			client:    new(fakeClient),
 			wantError: "resolve network endpoints: no qrl-package participants found",
 		},
-		{
-			name:   "readiness",
-			client: &fakeClient{services: singleParticipant()},
-			configure: func(t *testing.T, manager *Manager) context.Context {
-				manager.probe = func(context.Context, string, string) error {
-					return errors.New("not ready")
-				}
-				ctx, cancel := context.WithCancel(t.Context())
-				cancel()
-				return ctx
-			},
-			wantError: "wait for network readiness: not ready",
-		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			manager := testManager(test.client)
-			ctx := t.Context()
-			if test.configure != nil {
-				ctx = test.configure(t, manager)
-			}
-
-			_, err := manager.Start(ctx, startOptions())
+			_, err := testManager(test.client).Start(t.Context(), startOptions())
 			require.ErrorContains(t, err, test.wantError)
 			require.True(t, test.client.destroyed)
 		})
@@ -172,6 +191,7 @@ func TestStartReportsDiagnosticsFailureAlongsideCause(t *testing.T) {
 
 func TestStartRecoveryUsesLiveBoundedContextsAfterCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
 	client := &fakeClient{services: singleParticipant()}
 	destroyCalls := 0
 	client.onDestroy = func(ctx context.Context) {
@@ -193,6 +213,7 @@ func TestStartRecoveryUsesLiveBoundedContextsAfterCancellation(t *testing.T) {
 	options := startOptions()
 	options.FailureDiagnosticsDir = failureDiagnosticsDir
 	_, err := manager.Start(ctx, options)
+	require.ErrorContains(t, err, "wait for network readiness: not ready")
 	require.ErrorIs(t, err, context.Canceled)
 	require.Equal(t, 1, diagnosticsCalls)
 	require.Equal(t, 1, destroyCalls)
