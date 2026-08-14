@@ -133,7 +133,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        lane: ${{ fromJSON(vars.E2E_NIGHTLY_LANES || '["execution-abi"]') }}
+        lane: ${{ fromJSON(vars.E2E_NIGHTLY_LANES || '["execution"]') }}
     uses: ./.github/workflows/e2e-reusable.yml
     with:
       # Immutable digest references from the images job.

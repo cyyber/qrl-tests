@@ -8,7 +8,7 @@ endpoints; suites do not provision infrastructure.
 
 | Lane | Profile | Coverage |
 | --- | --- | --- |
-| `execution-abi` | `single` | Execution ABI calls, events, errors, and WebSocket filters |
+| `execution` | `single` | Execution ABI calls, events, errors, and WebSocket filters |
 
 Run one lane with a fresh network:
 

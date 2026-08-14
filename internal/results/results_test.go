@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const testLaneName = "execution-abi"
+const testLaneName = "execution"
 
 func specReport(state types.SpecState, text string) types.SpecReport {
 	report := types.SpecReport{
