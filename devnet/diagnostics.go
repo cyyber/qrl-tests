@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 )
@@ -179,11 +178,4 @@ func writeDiagnosticsManifest(outputDir string, manifest diagnosticsManifest) er
 		return fmt.Errorf("encode diagnostics manifest: %w", err)
 	}
 	return writeDiagnostic(filepath.Join(outputDir, "diagnostics.json"), string(append(payload, '\n')))
-}
-
-func runDiagnosticsCommand(ctx context.Context, name string, arguments ...string) (string, error) {
-	// Combined output: failures usually explain themselves on stderr, and the
-	// captured file is more useful with that explanation in it.
-	output, err := exec.CommandContext(ctx, name, arguments...).CombinedOutput()
-	return string(output), err
 }

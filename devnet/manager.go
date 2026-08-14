@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os/exec"
 	"time"
 
 	"github.com/cyyber/qrl-tests/devnet/internal/kurtosis"
@@ -53,6 +54,11 @@ type Manager struct {
 }
 
 func NewManager() *Manager {
+	runDiagnostics := func(ctx context.Context, name string, arguments ...string) (string, error) {
+		output, err := exec.CommandContext(ctx, name, arguments...).CombinedOutput()
+		return string(output), err
+	}
+
 	return &Manager{
 		newClient: func() (kurtosisClient, error) {
 			client, err := kurtosis.NewClient()
@@ -63,7 +69,7 @@ func NewManager() *Manager {
 		},
 		probe: probeNetwork,
 		collectDiagnostics: func(ctx context.Context, enclave, outputDir string) error {
-			return collectDiagnostics(ctx, runDiagnosticsCommand, enclave, outputDir)
+			return collectDiagnostics(ctx, runDiagnostics, enclave, outputDir)
 		},
 	}
 }
