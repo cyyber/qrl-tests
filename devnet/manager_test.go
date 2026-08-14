@@ -73,7 +73,7 @@ func singleParticipant() map[string]kurtosis.Service {
 	}
 }
 
-func TestStartCleansCreatedEnclave(t *testing.T) {
+func TestStartCleansUpEnclaveAfterPostCreateFailure(t *testing.T) {
 	tests := []struct {
 		name      string
 		client    *fakeClient
