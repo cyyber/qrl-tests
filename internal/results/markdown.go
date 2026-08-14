@@ -65,7 +65,7 @@ func suiteDetails(suite suiteSummary) []string {
 			detail += fmt.Sprintf(" (%s)", failure.Location)
 		}
 		if failure.Message != "" {
-			detail += "\n  " + indentMarkdown(failure.Message)
+			detail += "\n  " + indentListContinuation(failure.Message)
 		}
 		details = append(details, detail)
 	}
@@ -103,6 +103,6 @@ func showLaneError(lane LaneSummary) bool {
 	return lane.Error != "" && lane.Class != ClassAssertion && lane.Class != ClassSkipped
 }
 
-func indentMarkdown(message string) string {
+func indentListContinuation(message string) string {
 	return strings.ReplaceAll(strings.TrimSpace(message), "\n", "\n  ")
 }
