@@ -1,55 +1,37 @@
 package runner
 
 import (
-	"cmp"
 	"fmt"
+	"math"
+	"math/rand/v2"
 	"path/filepath"
 
 	"github.com/cyyber/qrl-tests/e2e/internal/lanes"
+	"github.com/cyyber/qrl-tests/e2e/internal/manifest"
+	"github.com/cyyber/qrl-tests/internal/results"
 )
 
+const laneReportsDirectory = "lanes"
+
+type runPlan struct {
+	testsDir   string
+	reportRoot string
+	mode       runMode
+	lanes      []laneRun
+}
+
 type laneRun struct {
-	lane         lanes.Lane
-	enclaveName  string
-	reportDir    string
-	manifestPath string
-	arguments    []string
-	provision    bool
-	testsDir     string
+	definition  lanes.Lane
+	enclaveName string
+	reportDir   string
+	seed        int64
 }
 
-func planLanes(configuration Config, selected []lanes.Lane, mode runMode) ([]laneRun, error) {
-	testsDir, err := filepath.Abs(cmp.Or(configuration.TestsDir, "."))
-	if err != nil {
-		return nil, fmt.Errorf("resolve test source directory: %w", err)
-	}
-
-	reportRoot, err := filepath.Abs(cmp.Or(configuration.ReportDir, DefaultReportDir))
-	if err != nil {
-		return nil, fmt.Errorf("resolve report directory: %w", err)
-	}
-
-	planned := make([]laneRun, len(selected))
-	for index, lane := range selected {
-		enclaveName := configuration.BaseName
-		if mode.suffixesEnclave() {
-			enclaveName += "-" + lane.Name
-		}
-		reportDir := filepath.Join(reportRoot, lane.Name)
-		planned[index] = laneRun{
-			lane:         lane,
-			enclaveName:  enclaveName,
-			reportDir:    reportDir,
-			manifestPath: filepath.Join(reportDir, "manifest.json"),
-			arguments:    ginkgoArguments(lane, reportDir),
-			provision:    mode.provisions(),
-			testsDir:     testsDir,
-		}
-	}
-	return planned, nil
+func (lane laneRun) manifestPath() string {
+	return filepath.Join(lane.reportDir, manifest.FileName)
 }
 
-func ginkgoArguments(lane lanes.Lane, reportDir string) []string {
+func (lane laneRun) ginkgoArguments() []string {
 	arguments := []string{
 		"tool", "ginkgo",
 		"--tags=e2e",
@@ -60,13 +42,50 @@ func ginkgoArguments(lane lanes.Lane, reportDir string) []string {
 		"--require-suite",
 		"--fail-on-empty",
 		"--fail-on-pending",
-		"--timeout=" + lane.Timeout.String(),
-		"--output-dir=" + reportDir,
+		fmt.Sprintf("--seed=%d", lane.seed),
+		"--timeout=" + lane.definition.Timeout.String(),
+		"--output-dir=" + lane.reportDir,
 		"--junit-report=junit.xml",
-		"--json-report=report.json",
+		"--json-report=" + results.ReportFileName,
 	}
-	arguments = append(arguments, lane.Packages()...)
+	arguments = append(arguments, lane.definition.Packages()...)
 	// Every suite package defines exactly one Go test entrypoint named TestE2E;
 	// --fail-on-empty turns a misnamed entrypoint into a failed lane.
 	return append(arguments, "--", "-test.run=^TestE2E$")
+}
+
+func planLanes(configuration Config, selected []lanes.Lane, mode runMode) (runPlan, error) {
+	testsDir, err := filepath.Abs(configuration.TestsDir)
+	if err != nil {
+		return runPlan{}, fmt.Errorf("resolve test source directory: %w", err)
+	}
+
+	reportRoot, err := filepath.Abs(configuration.ReportDir)
+	if err != nil {
+		return runPlan{}, fmt.Errorf("resolve report directory: %w", err)
+	}
+
+	laneRuns := make([]laneRun, len(selected))
+	for index, lane := range selected {
+		enclaveName := configuration.BaseName
+		if mode.suffixesEnclave() {
+			enclaveName += "-" + lane.Name
+		}
+		reportDir := filepath.Join(reportRoot, laneReportsDirectory, lane.Name)
+
+		// The seed randomizes ginkgo's spec order; recording it in the run
+		// manifest keeps every ordering reproducible, and a configured seed
+		// replays a recorded one exactly.
+		seed := configuration.Seed
+		if seed == 0 {
+			seed = 1 + rand.Int64N(math.MaxInt32)
+		}
+		laneRuns[index] = laneRun{
+			definition:  lane,
+			enclaveName: enclaveName,
+			reportDir:   reportDir,
+			seed:        seed,
+		}
+	}
+	return runPlan{testsDir: testsDir, reportRoot: reportRoot, mode: mode, lanes: laneRuns}, nil
 }

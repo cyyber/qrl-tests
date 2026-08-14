@@ -3,12 +3,12 @@ package runner
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -16,6 +16,9 @@ import (
 	"github.com/cyyber/qrl-tests/devnet"
 	"github.com/cyyber/qrl-tests/e2e/internal/lanes"
 	"github.com/cyyber/qrl-tests/e2e/internal/manifest"
+	"github.com/cyyber/qrl-tests/internal/results"
+	"github.com/cyyber/qrl-tests/internal/runmanifest"
+	"github.com/onsi/ginkgo/v2/types"
 	"github.com/stretchr/testify/require"
 )
 
@@ -73,7 +76,10 @@ func TestRunBuildsCommandAndCleansUp(t *testing.T) {
 		Suites:       []string{"execution-abi"},
 	}, &output, &output)
 	runner.networks = networks
-	runner.runCommand = captureCommand(&command)
+	runner.runCommand = func(ctx context.Context, spec commandSpec) error {
+		writeGinkgoReport(t, filepath.Join(reports, "lanes", "execution-abi"), types.SpecStatePassed)
+		return captureCommand(&command)(ctx, spec)
+	}
 
 	require.NoError(t, runner.Run(t.Context(), "execution-abi"))
 	require.Equal(t, "qrl-tests", networks.started.EnclaveName)
@@ -87,15 +93,204 @@ func TestRunBuildsCommandAndCleansUp(t *testing.T) {
 	require.Equal(t, workingDirectory, command.Dir)
 	require.Contains(t, command.Env, "PATH="+os.Getenv("PATH"))
 
-	manifestPath := filepath.Join(reports, "execution-abi", "manifest.json")
+	manifestPath := filepath.Join(reports, "lanes", "execution-abi", manifest.FileName)
 	written, err := manifest.Read(manifestPath)
 	require.NoError(t, err)
 	require.Equal(t, "execution-abi", written.Lane)
 	require.Equal(t, devnet.ProfileSingle, written.Profile)
 	require.Equal(t, testEnvironment("qrl-tests", devnet.BackendDocker), written.Environment)
 	require.Contains(t, command.Env, manifest.PathEnv+"="+manifestPath)
-	require.FileExists(t, filepath.Join(reports, "execution-abi", "output.log"))
+	require.FileExists(t, filepath.Join(reports, "lanes", "execution-abi", "output.log"))
 	require.Contains(t, output.String(), "=== RUN lane=execution-abi profile=single ===")
+
+	recordPath := filepath.Join(reports, runmanifest.FileName)
+	record := readRunManifest(t, recordPath)
+	require.Equal(t, "c0b29628173dba03445f2a6b7f07aa6b5958f93af975feefff9ee025d4cc0c10", record.ParametersSHA256)
+	payload, err := os.ReadFile(recordPath)
+	require.NoError(t, err)
+	require.NotContains(t, string(payload), `"custom_parameters":`)
+}
+
+// passingCommand fakes a lane process that succeeds AND leaves a passing
+// report behind — the summary treats a cleanly exited lane without a usable
+// report as an infrastructure failure.
+func passingCommand(t *testing.T, reports string) func(context.Context, commandSpec) error {
+	t.Helper()
+	return func(context.Context, commandSpec) error {
+		writeGinkgoReport(t, filepath.Join(reports, "lanes", "execution-abi"), types.SpecStatePassed)
+		return nil
+	}
+}
+
+func writeGinkgoReport(t *testing.T, laneDir string, state types.SpecState) {
+	t.Helper()
+	report := types.Report{SuiteSucceeded: state == types.SpecStatePassed, SpecReports: []types.SpecReport{{
+		LeafNodeText: "encodes calls",
+		LeafNodeType: types.NodeTypeIt,
+		State:        state,
+	}}}
+	payload, err := json.Marshal([]types.Report{report})
+	require.NoError(t, err)
+	require.NoError(t, os.MkdirAll(laneDir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(laneDir, results.ReportFileName), payload, 0o600))
+}
+
+func readRunManifest(t *testing.T, path string) runmanifest.Manifest {
+	t.Helper()
+	payload, err := os.ReadFile(path)
+	require.NoError(t, err)
+	var record runmanifest.Manifest
+	require.NoError(t, json.Unmarshal(payload, &record))
+	return record
+}
+
+func outcomeErrors(outcomes []results.Outcome) []error {
+	errors := make([]error, len(outcomes))
+	for index, outcome := range outcomes {
+		errors[index] = outcome.Err
+	}
+	return errors
+}
+
+func TestRunWritesRunManifestAndSummary(t *testing.T) {
+	reports := t.TempDir()
+	laneDir := filepath.Join(reports, "lanes", "execution-abi")
+	testRunner := New(Config{
+		BaseName:     "qrl-tests",
+		ReportDir:    reports,
+		Backend:      devnet.BackendDocker,
+		StartTimeout: time.Minute,
+	}, io.Discard, io.Discard)
+	testRunner.networks = new(recordingNetworks)
+	testRunner.runCommand = func(context.Context, commandSpec) error {
+		writeGinkgoReport(t, laneDir, types.SpecStatePassed)
+		return nil
+	}
+
+	require.NoError(t, testRunner.Run(t.Context(), "execution-abi"))
+
+	record := readRunManifest(t, filepath.Join(reports, runmanifest.FileName))
+	require.Equal(t, "passed", record.Result)
+	require.Equal(t, devnet.BackendDocker, record.Backend)
+	require.Equal(t, devnet.PackageLocator, record.PackageLocator)
+	require.NotNil(t, record.Images)
+	require.Equal(t, devnet.DefaultImages(), *record.Images)
+	require.Len(t, record.Lanes, 1)
+	require.Equal(t, "passed", record.Lanes[0].Result)
+	require.Positive(t, record.Lanes[0].Seed)
+	require.False(t, record.FinishedAt.IsZero())
+
+	payload, err := os.ReadFile(filepath.Join(reports, results.SummaryFileName))
+	require.NoError(t, err)
+	var summary results.Summary
+	require.NoError(t, json.Unmarshal(payload, &summary))
+	require.Equal(t, "passed", summary.Result)
+	require.FileExists(t, filepath.Join(reports, results.MarkdownFileName))
+}
+
+func TestRunFailsOnUnexpectedSkips(t *testing.T) {
+	reports := t.TempDir()
+	laneDir := filepath.Join(reports, "lanes", "execution-abi")
+	testRunner := New(Config{
+		BaseName:     "qrl-tests",
+		ReportDir:    reports,
+		Backend:      devnet.BackendDocker,
+		StartTimeout: time.Minute,
+	}, io.Discard, io.Discard)
+	testRunner.networks = new(recordingNetworks)
+	testRunner.runCommand = func(context.Context, commandSpec) error {
+		writeGinkgoReport(t, laneDir, types.SpecStateSkipped)
+		return nil
+	}
+
+	err := testRunner.Run(t.Context(), "execution-abi")
+	require.ErrorContains(t, err, "execution-abi (skipped)")
+
+	record := readRunManifest(t, filepath.Join(reports, runmanifest.FileName))
+	require.Equal(t, "failed", record.Lanes[0].Result,
+		"the manifest records the verdict, not the process exit")
+}
+
+func TestRunPreservesCancellation(t *testing.T) {
+	reports := t.TempDir()
+	laneDir := filepath.Join(reports, "lanes", "execution-abi")
+	testRunner := New(Config{ReportDir: reports}, io.Discard, io.Discard)
+	testRunner.networks = new(recordingNetworks)
+	testRunner.runCommand = func(context.Context, commandSpec) error {
+		writeGinkgoReport(t, laneDir, types.SpecStateInterrupted)
+		return context.Canceled
+	}
+
+	err := testRunner.Run(t.Context(), "execution-abi")
+	require.ErrorIs(t, err, context.Canceled)
+
+	payload, readErr := os.ReadFile(filepath.Join(reports, results.SummaryFileName))
+	require.NoError(t, readErr)
+	var summary results.Summary
+	require.NoError(t, json.Unmarshal(payload, &summary))
+	require.Equal(t, results.VerdictCanceled, summary.Lanes[0].Verdict)
+}
+
+func TestRunFailsWithoutAUsableReport(t *testing.T) {
+	reports := t.TempDir()
+	testRunner := New(Config{
+		BaseName:     "qrl-tests",
+		ReportDir:    reports,
+		Backend:      devnet.BackendDocker,
+		StartTimeout: time.Minute,
+	}, io.Discard, io.Discard)
+	testRunner.networks = new(recordingNetworks)
+	// The lane process "succeeds" without ever writing a report.
+	testRunner.runCommand = func(context.Context, commandSpec) error { return nil }
+
+	err := testRunner.Run(t.Context(), "execution-abi")
+	require.ErrorContains(t, err, "lanes did not pass")
+
+	record := readRunManifest(t, filepath.Join(reports, runmanifest.FileName))
+	require.Equal(t, "failed", record.Result)
+	require.Equal(t, "failed", record.Lanes[0].Result)
+
+	payload, readErr := os.ReadFile(filepath.Join(reports, results.SummaryFileName))
+	require.NoError(t, readErr)
+	var summary results.Summary
+	require.NoError(t, json.Unmarshal(payload, &summary))
+	require.Equal(t, results.VerdictInfrastructure, summary.Lanes[0].Verdict)
+}
+
+func TestRunManifestSurvivesBootstrapFailure(t *testing.T) {
+	reports := t.TempDir()
+	networks := &recordingNetworks{startErr: errors.New("no capacity")}
+	testRunner := New(Config{
+		BaseName:     "qrl-tests",
+		ReportDir:    reports,
+		Backend:      devnet.BackendDocker,
+		StartTimeout: time.Minute,
+	}, io.Discard, io.Discard)
+	testRunner.networks = networks
+
+	err := testRunner.Run(t.Context(), "execution-abi")
+	require.ErrorContains(t, err, "lane execution-abi: network bootstrap failed: start network: no capacity")
+	require.NoDirExists(t, filepath.Join(reports, "lanes", "execution-abi"))
+	require.Empty(t, networks.stopped, "a lane that never started must not be stopped")
+
+	record := readRunManifest(t, filepath.Join(reports, runmanifest.FileName))
+	require.Equal(t, "failed", record.Result)
+	require.Equal(t, "failed", record.Lanes[0].Result)
+
+	payload, err := os.ReadFile(filepath.Join(reports, results.SummaryFileName))
+	require.NoError(t, err)
+	var summary results.Summary
+	require.NoError(t, json.Unmarshal(payload, &summary))
+	require.Equal(t, results.VerdictBootstrap, summary.Lanes[0].Verdict)
+}
+
+func TestNewResolvesConfigurationDefaults(t *testing.T) {
+	runner := New(Config{}, io.Discard, io.Discard)
+	require.Equal(t, ".", runner.configuration.TestsDir)
+	require.Equal(t, devnet.DefaultEnclaveName, runner.configuration.BaseName)
+	require.Equal(t, DefaultReportDir, runner.configuration.ReportDir)
+	require.Equal(t, devnet.BackendDocker, runner.configuration.Backend)
+	require.Equal(t, devnet.DefaultStartTimeout, runner.configuration.StartTimeout)
 }
 
 func TestListDescribesLanesAndSuites(t *testing.T) {
@@ -122,40 +317,7 @@ func TestRunAllRejectsOverrides(t *testing.T) {
 func TestRunAllProvisionsPerLane(t *testing.T) {
 	networks := new(recordingNetworks)
 	var command commandSpec
-	runner := New(Config{
-		BaseName:     "qrl-tests",
-		ReportDir:    t.TempDir(),
-		Backend:      devnet.BackendDocker,
-		StartTimeout: time.Minute,
-	}, io.Discard, io.Discard)
-	runner.networks = networks
-	runner.runCommand = captureCommand(&command)
-
-	require.NoError(t, runner.RunAll(t.Context()))
-	require.Equal(t, "qrl-tests-execution-abi", networks.started.EnclaveName)
-	require.Equal(t, devnet.ProfileSingle, networks.started.Profile)
-	require.Equal(t, []string{"qrl-tests-execution-abi"}, networks.stopped)
-	require.Contains(t, command.Args, "./e2e/suites/execution/abi")
-}
-
-func TestRunReturnsCleanupFailure(t *testing.T) {
-	networks := &recordingNetworks{stopErr: errors.New("stop failed")}
-	runner := New(Config{
-		BaseName:     "qrl-tests",
-		ReportDir:    t.TempDir(),
-		Backend:      devnet.BackendDocker,
-		StartTimeout: time.Minute,
-	}, io.Discard, io.Discard)
-	runner.networks = networks
-	runner.runCommand = func(context.Context, commandSpec) error { return nil }
-
-	err := runner.Run(t.Context(), "execution-abi")
-	require.ErrorContains(t, err, "lane execution-abi: stop network: stop failed")
-}
-
-func TestRunLeavesNoArtifactsWhenStartFails(t *testing.T) {
 	reports := t.TempDir()
-	networks := &recordingNetworks{startErr: errors.New("no capacity")}
 	runner := New(Config{
 		BaseName:     "qrl-tests",
 		ReportDir:    reports,
@@ -163,23 +325,99 @@ func TestRunLeavesNoArtifactsWhenStartFails(t *testing.T) {
 		StartTimeout: time.Minute,
 	}, io.Discard, io.Discard)
 	runner.networks = networks
+	runner.runCommand = func(ctx context.Context, spec commandSpec) error {
+		writeGinkgoReport(t, filepath.Join(reports, "lanes", "execution-abi"), types.SpecStatePassed)
+		return captureCommand(&command)(ctx, spec)
+	}
+
+	require.NoError(t, runner.RunAll(t.Context()))
+	require.Equal(t, "qrl-tests-execution-abi", networks.started.EnclaveName)
+	require.Equal(t, devnet.ProfileSingle, networks.started.Profile)
+	require.Equal(t, []string{"qrl-tests-execution-abi"}, networks.stopped)
+	require.Contains(t, command.Args, "./e2e/suites/execution/abi")
+	record := readRunManifest(t, filepath.Join(reports, runmanifest.FileName))
+	require.Equal(t, "qrl-tests-execution-abi", record.Lanes[0].Enclave)
+}
+
+func TestRunReturnsCleanupFailure(t *testing.T) {
+	networks := &recordingNetworks{stopErr: context.DeadlineExceeded}
+	reports := t.TempDir()
+	runner := New(Config{
+		BaseName:     "qrl-tests",
+		ReportDir:    reports,
+		Backend:      devnet.BackendDocker,
+		StartTimeout: time.Minute,
+	}, io.Discard, io.Discard)
+	runner.networks = networks
+	runner.runCommand = passingCommand(t, reports)
 
 	err := runner.Run(t.Context(), "execution-abi")
-	require.ErrorContains(t, err, "lane execution-abi: start network: no capacity")
-	require.NoDirExists(t, filepath.Join(reports, "execution-abi"))
-	require.Empty(t, networks.stopped, "a lane that never started must not be stopped")
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+
+	record := readRunManifest(t, filepath.Join(reports, runmanifest.FileName))
+	require.Equal(t, "failed", record.Result)
+	payload, readErr := os.ReadFile(filepath.Join(reports, results.SummaryFileName))
+	require.NoError(t, readErr)
+	var summary results.Summary
+	require.NoError(t, json.Unmarshal(payload, &summary))
+	require.Equal(t, results.VerdictInfrastructure, summary.Lanes[0].Verdict)
+}
+
+func TestRunMarksManifestFailedWhenSummaryWritingFails(t *testing.T) {
+	reports := t.TempDir()
+
+	runner := New(Config{ReportDir: reports}, io.Discard, io.Discard)
+	runner.networks = new(recordingNetworks)
+	runner.runCommand = func(ctx context.Context, specification commandSpec) error {
+		require.NoError(t, passingCommand(t, reports)(ctx, specification))
+		require.NoError(t, os.Mkdir(filepath.Join(reports, results.MarkdownFileName), 0o700))
+		return nil
+	}
+
+	err := runner.Run(t.Context(), "execution-abi")
+	require.ErrorContains(t, err, "write markdown summary")
+
+	record := readRunManifest(t, filepath.Join(reports, runmanifest.FileName))
+	require.Equal(t, "failed", record.Result)
+	require.Equal(t, "passed", record.Lanes[0].Result)
+}
+
+func TestClearReportArtifacts(t *testing.T) {
+	reports := t.TempDir()
+	owned := []string{
+		filepath.Join(reports, "lanes", "execution", results.ReportFileName),
+		filepath.Join(reports, results.SummaryFileName),
+		filepath.Join(reports, results.MarkdownFileName),
+		filepath.Join(reports, runmanifest.FileName),
+	}
+	for _, path := range owned {
+		require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
+		require.NoError(t, os.WriteFile(path, []byte("stale"), 0o600))
+	}
+	unrelated := filepath.Join(reports, "keep.txt")
+	require.NoError(t, os.WriteFile(unrelated, []byte("keep"), 0o600))
+
+	require.NoError(t, clearReportArtifacts(reports))
+	for _, path := range owned {
+		require.NoFileExists(t, path)
+	}
+	require.FileExists(t, unrelated)
 }
 
 func TestAttachBuildsCommandWithoutProvisioning(t *testing.T) {
 	networks := new(recordingNetworks)
 	var command commandSpec
+	reports := t.TempDir()
 	runner := New(Config{
 		BaseName:  "qrl-tests",
-		ReportDir: t.TempDir(),
+		ReportDir: reports,
 		Backend:   devnet.BackendDocker,
 	}, io.Discard, io.Discard)
 	runner.networks = networks
-	runner.runCommand = captureCommand(&command)
+	runner.runCommand = func(ctx context.Context, spec commandSpec) error {
+		writeGinkgoReport(t, filepath.Join(reports, "lanes", "execution-abi"), types.SpecStatePassed)
+		return captureCommand(&command)(ctx, spec)
+	}
 
 	require.NoError(t, runner.Test(t.Context(), "execution-abi"))
 	require.Equal(t, "qrl-tests", networks.inspected)
@@ -193,24 +431,22 @@ func TestAttachRejectsCustomParameters(t *testing.T) {
 	require.ErrorContains(t, runner.Test(t.Context(), "execution-abi"), "existing network")
 }
 
-func testLaneRuns(t *testing.T, reports string, count int) []laneRun {
+func testLaneRuns(t *testing.T, reports string, count int) runPlan {
 	t.Helper()
 	lane, err := lanes.Named("execution-abi")
 	require.NoError(t, err)
 
-	planned := make([]laneRun, count)
-	for index := range planned {
+	laneRuns := make([]laneRun, count)
+	for index := range laneRuns {
 		name := fmt.Sprintf("lane-%d", index)
 		reportDir := filepath.Join(reports, name)
-		planned[index] = laneRun{
-			lane:         lane,
-			enclaveName:  name,
-			reportDir:    reportDir,
-			manifestPath: filepath.Join(reportDir, "manifest.json"),
-			provision:    true,
+		laneRuns[index] = laneRun{
+			definition:  lane,
+			enclaveName: name,
+			reportDir:   reportDir,
 		}
 	}
-	return planned
+	return runPlan{testsDir: ".", reportRoot: reports, mode: provisionNetwork, lanes: laneRuns}
 }
 
 func TestRunLanesRunsConcurrently(t *testing.T) {
@@ -220,7 +456,7 @@ func TestRunLanesRunsConcurrently(t *testing.T) {
 	runner.runCommand = func(context.Context, commandSpec) error { return nil }
 
 	planned := testLaneRuns(t, t.TempDir(), 2)
-	require.NoError(t, runner.runLanes(t.Context(), planned))
+	require.NoError(t, errors.Join(outcomeErrors(runner.runLanes(t.Context(), planned))...))
 	require.ElementsMatch(t, []string{"lane-0", "lane-1"}, networks.stopped)
 }
 
@@ -242,7 +478,7 @@ func TestRunLanesHonorsCancellation(t *testing.T) {
 	defer cancel()
 	planned := testLaneRuns(t, t.TempDir(), 3)
 	done := make(chan error, 1)
-	go func() { done <- runner.runLanes(ctx, planned) }()
+	go func() { done <- errors.Join(outcomeErrors(runner.runLanes(ctx, planned))...) }()
 
 	<-entered
 	<-entered
@@ -255,27 +491,17 @@ func TestPlanLanesDescribesEachLane(t *testing.T) {
 	executionABI, err := lanes.Named("execution-abi")
 	require.NoError(t, err)
 	selected := []lanes.Lane{executionABI}
-	planned, err := planLanes(Config{BaseName: "qrl-tests", ReportDir: reports}, selected, provisionPerLane)
+	plan, err := planLanes(Config{BaseName: "qrl-tests", ReportDir: reports}.withDefaults(), selected, provisionPerLane)
 	require.NoError(t, err)
-	require.Len(t, planned, 1)
-	require.Equal(t, "qrl-tests-execution-abi", planned[0].enclaveName)
-	require.Equal(t, filepath.Join(reports, "execution-abi", "manifest.json"), planned[0].manifestPath)
-	require.Contains(t, planned[0].arguments, "./e2e/suites/execution/abi")
-	require.True(t, planned[0].provision)
-}
-
-func TestExecuteWiresTheCommand(t *testing.T) {
-	gopath := t.TempDir()
-	var output bytes.Buffer
-	err := execute(t.Context(), commandSpec{
-		Path:   "go",
-		Args:   []string{"env", "GOPATH"},
-		Env:    append(os.Environ(), "GOPATH="+gopath),
-		Stdout: &output,
-		Stderr: io.Discard,
-	})
-	require.NoError(t, err)
-	require.Equal(t, gopath, strings.TrimSpace(output.String()))
+	require.Equal(t, reports, plan.reportRoot)
+	require.Len(t, plan.lanes, 1)
+	laneRun := plan.lanes[0]
+	require.Equal(t, "qrl-tests-execution-abi", laneRun.enclaveName)
+	require.Equal(t, filepath.Join(reports, laneReportsDirectory, "execution-abi", manifest.FileName), laneRun.manifestPath())
+	require.Contains(t, laneRun.ginkgoArguments(), "./e2e/suites/execution/abi")
+	require.Contains(t, laneRun.ginkgoArguments(), fmt.Sprintf("--seed=%d", laneRun.seed))
+	require.Positive(t, laneRun.seed)
+	require.True(t, plan.mode.provisionsNetwork())
 }
 
 func testEnvironment(name string, backend devnet.Backend) devnet.Environment {
