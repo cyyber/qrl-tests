@@ -109,6 +109,7 @@ func (runner *Runner) executeLane(ctx context.Context, plan runPlan, lane laneRu
 				outcome.Err = errors.Join(outcome.Err, fmt.Errorf("collect diagnostics: %w", diagnosticsErr))
 			}
 		}
+
 		failedBeforeCleanup := !outcome.Passed()
 		if failedBeforeCleanup {
 			collectDiagnostics()
