@@ -82,18 +82,18 @@ type dependencies struct {
 	now    func() time.Time
 }
 
-// Collect enriches a starting manifest with source, tool, and CI metadata.
+// Enrich adds source, tool, and CI metadata to a starting manifest.
 // Probes are best-effort: a missing tool leaves its field empty rather than
 // failing the run the manifest is meant to explain.
-func Collect(ctx context.Context, testsDir string, manifest Manifest) Manifest {
-	return collect(ctx, testsDir, manifest, dependencies{
+func Enrich(ctx context.Context, testsDir string, manifest Manifest) Manifest {
+	return enrich(ctx, testsDir, manifest, dependencies{
 		getenv: os.Getenv,
 		probe:  probeCommand,
 		now:    time.Now,
 	})
 }
 
-func collect(ctx context.Context, testsDir string, manifest Manifest, deps dependencies) Manifest {
+func enrich(ctx context.Context, testsDir string, manifest Manifest, deps dependencies) Manifest {
 	testsRevision, _ := deps.probe(ctx, "git", "-C", testsDir, "rev-parse", "HEAD")
 
 	manifest.Sources = Sources{
@@ -114,6 +114,7 @@ func collect(ctx context.Context, testsDir string, manifest Manifest, deps depen
 		RunAttempt: deps.getenv("GITHUB_RUN_ATTEMPT"),
 	}
 	manifest.StartedAt = deps.now().UTC()
+
 	return manifest
 }
 

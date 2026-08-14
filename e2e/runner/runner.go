@@ -254,7 +254,7 @@ func (runner *Runner) collectManifest(ctx context.Context, plan runPlan) runmani
 		}
 	}
 
-	return runmanifest.Collect(ctx, plan.testsDir, record)
+	return runmanifest.Enrich(ctx, plan.testsDir, record)
 }
 
 func (runner *Runner) runLanes(ctx context.Context, plan runPlan) []results.Outcome {

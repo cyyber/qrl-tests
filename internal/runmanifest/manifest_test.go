@@ -14,7 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestCollect(t *testing.T) {
+func TestEnrich(t *testing.T) {
 	environment := map[string]string{
 		sourceGoQRLEnv:       "1111111111111111111111111111111111111111",
 		sourceQrysmEnv:       "2222222222222222222222222222222222222222",
@@ -39,7 +39,7 @@ func TestCollect(t *testing.T) {
 	started := time.Date(2026, 8, 7, 12, 0, 0, 0, time.UTC)
 
 	images := devnet.DefaultImages()
-	manifest := collect(t.Context(), "/checkout", Manifest{
+	manifest := enrich(t.Context(), "/checkout", Manifest{
 		Backend:        devnet.BackendDocker,
 		Images:         &images,
 		PackageLocator: devnet.PackageLocator,
@@ -68,8 +68,8 @@ func TestCollect(t *testing.T) {
 	require.Empty(t, manifest.Result, "a starting manifest must not claim a result")
 }
 
-func TestCollectSurvivesMissingTools(t *testing.T) {
-	manifest := collect(t.Context(), ".", Manifest{}, dependencies{
+func TestEnrichSurvivesMissingTools(t *testing.T) {
+	manifest := enrich(t.Context(), ".", Manifest{}, dependencies{
 		getenv: func(string) string { return "" },
 		probe: func(context.Context, string, ...string) (string, error) {
 			return "", errors.New("not installed")
