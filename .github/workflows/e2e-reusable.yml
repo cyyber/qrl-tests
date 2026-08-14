@@ -63,6 +63,7 @@ env:
 
 jobs:
   e2e:
+    name: tests
     runs-on: ${{ inputs.runner || vars.E2E_RUNNER || 'ubuntu-24.04-arm' }}
     timeout-minutes: 90
     steps:
