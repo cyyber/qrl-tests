@@ -18,7 +18,7 @@ func (summary Summary) markdown() string {
 	for _, lane := range summary.Lanes {
 		writeLaneDetails(report, lane)
 	}
-	return strings.TrimRight(report.String(), "\n") + "\n"
+	return report.String()
 }
 
 func writeLaneSummary(report *md.Markdown, lane LaneSummary) {

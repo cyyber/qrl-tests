@@ -43,15 +43,17 @@ func TestMarkdownPassingSuites(t *testing.T) {
 		}},
 	}
 
-	want := `## E2E: passed
-
-### execution
-
-| Suite | Result |
-|---------|--------:|
-| ABI E2E suite | 2/2 |
-| API E2E suite | 3/3 |
-`
+	want := strings.Join([]string{
+		"## E2E: passed",
+		"",
+		"### execution",
+		"",
+		"| Suite | Result |",
+		"|---------|--------:|",
+		"| ABI E2E suite | 2/2 |",
+		"| API E2E suite | 3/3 |",
+		"",
+	}, "\n")
 	require.Equal(t, want, summary.markdown())
 }
 
@@ -98,7 +100,6 @@ func TestMarkdownFailedSuiteDetails(t *testing.T) {
 		"  got 2",
 		"- **suite** suite cleanup failed",
 		"- **skipped** `ABI encodes arrays`",
-		"",
 	}, "\n")
 	require.Equal(t, want, summary.markdown())
 }
@@ -126,7 +127,6 @@ func TestMarkdownInfrastructureFailureWithoutSuites(t *testing.T) {
 		"network did not become ready",
 		"consensus REST unavailable",
 		"```",
-		"",
 	}, "\n")
 	require.Equal(t, want, summary.markdown())
 }
