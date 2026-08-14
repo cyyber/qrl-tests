@@ -189,6 +189,9 @@ func (runner *Runner) run(ctx context.Context, selected []lanes.Lane, mode runMo
 	if err != nil {
 		return err
 	}
+	if err := clearReportArtifacts(plan.reportRoot); err != nil {
+		return err
+	}
 
 	record := runner.collectManifest(ctx, plan)
 	manifestPath := filepath.Join(plan.reportRoot, runmanifest.FileName)
@@ -218,6 +221,21 @@ func (runner *Runner) run(ctx context.Context, selected []lanes.Lane, mode runMo
 	// Reporting problems never mask the test result, and vice versa. Preserve
 	// raw lane errors as well so callers can inspect cancellation and timeout.
 	return errors.Join(summary.VerdictError(), errors.Join(laneErrors...), manifestErr, summarizeErr)
+}
+
+func clearReportArtifacts(reportRoot string) error {
+	paths := []string{
+		filepath.Join(reportRoot, "lanes"),
+		filepath.Join(reportRoot, results.SummaryFileName),
+		filepath.Join(reportRoot, results.MarkdownFileName),
+		filepath.Join(reportRoot, runmanifest.FileName),
+	}
+	for _, path := range paths {
+		if err := os.RemoveAll(path); err != nil {
+			return fmt.Errorf("clear report artifact %s: %w", path, err)
+		}
+	}
+	return nil
 }
 
 func (runner *Runner) collectManifest(ctx context.Context, plan runPlan) runmanifest.Manifest {

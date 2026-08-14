@@ -3,10 +3,10 @@ package runner
 import (
 	"fmt"
 	"math/rand/v2"
-	"os"
 	"path/filepath"
 
 	"github.com/cyyber/qrl-tests/e2e/internal/lanes"
+	"github.com/cyyber/qrl-tests/e2e/internal/manifest"
 	"github.com/cyyber/qrl-tests/internal/results"
 )
 
@@ -42,10 +42,6 @@ func planLanes(configuration Config, selected []lanes.Lane, mode runMode) (runPl
 			enclaveName += "-" + lane.Name
 		}
 		reportDir := filepath.Join(reportRoot, "lanes", lane.Name)
-		// A stale report from an earlier run must never feed this run's verdict.
-		if err := os.RemoveAll(reportDir); err != nil {
-			return runPlan{}, fmt.Errorf("clear %s: %w", reportDir, err)
-		}
 		// The seed randomizes ginkgo's spec order; recording it in the run
 		// manifest keeps every ordering reproducible, and a configured seed
 		// replays a recorded one exactly.
@@ -64,7 +60,7 @@ func planLanes(configuration Config, selected []lanes.Lane, mode runMode) (runPl
 }
 
 func (lane laneRun) manifestPath() string {
-	return filepath.Join(lane.reportDir, "manifest.json")
+	return filepath.Join(lane.reportDir, manifest.FileName)
 }
 
 func (lane laneRun) ginkgoArguments() []string {

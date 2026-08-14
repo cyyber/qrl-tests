@@ -10,7 +10,7 @@ import (
 )
 
 func TestManifestRoundTrip(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "manifest.json")
+	path := filepath.Join(t.TempDir(), FileName)
 	want := Manifest{
 		Lane:    "execution-abi",
 		Profile: devnet.ProfileSingle,
@@ -37,7 +37,7 @@ func TestManifestRoundTrip(t *testing.T) {
 }
 
 func TestManifestRequiresParticipant(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "manifest.json")
+	path := filepath.Join(t.TempDir(), FileName)
 	require.Error(t, Write(path, Manifest{}))
 
 	require.NoError(t, os.WriteFile(path, []byte(`{"environment":{}}`), 0o600))

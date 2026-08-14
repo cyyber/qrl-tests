@@ -93,7 +93,7 @@ func TestRunBuildsCommandAndCleansUp(t *testing.T) {
 	require.Equal(t, workingDirectory, command.Dir)
 	require.Contains(t, command.Env, "PATH="+os.Getenv("PATH"))
 
-	manifestPath := filepath.Join(reports, "lanes", "execution-abi", "manifest.json")
+	manifestPath := filepath.Join(reports, "lanes", "execution-abi", manifest.FileName)
 	written, err := manifest.Read(manifestPath)
 	require.NoError(t, err)
 	require.Equal(t, "execution-abi", written.Lane)
@@ -365,11 +365,14 @@ func TestRunReturnsCleanupFailure(t *testing.T) {
 
 func TestRunMarksManifestFailedWhenSummaryWritingFails(t *testing.T) {
 	reports := t.TempDir()
-	require.NoError(t, os.Mkdir(filepath.Join(reports, results.MarkdownFileName), 0o700))
 
 	runner := New(Config{ReportDir: reports}, io.Discard, io.Discard)
 	runner.networks = new(recordingNetworks)
-	runner.runCommand = passingCommand(t, reports)
+	runner.runCommand = func(ctx context.Context, specification commandSpec) error {
+		require.NoError(t, passingCommand(t, reports)(ctx, specification))
+		require.NoError(t, os.Mkdir(filepath.Join(reports, results.MarkdownFileName), 0o700))
+		return nil
+	}
 
 	err := runner.Run(t.Context(), "execution-abi")
 	require.ErrorContains(t, err, "write markdown summary")
@@ -377,6 +380,28 @@ func TestRunMarksManifestFailedWhenSummaryWritingFails(t *testing.T) {
 	record := readRunManifest(t, filepath.Join(reports, runmanifest.FileName))
 	require.Equal(t, "failed", record.Result)
 	require.Equal(t, "passed", record.Lanes[0].Result)
+}
+
+func TestClearReportArtifacts(t *testing.T) {
+	reports := t.TempDir()
+	owned := []string{
+		filepath.Join(reports, "lanes", "execution", results.ReportFileName),
+		filepath.Join(reports, results.SummaryFileName),
+		filepath.Join(reports, results.MarkdownFileName),
+		filepath.Join(reports, runmanifest.FileName),
+	}
+	for _, path := range owned {
+		require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
+		require.NoError(t, os.WriteFile(path, []byte("stale"), 0o600))
+	}
+	unrelated := filepath.Join(reports, "keep.txt")
+	require.NoError(t, os.WriteFile(unrelated, []byte("keep"), 0o600))
+
+	require.NoError(t, clearReportArtifacts(reports))
+	for _, path := range owned {
+		require.NoFileExists(t, path)
+	}
+	require.FileExists(t, unrelated)
 }
 
 func TestAttachBuildsCommandWithoutProvisioning(t *testing.T) {
@@ -472,7 +497,7 @@ func TestPlanLanesDescribesEachLane(t *testing.T) {
 	require.Len(t, plan.lanes, 1)
 	planned := plan.lanes[0]
 	require.Equal(t, "qrl-tests-execution-abi", planned.enclaveName)
-	require.Equal(t, filepath.Join(reports, "lanes", "execution-abi", "manifest.json"), planned.manifestPath())
+	require.Equal(t, filepath.Join(reports, "lanes", "execution-abi", manifest.FileName), planned.manifestPath())
 	require.Contains(t, planned.ginkgoArguments(), "./e2e/suites/execution/abi")
 	require.Contains(t, planned.ginkgoArguments(), fmt.Sprintf("--seed=%d", planned.seed))
 	require.Positive(t, planned.seed)

@@ -11,7 +11,10 @@ import (
 	"github.com/cyyber/qrl-tests/devnet"
 )
 
-const PathEnv = "QRL_TEST_MANIFEST"
+const (
+	FileName = "manifest.json"
+	PathEnv  = "QRL_TEST_MANIFEST"
+)
 
 type Manifest struct {
 	Lane        string             `json:"lane,omitempty"`
