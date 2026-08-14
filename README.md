@@ -21,7 +21,11 @@ reports/
 ├── run-manifest.json         # provenance and replay metadata for the run
 ├── summary.json              # spec counts and classified failures
 ├── summary.md                # Markdown result summary
-└── lanes/<lane>/             # junit.xml, report.json, output.log, manifest.json
+└── lanes/<lane>/
+    ├── junit.xml             # JUnit test report
+    ├── report.json           # Ginkgo test report
+    ├── output.log            # test command output
+    ├── manifest.json         # lane, profile, and network environment
     └── diagnostics/
         ├── diagnostics.json   # capture status and errors
         ├── inspect.txt        # Kurtosis enclave inspection
