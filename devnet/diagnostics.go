@@ -13,7 +13,7 @@ import (
 
 type diagnosticsCommand func(ctx context.Context, name string, arguments ...string) (string, error)
 
-type diagnosticCapture struct {
+type inspectionDiagnostic struct {
 	File     string `json:"file"`
 	Captured bool   `json:"captured"`
 	Error    string `json:"error,omitempty"`
@@ -28,9 +28,9 @@ type serviceDiagnostic struct {
 }
 
 type diagnosticsManifest struct {
-	Enclave    string              `json:"enclave"`
-	Inspection diagnosticCapture   `json:"inspection"`
-	Services   []serviceDiagnostic `json:"services"`
+	Enclave    string               `json:"enclave"`
+	Inspection inspectionDiagnostic `json:"inspection"`
+	Services   []serviceDiagnostic  `json:"services"`
 }
 
 // CollectDiagnostics captures the enclave inspection and per-service logs.
@@ -44,43 +44,63 @@ func collectDiagnostics(ctx context.Context, run diagnosticsCommand, enclaveName
 		return fmt.Errorf("create diagnostics directory: %w", err)
 	}
 
-	manifest := diagnosticsManifest{Enclave: enclaveName}
-	var problems []error
+	inspection, inspectionOutput, inspectionErr := collectInspection(ctx, run, enclaveName, outputDir)
+	services, servicesErr := collectServiceLogs(ctx, run, enclaveName, outputDir, inspectionOutput)
+	manifestErr := writeDiagnosticsManifest(outputDir, diagnosticsManifest{
+		Enclave:    enclaveName,
+		Inspection: inspection,
+		Services:   services,
+	})
 
-	inspection, commandErr := run(ctx, "kurtosis", "enclave", "inspect", enclaveName)
-	manifest.Inspection = diagnosticCapture{File: "inspect.txt"}
-	writeErr := writeDiagnostic(filepath.Join(outputDir, manifest.Inspection.File), inspection)
+	return errors.Join(inspectionErr, servicesErr, manifestErr)
+}
+
+func collectInspection(
+	ctx context.Context,
+	run diagnosticsCommand,
+	enclaveName,
+	outputDir string,
+) (inspectionDiagnostic, string, error) {
+	inspection := inspectionDiagnostic{File: "inspect.txt"}
+	output, commandErr := run(ctx, "kurtosis", "enclave", "inspect", enclaveName)
+	writeErr := writeDiagnostic(filepath.Join(outputDir, inspection.File), output)
 	captureErr := errors.Join(commandErr, writeErr)
-	manifest.Inspection.Captured = captureErr == nil
+	inspection.Captured = captureErr == nil
 	if captureErr != nil {
-		manifest.Inspection.Error = captureErr.Error()
-	}
-	if commandErr != nil {
-		problems = append(problems, fmt.Errorf("kurtosis enclave inspect %s: %w", enclaveName, commandErr))
-	}
-	if writeErr != nil {
-		problems = append(problems, writeErr)
+		inspection.Error = captureErr.Error()
 	}
 
-	services := diagnosticServices(inspection)
-	if len(services) > 0 {
-		if err := os.MkdirAll(filepath.Join(outputDir, "services"), 0o755); err != nil {
-			problems = append(problems, fmt.Errorf("create service diagnostics directory: %w", err))
-		} else {
-			for _, service := range services {
-				record, err := collectServiceLog(ctx, run, enclaveName, outputDir, service)
-				manifest.Services = append(manifest.Services, record)
-				if err != nil {
-					problems = append(problems, err)
-				}
-			}
+	if commandErr != nil {
+		commandErr = fmt.Errorf("kurtosis enclave inspect %s: %w", enclaveName, commandErr)
+	}
+	return inspection, output, errors.Join(commandErr, writeErr)
+}
+
+func collectServiceLogs(
+	ctx context.Context,
+	run diagnosticsCommand,
+	enclaveName,
+	outputDir,
+	inspectionOutput string,
+) ([]serviceDiagnostic, error) {
+	services := diagnosticServices(inspectionOutput)
+	if len(services) == 0 {
+		return nil, nil
+	}
+	if err := os.MkdirAll(filepath.Join(outputDir, "services"), 0o755); err != nil {
+		return nil, fmt.Errorf("create service diagnostics directory: %w", err)
+	}
+
+	serviceDiagnostics := make([]serviceDiagnostic, 0, len(services))
+	var problems []error
+	for _, service := range services {
+		diagnostic, err := collectServiceLog(ctx, run, enclaveName, outputDir, service)
+		serviceDiagnostics = append(serviceDiagnostics, diagnostic)
+		if err != nil {
+			problems = append(problems, err)
 		}
 	}
-
-	if err := writeDiagnosticsManifest(outputDir, manifest); err != nil {
-		problems = append(problems, err)
-	}
-	return errors.Join(problems...)
+	return serviceDiagnostics, errors.Join(problems...)
 }
 
 func collectServiceLog(
