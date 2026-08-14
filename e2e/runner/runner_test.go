@@ -289,17 +289,15 @@ func TestRunCollectsDiagnosticsOnFailureBeforeCleanup(t *testing.T) {
 	require.Equal(t, diagnosticsDir, networks.started.FailureDiagnosticsDir)
 }
 
-func TestRunDiagnosticsFailureNeverMasksTheResult(t *testing.T) {
+func TestRunReportsDiagnosticsFailureAlongsideLaneFailure(t *testing.T) {
 	networks := &recordingNetworks{collectErr: errors.New("logs unavailable")}
 	reports := t.TempDir()
-	configuration := Config{
+	testRunner := New(Config{
 		BaseName:     "qrl-tests",
 		ReportDir:    reports,
 		Backend:      devnet.BackendDocker,
 		StartTimeout: time.Minute,
-	}
-
-	testRunner := New(configuration, io.Discard, io.Discard)
+	}, io.Discard, io.Discard)
 	testRunner.networks = networks
 	testRunner.runCommand = func(context.Context, commandSpec) error { return errors.New("exit status 1") }
 	err := testRunner.Run(t.Context(), "execution-abi")
@@ -471,9 +469,10 @@ func testLaneRuns(t *testing.T, reports string, count int) runPlan {
 		name := fmt.Sprintf("lane-%d", index)
 		reportDir := filepath.Join(reports, name)
 		laneRuns[index] = laneRun{
-			definition:  lane,
-			enclaveName: name,
-			reportDir:   reportDir,
+			definition:     lane,
+			enclaveName:    name,
+			reportDir:      reportDir,
+			diagnosticsDir: filepath.Join(reportDir, diagnosticsDirectory),
 		}
 	}
 	return runPlan{testsDir: ".", reportRoot: reports, mode: provisionNetwork, lanes: laneRuns}
@@ -485,8 +484,8 @@ func TestRunLanesRunsConcurrently(t *testing.T) {
 	runner.networks = networks
 	runner.runCommand = func(context.Context, commandSpec) error { return nil }
 
-	planned := testLaneRuns(t, t.TempDir(), 2)
-	require.NoError(t, errors.Join(outcomeErrors(runner.runLanes(t.Context(), planned))...))
+	plan := testLaneRuns(t, t.TempDir(), 2)
+	require.NoError(t, errors.Join(outcomeErrors(runner.runLanes(t.Context(), plan))...))
 	require.ElementsMatch(t, []string{"lane-0", "lane-1"}, networks.stopped)
 }
 
@@ -506,9 +505,9 @@ func TestRunLanesHonorsCancellation(t *testing.T) {
 	// fails through runLane itself.
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
-	planned := testLaneRuns(t, t.TempDir(), 3)
+	plan := testLaneRuns(t, t.TempDir(), 3)
 	done := make(chan error, 1)
-	go func() { done <- errors.Join(outcomeErrors(runner.runLanes(ctx, planned))...) }()
+	go func() { done <- errors.Join(outcomeErrors(runner.runLanes(ctx, plan))...) }()
 
 	<-entered
 	<-entered
