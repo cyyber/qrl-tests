@@ -2,6 +2,7 @@ package runner
 
 import (
 	"fmt"
+	"math"
 	"math/rand/v2"
 	"path/filepath"
 
@@ -44,12 +45,13 @@ func planLanes(configuration Config, selected []lanes.Lane, mode runMode) (runPl
 			enclaveName += "-" + lane.Name
 		}
 		reportDir := filepath.Join(reportRoot, laneReportsDirectory, lane.Name)
+
 		// The seed randomizes ginkgo's spec order; recording it in the run
 		// manifest keeps every ordering reproducible, and a configured seed
 		// replays a recorded one exactly.
 		seed := configuration.Seed
 		if seed == 0 {
-			seed = 1 + rand.Int64N(1<<31-1)
+			seed = 1 + rand.Int64N(math.MaxInt32)
 		}
 		laneRuns[index] = laneRun{
 			definition:  lane,
