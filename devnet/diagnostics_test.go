@@ -57,8 +57,7 @@ func TestCollectDiagnostics(t *testing.T) {
 
 	genesisLog, err := os.ReadFile(filepath.Join(output, "services", "run-generate-genesis.log"))
 	require.NoError(t, err)
-	require.Equal(t, "starting genesis\n[redacted sensitive diagnostic output]\ngenesis failed\n", string(genesisLog))
-	require.NotContains(t, string(genesisLog), "0x010000abcd")
+	require.Equal(t, "starting genesis\nel_premine_addrs: {\"seed\":\"0x010000abcd\"}\ngenesis failed\n", string(genesisLog))
 
 	executionLog, err := os.ReadFile(filepath.Join(output, "services", "el-1-gqrl-qrysm.log"))
 	require.NoError(t, err)
@@ -67,8 +66,6 @@ func TestCollectDiagnostics(t *testing.T) {
 	manifest := readDiagnosticsManifest(t, filepath.Join(output, "diagnostics.json"))
 	require.True(t, manifest.Inspection.Captured)
 	require.Len(t, manifest.Services, 7)
-	require.True(t, manifest.Services[0].Sanitized)
-	require.False(t, manifest.Services[3].Sanitized)
 }
 
 func TestCollectDiagnosticsKeepsGoingOnFailures(t *testing.T) {
@@ -107,29 +104,6 @@ func TestDiagnosticServicesReadsOnlyUserServices(t *testing.T) {
 		"signer-clef",
 		"vc-1-gqrl-qrysm",
 	}, diagnosticServices(testInspection))
-}
-
-func TestSanitizeProvisioningLog(t *testing.T) {
-	input := strings.Join([]string{
-		"starting",
-		"seed=0x010000abcd",
-		"password=hunter2",
-		"keystore generated",
-		"jwt=deadbeef",
-		"failed to connect",
-		"private_key=abcd",
-		"done",
-	}, "\n") + "\n"
-
-	require.Equal(t, strings.Join([]string{
-		"starting",
-		"[redacted sensitive diagnostic output]",
-		"keystore generated",
-		"[redacted sensitive diagnostic output]",
-		"failed to connect",
-		"[redacted sensitive diagnostic output]",
-		"done",
-	}, "\n")+"\n", sanitizeProvisioningLog(input))
 }
 
 func readDiagnosticsManifest(t *testing.T, path string) diagnosticsManifest {

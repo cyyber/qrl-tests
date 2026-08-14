@@ -20,11 +20,10 @@ type inspectionDiagnostic struct {
 }
 
 type serviceDiagnostic struct {
-	Name      string `json:"name"`
-	File      string `json:"file"`
-	Captured  bool   `json:"captured"`
-	Sanitized bool   `json:"sanitized,omitempty"`
-	Error     string `json:"error,omitempty"`
+	Name     string `json:"name"`
+	File     string `json:"file"`
+	Captured bool   `json:"captured"`
+	Error    string `json:"error,omitempty"`
 }
 
 type diagnosticsManifest struct {
@@ -114,16 +113,9 @@ func collectServiceLog(
 	service string,
 ) (serviceDiagnostic, error) {
 	relativePath := filepath.Join("services", service+".log")
-	diagnostic := serviceDiagnostic{
-		Name:      service,
-		File:      filepath.ToSlash(relativePath),
-		Sanitized: !isRuntimeService(service),
-	}
+	diagnostic := serviceDiagnostic{Name: service, File: filepath.ToSlash(relativePath)}
 
 	output, commandErr := run(ctx, "kurtosis", "service", "logs", "--all", enclaveName, service)
-	if diagnostic.Sanitized {
-		output = sanitizeProvisioningLog(output)
-	}
 	writeErr := writeDiagnostic(filepath.Join(outputDir, relativePath), output)
 	captureErr := errors.Join(commandErr, writeErr)
 	diagnostic.Captured = captureErr == nil
@@ -172,44 +164,6 @@ func isHex(value string) bool {
 		}
 	}
 	return true
-}
-
-func isRuntimeService(name string) bool {
-	return strings.HasPrefix(name, "el-") ||
-		strings.HasPrefix(name, "cl-") ||
-		strings.HasPrefix(name, "vc-") ||
-		strings.HasPrefix(name, "signer-")
-}
-
-func sanitizeProvisioningLog(output string) string {
-	var sanitized strings.Builder
-	redacted := false
-	for line := range strings.Lines(output) {
-		if sensitiveDiagnosticLine(line) {
-			if !redacted {
-				sanitized.WriteString("[redacted sensitive diagnostic output]\n")
-				redacted = true
-			}
-			continue
-		}
-		redacted = false
-		sanitized.WriteString(line)
-	}
-	return sanitized.String()
-}
-
-func sensitiveDiagnosticLine(line string) bool {
-	lower := strings.ToLower(line)
-	for _, marker := range []string{
-		"seed", "password", "jwt", "secret",
-		"private key", "private-key", "private_key",
-		"\"ciphertext\"", "\"crypto\"",
-	} {
-		if strings.Contains(lower, marker) {
-			return true
-		}
-	}
-	return false
 }
 
 func writeDiagnostic(path, output string) error {
