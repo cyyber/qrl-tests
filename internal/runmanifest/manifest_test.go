@@ -116,19 +116,19 @@ func TestFinish(t *testing.T) {
 
 func TestWrite(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "reports", FileName)
-	written := Manifest{
+	want := Manifest{
 		PackageLocator: devnet.PackageLocator,
 		Backend:        devnet.BackendDocker,
 		Lanes:          []Lane{{Name: "execution-abi", Enclave: "qrl-tests", Profile: devnet.ProfileSingle, Seed: 42}},
 		StartedAt:      time.Date(2026, 8, 7, 12, 0, 0, 0, time.UTC),
 	}
-	require.NoError(t, written.Write(path))
+	require.NoError(t, want.Write(path))
 
 	payload, err := os.ReadFile(path)
 	require.NoError(t, err)
-	var read Manifest
-	require.NoError(t, json.Unmarshal(payload, &read))
-	require.Equal(t, written, read)
+	var got Manifest
+	require.NoError(t, json.Unmarshal(payload, &got))
+	require.Equal(t, want, got)
 }
 
 func TestKurtosisVersionParsing(t *testing.T) {
