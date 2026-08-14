@@ -132,7 +132,7 @@ func writeGinkgoReport(t *testing.T, laneDir string, state types.SpecState) {
 	payload, err := json.Marshal([]types.Report{report})
 	require.NoError(t, err)
 	require.NoError(t, os.MkdirAll(laneDir, 0o755))
-	require.NoError(t, os.WriteFile(filepath.Join(laneDir, "report.json"), payload, 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(laneDir, results.ReportFileName), payload, 0o600))
 }
 
 func readRunManifest(t *testing.T, path string) runmanifest.Manifest {

@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 
 	"github.com/cyyber/qrl-tests/e2e/internal/lanes"
+	"github.com/cyyber/qrl-tests/internal/results"
 )
 
 type runPlan struct {
@@ -85,7 +86,7 @@ func ginkgoArguments(lane lanes.Lane, reportDir string, seed int64) []string {
 		"--timeout=" + lane.Timeout.String(),
 		"--output-dir=" + reportDir,
 		"--junit-report=junit.xml",
-		"--json-report=report.json",
+		"--json-report=" + results.ReportFileName,
 	}
 	arguments = append(arguments, lane.Packages()...)
 	// Every suite package defines exactly one Go test entrypoint named TestE2E;

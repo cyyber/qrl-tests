@@ -15,12 +15,12 @@ import (
 )
 
 const (
+	ReportFileName   = "report.json"
 	SummaryFileName  = "summary.json"
 	MarkdownFileName = "summary.md"
 )
 
-// Classifications, from most to least fundamental: a lane gets the first one
-// that applies.
+// Lane result classifications.
 const (
 	ClassBootstrap      = "bootstrap"      // the network never became ready
 	ClassInfrastructure = "infrastructure" // the harness or its tools broke
@@ -40,7 +40,7 @@ type Observation struct {
 
 // Observe reads and decodes the Ginkgo report under reportDir.
 func Observe(reportDir string) Observation {
-	reports, err := readReports(filepath.Join(reportDir, "report.json"))
+	reports, err := readReports(filepath.Join(reportDir, ReportFileName))
 	return Observation{reports: reports, err: err}
 }
 
@@ -75,6 +75,12 @@ type Failure struct {
 	Location string `json:"location,omitempty"`
 }
 
+type classificationInput struct {
+	counts          Counts
+	failures        []Failure
+	unexpectedSkips []string
+}
+
 type suiteSummary struct {
 	Name            string
 	Class           string
@@ -99,6 +105,22 @@ type Summary struct {
 	Result string        `json:"result"`
 	Totals Counts        `json:"totals"`
 	Lanes  []LaneSummary `json:"lanes"`
+}
+
+func (summary suiteSummary) classificationInput() classificationInput {
+	return classificationInput{
+		counts:          summary.Counts,
+		failures:        summary.Failures,
+		unexpectedSkips: summary.UnexpectedSkips,
+	}
+}
+
+func (summary LaneSummary) classificationInput() classificationInput {
+	return classificationInput{
+		counts:          summary.Counts,
+		failures:        summary.Failures,
+		unexpectedSkips: summary.UnexpectedSkips,
+	}
 }
 
 // Summarize writes summary.json and summary.md from the observations captured
@@ -182,7 +204,7 @@ func summarizeSuite(report types.Report) suiteSummary {
 	for _, spec := range report.SpecReports {
 		result.tally(spec)
 	}
-	result.Class = classifyReports([]types.Report{report}, result.Counts, result.Failures, result.UnexpectedSkips, nil)
+	result.Class = classifyReports([]types.Report{report}, result.classificationInput(), nil)
 	return result
 }
 
@@ -196,25 +218,22 @@ func suiteName(report types.Report) string {
 	return "suite"
 }
 
-func (suite *suiteSummary) tally(spec types.SpecReport) {
-	name := strings.Join(append(append([]string{}, spec.ContainerHierarchyTexts...), spec.LeafNodeText), " ")
-	if name == "" {
-		name = spec.LeafNodeType.String()
-	}
+func (summary *suiteSummary) tally(spec types.SpecReport) {
+	name := specName(spec)
 
 	if spec.LeafNodeType == types.NodeTypeIt {
-		suite.Counts.Specs++
+		summary.Counts.Specs++
 		switch spec.State {
 		case types.SpecStatePassed:
-			suite.Counts.Passed++
+			summary.Counts.Passed++
 		case types.SpecStatePending:
-			suite.Counts.Pending++
-			suite.UnexpectedSkips = append(suite.UnexpectedSkips, name)
+			summary.Counts.Pending++
+			summary.UnexpectedSkips = append(summary.UnexpectedSkips, name)
 		case types.SpecStateSkipped:
-			suite.Counts.Skipped++
-			suite.UnexpectedSkips = append(suite.UnexpectedSkips, name)
+			summary.Counts.Skipped++
+			summary.UnexpectedSkips = append(summary.UnexpectedSkips, name)
 		default:
-			suite.Counts.Failed++
+			summary.Counts.Failed++
 		}
 	}
 
@@ -223,8 +242,18 @@ func (suite *suiteSummary) tally(spec types.SpecReport) {
 		if location := spec.Failure.Location.FileName; location != "" {
 			failure.Location = fmt.Sprintf("%s:%d", location, spec.Failure.Location.LineNumber)
 		}
-		suite.Failures = append(suite.Failures, failure)
+		summary.Failures = append(summary.Failures, failure)
 	}
+}
+
+func specName(spec types.SpecReport) string {
+	parts := make([]string, 0, len(spec.ContainerHierarchyTexts)+1)
+	parts = append(parts, spec.ContainerHierarchyTexts...)
+	parts = append(parts, spec.LeafNodeText)
+	if name := strings.Join(parts, " "); name != "" {
+		return name
+	}
+	return spec.LeafNodeType.String()
 }
 
 func (counts *Counts) add(other Counts) {
@@ -252,19 +281,25 @@ func classify(outcome Outcome, summary LaneSummary) string {
 		return ClassInfrastructure
 	}
 
-	return classifyReports(
+	classification := classifyReports(
 		outcome.Observation.reports,
-		summary.Counts,
-		summary.Failures,
-		summary.UnexpectedSkips,
+		summary.classificationInput(),
 		outcome.Err,
 	)
+	if classification == ClassPassed {
+		for _, suite := range summary.suites {
+			if suite.Class != ClassPassed {
+				return suite.Class
+			}
+		}
+	}
+	return classification
 }
 
-func classifyReports(reports []types.Report, counts Counts, failures []Failure, unexpectedSkips []string, err error) string {
+func classifyReports(reports []types.Report, summary classificationInput, err error) string {
 	timedOut := reportTimedOut(reports)
 	interrupted := false
-	for _, failure := range failures {
+	for _, failure := range summary.failures {
 		switch failure.State {
 		case types.SpecStateTimedout.String():
 			timedOut = true
@@ -277,9 +312,9 @@ func classifyReports(reports []types.Report, counts Counts, failures []Failure, 
 		return ClassTimeout
 	case interrupted:
 		return ClassInfrastructure
-	case counts.Failed > 0 || len(failures) > 0:
+	case summary.counts.Failed > 0 || len(summary.failures) > 0:
 		return ClassAssertion
-	case len(unexpectedSkips) > 0:
+	case len(summary.unexpectedSkips) > 0:
 		// Report-backed evidence outranks the bare exit code: ginkgo runs
 		// with --fail-on-pending, so a pending or skipped spec also fails
 		// the process, and that exit says nothing new.
@@ -289,7 +324,7 @@ func classifyReports(reports []types.Report, counts Counts, failures []Failure, 
 	case err != nil:
 		// The test process failed without a failing spec on record.
 		return ClassInfrastructure
-	case counts.Passed == 0:
+	case summary.counts.Passed == 0:
 		// An empty report means the suites never ran.
 		return ClassInfrastructure
 	}

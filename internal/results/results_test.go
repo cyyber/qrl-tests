@@ -43,7 +43,7 @@ func writeReports(t *testing.T, laneDir string, reports ...types.Report) {
 	payload, err := json.Marshal(reports)
 	require.NoError(t, err)
 	require.NoError(t, os.MkdirAll(laneDir, 0o755))
-	require.NoError(t, os.WriteFile(filepath.Join(laneDir, "report.json"), payload, 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(laneDir, ReportFileName), payload, 0o600))
 }
 
 func observedOutcome(name, reportDir string, err error) Outcome {
@@ -213,7 +213,7 @@ func TestSummarizeCorruptReportIncludesDecodeError(t *testing.T) {
 	root := t.TempDir()
 	laneDir := filepath.Join(root, "lanes", "execution-abi")
 	require.NoError(t, os.MkdirAll(laneDir, 0o755))
-	require.NoError(t, os.WriteFile(filepath.Join(laneDir, "report.json"), []byte("{"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(laneDir, ReportFileName), []byte("{"), 0o600))
 
 	summary := summarizeOne(t, root, observedOutcome("execution-abi", laneDir, nil))
 	lane := summary.Lanes[0]
@@ -288,6 +288,27 @@ func TestSummarizeReportsSuitesWithinLane(t *testing.T) {
 	require.NotContains(t, string(markdown), "lane total")
 	require.NotContains(t, string(markdown), "exit status 1")
 	require.Contains(t, string(markdown), "#### Console E2E suite failures")
+}
+
+func TestSummarizeRejectsEmptySuiteWithinLane(t *testing.T) {
+	root := t.TempDir()
+	laneDir := filepath.Join(root, "lanes", "execution")
+	writeReports(t, laneDir,
+		types.Report{
+			SuiteDescription: "Empty E2E suite",
+			SuiteSucceeded:   true,
+		},
+		types.Report{
+			SuiteDescription: "ABI E2E suite",
+			SuiteSucceeded:   true,
+			SpecReports:      []types.SpecReport{spec(types.SpecStatePassed, "encodes calls")},
+		},
+	)
+
+	summary := summarizeOne(t, root, observedOutcome("execution", laneDir, nil))
+	require.Equal(t, ClassInfrastructure, summary.Lanes[0].Class)
+	require.Equal(t, ClassInfrastructure, summary.Lanes[0].suites[0].Class)
+	require.Equal(t, ClassPassed, summary.Lanes[0].suites[1].Class)
 }
 
 func TestSummarizeEmptyReportIsInfrastructure(t *testing.T) {
