@@ -47,7 +47,22 @@ type Outcome struct {
 // CaptureReports reads and stores the lane's Ginkgo reports so later summary
 // generation consumes the same snapshot.
 func (outcome *Outcome) CaptureReports(reportDir string) {
-	outcome.reports, outcome.reportErr = readReports(filepath.Join(reportDir, ReportFileName))
+	outcome.reports, outcome.reportErr = nil, nil
+
+	path := filepath.Join(reportDir, ReportFileName)
+	payload, err := os.ReadFile(path)
+	if err != nil {
+		outcome.reportErr = err
+		return
+	}
+
+	var reports []types.Report
+	if err := json.Unmarshal(payload, &reports); err != nil {
+		outcome.reportErr = fmt.Errorf("decode %s: %w", path, err)
+		return
+	}
+
+	outcome.reports = reports
 }
 
 // Passed reports the verdict represented by this outcome without reading any
@@ -345,17 +360,4 @@ func anyReportFailed(reports []types.Report) bool {
 		}
 	}
 	return false
-}
-
-func readReports(path string) ([]types.Report, error) {
-	payload, err := os.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
-
-	var reports []types.Report
-	if err := json.Unmarshal(payload, &reports); err != nil {
-		return nil, fmt.Errorf("decode %s: %w", path, err)
-	}
-	return reports, nil
 }
