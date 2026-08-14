@@ -68,15 +68,17 @@ type Manifest struct {
 	Backend          devnet.Backend `json:"backend"`
 	Lanes            []Lane         `json:"lanes"`
 	Versions         Versions       `json:"versions"`
-	GitHub           GitHub         `json:"github"`
+	GitHub           GitHub         `json:"github,omitzero"`
 	StartedAt        time.Time      `json:"started_at"`
 	FinishedAt       time.Time      `json:"finished_at,omitzero"`
 	Result           string         `json:"result,omitempty"`
 }
 
+type commandFunc func(context.Context, string, ...string) (string, error)
+
 type dependencies struct {
 	environ func(string) string
-	command func(ctx context.Context, name string, arguments ...string) (string, error)
+	command commandFunc
 	now     func() time.Time
 }
 
@@ -117,12 +119,20 @@ func collect(ctx context.Context, testsDir string, manifest Manifest, deps depen
 
 // Finish records the per-lane and overall outcomes; lanes without an entry in
 // results keep an empty result, marking runs that never reached them.
-func (manifest *Manifest) Finish(results map[string]string, finishedAt time.Time) {
+func (manifest *Manifest) Finish(results map[string]bool, finishedAt time.Time) {
 	overall := "passed"
 	for index := range manifest.Lanes {
 		lane := &manifest.Lanes[index]
-		lane.Result = results[lane.Name]
-		if lane.Result != "passed" {
+		passed, found := results[lane.Name]
+		if !found {
+			lane.Result = ""
+			overall = "failed"
+			continue
+		}
+		if passed {
+			lane.Result = "passed"
+		} else {
+			lane.Result = "failed"
 			overall = "failed"
 		}
 	}
@@ -145,12 +155,12 @@ func (manifest Manifest) Write(path string) error {
 	return nil
 }
 
-func dockerVersion(ctx context.Context, command func(context.Context, string, ...string) (string, error)) string {
+func dockerVersion(ctx context.Context, command commandFunc) string {
 	version, _ := command(ctx, "docker", "version", "--format", "{{.Server.Version}}")
 	return version
 }
 
-func kurtosisVersion(ctx context.Context, command func(context.Context, string, ...string) (string, error)) string {
+func kurtosisVersion(ctx context.Context, command commandFunc) string {
 	output, _ := command(ctx, "kurtosis", "version")
 	for line := range strings.Lines(output) {
 		if version, found := strings.CutPrefix(line, "CLI Version:"); found {

@@ -85,14 +85,15 @@ func TestFinish(t *testing.T) {
 	manifest := Manifest{Lanes: []Lane{{Name: "execution-abi"}, {Name: "consensus"}}}
 	finished := time.Date(2026, 8, 7, 13, 0, 0, 0, time.UTC)
 
-	manifest.Finish(map[string]string{"execution-abi": "passed", "consensus": "passed"}, finished)
+	manifest.Finish(map[string]bool{"execution-abi": true, "consensus": true}, finished)
 	require.Equal(t, "passed", manifest.Result)
 	require.Equal(t, finished, manifest.FinishedAt)
 
-	manifest.Finish(map[string]string{"execution-abi": "passed", "consensus": "failed"}, finished)
+	manifest.Finish(map[string]bool{"execution-abi": true, "consensus": false}, finished)
 	require.Equal(t, "failed", manifest.Result)
+	require.Equal(t, "failed", manifest.Lanes[1].Result)
 
-	manifest.Finish(map[string]string{"execution-abi": "passed"}, finished)
+	manifest.Finish(map[string]bool{"execution-abi": true}, finished)
 	require.Equal(t, "failed", manifest.Result, "a lane without a result never ran")
 	require.Empty(t, manifest.Lanes[1].Result)
 }
@@ -127,6 +128,7 @@ func TestManifestOmitsUnsetSections(t *testing.T) {
 	require.NoError(t, err)
 	body := string(payload)
 	require.NotContains(t, body, "finished_at")
+	require.NotContains(t, body, "github")
 	require.NotContains(t, body, "images")
 	require.NotContains(t, body, "custom_parameters")
 }

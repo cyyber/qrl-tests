@@ -205,12 +205,9 @@ func (runner *Runner) run(ctx context.Context, selected []lanes.Lane, mode runMo
 	// The summary is the verdict authority: a lane whose process exited
 	// cleanly but whose report is missing or unusable is a failure, in the
 	// manifest and in the exit code alike.
-	laneResults := make(map[string]string, len(summary.Lanes))
+	laneResults := make(map[string]bool, len(summary.Lanes))
 	for _, lane := range summary.Lanes {
-		laneResults[lane.Name] = "failed"
-		if lane.Class == results.ClassPassed {
-			laneResults[lane.Name] = "passed"
-		}
+		laneResults[lane.Name] = lane.Class == results.ClassPassed
 	}
 	record.Finish(laneResults, time.Now())
 	if manifestErr != nil || summarizeErr != nil {
