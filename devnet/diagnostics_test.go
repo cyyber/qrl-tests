@@ -94,7 +94,7 @@ func TestCollectDiagnosticsKeepsGoingOnFailures(t *testing.T) {
 	require.True(t, manifest.Services[3].Captured)
 }
 
-func TestDiagnosticServicesReadsOnlyUserServices(t *testing.T) {
+func TestServiceNamesFromInspectionReadsOnlyUserServices(t *testing.T) {
 	require.Equal(t, []string{
 		"run-generate-genesis",
 		"clef-keystore-generation-el-clef-keystore",
@@ -103,7 +103,7 @@ func TestDiagnosticServicesReadsOnlyUserServices(t *testing.T) {
 		"cl-1-qrysm-gqrl",
 		"signer-clef",
 		"vc-1-gqrl-qrysm",
-	}, diagnosticServices(testInspection))
+	}, serviceNamesFromInspection(testInspection))
 }
 
 func readDiagnosticsManifest(t *testing.T, path string) diagnosticsManifest {

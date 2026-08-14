@@ -90,24 +90,24 @@ func collectServiceLogs(
 	outputDir,
 	inspectionOutput string,
 ) ([]serviceDiagnostic, error) {
-	services := diagnosticServices(inspectionOutput)
-	if len(services) == 0 {
+	serviceNames := serviceNamesFromInspection(inspectionOutput)
+	if len(serviceNames) == 0 {
 		return nil, nil
 	}
 	if err := os.MkdirAll(filepath.Join(outputDir, "services"), 0o755); err != nil {
 		return nil, fmt.Errorf("create service diagnostics directory: %w", err)
 	}
 
-	serviceDiagnostics := make([]serviceDiagnostic, 0, len(services))
-	var problems []error
-	for _, service := range services {
+	serviceDiagnostics := make([]serviceDiagnostic, 0, len(serviceNames))
+	var collectionErrors []error
+	for _, service := range serviceNames {
 		diagnostic, err := collectServiceLog(ctx, run, enclaveName, outputDir, service)
 		serviceDiagnostics = append(serviceDiagnostics, diagnostic)
 		if err != nil {
-			problems = append(problems, err)
+			collectionErrors = append(collectionErrors, err)
 		}
 	}
-	return serviceDiagnostics, errors.Join(problems...)
+	return serviceDiagnostics, errors.Join(collectionErrors...)
 }
 
 func collectServiceLog(
@@ -135,7 +135,7 @@ func collectServiceLog(
 	return diagnostic, errors.Join(commandErr, writeErr)
 }
 
-func diagnosticServices(inspection string) []string {
+func serviceNamesFromInspection(inspection string) []string {
 	var services []string
 	inServices := false
 	for line := range strings.Lines(inspection) {
