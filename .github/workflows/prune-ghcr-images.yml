@@ -1,4 +1,4 @@
-name: ghcr-retention
+name: Prune old GHCR images
 
 on:
   schedule:
