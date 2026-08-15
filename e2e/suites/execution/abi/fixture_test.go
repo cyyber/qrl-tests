@@ -52,15 +52,19 @@ type scenarioInputs struct {
 	note string
 }
 
+func mustSucceed[T any](value T, err error) T {
+	ginkgo.GinkgoHelper()
+	gomega.Expect(err).NotTo(gomega.HaveOccurred())
+	return value
+}
+
 func setupLiveSuite(ctx context.Context) *liveSuite {
 	ginkgo.GinkgoHelper()
 
 	runtime := testsuite.LoadRuntime()
-	node, err := runtime.PrimaryWithWebSocket(ctx)
-	gomega.Expect(err).NotTo(gomega.HaveOccurred())
+	node := mustSucceed(runtime.PrimaryWithWebSocket(ctx))
 
-	transactor, err := bind.NewKeyedTransactorWithChainID(node.Wallet, node.ChainID)
-	gomega.Expect(err).NotTo(gomega.HaveOccurred())
+	transactor := mustSucceed(bind.NewKeyedTransactorWithChainID(node.Wallet, node.ChainID))
 
 	inputs := scenarioInputs{
 		amount: new(big.Int).Add(new(big.Int).Lsh(big.NewInt(1), 511), big.NewInt(0x1234)),
@@ -73,8 +77,7 @@ func setupLiveSuite(ctx context.Context) *liveSuite {
 
 	inputs.payload = patternedBytes(129, 7)
 
-	parsed, err := abifixture.EventEmitterMetaData.GetAbi()
-	gomega.Expect(err).NotTo(gomega.HaveOccurred())
+	parsed := mustSucceed(abifixture.EventEmitterMetaData.GetAbi())
 
 	return &liveSuite{
 		client:      node.Execution,
@@ -130,8 +133,7 @@ func (suite *liveSuite) deployEventEmitter(ctx context.Context) *liveFixture {
 	gomega.Expect(err).NotTo(gomega.HaveOccurred(), "pack canonical Deployed event data")
 	gomega.Expect(log.Data).To(gomega.Equal(wantDeploymentData))
 
-	deployedEvent, err := binding.ParseDeployed(*log)
-	gomega.Expect(err).NotTo(gomega.HaveOccurred())
+	deployedEvent := mustSucceed(binding.ParseDeployed(*log))
 	gomega.Expect(deployedEvent.Value).To(gomega.Equal(initial))
 	gomega.Expect(deployedEvent.Note).To(gomega.Equal(deploymentNote))
 	gomega.Expect(deployedEvent.Payload).To(gomega.Equal(deploymentPayload))

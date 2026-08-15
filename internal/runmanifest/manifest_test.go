@@ -4,13 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"os"
 	"path/filepath"
 	"runtime"
 	"testing"
 	"time"
 
 	"github.com/cyyber/qrl-tests/devnet"
+	"github.com/cyyber/qrl-tests/internal/testutil"
 	"github.com/stretchr/testify/require"
 )
 
@@ -124,10 +124,7 @@ func TestWrite(t *testing.T) {
 	}
 	require.NoError(t, want.Write(path))
 
-	payload, err := os.ReadFile(path)
-	require.NoError(t, err)
-	var got Manifest
-	require.NoError(t, json.Unmarshal(payload, &got))
+	got := testutil.ReadJSON[Manifest](t, path)
 	require.Equal(t, want, got)
 }
 

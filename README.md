@@ -18,11 +18,25 @@ backend.
 
 ```
 reports/
-├── run-manifest.json     # provenance and replay metadata for the run
-├── summary.json          # spec counts and classified failures
-├── summary.md            # Markdown result summary
-└── lanes/<lane>/         # Ginkgo reports, output log, and resolved environment manifest
+├── run-manifest.json         # provenance and replay metadata for the run
+├── summary.json              # spec counts and classified failures
+├── summary.md                # Markdown result summary
+└── lanes/<lane>/
+    ├── report.json           # Ginkgo test report
+    ├── output.log            # test command output
+    ├── manifest.json         # lane, profile, and network environment
+    └── diagnostics/          # created only when the lane fails
+        ├── diagnostics.json   # capture status and errors
+        ├── inspect.txt        # Kurtosis enclave inspection
+        └── services/
+            └── <service>.log  # log for each discovered service
 ```
+
+Diagnostics are collected for post-creation start failures and for test or
+harness failures after a network is acquired. Runner-owned networks are
+diagnosed before cleanup, while attached networks are left running. For
+cleanup-only failures, diagnostics are collected after the failed cleanup
+attempt. Diagnostic and cleanup errors do not replace the original failure.
 
 For iterative development:
 

@@ -106,8 +106,7 @@ func (fixture *liveFixture) assertCallRoundTrips(ctx context.Context) {
 	// Hyperion: function observe() external view returns (uint512 value, address caller);
 	// Goal: the generated view returns the constructor state and original caller.
 	ginkgo.By("reading constructor state through a generated view")
-	observed, err := fixture.binding.Observe(callOpts)
-	gomega.Expect(err).NotTo(gomega.HaveOccurred())
+	observed := mustSucceed(fixture.binding.Observe(callOpts))
 	gomega.Expect(observed.Value).To(gomega.Equal(fixture.initial))
 	gomega.Expect(observed.Caller).To(gomega.Equal(fixture.from))
 
@@ -120,11 +119,9 @@ func (fixture *liveFixture) assertCallRoundTrips(ctx context.Context) {
 	integerMethod := fixture.contractABI.Methods["transform0"]
 	gomega.Expect(stringMethod.Sig).To(gomega.Equal("transform(string)"))
 	gomega.Expect(integerMethod.Sig).To(gomega.Equal("transform(uint16)"))
-	transformedString, err := fixture.binding.Transform(callOpts, inputs.note)
-	gomega.Expect(err).NotTo(gomega.HaveOccurred())
+	transformedString := mustSucceed(fixture.binding.Transform(callOpts, inputs.note))
 	gomega.Expect(transformedString).To(gomega.Equal(inputs.note))
-	transformedInteger, err := fixture.binding.Transform0(callOpts, 0xfffe)
-	gomega.Expect(err).NotTo(gomega.HaveOccurred())
+	transformedInteger := mustSucceed(fixture.binding.Transform0(callOpts, 0xfffe))
 	gomega.Expect(transformedInteger).To(gomega.Equal(uint16(0xffff)))
 }
 
@@ -144,8 +141,7 @@ func (fixture *liveFixture) assertLibraryCall(ctx context.Context) {
 	input := fixture.inputs.amount
 	want := new(big.Int).Add(input, big.NewInt(1))
 	fixture.assertCall(ctx, "addViaLibrary", []any{input}, []any{want})
-	got, err := fixture.binding.AddViaLibrary(fixture.callOpts(ctx), input)
-	gomega.Expect(err).NotTo(gomega.HaveOccurred())
+	got := mustSucceed(fixture.binding.AddViaLibrary(fixture.callOpts(ctx), input))
 	gomega.Expect(got).To(gomega.Equal(want))
 }
 

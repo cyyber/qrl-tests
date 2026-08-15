@@ -16,7 +16,8 @@ import (
 )
 
 const (
-	laneCleanupTimeout = 2 * time.Minute
+	laneCleanupTimeout     = 2 * time.Minute
+	laneDiagnosticsTimeout = 2 * time.Minute
 
 	// laneReportSlack extends the lane context past ginkgo's own --timeout so
 	// it can report and clean up before the context interrupts the process.
@@ -45,11 +46,12 @@ func (runner *Runner) acquireLane(ctx context.Context, plan runPlan, lane laneRu
 	}
 
 	options := devnet.StartOptions{
-		EnclaveName: lane.enclaveName,
-		Backend:     runner.configuration.Backend,
-		Images:      runner.configuration.Images,
-		Parameters:  runner.configuration.Parameters,
-		Profile:     lane.definition.Profile,
+		EnclaveName:           lane.enclaveName,
+		Backend:               runner.configuration.Backend,
+		Images:                runner.configuration.Images,
+		Parameters:            runner.configuration.Parameters,
+		Profile:               lane.definition.Profile,
+		FailureDiagnosticsDir: filepath.Join(lane.reportDir, diagnosticsDirectory),
 	}
 
 	startCtx, cancelStart := context.WithTimeout(ctx, runner.configuration.StartTimeout)
@@ -90,10 +92,34 @@ func (runner *Runner) executeLane(ctx context.Context, plan runPlan, lane laneRu
 	}
 	var logFile *os.File
 	defer func() {
-		outcome.Err = errors.Join(outcome.Err, lease.close())
 		if logFile != nil {
 			outcome.Err = errors.Join(outcome.Err, logFile.Close())
 		}
+
+		collectDiagnostics := func() {
+			// A fresh context: the lane context is already canceled when the lane
+			// timed out, which is exactly when diagnostics matter most.
+			collectCtx, cancel := context.WithTimeout(context.Background(), laneDiagnosticsTimeout)
+			defer cancel()
+			if diagnosticsErr := runner.networks.CollectDiagnostics(
+				collectCtx,
+				lease.environment.EnclaveName,
+				filepath.Join(lane.reportDir, diagnosticsDirectory),
+			); diagnosticsErr != nil {
+				outcome.Err = errors.Join(outcome.Err, fmt.Errorf("collect diagnostics: %w", diagnosticsErr))
+			}
+		}
+
+		failedBeforeCleanup := !outcome.Passed()
+		if failedBeforeCleanup {
+			collectDiagnostics()
+		}
+
+		cleanupErr := lease.close()
+		if cleanupErr != nil && !failedBeforeCleanup {
+			collectDiagnostics()
+		}
+		outcome.Err = errors.Join(outcome.Err, cleanupErr)
 	}()
 
 	if err := os.MkdirAll(lane.reportDir, 0o755); err != nil {

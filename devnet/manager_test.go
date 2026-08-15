@@ -4,10 +4,13 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/cyyber/qrl-tests/devnet/internal/kurtosis"
 	"github.com/stretchr/testify/require"
 )
+
+const failureDiagnosticsDir = "reports/lanes/execution-abi/diagnostics"
 
 type fakeClient struct {
 	exists         bool
@@ -18,6 +21,7 @@ type fakeClient struct {
 	createdName    string
 	packageLocator string
 	destroyed      bool
+	onDestroy      func(context.Context)
 }
 
 func (client *fakeClient) EnclaveExists(context.Context, string) (bool, error) {
@@ -38,7 +42,10 @@ func (client *fakeClient) Services(context.Context, string) (map[string]kurtosis
 	return client.services, nil
 }
 
-func (client *fakeClient) DestroyEnclave(context.Context, string) error {
+func (client *fakeClient) DestroyEnclave(ctx context.Context, _ string) error {
+	if client.onDestroy != nil {
+		client.onDestroy(ctx)
+	}
 	if client.destroyErr != nil {
 		return client.destroyErr
 	}
@@ -50,6 +57,9 @@ func testManager(client *fakeClient) *Manager {
 	return &Manager{
 		newClient: func() (kurtosisClient, error) { return client, nil },
 		probe:     func(context.Context, string, string) error { return nil },
+		collectDiagnostics: func(context.Context, string, string) error {
+			panic("unexpected diagnostics collection")
+		},
 	}
 }
 
@@ -68,21 +78,119 @@ func singleParticipant() map[string]kurtosis.Service {
 	}
 }
 
-func TestStartCleansCreatedEnclave(t *testing.T) {
-	client := &fakeClient{runErr: errors.New("package failed")}
+func requireLiveBoundedContext(t *testing.T, ctx context.Context, timeout time.Duration) {
+	t.Helper()
+	require.NoError(t, ctx.Err())
+	deadline, ok := ctx.Deadline()
+	require.True(t, ok, "recovery context must have a deadline")
+	remaining := time.Until(deadline)
+	require.Positive(t, remaining)
+	require.LessOrEqual(t, remaining, timeout)
+}
 
-	_, err := testManager(client).Start(t.Context(), startOptions())
+func TestStartCleansUpEnclaveAfterPostCreateFailure(t *testing.T) {
+	tests := []struct {
+		name      string
+		client    *fakeClient
+		wantError string
+	}{
+		{
+			name:      "package run",
+			client:    &fakeClient{runErr: errors.New("package failed")},
+			wantError: "run pinned qrl-package: package failed",
+		},
+		{
+			name:      "endpoint resolution",
+			client:    new(fakeClient),
+			wantError: "resolve network endpoints: no qrl-package participants found",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := testManager(test.client).Start(t.Context(), startOptions())
+			require.ErrorContains(t, err, test.wantError)
+			require.True(t, test.client.destroyed)
+		})
+	}
+}
+
+func TestStartCollectsDiagnosticsBeforeCleanup(t *testing.T) {
+	client := &fakeClient{runErr: errors.New("package failed")}
+	manager := testManager(client)
+	diagnosticsCalls := 0
+	manager.collectDiagnostics = func(_ context.Context, enclave, outputDir string) error {
+		require.False(t, client.destroyed, "diagnostics must run before the enclave is destroyed")
+		require.Equal(t, "failed-start", enclave)
+		require.Equal(t, failureDiagnosticsDir, outputDir)
+		diagnosticsCalls++
+		return nil
+	}
+
+	options := startOptions()
+	options.FailureDiagnosticsDir = failureDiagnosticsDir
+	_, err := manager.Start(t.Context(), options)
 	require.ErrorContains(t, err, "package failed")
+	require.Equal(t, 1, diagnosticsCalls)
+	require.True(t, client.destroyed)
+}
+
+func TestStartReportsDiagnosticsFailureAlongsideCause(t *testing.T) {
+	client := &fakeClient{runErr: errors.New("package failed")}
+	manager := testManager(client)
+	manager.collectDiagnostics = func(context.Context, string, string) error {
+		return errors.New("logs unavailable")
+	}
+
+	options := startOptions()
+	options.FailureDiagnosticsDir = failureDiagnosticsDir
+	_, err := manager.Start(t.Context(), options)
+	require.ErrorContains(t, err, "package failed")
+	require.ErrorContains(t, err, "collect start diagnostics: logs unavailable")
+	require.True(t, client.destroyed, "a diagnostics failure must not leak the enclave")
+}
+
+func TestStartRecoveryUsesLiveBoundedContextsAfterCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	client := &fakeClient{services: singleParticipant()}
+	destroyCalls := 0
+	client.onDestroy = func(ctx context.Context) {
+		requireLiveBoundedContext(t, ctx, startCleanupTimeout)
+		destroyCalls++
+	}
+	manager := testManager(client)
+	manager.probe = func(context.Context, string, string) error {
+		cancel()
+		return errors.New("not ready")
+	}
+	diagnosticsCalls := 0
+	manager.collectDiagnostics = func(ctx context.Context, _, _ string) error {
+		requireLiveBoundedContext(t, ctx, startDiagnosticsTimeout)
+		diagnosticsCalls++
+		return nil
+	}
+
+	options := startOptions()
+	options.FailureDiagnosticsDir = failureDiagnosticsDir
+	_, err := manager.Start(ctx, options)
+	require.ErrorContains(t, err, "wait for network readiness: not ready")
+	require.ErrorIs(t, err, context.Canceled)
+	require.Equal(t, 1, diagnosticsCalls)
+	require.Equal(t, 1, destroyCalls)
 	require.True(t, client.destroyed)
 }
 
 func TestStartCreateFailureSkipsCleanup(t *testing.T) {
 	client := &fakeClient{createErr: errors.New("create failed")}
+	options := startOptions()
+	options.FailureDiagnosticsDir = failureDiagnosticsDir
 
-	_, err := testManager(client).Start(t.Context(), startOptions())
+	_, err := testManager(client).Start(t.Context(), options)
 	require.ErrorContains(t, err, "create failed")
 	require.False(t, client.destroyed)
 	require.Equal(t, "failed-start", client.createdName)
+	require.Empty(t, client.packageLocator)
 }
 
 func TestStartReportsCleanupFailure(t *testing.T) {
@@ -102,6 +210,7 @@ func TestStartDefaults(t *testing.T) {
 	options := startOptions()
 	options.EnclaveName = ""
 	options.Backend = ""
+	options.Profile = ""
 
 	environment, err := testManager(client).Start(t.Context(), options)
 	require.NoError(t, err)

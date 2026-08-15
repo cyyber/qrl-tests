@@ -61,16 +61,14 @@ func (fixture *liveFixture) assertEvent(
 
 	filter := func(rules [][]any) []types.Log {
 		ginkgo.GinkgoHelper()
-		topics, err := abi.MakeTopics(append([][]any{{definition.ID}}, rules...)...)
-		gomega.Expect(err).NotTo(gomega.HaveOccurred())
+		topics := mustSucceed(abi.MakeTopics(append([][]any{{definition.ID}}, rules...)...))
 		block := new(big.Int).SetUint64(expectation.log.BlockNumber)
-		logs, err := fixture.client.FilterLogs(ctx, qrl.FilterQuery{
+		logs := mustSucceed(fixture.client.FilterLogs(ctx, qrl.FilterQuery{
 			FromBlock: block,
 			ToBlock:   block,
 			Addresses: []common.Address{expectation.log.Address},
 			Topics:    topics,
-		})
-		gomega.Expect(err).NotTo(gomega.HaveOccurred())
+		}))
 		return logs
 	}
 	filtered := filter(expectation.filter)
@@ -86,7 +84,7 @@ func (fixture *liveFixture) emitStoredEvents(ctx context.Context) (*types.Receip
 	ginkgo.GinkgoHelper()
 	auth := fixture.transactOpts(ctx)
 	inputs := fixture.inputs
-	storeTx, err := fixture.binding.Store(
+	storeTx := mustSucceed(fixture.binding.Store(
 		auth,
 		inputs.amount,
 		inputs.delta,
@@ -95,8 +93,7 @@ func (fixture *liveFixture) emitStoredEvents(ctx context.Context) (*types.Receip
 		inputs.payload,
 		inputs.note,
 		true,
-	)
-	gomega.Expect(err).NotTo(gomega.HaveOccurred())
+	))
 	receipt := fixture.waitSuccessfulTransaction(ctx, storeTx)
 	gomega.Expect(receipt.Logs).To(gomega.HaveLen(2))
 	return receipt, auth.From
@@ -129,13 +126,12 @@ func (fixture *liveFixture) assertStoredEventAndFilters(ctx context.Context) {
 	filterOpts := &bind.FilterOpts{Start: end, End: &end, Context: ctx}
 	wrongRecipient := sender
 	wrongRecipient[0] ^= 0xff
-	iterator, err := fixture.binding.FilterStored(
+	iterator := mustSucceed(fixture.binding.FilterStored(
 		filterOpts,
 		[]common.Address{wrongRecipient, sender},
 		nil,
 		[]*big.Int{inputs.delta},
-	)
-	gomega.Expect(err).NotTo(gomega.HaveOccurred())
+	))
 	defer iterator.Close()
 	gomega.Expect(iterator.Next()).To(gomega.BeTrue(), "generated Stored OR/wildcard filter missed the transaction")
 	stored := iterator.Event
@@ -205,17 +201,15 @@ func (fixture *liveFixture) assertDynamicEventAndFilters(ctx context.Context) {
 		},
 		filter: [][]any{{inputs.payload}, {inputs.note}},
 	})
-	dynamic, err := fixture.binding.ParseDynamic(*receipt.Logs[1])
-	gomega.Expect(err).NotTo(gomega.HaveOccurred())
+	dynamic := mustSucceed(fixture.binding.ParseDynamic(*receipt.Logs[1]))
 	gomega.Expect(dynamic.Payload).To(gomega.Equal(payloadHash))
 	gomega.Expect(dynamic.Note).To(gomega.Equal(noteHash))
 	gomega.Expect(dynamic.Amount).To(gomega.Equal(inputs.amount))
-	dynamicIterator, err := fixture.binding.FilterDynamic(
+	dynamicIterator := mustSucceed(fixture.binding.FilterDynamic(
 		filterOpts,
 		[][]byte{[]byte("not the payload"), inputs.payload},
 		[]string{inputs.note},
-	)
-	gomega.Expect(err).NotTo(gomega.HaveOccurred())
+	))
 	defer dynamicIterator.Close()
 	gomega.Expect(dynamicIterator.Next()).To(gomega.BeTrue(), "generated Dynamic OR filter missed the transaction")
 	gomega.Expect(dynamicIterator.Event.Raw.TxHash).To(gomega.Equal(receipt.TxHash))
@@ -249,14 +243,13 @@ func (fixture *liveFixture) assertCompositeEvent(ctx context.Context) {
 	fixedNumbers := [3]uint16{0, 0xffff, 0x1234}
 	fixedStrings := [2]string{"", inputs.note}
 	mixed := [2][]uint16{{}, {1, 0xffff}}
-	compositeTx, err := fixture.binding.EmitComposite(
+	compositeTx := mustSucceed(fixture.binding.EmitComposite(
 		fixture.transactOpts(ctx),
 		record,
 		fixedNumbers,
 		fixedStrings,
 		mixed,
-	)
-	gomega.Expect(err).NotTo(gomega.HaveOccurred())
+	))
 	compositeReceipt := fixture.waitSuccessfulTransaction(ctx, compositeTx)
 	gomega.Expect(compositeReceipt.Logs).To(gomega.HaveLen(1))
 	fixture.assertEvent(ctx, eventExpectation{
@@ -283,8 +276,7 @@ func (fixture *liveFixture) assertCompositeEvent(ctx context.Context) {
 			"mixed":        mixed,
 		},
 	})
-	composite, err := fixture.binding.ParseComposite(*compositeReceipt.Logs[0])
-	gomega.Expect(err).NotTo(gomega.HaveOccurred())
+	composite := mustSucceed(fixture.binding.ParseComposite(*compositeReceipt.Logs[0]))
 	gomega.Expect(composite.Record).To(gomega.Equal(record))
 	gomega.Expect(composite.FixedNumbers).To(gomega.Equal(fixedNumbers))
 	gomega.Expect(composite.FixedStrings).To(gomega.Equal(fixedStrings))
@@ -307,8 +299,7 @@ func (fixture *liveFixture) assertRecordSeenEvent(ctx context.Context) {
 		Recipient: fixture.from,
 		Tag:       fixture.inputs.tag,
 	}
-	tx, err := fixture.binding.EmitRecordSeen(fixture.transactOpts(ctx), record)
-	gomega.Expect(err).NotTo(gomega.HaveOccurred())
+	tx := mustSucceed(fixture.binding.EmitRecordSeen(fixture.transactOpts(ctx), record))
 	receipt := fixture.waitSuccessfulTransaction(ctx, tx)
 	gomega.Expect(receipt.Logs).To(gomega.HaveLen(1))
 
@@ -336,8 +327,7 @@ func (fixture *liveFixture) assertAnonymousEvent(ctx context.Context) {
 	// events, so the node-side encoding is asserted on the raw log.
 	ginkgo.By("emitting an anonymous event without a signature topic")
 	marker, value := uint16(0x1234), fixture.inputs.amount
-	tx, err := fixture.binding.EmitPinged(fixture.transactOpts(ctx), marker, value)
-	gomega.Expect(err).NotTo(gomega.HaveOccurred())
+	tx := mustSucceed(fixture.binding.EmitPinged(fixture.transactOpts(ctx), marker, value))
 	receipt := fixture.waitSuccessfulTransaction(ctx, tx)
 	gomega.Expect(receipt.Logs).To(gomega.HaveLen(1))
 
@@ -362,13 +352,12 @@ func (fixture *liveFixture) assertIndexedScalarEvent(ctx context.Context) {
 	// extension, and generated parsing plus filters recover their values.
 	ginkgo.By("encoding and filtering indexed scalar event values")
 	code, delta := [5]byte{0x00, 0x7f, 0x80, 0xfe, 0xff}, int16(-321)
-	indexedTx, err := fixture.binding.EmitIndexedScalars(
+	indexedTx := mustSucceed(fixture.binding.EmitIndexedScalars(
 		fixture.transactOpts(ctx),
 		false,
 		code,
 		delta,
-	)
-	gomega.Expect(err).NotTo(gomega.HaveOccurred())
+	))
 	indexedReceipt := fixture.waitSuccessfulTransaction(ctx, indexedTx)
 	gomega.Expect(indexedReceipt.Logs).To(gomega.HaveLen(1))
 	fixture.assertEvent(ctx, eventExpectation{
@@ -388,8 +377,7 @@ func (fixture *liveFixture) assertIndexedScalarEvent(ctx context.Context) {
 		filter: [][]any{{true, false}, {code}, {delta}},
 		reject: [][]any{{false}, {code}, {int16(321)}},
 	})
-	indexed, err := fixture.binding.ParseIndexedScalars(*indexedReceipt.Logs[0])
-	gomega.Expect(err).NotTo(gomega.HaveOccurred())
+	indexed := mustSucceed(fixture.binding.ParseIndexedScalars(*indexedReceipt.Logs[0]))
 	gomega.Expect(indexed.Flag).To(gomega.BeFalse())
 	gomega.Expect(indexed.Code).To(gomega.Equal(code))
 	gomega.Expect(indexed.Delta).To(gomega.Equal(delta))
@@ -419,8 +407,7 @@ func (fixture *liveFixture) assertOverloadedEvents(ctx context.Context) {
 	gomega.Expect(fixture.contractABI.Events["Transformed0"].Sig).To(
 		gomega.Equal("Transformed(string)"),
 	)
-	stringTx, err := fixture.binding.EmitTransformed(auth, inputs.note)
-	gomega.Expect(err).NotTo(gomega.HaveOccurred())
+	stringTx := mustSucceed(fixture.binding.EmitTransformed(auth, inputs.note))
 	stringReceipt := fixture.waitSuccessfulTransaction(ctx, stringTx)
 	gomega.Expect(stringReceipt.Logs).To(gomega.HaveLen(1))
 	fixture.assertEvent(ctx, eventExpectation{
@@ -432,13 +419,11 @@ func (fixture *liveFixture) assertOverloadedEvents(ctx context.Context) {
 		},
 		want: map[string]any{"value": inputs.note},
 	})
-	stringEvent, err := fixture.binding.ParseTransformed0(*stringReceipt.Logs[0])
-	gomega.Expect(err).NotTo(gomega.HaveOccurred())
+	stringEvent := mustSucceed(fixture.binding.ParseTransformed0(*stringReceipt.Logs[0]))
 	gomega.Expect(stringEvent.Value).To(gomega.Equal(inputs.note))
 
 	const transformedInteger = uint16(0x1234)
-	integerTx, err := fixture.binding.EmitTransformed0(auth, transformedInteger)
-	gomega.Expect(err).NotTo(gomega.HaveOccurred())
+	integerTx := mustSucceed(fixture.binding.EmitTransformed0(auth, transformedInteger))
 	integerReceipt := fixture.waitSuccessfulTransaction(ctx, integerTx)
 	gomega.Expect(integerReceipt.Logs).To(gomega.HaveLen(1))
 	fixture.assertEvent(ctx, eventExpectation{
@@ -450,7 +435,6 @@ func (fixture *liveFixture) assertOverloadedEvents(ctx context.Context) {
 		},
 		want: map[string]any{"value": transformedInteger},
 	})
-	integerEvent, err := fixture.binding.ParseTransformed(*integerReceipt.Logs[0])
-	gomega.Expect(err).NotTo(gomega.HaveOccurred())
+	integerEvent := mustSucceed(fixture.binding.ParseTransformed(*integerReceipt.Logs[0]))
 	gomega.Expect(integerEvent.Value).To(gomega.Equal(transformedInteger))
 }
