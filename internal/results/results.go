@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/cyyber/qrl-tests/internal/jsonfile"
 	"github.com/onsi/ginkgo/v2/types"
 )
 
@@ -171,15 +172,8 @@ func Summarize(reportRoot string, outcomes []Outcome) (Summary, error) {
 	// The assembled summary always comes back, even when persisting it
 	// fails: the verdict must never degrade to process status because a
 	// file could not be written.
-	payload, err := json.MarshalIndent(summary, "", "  ")
-	if err != nil {
-		return summary, fmt.Errorf("encode summary: %w", err)
-	}
-	if err := os.MkdirAll(reportRoot, 0o755); err != nil {
-		return summary, fmt.Errorf("create report directory: %w", err)
-	}
-	if err := os.WriteFile(filepath.Join(reportRoot, SummaryFileName), append(payload, '\n'), 0o600); err != nil {
-		return summary, fmt.Errorf("write summary: %w", err)
+	if err := jsonfile.Write(filepath.Join(reportRoot, SummaryFileName), summary, "summary"); err != nil {
+		return summary, err
 	}
 	if err := os.WriteFile(filepath.Join(reportRoot, MarkdownFileName), []byte(summary.markdown()), 0o600); err != nil {
 		return summary, fmt.Errorf("write markdown summary: %w", err)

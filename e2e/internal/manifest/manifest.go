@@ -6,9 +6,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
 
 	"github.com/cyyber/qrl-tests/devnet"
+	"github.com/cyyber/qrl-tests/internal/jsonfile"
 )
 
 const (
@@ -27,18 +27,7 @@ func Write(path string, manifest Manifest) error {
 		return err
 	}
 
-	payload, err := json.MarshalIndent(manifest, "", "  ")
-	if err != nil {
-		return fmt.Errorf("encode test manifest: %w", err)
-	}
-
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return fmt.Errorf("create test manifest directory: %w", err)
-	}
-	if err := os.WriteFile(path, append(payload, '\n'), 0o600); err != nil {
-		return fmt.Errorf("write test manifest: %w", err)
-	}
-	return nil
+	return jsonfile.Write(path, manifest, "test manifest")
 }
 
 func Read(path string) (Manifest, error) {

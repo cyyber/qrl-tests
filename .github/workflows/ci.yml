@@ -34,3 +34,13 @@ jobs:
 
       - name: Run the Go linter
         run: make lint
+
+      - name: Run ShellCheck
+        run: shellcheck ci/images/*.sh
+
+      - name: Validate the Bake definition
+        run: |
+          docker buildx bake \
+            -f ci/images/docker-bake.hcl \
+            --print \
+            go-qrl go-qrl-clef qrl-genesis-generator

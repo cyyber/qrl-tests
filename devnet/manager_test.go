@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const failureDiagnosticsDir = "reports/lanes/execution-abi/diagnostics"
+const failureDiagnosticsDir = "reports/lanes/execution/diagnostics"
 
 type fakeClient struct {
 	exists         bool

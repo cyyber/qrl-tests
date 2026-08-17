@@ -45,7 +45,7 @@ func TestEnrich(t *testing.T) {
 		Images:         &images,
 		PackageLocator: devnet.PackageLocator,
 		Lanes: []Lane{
-			{Name: "execution-abi", Enclave: "qrl-tests", Profile: devnet.ProfileSingle, Suites: []string{"execution-abi"}, Seed: 42},
+			{Name: "execution", Enclave: "qrl-tests", Profile: devnet.ProfileSingle, Suites: []string{"execution-abi"}, Seed: 42},
 		},
 	}, dependencies{
 		getenv: func(key string) string { return environment[key] },
@@ -96,20 +96,20 @@ func TestEnrichSurvivesMissingTools(t *testing.T) {
 }
 
 func TestFinish(t *testing.T) {
-	manifest := Manifest{Lanes: []Lane{{Name: "execution-abi"}, {Name: "consensus"}}}
+	manifest := Manifest{Lanes: []Lane{{Name: "execution"}, {Name: "consensus"}}}
 	finished := time.Date(2026, 8, 7, 13, 0, 0, 0, time.UTC)
 
-	manifest.Finish(map[string]bool{"execution-abi": true, "consensus": true}, finished)
+	manifest.Finish(map[string]bool{"execution": true, "consensus": true}, finished)
 	require.Equal(t, "passed", manifest.Result)
 	require.Equal(t, "passed", manifest.Lanes[0].Result)
 	require.Equal(t, "passed", manifest.Lanes[1].Result)
 	require.Equal(t, finished, manifest.FinishedAt)
 
-	manifest.Finish(map[string]bool{"execution-abi": true, "consensus": false}, finished)
+	manifest.Finish(map[string]bool{"execution": true, "consensus": false}, finished)
 	require.Equal(t, "failed", manifest.Result)
 	require.Equal(t, "failed", manifest.Lanes[1].Result)
 
-	manifest.Finish(map[string]bool{"execution-abi": true}, finished)
+	manifest.Finish(map[string]bool{"execution": true}, finished)
 	require.Equal(t, "failed", manifest.Result, "a lane without a result never ran")
 	require.Empty(t, manifest.Lanes[1].Result)
 }
@@ -119,7 +119,7 @@ func TestWrite(t *testing.T) {
 	want := Manifest{
 		PackageLocator: devnet.PackageLocator,
 		Backend:        devnet.BackendDocker,
-		Lanes:          []Lane{{Name: "execution-abi", Enclave: "qrl-tests", Profile: devnet.ProfileSingle, Seed: 42}},
+		Lanes:          []Lane{{Name: "execution", Enclave: "qrl-tests", Profile: devnet.ProfileSingle, Seed: 42}},
 		StartedAt:      time.Date(2026, 8, 7, 12, 0, 0, 0, time.UTC),
 	}
 	require.NoError(t, want.Write(path))
