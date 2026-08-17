@@ -109,6 +109,7 @@ collect() {
 		fi
 		repository=${reference%:*}
 		immutable=${repository}@${digest}
+		echo "resolved: ${output_key}=${immutable}"
 		echo "${output_key}=${immutable}" >>"${GITHUB_OUTPUT}"
 	done
 }
