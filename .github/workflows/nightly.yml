@@ -133,11 +133,11 @@ jobs:
     with:
       # Immutable digest references from the images job.
       execution-image: ${{ needs.images.outputs.execution-image }}
-      source-go-qrl: ${{ needs.images.outputs.go-qrl-sha }}
       clef-image: ${{ needs.images.outputs.clef-image }}
       consensus-image: ${{ needs.images.outputs.consensus-image }}
       validator-image: ${{ needs.images.outputs.validator-image }}
       genesis-image: ${{ needs.images.outputs.genesis-image }}
+      source-go-qrl: ${{ needs.images.outputs.go-qrl-sha }}
       source-qrysm: ${{ needs.images.outputs.qrysm-sha }}
       source-generator: ${{ needs.images.outputs.generator-sha }}
       lane: ${{ matrix.lane }}
