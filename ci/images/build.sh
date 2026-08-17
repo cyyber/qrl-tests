@@ -93,7 +93,7 @@ plan() {
 	} >>"${GITHUB_OUTPUT}"
 }
 
-collect() {
+pin() {
 	: "${GITHUB_OUTPUT:?set GITHUB_OUTPUT to the outputs file}"
 	local metadata=${BAKE_METADATA:-}
 	local image target tag_variable output_key reference digest repository immutable
@@ -109,7 +109,7 @@ collect() {
 		fi
 		repository=${reference%:*}
 		immutable=${repository}@${digest}
-		echo "resolved: ${output_key}=${immutable}"
+		echo "pinned: ${output_key}=${immutable}"
 		echo "${output_key}=${immutable}" >>"${GITHUB_OUTPUT}"
 	done
 }
@@ -117,6 +117,6 @@ collect() {
 case "${1:-}" in
 	plan) plan ;;
 	build-qrysm) exec "${script_dir}/build-qrysm.sh" ;;
-	collect) collect ;;
-	*) echo "usage: $0 <plan|build-qrysm|collect>" >&2; exit 2 ;;
+	pin) pin ;;
+	*) echo "usage: $0 <plan|build-qrysm|pin>" >&2; exit 2 ;;
 esac

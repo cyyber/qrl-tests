@@ -28,11 +28,11 @@ jobs:
       go-qrl-sha: ${{ steps.refs.outputs.go-qrl-sha }}
       qrysm-sha: ${{ steps.refs.outputs.qrysm-sha }}
       generator-sha: ${{ steps.refs.outputs.generator-sha }}
-      execution-image: ${{ steps.build.outputs.execution-image }}
-      clef-image: ${{ steps.build.outputs.clef-image }}
-      consensus-image: ${{ steps.build.outputs.consensus-image }}
-      validator-image: ${{ steps.build.outputs.validator-image }}
-      genesis-image: ${{ steps.build.outputs.genesis-image }}
+      execution-image: ${{ steps.pin.outputs.execution-image }}
+      clef-image: ${{ steps.pin.outputs.clef-image }}
+      consensus-image: ${{ steps.pin.outputs.consensus-image }}
+      validator-image: ${{ steps.pin.outputs.validator-image }}
+      genesis-image: ${{ steps.pin.outputs.genesis-image }}
     steps:
       - name: Check out qrl-tests
         uses: actions/checkout@v7
@@ -116,11 +116,11 @@ jobs:
           push: true
           provenance: false
 
-      - name: Resolve the image digests
-        id: build
+      - name: Pin the image digests
+        id: pin
         env:
           BAKE_METADATA: ${{ steps.bake.outputs.metadata }}
-        run: ci/images/build.sh collect
+        run: ci/images/build.sh pin
 
   e2e:
     name: ${{ matrix.lane }}
