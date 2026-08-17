@@ -14,7 +14,13 @@ group "default" {
   targets = [
     "go-qrl",
     "go-qrl-clef",
+    "qrl-genesis-generator",
   ]
+}
+
+function "buildcache" {
+  params = [name]
+  result = "type=registry,ref=${REGISTRY_NAMESPACE}/${name}:buildcache-${ARCHITECTURE}"
 }
 
 target "_go-qrl" {
@@ -27,16 +33,16 @@ target "_go-qrl" {
 target "go-qrl" {
   inherits   = ["_go-qrl"]
   tags       = [GO_QRL_IMAGE_TAG]
-  cache-from = ["type=registry,ref=${REGISTRY_NAMESPACE}/go-qrl:buildcache-${ARCHITECTURE}"]
-  cache-to   = ["type=registry,ref=${REGISTRY_NAMESPACE}/go-qrl:buildcache-${ARCHITECTURE},mode=max"]
+  cache-from = [buildcache("go-qrl")]
+  cache-to   = ["${buildcache("go-qrl")},mode=max"]
 }
 
 target "go-qrl-clef" {
   inherits   = ["_go-qrl"]
   dockerfile = "Dockerfile.alltools"
   tags       = [GO_QRL_CLEF_IMAGE_TAG]
-  cache-from = ["type=registry,ref=${REGISTRY_NAMESPACE}/go-qrl-clef:buildcache-${ARCHITECTURE}"]
-  cache-to   = ["type=registry,ref=${REGISTRY_NAMESPACE}/go-qrl-clef:buildcache-${ARCHITECTURE},mode=max"]
+  cache-from = [buildcache("go-qrl-clef")]
+  cache-to   = ["${buildcache("go-qrl-clef")},mode=max"]
 }
 
 target "qrl-genesis-generator" {
@@ -46,6 +52,6 @@ target "qrl-genesis-generator" {
     QRYSM_GIT_REPO = QRYSM_GIT_REPO
     QRYSM_GIT_REF  = QRYSM_GIT_COMMIT
   }
-  cache-from = ["type=registry,ref=${REGISTRY_NAMESPACE}/qrl-genesis-generator:buildcache-${ARCHITECTURE}"]
-  cache-to   = ["type=registry,ref=${REGISTRY_NAMESPACE}/qrl-genesis-generator:buildcache-${ARCHITECTURE},mode=max"]
+  cache-from = [buildcache("qrl-genesis-generator")]
+  cache-to   = ["${buildcache("qrl-genesis-generator")},mode=max"]
 }
