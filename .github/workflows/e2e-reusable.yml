@@ -24,8 +24,7 @@ on:
         type: string
         required: true
       source-go-qrl: &source-go-qrl
-        description: go-qrl revision recorded in the run manifest when the
-          execution image arrives pre-built
+        description: go-qrl revision recorded in the run manifest
         type: string
       source-qrysm: &source-qrysm
         description: qrysm revision recorded in the run manifest
