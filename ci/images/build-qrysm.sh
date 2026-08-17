@@ -46,8 +46,11 @@ done
 		"${bazel_targets[@]}" "${platform_args[@]}" --config=release
 )
 
+# Both tarballs load under the same upstream name, so each one must be
+# retagged before the next load overwrites it.
 for index in "${!archives[@]}"; do
-	docker load --input "${archives[index]}"
-	docker tag index.docker.io/qrledger/qrysm:latest "${image_tags[index]}"
+	loaded=$(docker load --input "${archives[index]}" | sed -n 's/^Loaded image: //p')
+	test -n "${loaded}" || { echo "no image tag in ${archives[index]}" >&2; exit 1; }
+	docker tag "${loaded}" "${image_tags[index]}"
 	docker push "${image_tags[index]}"
 done
