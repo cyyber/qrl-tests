@@ -4,10 +4,6 @@ on:
   schedule:
     - cron: "30 2 * * *"
   workflow_dispatch:
-    inputs:
-      go-qrl-branch:
-        description: go-qrl branch to build and test
-        default: main
 
 concurrency:
   group: qrl-tests-ghcr
@@ -43,19 +39,20 @@ jobs:
 
       - name: Resolve the source revisions
         id: refs
-        env:
-          GO_QRL_BRANCH: ${{ inputs.go-qrl-branch || 'main' }}
         run: |
           resolve() {
             local sha
-            sha=$(git ls-remote "https://github.com/$1" "refs/heads/$2" | cut -f1)
-            test -n "$sha" || { echo "cannot resolve $1@$2" >&2; exit 1; }
+            sha=$(git ls-remote "https://github.com/$1" refs/heads/main | cut -f1)
+            test -n "$sha" || { echo "cannot resolve $1@main" >&2; exit 1; }
             echo "$sha"
           }
+          go_qrl_sha=$(resolve "${GO_QRL_REPOSITORY}")
+          qrysm_sha=$(resolve "${QRYSM_REPOSITORY}")
+          generator_sha=$(resolve "${GENERATOR_REPOSITORY}")
           {
-            echo "go-qrl-sha=$(resolve "${GO_QRL_REPOSITORY}" "${GO_QRL_BRANCH}")"
-            echo "qrysm-sha=$(resolve "${QRYSM_REPOSITORY}" main)"
-            echo "generator-sha=$(resolve "${GENERATOR_REPOSITORY}" main)"
+            echo "go-qrl-sha=${go_qrl_sha}"
+            echo "qrysm-sha=${qrysm_sha}"
+            echo "generator-sha=${generator_sha}"
           } >> "$GITHUB_OUTPUT"
 
       - name: Log in to GHCR
