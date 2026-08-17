@@ -145,7 +145,7 @@ func TestSummarizeReturnsVerdictWhenPersistenceFails(t *testing.T) {
 		),
 	})
 
-	require.ErrorContains(t, err, "create report directory")
+	require.ErrorContains(t, err, "create summary directory")
 	require.Equal(t, "failed", summary.Result)
 	require.Equal(t, VerdictAssertion, summary.Lanes[0].Verdict)
 }

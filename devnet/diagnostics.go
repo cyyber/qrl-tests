@@ -2,13 +2,14 @@ package devnet
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/cyyber/qrl-tests/internal/jsonfile"
 )
 
 type diagnosticsCommand func(ctx context.Context, output io.Writer, name string, arguments ...string) error
@@ -50,12 +51,7 @@ func collectDiagnostics(ctx context.Context, run diagnosticsCommand, enclaveName
 		Inspection: inspection,
 		Services:   services,
 	}
-	payload, manifestErr := json.MarshalIndent(manifest, "", "  ")
-	if manifestErr != nil {
-		manifestErr = fmt.Errorf("encode diagnostics manifest: %w", manifestErr)
-	} else {
-		manifestErr = writeDiagnostic(filepath.Join(outputDir, "diagnostics.json"), string(append(payload, '\n')))
-	}
+	manifestErr := jsonfile.Write(filepath.Join(outputDir, "diagnostics.json"), manifest, "diagnostics manifest")
 
 	return errors.Join(inspectionErr, servicesErr, manifestErr)
 }

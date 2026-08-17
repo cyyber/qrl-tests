@@ -5,16 +5,14 @@ package runmanifest
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"runtime"
 	"strings"
 	"time"
 
 	"github.com/cyyber/qrl-tests/devnet"
+	"github.com/cyyber/qrl-tests/internal/jsonfile"
 )
 
 const (
@@ -98,18 +96,7 @@ func (manifest *Manifest) Finish(results map[string]bool, finishedAt time.Time) 
 }
 
 func (manifest Manifest) Write(path string) error {
-	payload, err := json.MarshalIndent(manifest, "", "  ")
-	if err != nil {
-		return fmt.Errorf("encode run manifest: %w", err)
-	}
-
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return fmt.Errorf("create run manifest directory: %w", err)
-	}
-	if err := os.WriteFile(path, append(payload, '\n'), 0o600); err != nil {
-		return fmt.Errorf("write run manifest: %w", err)
-	}
-	return nil
+	return jsonfile.Write(path, manifest, "run manifest")
 }
 
 type commandFunc func(context.Context, string, ...string) (string, error)
