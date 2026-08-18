@@ -17,19 +17,20 @@ type packageParameters struct {
 }
 
 type participant struct {
-	ELImage           string            `json:"el_image"`
-	ELExtraParams     []string          `json:"el_extra_params"`
-	CLImage           string            `json:"cl_image"`
-	CLExtraParams     []string          `json:"cl_extra_params"`
-	VCImage           string            `json:"vc_image"`
-	VCExtraParams     []string          `json:"vc_extra_params"`
-	UseRemoteSigner   bool              `json:"use_remote_signer"`
-	RemoteSignerType  string            `json:"remote_signer_type"`
-	RemoteSignerImage string            `json:"remote_signer_image"`
-	ValidatorCount    int               `json:"validator_count"`
-	ELExtraLabels     map[string]string `json:"el_extra_labels,omitempty"`
-	CLExtraLabels     map[string]string `json:"cl_extra_labels,omitempty"`
-	VCExtraLabels     map[string]string `json:"vc_extra_labels,omitempty"`
+	ELImage                 string            `json:"el_image"`
+	ELExtraParams           []string          `json:"el_extra_params"`
+	CLImage                 string            `json:"cl_image"`
+	CLExtraParams           []string          `json:"cl_extra_params"`
+	VCImage                 string            `json:"vc_image"`
+	VCExtraParams           []string          `json:"vc_extra_params"`
+	UseRemoteSigner         bool              `json:"use_remote_signer"`
+	RemoteSignerType        string            `json:"remote_signer_type"`
+	RemoteSignerImage       string            `json:"remote_signer_image"`
+	RemoteSignerAutoApprove bool              `json:"remote_signer_auto_approve"`
+	ValidatorCount          int               `json:"validator_count"`
+	ELExtraLabels           map[string]string `json:"el_extra_labels,omitempty"`
+	CLExtraLabels           map[string]string `json:"cl_extra_labels,omitempty"`
+	VCExtraLabels           map[string]string `json:"vc_extra_labels,omitempty"`
 }
 
 type networkParams struct {
@@ -85,19 +86,20 @@ func profileParameters(address string, options StartOptions) (string, error) {
 			partitionLabel: strconv.Itoa(index%2 + 1),
 		}
 		participants[index] = participant{
-			ELImage:           images.Execution,
-			ELExtraParams:     participantParameters(configuration.elExtraParams, "--graphql", "--graphql.vhosts=*"),
-			CLImage:           images.Consensus,
-			CLExtraParams:     participantParameters(configuration.clExtraParams, "--min-sync-peers=0", "--minimum-peers-per-subnet=0"),
-			VCImage:           images.Validator,
-			VCExtraParams:     participantParameters(configuration.vcExtraParams),
-			UseRemoteSigner:   true,
-			RemoteSignerType:  "clef",
-			RemoteSignerImage: images.Clef,
-			ValidatorCount:    configuration.validatorCount,
-			ELExtraLabels:     labels,
-			CLExtraLabels:     labels,
-			VCExtraLabels:     labels,
+			ELImage:                 images.Execution,
+			ELExtraParams:           participantParameters(configuration.elExtraParams, "--graphql", "--graphql.vhosts=*"),
+			CLImage:                 images.Consensus,
+			CLExtraParams:           participantParameters(configuration.clExtraParams, "--min-sync-peers=0", "--minimum-peers-per-subnet=0"),
+			VCImage:                 images.Validator,
+			VCExtraParams:           participantParameters(configuration.vcExtraParams),
+			UseRemoteSigner:         true,
+			RemoteSignerType:        "clef",
+			RemoteSignerImage:       images.Clef,
+			RemoteSignerAutoApprove: true,
+			ValidatorCount:          configuration.validatorCount,
+			ELExtraLabels:           labels,
+			CLExtraLabels:           labels,
+			VCExtraLabels:           labels,
 		}
 	}
 
