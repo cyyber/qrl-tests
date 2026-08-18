@@ -33,6 +33,7 @@ func TestDefaultParameters(t *testing.T) {
 	require.Equal(t, true, participant["use_remote_signer"])
 	require.Equal(t, "clef", participant["remote_signer_type"])
 	require.Equal(t, DefaultClefImage, participant["remote_signer_image"])
+	require.Equal(t, true, participant["remote_signer_auto_approve"])
 	require.Equal(t, float64(64), participant["validator_count"])
 	require.Equal(t, []any{"--graphql", "--graphql.vhosts=*"}, participant["el_extra_params"])
 	require.Equal(t, []any{"--min-sync-peers=0", "--minimum-peers-per-subnet=0"}, participant["cl_extra_params"])

@@ -25,7 +25,7 @@ const (
 	retryInterval              = 500 * time.Millisecond
 
 	// PackageLocator pins the qrl-package revision every network runs.
-	PackageLocator = "github.com/cyyber/qrl-package@bcb7370dc416606a2982d1f9192073232281154f"
+	PackageLocator = "github.com/cyyber/qrl-package@08ba418f371b927a1ce448694bcd782e7925014e"
 )
 
 type kurtosisClient interface {
