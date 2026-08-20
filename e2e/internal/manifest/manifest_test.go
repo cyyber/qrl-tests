@@ -1,6 +1,7 @@
 package manifest
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -14,6 +15,7 @@ func TestManifestRoundTrip(t *testing.T) {
 	want := Manifest{
 		Lane:    "execution",
 		Profile: devnet.ProfileSingle,
+		Tools:   Tools{GQRL: "/tmp/gqrl"},
 		Environment: devnet.Environment{
 			EnclaveName: "qrl-tests-execution",
 			Backend:     devnet.BackendDocker,
@@ -49,4 +51,10 @@ func TestFromEnvReportsMissingConfiguration(t *testing.T) {
 	t.Setenv(PathEnv, "")
 	_, err := FromEnv()
 	require.ErrorContains(t, err, PathEnv)
+}
+
+func TestManifestOmitsEmptyTools(t *testing.T) {
+	payload, err := json.Marshal(Manifest{})
+	require.NoError(t, err)
+	require.NotContains(t, string(payload), `"tools"`)
 }

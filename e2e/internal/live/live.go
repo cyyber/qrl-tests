@@ -19,6 +19,7 @@ type Runtime struct {
 	ChainID *big.Int
 
 	environment devnet.Environment
+	gqrl        string
 	nodes       []*Node
 }
 
@@ -26,6 +27,7 @@ type Runtime struct {
 // plus the shared suite Runtime.
 type Node struct {
 	*Runtime
+	Participant        devnet.Participant
 	Execution          *qrlclient.Client
 	ExecutionWebSocket *qrlclient.Client
 }
@@ -46,8 +48,16 @@ func Load() (*Runtime, error) {
 	runtime := &Runtime{
 		Wallet:      wallet,
 		environment: suiteManifest.Environment,
+		gqrl:        suiteManifest.Tools.GQRL,
 	}
 	return runtime, nil
+}
+
+func (runtime *Runtime) GQRL() (string, error) {
+	if runtime.gqrl == "" {
+		return "", fmt.Errorf("gqrl test tool is not configured")
+	}
+	return runtime.gqrl, nil
 }
 
 func (runtime *Runtime) PrimaryWithWebSocket(ctx context.Context) (*Node, error) {
@@ -72,7 +82,7 @@ func (runtime *Runtime) open(ctx context.Context, participant devnet.Participant
 		}
 	}
 
-	node := &Node{Runtime: runtime, Execution: client}
+	node := &Node{Runtime: runtime, Participant: participant, Execution: client}
 	if withWebSocket {
 		node.ExecutionWebSocket, err = qrlclient.DialContext(ctx, participant.Execution.WebSocketURL)
 		if err != nil {
