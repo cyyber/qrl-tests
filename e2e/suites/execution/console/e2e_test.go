@@ -3,6 +3,7 @@
 package console
 
 import (
+	"context"
 	"testing"
 
 	"github.com/cyyber/qrl-tests/e2e/internal/live"
@@ -14,6 +15,15 @@ import (
 
 func TestE2E(t *testing.T) {
 	testsuite.Run(t, "Console E2E suite")
+}
+
+func runWatchedSuite(ctx context.Context, image, endpointURL, name string, fixtureArchive []byte) error {
+	return runScenario(ctx, consoleContainerConfig{
+		image:       image,
+		endpointURL: endpointURL,
+		scenario:    name,
+		interactive: true,
+	}, fixtureArchive)
 }
 
 var _ = ginkgo.Describe(
@@ -67,6 +77,48 @@ var _ = ginkgo.Describe(
 					endpointURL: node.ExecutionRPCURL,
 					scenario:    "topics",
 				}, fixtureArchive),
+			).To(gomega.Succeed())
+		})
+
+		ginkgo.It("deploys a contract through the embedded web3 contract factory", func(ctx ginkgo.SpecContext) {
+			ginkgo.By("funding the node-managed console account")
+			gomega.Expect(fundManagedAccount(ctx, node)).To(gomega.Succeed())
+			ginkgo.By("preparing the constructor fixture")
+			bytecode, err := contracts.ConsoleProbeBytecode()
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+			parameters, err := prepareConstructorParameters(ctx, node, contracts.ConsoleProbeABI, bytecode)
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+			fixtureArchive, err := consoleFixtureArchive(parameters)
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+			gomega.Expect(
+				runWatchedSuite(
+					ctx,
+					node.ExecutionImage,
+					node.ExecutionWebSocketURL,
+					"constructor",
+					fixtureArchive,
+				),
+			).To(gomega.Succeed())
+		})
+
+		ginkgo.It("submits a contract transaction and watches indexed events over WebSocket", func(ctx ginkgo.SpecContext) {
+			ginkgo.By("funding the node-managed console account")
+			gomega.Expect(fundManagedAccount(ctx, node)).To(gomega.Succeed())
+			ginkgo.By("preparing the event fixture")
+			bytecode, err := contracts.ConsoleProbeBytecode()
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+			parameters, err := prepareEventParameters(ctx, node, contracts.ConsoleProbeABI, bytecode)
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+			fixtureArchive, err := consoleFixtureArchive(parameters)
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+			gomega.Expect(
+				runWatchedSuite(
+					ctx,
+					node.ExecutionImage,
+					node.ExecutionWebSocketURL,
+					"events",
+					fixtureArchive,
+				),
 			).To(gomega.Succeed())
 		})
 	},

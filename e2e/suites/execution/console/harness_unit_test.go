@@ -434,6 +434,23 @@ func fixtureArchiveContents(t *testing.T, fixtureArchive []byte) map[string]stri
 	}
 }
 
+func TestEventsMarkerOrder(t *testing.T) {
+	source, err := consoleFixtures.ReadFile("testdata/console/events.js")
+	require.NoError(t, err)
+
+	script := string(source)
+	const teardown = "watcher.stopWatching();"
+	require.Equal(t, 2, strings.Count(script, teardown))
+	failureMarker := strings.Index(script, `console.error("CONSOLE_E2E_FAIL events " + failure);`)
+	firstTeardown := strings.Index(script, teardown)
+	require.NotEqual(t, -1, failureMarker)
+	require.Less(t, failureMarker, firstTeardown)
+	successMarker := strings.LastIndex(script, "suite.finish();")
+	lastTeardown := strings.LastIndex(script, teardown)
+	require.NotEqual(t, -1, successMarker)
+	require.Less(t, successMarker, lastTeardown)
+}
+
 func TestConsoleContainerEndpoint(t *testing.T) {
 	for name, testCase := range map[string]struct {
 		endpoint string

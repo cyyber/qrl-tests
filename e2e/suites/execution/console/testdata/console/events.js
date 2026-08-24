@@ -1,0 +1,202 @@
+var suite = createConsoleSuite("events");
+var check = suite.check;
+
+loadScript(".params.js");
+
+var deployment = null;
+check("raw deployment transaction is accepted and mined", function () {
+    var deploymentHash = qrl.sendRawTransaction(PARAMS.rawTransaction);
+    if (deploymentHash !== PARAMS.txHash) {
+        throw new Error("deployment transaction hash mismatch: expected " +
+            PARAMS.txHash + ", got " + deploymentHash);
+    }
+    deployment = waitForReceipt(deploymentHash);
+    if (Number(deployment.status) !== 1 || !deployment.contractAddress) {
+        throw new Error("deployment transaction failed: " + JSON.stringify(deployment));
+    }
+});
+
+var contract = qrl.contract(PARAMS.abi).at(deployment.contractAddress);
+var expectedLabelTopic = web3.sha3(PARAMS.storeLabel) + zeros(64);
+var expectedPayloadTopic = web3.sha3(PARAMS.storePayload, {encoding: "hex"}) + zeros(64);
+
+var managed = qrl.accounts;
+check("state-changing wrapper executes through the node-managed signer", function () {
+    if (!(managed instanceof Array) || managed.length === 0) {
+        throw new Error("unexpected node-managed accounts: " + JSON.stringify(managed));
+    }
+    var txHash = contract.store(
+        PARAMS.storeValue,
+        "Clef-backed console transaction",
+        "0x010203",
+        {from: managed[0], gas: 500000}
+    );
+    var receipt = waitForReceipt(txHash);
+    if (Number(receipt.status) !== 1) {
+        throw new Error("Clef-backed wrapper transaction failed: " + JSON.stringify(receipt));
+    }
+    var transaction = qrl.getTransaction(txHash);
+    if (transaction.from !== managed[0] || contract.stored().toString(10) !== PARAMS.storeValue) {
+        throw new Error("unexpected Clef-backed wrapper result");
+    }
+});
+
+var request = contract.store.request(
+    PARAMS.storeValue,
+    PARAMS.storeLabel,
+    PARAMS.storePayload,
+    {from: PARAMS.sender, gas: 500000}
+);
+if (request.method !== "qrl_sendTransaction" ||
+    request.params.length !== 1 ||
+    request.params[0].data !== PARAMS.storeData) {
+    throw new Error("unexpected state-changing wrapper request");
+}
+
+var storeReceiptPolls = 0;
+var storeReceiptPollLimit = 60;
+var storeReceiptPollInterval = 5000;
+var storeReceiptTimer = null;
+
+function stopStoreReceiptMonitor() {
+    if (storeReceiptTimer !== null) {
+        clearInterval(storeReceiptTimer);
+        storeReceiptTimer = null;
+    }
+}
+
+function failEvents(failure) {
+    stopStoreReceiptMonitor();
+    console.error("CONSOLE_E2E_FAIL events " + failure);
+    watcher.stopWatching();
+}
+
+var watcher = contract.Stored({
+    sender: PARAMS.sender,
+    label: PARAMS.storeLabel,
+    payload: PARAMS.storePayload
+}, {fromBlock: "latest"});
+watcher.watch(function (error, event) {
+    try {
+        if (error) {
+            throw error;
+        }
+        var receipt = qrl.getTransactionReceipt(PARAMS.storeTxHash);
+        check("state-changing contract wrapper call is mined", function () {
+            if (receipt === null || receipt.blockNumber === null || Number(receipt.status) !== 1) {
+                throw new Error("store transaction failed: " + JSON.stringify(receipt));
+            }
+        });
+
+        check("state wrappers return the full VM64 storage value", function () {
+            var expected = "0x" + web3.toBigNumber(PARAMS.storeValue).toString(16);
+            if (expected.length !== 130) {
+                throw new Error("fixture is not a full-width VM64 value: " + expected);
+            }
+            var stored = qrl.getStorageAt(deployment.contractAddress, "0x0", "latest");
+            if (stored.toLowerCase() !== expected) {
+                throw new Error("unexpected storage value: " + stored);
+            }
+            var proof = qrl.getProof(deployment.contractAddress, ["0x0"], "latest");
+            if (!proof.storageProof || proof.storageProof.length !== 1 ||
+                proof.storageProof[0].value.toLowerCase() !== expected) {
+                throw new Error("unexpected storage proof: " + JSON.stringify(proof));
+            }
+        });
+
+        check("WebSocket event watch decodes indexed dynamic fields", function () {
+            if (event.transactionHash !== PARAMS.storeTxHash) {
+                throw new Error("event watch returned the wrong transaction");
+            }
+            var expectedSender = web3.toChecksumAddress(PARAMS.sender);
+            if (event.args.sender !== expectedSender ||
+                !web3.isChecksumAddress(event.args.sender)) {
+                throw new Error("event sender is not canonical: " + event.args.sender);
+            }
+            if (event.args.label !== expectedLabelTopic ||
+                event.args.payload !== expectedPayloadTopic) {
+                throw new Error("indexed dynamic topic mismatch: " + JSON.stringify(event.args));
+            }
+            if (event.args.value.toString(10) !== PARAMS.storeValue) {
+                throw new Error("event value mismatch");
+            }
+        });
+
+        check("indexed event filters reject non-matching dynamic values", function () {
+            var events = contract.Stored({
+                sender: PARAMS.sender,
+                label: PARAMS.storeLabel + "-missing",
+                payload: PARAMS.storePayload
+            }, {
+                fromBlock: web3.toHex(receipt.blockNumber),
+                toBlock: web3.toHex(receipt.blockNumber)
+            }).get();
+            if (events.length !== 0) {
+                throw new Error("non-matching indexed filter returned events: " + JSON.stringify(events));
+            }
+        });
+
+        check("payable wrapper forwards value", function () {
+            var marker = 17;
+            var payment = 23;
+            var txHash = contract.pay(marker, {
+                from: managed[0],
+                value: payment,
+                gas: 500000
+            });
+            var paidReceipt = waitForReceipt(txHash);
+            if (Number(paidReceipt.status) !== 1) {
+                throw new Error("payable transaction failed: " + JSON.stringify(paidReceipt));
+            }
+            var transaction = qrl.getTransaction(txHash);
+            if (transaction.value.toString(10) !== String(payment) ||
+                contract.stored().toString(10) !== String(marker + payment)) {
+                throw new Error("payable wrapper did not forward value");
+            }
+        });
+
+        check("state-changing wrapper exposes a failed receipt", function () {
+            var stored = contract.stored().toString(10);
+            var txHash = contract.failTransaction({from: managed[0], gas: 500000});
+            var failedReceipt = waitForReceipt(txHash);
+            if (Number(failedReceipt.status) !== 0) {
+                throw new Error("reverting transaction unexpectedly succeeded: " +
+                    JSON.stringify(failedReceipt));
+            }
+            if (contract.stored().toString(10) !== stored) {
+                throw new Error("reverting transaction changed contract state");
+            }
+        });
+        stopStoreReceiptMonitor();
+        suite.finish();
+        watcher.stopWatching();
+    } catch (failure) {
+        failEvents(failure);
+    }
+});
+
+var txHash = qrl.sendRawTransaction(PARAMS.storeRawTransaction);
+if (txHash !== PARAMS.storeTxHash) {
+    failEvents("store transaction hash mismatch");
+} else {
+    storeReceiptTimer = setInterval(function () {
+        try {
+            storeReceiptPolls++;
+            var receipt = qrl.getTransactionReceipt(PARAMS.storeTxHash);
+            if (receipt !== null && receipt.blockNumber !== null &&
+                Number(receipt.status) !== 1) {
+                throw new Error("store transaction failed: " + JSON.stringify(receipt));
+            }
+            if (storeReceiptPolls >= storeReceiptPollLimit) {
+                if (receipt === null || receipt.blockNumber === null) {
+                    throw new Error("store transaction not mined within timeout: " +
+                        PARAMS.storeTxHash);
+                }
+                throw new Error("matching Stored event not observed within timeout: " +
+                    PARAMS.storeTxHash);
+            }
+        } catch (failure) {
+            failEvents(failure);
+        }
+    }, storeReceiptPollInterval);
+}
