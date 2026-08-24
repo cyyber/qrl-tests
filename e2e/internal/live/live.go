@@ -27,9 +27,10 @@ type Runtime struct {
 // plus the shared suite Runtime.
 type Node struct {
 	*Runtime
-	ExecutionRPCURL    string
-	Execution          *qrlclient.Client
-	ExecutionWebSocket *qrlclient.Client
+	ExecutionRPCURL       string
+	ExecutionWebSocketURL string
+	Execution             *qrlclient.Client
+	ExecutionWebSocket    *qrlclient.Client
 }
 
 // Load resolves the configured test environment and restores the disposable
@@ -84,9 +85,10 @@ func (runtime *Runtime) open(ctx context.Context, participant devnet.Participant
 	}
 
 	node := &Node{
-		Runtime:         runtime,
-		ExecutionRPCURL: participant.Execution.RPCURL,
-		Execution:       client,
+		Runtime:               runtime,
+		ExecutionRPCURL:       participant.Execution.RPCURL,
+		ExecutionWebSocketURL: participant.Execution.WebSocketURL,
+		Execution:             client,
 	}
 	if withWebSocket {
 		node.ExecutionWebSocket, err = qrlclient.DialContext(ctx, participant.Execution.WebSocketURL)

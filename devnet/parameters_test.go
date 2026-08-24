@@ -105,6 +105,7 @@ func TestNetworkParametersTemplate(t *testing.T) {
 	require.Equal(t, DefaultConsensusImage, view.Participants[0].ConsensusImage)
 	require.Equal(t, DefaultValidatorImage, view.Participants[0].ValidatorImage)
 	require.Equal(t, DefaultGenesisImage, view.Genesis.Image)
+	require.True(t, view.Participants[0].RemoteSignerAutoApprove)
 	require.Contains(t, view.Network.PrefundedAccounts, devwallet.Address)
 }
 
@@ -124,11 +125,12 @@ func TestFileParametersRejectInvalid(t *testing.T) {
 
 type parametersFileView struct {
 	Participants []struct {
-		ExecutionImage    string `yaml:"el_image"`
-		ConsensusImage    string `yaml:"cl_image"`
-		ValidatorImage    string `yaml:"vc_image"`
-		RemoteSignerImage string `yaml:"remote_signer_image"`
-		Custom            int64  `yaml:"custom"`
+		ExecutionImage          string `yaml:"el_image"`
+		ConsensusImage          string `yaml:"cl_image"`
+		ValidatorImage          string `yaml:"vc_image"`
+		RemoteSignerImage       string `yaml:"remote_signer_image"`
+		RemoteSignerAutoApprove bool   `yaml:"remote_signer_auto_approve"`
+		Custom                  int64  `yaml:"custom"`
 	} `yaml:"participants"`
 	Network struct {
 		PrefundedAccounts map[string]struct {
