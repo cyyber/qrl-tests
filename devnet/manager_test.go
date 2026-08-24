@@ -42,6 +42,22 @@ func (client *fakeClient) Services(context.Context, string) (map[string]kurtosis
 	return client.services, nil
 }
 
+func (*fakeClient) Inspect(
+	context.Context,
+	string,
+) (kurtosis.EnclaveInspection, error) {
+	return kurtosis.EnclaveInspection{}, nil
+}
+
+func (*fakeClient) ServiceLogs(
+	context.Context,
+	string,
+	[]string,
+	kurtosis.ServiceLogConsumer,
+) error {
+	return nil
+}
+
 func (client *fakeClient) DestroyEnclave(ctx context.Context, _ string) error {
 	if client.onDestroy != nil {
 		client.onDestroy(ctx)
@@ -57,7 +73,7 @@ func testManager(client *fakeClient) *Manager {
 	return &Manager{
 		newClient: func() (kurtosisClient, error) { return client, nil },
 		probe:     func(context.Context, string, string) error { return nil },
-		collectDiagnostics: func(context.Context, string, string) error {
+		collectDiagnostics: func(context.Context, diagnosticsClient, string, string) error {
 			panic("unexpected diagnostics collection")
 		},
 	}
@@ -119,8 +135,9 @@ func TestStartCollectsDiagnosticsBeforeCleanup(t *testing.T) {
 	client := &fakeClient{runErr: errors.New("package failed")}
 	manager := testManager(client)
 	diagnosticsCalls := 0
-	manager.collectDiagnostics = func(_ context.Context, enclave, outputDir string) error {
+	manager.collectDiagnostics = func(_ context.Context, source diagnosticsClient, enclave, outputDir string) error {
 		require.False(t, client.destroyed, "diagnostics must run before the enclave is destroyed")
+		require.Same(t, client, source)
 		require.Equal(t, "failed-start", enclave)
 		require.Equal(t, failureDiagnosticsDir, outputDir)
 		diagnosticsCalls++
@@ -138,7 +155,7 @@ func TestStartCollectsDiagnosticsBeforeCleanup(t *testing.T) {
 func TestStartReportsDiagnosticsFailureAlongsideCause(t *testing.T) {
 	client := &fakeClient{runErr: errors.New("package failed")}
 	manager := testManager(client)
-	manager.collectDiagnostics = func(context.Context, string, string) error {
+	manager.collectDiagnostics = func(context.Context, diagnosticsClient, string, string) error {
 		return errors.New("logs unavailable")
 	}
 
@@ -165,7 +182,7 @@ func TestStartRecoveryUsesLiveBoundedContextsAfterCancellation(t *testing.T) {
 		return errors.New("not ready")
 	}
 	diagnosticsCalls := 0
-	manager.collectDiagnostics = func(ctx context.Context, _, _ string) error {
+	manager.collectDiagnostics = func(ctx context.Context, _ diagnosticsClient, _, _ string) error {
 		requireLiveBoundedContext(t, ctx, startDiagnosticsTimeout)
 		diagnosticsCalls++
 		return nil

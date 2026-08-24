@@ -7,8 +7,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
-	"os/exec"
 	"time"
 
 	"github.com/cyyber/qrl-tests/devnet/internal/kurtosis"
@@ -33,6 +31,13 @@ type kurtosisClient interface {
 	CreateEnclave(ctx context.Context, name string) error
 	RunRemotePackage(ctx context.Context, enclaveName, locator, serializedParams string) error
 	Services(ctx context.Context, enclaveName string) (map[string]kurtosis.Service, error)
+	Inspect(ctx context.Context, enclaveName string) (kurtosis.EnclaveInspection, error)
+	ServiceLogs(
+		ctx context.Context,
+		enclaveName string,
+		serviceUUIDs []string,
+		consume kurtosis.ServiceLogConsumer,
+	) error
 	DestroyEnclave(ctx context.Context, name string) error
 }
 
@@ -51,20 +56,10 @@ type StartOptions struct {
 type Manager struct {
 	newClient          func() (kurtosisClient, error)
 	probe              func(ctx context.Context, rpcURL, address string) error
-	collectDiagnostics func(ctx context.Context, enclave, outputDir string) error
+	collectDiagnostics func(ctx context.Context, client diagnosticsClient, enclave, outputDir string) error
 }
 
 func NewManager() *Manager {
-	runDiagnostics := func(ctx context.Context, output io.Writer, name string, arguments ...string) error {
-		command := exec.CommandContext(ctx, name, arguments...)
-		command.Stdout = output
-		command.Stderr = output
-		if err := command.Run(); err != nil {
-			return errors.Join(err, ctx.Err())
-		}
-		return nil
-	}
-
 	return &Manager{
 		newClient: func() (kurtosisClient, error) {
 			client, err := kurtosis.NewClient()
@@ -73,10 +68,8 @@ func NewManager() *Manager {
 			}
 			return client, nil
 		},
-		probe: probeNetwork,
-		collectDiagnostics: func(ctx context.Context, enclave, outputDir string) error {
-			return collectDiagnostics(ctx, runDiagnostics, enclave, outputDir)
-		},
+		probe:              probeNetwork,
+		collectDiagnostics: collectDiagnostics,
 	}
 }
 
@@ -174,7 +167,7 @@ func (manager *Manager) finishFailedStart(client kurtosisClient, options StartOp
 	// typically already canceled or expired by the time the failure gets here.
 	if options.FailureDiagnosticsDir != "" {
 		collectCtx, cancel := context.WithTimeout(context.Background(), startDiagnosticsTimeout)
-		if err := manager.collectDiagnostics(collectCtx, options.EnclaveName, options.FailureDiagnosticsDir); err != nil {
+		if err := manager.collectDiagnostics(collectCtx, client, options.EnclaveName, options.FailureDiagnosticsDir); err != nil {
 			failure = errors.Join(failure, fmt.Errorf("collect start diagnostics: %w", err))
 		}
 		cancel()
