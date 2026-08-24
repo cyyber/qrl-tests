@@ -4,13 +4,16 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net/http"
+	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"runtime"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/cyyber/qrl-tests/devnet"
-	"github.com/cyyber/qrl-tests/internal/testutil"
 	"github.com/stretchr/testify/require"
 )
 
@@ -30,14 +33,12 @@ func TestEnrich(t *testing.T) {
 		switch name {
 		case "git":
 			return "3333333333333333333333333333333333333333", nil
-		case "docker":
-			return "28.0.1", nil
 		case "kurtosis":
 			return "CLI Version:   1.20.1\n\nEngine Version: 1.20.1", nil
 		}
 		return "", errors.New("unexpected probe")
 	}
-	started := time.Date(2026, 8, 7, 12, 0, 0, 0, time.UTC)
+	started := time.Date(2026, 8, 7, 12, 0, 0, 0, time.FixedZone("UTC+4", 4*60*60))
 
 	images := devnet.DefaultImages()
 	manifest := enrich(t.Context(), "/checkout", Manifest{
@@ -50,7 +51,10 @@ func TestEnrich(t *testing.T) {
 	}, dependencies{
 		getenv: func(key string) string { return environment[key] },
 		probe:  probe,
-		now:    func() time.Time { return started },
+		dockerVersion: func(context.Context) string {
+			return "28.0.1"
+		},
+		now: func() time.Time { return started },
 	})
 
 	require.Equal(t, Sources{
@@ -72,13 +76,12 @@ func TestEnrich(t *testing.T) {
 	}, manifest.GitHub)
 	require.Equal(t, [][]string{
 		{"git", "-C", "/checkout", "rev-parse", "HEAD"},
-		{"docker", "version", "--format", "{{.Server.Version}}"},
 		{"kurtosis", "version"},
 	}, probes)
 	require.NotNil(t, manifest.Images)
 	require.Equal(t, devnet.DefaultImages(), *manifest.Images)
 	require.Equal(t, devnet.PackageLocator, manifest.PackageLocator)
-	require.Equal(t, started, manifest.StartedAt)
+	require.Equal(t, started.UTC(), manifest.StartedAt)
 	require.Empty(t, manifest.Result, "a starting manifest must not claim a result")
 }
 
@@ -88,6 +91,9 @@ func TestEnrichSurvivesMissingTools(t *testing.T) {
 		probe: func(context.Context, string, ...string) (string, error) {
 			return "", errors.New("not installed")
 		},
+		dockerVersion: func(context.Context) string {
+			return ""
+		},
 		now: time.Now,
 	})
 	require.Empty(t, manifest.Versions.Docker)
@@ -95,15 +101,42 @@ func TestEnrichSurvivesMissingTools(t *testing.T) {
 	require.Equal(t, runtime.Version(), manifest.Versions.Go)
 }
 
+func TestDockerVersion(t *testing.T) {
+	var unavailable atomic.Bool
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		if unavailable.Load() {
+			http.Error(writer, "unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		writer.Header().Set("Content-Type", "application/json")
+		_, _ = writer.Write([]byte(`{"Version":" 28.0.1\n","ApiVersion":"1.52","MinAPIVersion":"1.24"}`))
+	}))
+	t.Cleanup(server.Close)
+
+	t.Setenv("DOCKER_CONFIG", t.TempDir())
+	t.Setenv("DOCKER_HOST", "tcp://"+server.Listener.Addr().String())
+	t.Setenv("DOCKER_CONTEXT", "")
+	t.Setenv("DOCKER_TLS", "")
+	t.Setenv("DOCKER_TLS_VERIFY", "")
+	t.Setenv("DOCKER_CERT_PATH", "")
+	t.Setenv("DOCKER_API_VERSION", "")
+	t.Setenv("DOCKER_CUSTOM_HEADERS", "")
+
+	require.Equal(t, "28.0.1", dockerVersion(t.Context()))
+
+	unavailable.Store(true)
+	require.Empty(t, dockerVersion(t.Context()))
+}
+
 func TestFinish(t *testing.T) {
 	manifest := Manifest{Lanes: []Lane{{Name: "execution"}, {Name: "consensus"}}}
-	finished := time.Date(2026, 8, 7, 13, 0, 0, 0, time.UTC)
+	finished := time.Date(2026, 8, 7, 13, 0, 0, 0, time.FixedZone("UTC+4", 4*60*60))
 
 	manifest.Finish(map[string]bool{"execution": true, "consensus": true}, finished)
 	require.Equal(t, "passed", manifest.Result)
 	require.Equal(t, "passed", manifest.Lanes[0].Result)
 	require.Equal(t, "passed", manifest.Lanes[1].Result)
-	require.Equal(t, finished, manifest.FinishedAt)
+	require.Equal(t, finished.UTC(), manifest.FinishedAt)
 
 	manifest.Finish(map[string]bool{"execution": true, "consensus": false}, finished)
 	require.Equal(t, "failed", manifest.Result)
@@ -116,16 +149,83 @@ func TestFinish(t *testing.T) {
 
 func TestWrite(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "reports", FileName)
-	want := Manifest{
-		PackageLocator: devnet.PackageLocator,
-		Backend:        devnet.BackendDocker,
-		Lanes:          []Lane{{Name: "execution", Enclave: "qrl-tests", Profile: devnet.ProfileSingle, Seed: 42}},
-		StartedAt:      time.Date(2026, 8, 7, 12, 0, 0, 0, time.UTC),
+	images := devnet.Images{
+		Execution: "execution-image",
+		Clef:      "clef-image",
+		Consensus: "consensus-image",
+		Validator: "validator-image",
+		Genesis:   "genesis-image",
 	}
-	require.NoError(t, want.Write(path))
+	manifest := Manifest{
+		Sources: Sources{
+			GoQRL:     "go-qrl-revision",
+			Qrysm:     "qrysm-revision",
+			Generator: "generator-revision",
+			QRLTests:  "qrl-tests-revision",
+		},
+		Images:           &images,
+		ParametersSHA256: "parameters-sha256",
+		PackageLocator:   "qrl-package-locator",
+		Backend:          devnet.BackendDocker,
+		Lanes: []Lane{{
+			Name:    "execution",
+			Enclave: "qrl-tests-execution",
+			Profile: devnet.ProfileSingle,
+			Suites:  []string{"execution-abi", "execution-console"},
+			Seed:    42,
+		}},
+		Versions: Versions{Go: "go1.26.0", Docker: "28.0.1", Kurtosis: "1.20.1"},
+		GitHub: GitHub{
+			Repository: "cyyber/qrl-tests",
+			Workflow:   "nightly",
+			RunID:      "12345",
+			RunAttempt: "2",
+		},
+		StartedAt: time.Date(2026, 8, 7, 12, 0, 0, 0, time.UTC),
+	}
+	require.NoError(t, manifest.Write(path))
 
-	got := testutil.ReadJSON[Manifest](t, path)
-	require.Equal(t, want, got)
+	payload, err := os.ReadFile(path)
+	require.NoError(t, err)
+	require.JSONEq(t, `{
+		"sources": {
+			"go_qrl": "go-qrl-revision",
+			"qrysm": "qrysm-revision",
+			"genesis_generator": "generator-revision",
+			"qrl_tests": "qrl-tests-revision"
+		},
+		"images": {
+			"execution": "execution-image",
+			"clef": "clef-image",
+			"consensus": "consensus-image",
+			"validator": "validator-image",
+			"genesis": "genesis-image"
+		},
+		"custom_parameters_sha256": "parameters-sha256",
+		"qrl_package": "qrl-package-locator",
+		"backend": "docker",
+		"lanes": [{
+			"name": "execution",
+			"enclave": "qrl-tests-execution",
+			"profile": "single",
+			"suites": ["execution-abi", "execution-console"],
+			"seed": 42
+		}],
+		"versions": {
+			"go": "go1.26.0",
+			"docker": "28.0.1",
+			"kurtosis": "1.20.1"
+		},
+		"github": {
+			"repository": "cyyber/qrl-tests",
+			"workflow": "nightly",
+			"run_id": "12345",
+			"run_attempt": "2"
+		},
+		"started_at": "2026-08-07T12:00:00Z"
+	}`, string(payload))
+	require.NotContains(t, string(payload), `"finished_at"`)
+	require.NotContains(t, string(payload), `"result"`)
 }
 
 func TestKurtosisVersionParsing(t *testing.T) {
