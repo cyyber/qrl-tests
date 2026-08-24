@@ -5,6 +5,7 @@ package console
 import (
 	"testing"
 
+	"github.com/cyyber/qrl-tests/e2e/internal/consolefixture"
 	"github.com/cyyber/qrl-tests/e2e/internal/live"
 	"github.com/cyyber/qrl-tests/e2e/internal/testsuite"
 	ginkgo "github.com/onsi/ginkgo/v2"
@@ -34,7 +35,13 @@ var _ = ginkgo.Describe(
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 			gomega.Expect(node.ExecutionImage).NotTo(gomega.BeEmpty())
-			fixtureArchive, err = consoleFixtureArchive(nil)
+
+			ginkgo.By("preparing the console scripts and deployment transaction")
+			bytecode, err := consolefixture.Bytecode()
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+			parameters, err := deploymentParameters(ctx, node, consolefixture.ABI, bytecode)
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+			fixtureArchive, err = consoleFixtureArchive(parameters)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 		})
 
@@ -45,6 +52,18 @@ var _ = ginkgo.Describe(
 					endpointURL: node.ExecutionRPCURL,
 					scenario:    "api",
 				}, fixtureArchive),
+			).To(gomega.Succeed())
+		})
+
+		ginkgo.It("deploys a contract and validates VM64 ABI, receipts, events, and filters", func(ctx ginkgo.SpecContext) {
+			gomega.Expect(
+				runSuite(ctx, node.ExecutionImage, node.ExecutionRPCURL, "contract", fixtureArchive),
+			).To(gomega.Succeed())
+		})
+
+		ginkgo.It("formats and decodes indexed VM64 scalar topics", func(ctx ginkgo.SpecContext) {
+			gomega.Expect(
+				runSuite(ctx, node.ExecutionImage, node.ExecutionRPCURL, "topics", fixtureArchive),
 			).To(gomega.Succeed())
 		})
 	},
