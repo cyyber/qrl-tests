@@ -15,8 +15,9 @@ import (
 
 // Runtime owns the network metadata and shared resources for one live suite.
 type Runtime struct {
-	Wallet  qrlwallet.Wallet
-	ChainID *big.Int
+	Wallet         qrlwallet.Wallet
+	ChainID        *big.Int
+	ExecutionImage string
 
 	environment devnet.Environment
 	nodes       []*Node
@@ -26,6 +27,7 @@ type Runtime struct {
 // plus the shared suite Runtime.
 type Node struct {
 	*Runtime
+	ExecutionRPCURL    string
 	Execution          *qrlclient.Client
 	ExecutionWebSocket *qrlclient.Client
 }
@@ -44,10 +46,19 @@ func Load() (*Runtime, error) {
 	}
 
 	runtime := &Runtime{
-		Wallet:      wallet,
-		environment: suiteManifest.Environment,
+		Wallet:         wallet,
+		ExecutionImage: suiteManifest.ExecutionImage,
+		environment:    suiteManifest.Environment,
 	}
 	return runtime, nil
+}
+
+func (runtime *Runtime) PrimaryNode(ctx context.Context) (*Node, error) {
+	participant, err := runtime.environment.Primary()
+	if err != nil {
+		return nil, err
+	}
+	return runtime.open(ctx, participant, false)
 }
 
 func (runtime *Runtime) PrimaryWithWebSocket(ctx context.Context) (*Node, error) {
@@ -72,7 +83,11 @@ func (runtime *Runtime) open(ctx context.Context, participant devnet.Participant
 		}
 	}
 
-	node := &Node{Runtime: runtime, Execution: client}
+	node := &Node{
+		Runtime:         runtime,
+		ExecutionRPCURL: participant.Execution.RPCURL,
+		Execution:       client,
+	}
 	if withWebSocket {
 		node.ExecutionWebSocket, err = qrlclient.DialContext(ctx, participant.Execution.WebSocketURL)
 		if err != nil {

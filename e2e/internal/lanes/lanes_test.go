@@ -46,9 +46,16 @@ func TestLaneWithSuites(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, execution, unchanged)
 
-	selected, err := execution.WithSuites([]string{string(suiteExecutionABI), string(suiteExecutionABI)})
+	selected, err := execution.WithSuites([]string{
+		string(suiteExecutionConsole), string(suiteExecutionABI), string(suiteExecutionConsole),
+	})
 	require.NoError(t, err)
-	require.Equal(t, []SuiteID{suiteExecutionABI}, selected.Suites)
+	require.Equal(t, []SuiteID{suiteExecutionABI, suiteExecutionConsole}, selected.Suites)
+	require.True(t, selected.NeedsExecutionImage())
+
+	selected, err = execution.WithSuites([]string{string(suiteExecutionABI)})
+	require.NoError(t, err)
+	require.False(t, selected.NeedsExecutionImage())
 
 	_, err = execution.WithSuites([]string{"unknown"})
 	require.ErrorContains(t, err, "unknown E2E suite")

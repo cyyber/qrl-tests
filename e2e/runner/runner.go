@@ -80,21 +80,23 @@ func (mode runMode) suffixesEnclave() bool {
 }
 
 type Runner struct {
-	configuration Config
-	networks      networkManager
-	runCommand    func(context.Context, commandSpec) error
-	stdout        io.Writer
-	stderr        io.Writer
+	configuration         Config
+	networks              networkManager
+	resolveExecutionImage func(context.Context, devnet.Environment) (string, error)
+	runCommand            func(context.Context, commandSpec) error
+	stdout                io.Writer
+	stderr                io.Writer
 }
 
 func New(configuration Config, stdout, stderr io.Writer) *Runner {
 	outputLock := new(sync.Mutex)
 	return &Runner{
-		configuration: configuration.withDefaults(),
-		networks:      devnet.NewManager(),
-		runCommand:    execute,
-		stdout:        &lockedWriter{lock: outputLock, writer: stdout},
-		stderr:        &lockedWriter{lock: outputLock, writer: stderr},
+		configuration:         configuration.withDefaults(),
+		networks:              devnet.NewManager(),
+		resolveExecutionImage: devnet.ResolveExecutionImage,
+		runCommand:            execute,
+		stdout:                &lockedWriter{lock: outputLock, writer: stdout},
+		stderr:                &lockedWriter{lock: outputLock, writer: stderr},
 	}
 }
 

@@ -16,8 +16,9 @@ import (
 )
 
 const (
-	laneCleanupTimeout     = 2 * time.Minute
-	laneDiagnosticsTimeout = 2 * time.Minute
+	laneCleanupTimeout              = 2 * time.Minute
+	laneDiagnosticsTimeout          = 2 * time.Minute
+	executionImageResolutionTimeout = 30 * time.Second
 
 	// laneReportSlack extends the lane context past ginkgo's own --timeout so
 	// it can report and clean up before the context interrupts the process.
@@ -134,11 +135,28 @@ func (runner *Runner) executeLane(ctx context.Context, plan runPlan, lane laneRu
 	laneLog := &lockedWriter{lock: new(sync.Mutex), writer: logFile}
 	stdout := io.MultiWriter(runner.stdout, laneLog)
 	stderr := io.MultiWriter(runner.stderr, laneLog)
+	executionImage := ""
+	if definition.NeedsExecutionImage() {
+		lease.environment.Backend = runner.configuration.Backend
+		resolveCtx, cancelResolve := context.WithTimeout(ctx, executionImageResolutionTimeout)
+		executionImage, err = runner.resolveExecutionImage(resolveCtx, lease.environment)
+		cancelResolve()
+		if err != nil {
+			outcome.ExecutionErr = ctx.Err()
+			outcome.Err = fmt.Errorf(
+				"test infrastructure failed: resolve execution image: %w",
+				errors.Join(err, outcome.ExecutionErr),
+			)
+			return outcome
+		}
+	}
+
 	manifestPath := lane.manifestPath()
 	if err := manifest.Write(manifestPath, manifest.Manifest{
-		Lane:        definition.Name,
-		Profile:     definition.Profile,
-		Environment: lease.environment,
+		Lane:           definition.Name,
+		Profile:        definition.Profile,
+		Environment:    lease.environment,
+		ExecutionImage: executionImage,
 	}); err != nil {
 		outcome.Err = fmt.Errorf("test infrastructure failed: %w", err)
 		return outcome
