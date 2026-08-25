@@ -120,7 +120,6 @@ func TestDockerVersion(t *testing.T) {
 	t.Setenv("DOCKER_TLS_VERIFY", "")
 	t.Setenv("DOCKER_CERT_PATH", "")
 	t.Setenv("DOCKER_API_VERSION", "")
-	t.Setenv("DOCKER_CUSTOM_HEADERS", "")
 
 	require.Equal(t, "28.0.1", dockerVersion(t.Context()))
 
