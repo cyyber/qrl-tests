@@ -71,23 +71,23 @@ func TestResolveExecutionImageErrors(t *testing.T) {
 }
 
 func TestPrimaryExecutionServiceID(t *testing.T) {
-	environment := executionImageTestEnvironment()
-	environment.Backend = BackendKubernetes
-	_, err := primaryExecutionServiceID(environment)
-	require.ErrorContains(t, err, "is not Docker")
-
-	environment.Backend = BackendDocker
-	environment.Participants[0].Execution.ID = ""
-	_, err = primaryExecutionServiceID(environment)
-	require.ErrorContains(t, err, "primary execution service has no ID")
-}
-
-func executionImageTestEnvironment() Environment {
-	return Environment{
+	environment := Environment{
 		Backend: BackendDocker,
 		Participants: []Participant{{
 			Index:     1,
 			Execution: ExecutionService{ServiceInfo: ServiceInfo{ID: "primary-execution-service"}},
 		}},
 	}
+	serviceID, err := primaryExecutionServiceID(environment)
+	require.NoError(t, err)
+	require.Equal(t, "primary-execution-service", serviceID)
+
+	environment.Backend = BackendKubernetes
+	_, err = primaryExecutionServiceID(environment)
+	require.ErrorContains(t, err, "is not Docker")
+
+	environment.Backend = BackendDocker
+	environment.Participants[0].Execution.ID = ""
+	_, err = primaryExecutionServiceID(environment)
+	require.ErrorContains(t, err, "primary execution service has no ID")
 }

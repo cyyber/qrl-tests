@@ -1,4 +1,4 @@
-// Package dockerapi creates Docker Engine clients using the same connection
+// Package dockerapi creates Docker Engine API clients using the same connection
 // settings as the Docker CLI.
 package dockerapi
 
@@ -30,16 +30,18 @@ const (
 	dockerTLSEnv           = "DOCKER_TLS"
 )
 
-type configFile struct {
+// connectionConfig contains only Docker CLI settings used to create API clients.
+type connectionConfig struct {
 	CurrentContext string            `json:"currentContext"`
 	HTTPHeaders    map[string]string `json:"HttpHeaders"`
 }
 
-// New creates a Docker Engine client for the endpoint selected by the Docker
+// New creates a Docker Engine API client for the endpoint selected by the Docker
 // environment, current CLI context, and configuration.
+// The caller must close the returned client.
 func New() (dockerclient.APIClient, error) {
 	configDirectory := configDirectory()
-	configuration := loadConfig(configDirectory)
+	configuration := loadConnectionConfig(configDirectory)
 
 	endpoint, err := resolveEndpoint(configDirectory, configuration.CurrentContext)
 	if err != nil {
@@ -173,19 +175,20 @@ func configDirectory() string {
 	return filepath.Join(home, ".docker")
 }
 
-func loadConfig(directory string) configFile {
-	contents, err := os.ReadFile(filepath.Join(directory, dockerConfigFile))
-	if errors.Is(err, os.ErrNotExist) {
-		return configFile{}
-	}
+func loadConnectionConfig(directory string) connectionConfig {
+	configPath := filepath.Join(directory, dockerConfigFile)
+	contents, err := os.ReadFile(configPath)
 	if err != nil {
-		_, _ = fmt.Fprintln(os.Stderr, "WARNING: Error loading Docker configuration:", err)
-		return configFile{}
+		if errors.Is(err, os.ErrNotExist) {
+			return connectionConfig{}
+		}
+		_, _ = fmt.Fprintf(os.Stderr, "WARNING: Error loading Docker configuration %q: %v\n", configPath, err)
+		return connectionConfig{}
 	}
-	var configuration configFile
+	var configuration connectionConfig
 	if err := json.Unmarshal(contents, &configuration); err != nil {
-		_, _ = fmt.Fprintln(os.Stderr, "WARNING: Error loading Docker configuration:", err)
-		return configFile{}
+		_, _ = fmt.Fprintf(os.Stderr, "WARNING: Error loading Docker configuration %q: %v\n", configPath, err)
+		return connectionConfig{}
 	}
 	return configuration
 }
