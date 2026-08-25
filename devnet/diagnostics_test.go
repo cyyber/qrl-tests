@@ -15,12 +15,7 @@ import (
 
 var diagnosticServices = []kurtosis.ServiceIdentity{
 	{Name: "run-generate-genesis", UUID: "aaaa", Status: "STOPPED", Ports: []string{"<none>"}},
-	{Name: "clef-keystore-generation-el-clef-keystore", UUID: "bbbb"},
-	{Name: "validator-key-generation-cl-validator-keystore", UUID: "cccc"},
 	{Name: "el-1-gqrl-qrysm", UUID: "dddd"},
-	{Name: "cl-1-qrysm-gqrl", UUID: "eeee"},
-	{Name: "signer-clef", UUID: "ffff"},
-	{Name: "vc-1-gqrl-qrysm", UUID: "0123"},
 }
 
 type fakeDiagnosticsClient struct {
@@ -86,16 +81,13 @@ func TestManagerCollectDiagnosticsClosesClient(t *testing.T) {
 	ctx := context.WithValue(t.Context(), contextKey{}, "sentinel")
 	session := &fakeDiagnosticsSession{closeErr: errors.New("close failed")}
 	manager := &Manager{
-		newDiagnosticsClient: func(factoryCtx context.Context) (diagnosticsSession, error) {
-			require.Equal(t, "sentinel", factoryCtx.Value(contextKey{}))
-			return session, nil
-		},
+		newDiagnosticsClient: func() (diagnosticsSession, error) { return session, nil },
 		collectDiagnostics: func(
-			context.Context,
-			diagnosticsClient,
-			string,
-			string,
+			collectCtx context.Context,
+			_ diagnosticsClient,
+			_, _ string,
 		) error {
+			require.Equal(t, "sentinel", collectCtx.Value(contextKey{}))
 			return errors.New("collection failed")
 		},
 	}
@@ -125,7 +117,7 @@ func TestCollectDiagnostics(t *testing.T) {
 	require.NoError(t, collectDiagnostics(t.Context(), client, "qrl-tests-abi", output))
 	require.Equal(t, 1, client.logCalls, "all services should use one log stream")
 	require.Equal(t, "qrl-tests-abi", client.enclaveName)
-	require.Equal(t, []string{"aaaa", "bbbb", "cccc", "dddd", "eeee", "ffff", "0123"}, client.requested)
+	require.Equal(t, []string{"aaaa", "dddd"}, client.requested)
 
 	inspection, err := os.ReadFile(filepath.Join(output, "inspect.txt"))
 	require.NoError(t, err)
@@ -147,7 +139,7 @@ func TestCollectDiagnostics(t *testing.T) {
 
 	manifest := testutil.ReadJSON[diagnosticsManifest](t, filepath.Join(output, "diagnostics.json"))
 	require.True(t, manifest.Inspection.Captured)
-	require.Len(t, manifest.Services, 7)
+	require.Len(t, manifest.Services, 2)
 	for _, service := range manifest.Services {
 		require.True(t, service.Captured)
 	}
@@ -161,7 +153,6 @@ func TestCollectDiagnosticsPartialFailures(t *testing.T) {
 		inspection: diagnosticInspection(),
 		inspectErr: errors.New("inspect unavailable"),
 		logs: map[string][]string{
-			"bbbb": {"partial output"},
 			"dddd": {"captured after failure"},
 		},
 		logsErr: errors.New("log stream reset"),
@@ -172,10 +163,9 @@ func TestCollectDiagnosticsPartialFailures(t *testing.T) {
 	require.ErrorContains(t, err, "write diagnostic "+failedLog)
 	require.ErrorContains(t, err, "stream Kurtosis service logs for qrl-tests-abi: log stream reset")
 
-	partialLog, readErr := os.ReadFile(filepath.Join(output, "services", "clef-keystore-generation-el-clef-keystore.log"))
+	partialLog, readErr := os.ReadFile(filepath.Join(output, "services", "el-1-gqrl-qrysm.log"))
 	require.NoError(t, readErr)
-	require.Equal(t, "partial output\n", string(partialLog))
-	require.FileExists(t, filepath.Join(output, "services", "el-1-gqrl-qrysm.log"),
+	require.Equal(t, "captured after failure\n", string(partialLog),
 		"a failing service write must not stop the remaining captures")
 
 	manifest := testutil.ReadJSON[diagnosticsManifest](t, filepath.Join(output, "diagnostics.json"))

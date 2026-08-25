@@ -50,7 +50,7 @@ type StartOptions struct {
 
 type Manager struct {
 	newKurtosisClient    func() (kurtosisClient, error)
-	newDiagnosticsClient func(context.Context) (diagnosticsSession, error)
+	newDiagnosticsClient func() (diagnosticsSession, error)
 	probe                func(ctx context.Context, rpcURL, address string) error
 	collectDiagnostics   func(ctx context.Context, client diagnosticsClient, enclave, outputDir string) error
 }
@@ -64,8 +64,8 @@ func NewManager() *Manager {
 			}
 			return client, nil
 		},
-		newDiagnosticsClient: func(ctx context.Context) (diagnosticsSession, error) {
-			client, err := kurtosis.NewDiagnosticsClient(ctx)
+		newDiagnosticsClient: func() (diagnosticsSession, error) {
+			client, err := kurtosis.NewDiagnosticsClient()
 			if err != nil {
 				return nil, fmt.Errorf("connect to Kurtosis diagnostics API: %w", err)
 			}
