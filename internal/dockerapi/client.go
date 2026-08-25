@@ -9,7 +9,9 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"os/user"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	dockercontext "github.com/docker/cli/cli/context"
@@ -36,10 +38,7 @@ type configFile struct {
 // New creates a Docker Engine client for the endpoint selected by the Docker
 // environment, current CLI context, and configuration.
 func New() (dockerclient.APIClient, error) {
-	configDirectory, err := configDirectory()
-	if err != nil {
-		return nil, err
-	}
+	configDirectory := configDirectory()
 	configuration := loadConfig(configDirectory)
 
 	endpoint, err := resolveEndpoint(configDirectory, configuration.CurrentContext)
@@ -161,15 +160,17 @@ func contextStoreConfig() dockercontextstore.Config {
 	)
 }
 
-func configDirectory() (string, error) {
+func configDirectory() string {
 	if directory := os.Getenv(dockerConfigEnv); directory != "" {
-		return directory, nil
+		return directory
 	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", fmt.Errorf("resolve Docker configuration directory: %w", err)
+	home, _ := os.UserHomeDir()
+	if home == "" && runtime.GOOS != "windows" {
+		if current, err := user.Current(); err == nil {
+			home = current.HomeDir
+		}
 	}
-	return filepath.Join(home, ".docker"), nil
+	return filepath.Join(home, ".docker")
 }
 
 func loadConfig(directory string) configFile {

@@ -1,12 +1,13 @@
 package dockerapi
 
 import (
-	"crypto/x509"
 	"encoding/pem"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/user"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -50,7 +51,7 @@ func TestNewUsesPlatformDefaultEndpoint(t *testing.T) {
 
 func TestNewUsesNamedContextTLS(t *testing.T) {
 	configurationDirectory := dockerEnvironment(t)
-	server := dockerTLSServer(t, nil)
+	server := httptest.NewTLSServer(dockerHandler(nil))
 	defer server.Close()
 
 	certificate := pem.EncodeToMemory(&pem.Block{
@@ -76,7 +77,7 @@ func TestNewUsesNamedContextTLS(t *testing.T) {
 
 func TestNewUsesDefaultContextTLS(t *testing.T) {
 	configurationDirectory := dockerEnvironment(t)
-	server := dockerTLSServer(t, nil)
+	server := httptest.NewTLSServer(dockerHandler(nil))
 	defer server.Close()
 
 	require.NoError(t, os.WriteFile(
@@ -133,9 +134,9 @@ func TestNewAppliesNamedContextGoDebug(t *testing.T) {
 func TestNewUsesAPIversionAndCustomHeaders(t *testing.T) {
 	configurationDirectory := dockerEnvironment(t)
 	requests := make(chan http.Header, 1)
-	server := dockerServer(t, func(request *http.Request) {
+	server := httptest.NewServer(dockerHandler(func(request *http.Request) {
 		requests <- request.Header.Clone()
-	})
+	}))
 	defer server.Close()
 
 	writeConfig(t, configurationDirectory, `{"HttpHeaders":{"X-Configured":"configured"}}`)
@@ -184,6 +185,21 @@ func TestNewToleratesMalformedConfiguration(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, client.Close()) })
 	require.Equal(t, dockerclient.DefaultDockerHost, client.DaemonHost())
+}
+
+func TestConfigDirectoryFallback(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Docker CLI does not use the current-user fallback on Windows")
+	}
+	t.Setenv(dockerConfigEnv, "")
+	t.Setenv("HOME", "")
+	if home, _ := os.UserHomeDir(); home != "" {
+		t.Skip("platform provides a home directory without HOME")
+	}
+	current, err := user.Current()
+	require.NoError(t, err)
+
+	require.Equal(t, filepath.Join(current.HomeDir, ".docker"), configDirectory())
 }
 
 func dockerEnvironment(t *testing.T) string {
@@ -238,32 +254,12 @@ func writeContext(
 	}
 }
 
-func dockerServer(t *testing.T, inspect func(*http.Request)) *httptest.Server {
-	t.Helper()
-	return httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+func dockerHandler(inspect func(*http.Request)) http.Handler {
+	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		if inspect != nil {
 			inspect(request)
 		}
 		writer.Header().Set("Content-Type", "application/json")
-		_, err := writer.Write([]byte(`{"Version":"29.0.0","ApiVersion":"1.52","MinAPIVersion":"1.24"}`))
-		require.NoError(t, err)
-	}))
-}
-
-func dockerTLSServer(t *testing.T, inspect func(*http.Request)) *httptest.Server {
-	t.Helper()
-	server := httptest.NewUnstartedServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		if inspect != nil {
-			inspect(request)
-		}
-		writer.Header().Set("Content-Type", "application/json")
-		_, err := writer.Write([]byte(`{"Version":"29.0.0","ApiVersion":"1.52","MinAPIVersion":"1.24"}`))
-		require.NoError(t, err)
-	}))
-	server.StartTLS()
-	require.NotNil(t, server.Certificate())
-	require.NotNil(t, server.Certificate().Raw)
-	_, err := x509.ParseCertificate(server.Certificate().Raw)
-	require.NoError(t, err)
-	return server
+		_, _ = writer.Write([]byte(`{"Version":"29.0.0","ApiVersion":"1.52","MinAPIVersion":"1.24"}`))
+	})
 }
