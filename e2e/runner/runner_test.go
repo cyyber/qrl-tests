@@ -3,7 +3,6 @@ package runner
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -17,6 +16,7 @@ import (
 	"github.com/cyyber/qrl-tests/devnet"
 	"github.com/cyyber/qrl-tests/e2e/internal/lanes"
 	"github.com/cyyber/qrl-tests/e2e/internal/manifest"
+	"github.com/cyyber/qrl-tests/internal/jsonfile"
 	"github.com/cyyber/qrl-tests/internal/results"
 	"github.com/cyyber/qrl-tests/internal/runmanifest"
 	"github.com/cyyber/qrl-tests/internal/testutil"
@@ -140,10 +140,11 @@ func writeGinkgoReport(t *testing.T, laneDir string, state types.SpecState) {
 		LeafNodeType: types.NodeTypeIt,
 		State:        state,
 	}}}
-	payload, err := json.Marshal([]types.Report{report})
-	require.NoError(t, err)
-	require.NoError(t, os.MkdirAll(laneDir, 0o755))
-	require.NoError(t, os.WriteFile(filepath.Join(laneDir, results.ReportFileName), payload, 0o600))
+	require.NoError(t, jsonfile.Write(
+		filepath.Join(laneDir, results.ReportFileName),
+		[]types.Report{report},
+		"Ginkgo report",
+	))
 }
 
 func outcomeErrors(outcomes []results.Outcome) []error {

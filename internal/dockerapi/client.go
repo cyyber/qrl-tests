@@ -5,7 +5,6 @@ package dockerapi
 import (
 	"cmp"
 	"encoding/csv"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -15,6 +14,7 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/cyyber/qrl-tests/internal/jsonfile"
 	dockercontext "github.com/docker/cli/cli/context"
 	dockerendpoint "github.com/docker/cli/cli/context/docker"
 	dockercontextstore "github.com/docker/cli/cli/context/store"
@@ -172,17 +172,12 @@ func configDirectory() string {
 
 func loadConnectionConfig(directory string) connectionConfig {
 	configPath := filepath.Join(directory, dockerConfigFile)
-	contents, err := os.ReadFile(configPath)
+	configuration, err := jsonfile.Read[connectionConfig](configPath, "Docker configuration")
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return connectionConfig{}
 		}
-		_, _ = fmt.Fprintf(os.Stderr, "WARNING: Error loading Docker configuration %q: %v\n", configPath, err)
-		return connectionConfig{}
-	}
-	var configuration connectionConfig
-	if err := json.Unmarshal(contents, &configuration); err != nil {
-		_, _ = fmt.Fprintf(os.Stderr, "WARNING: Error loading Docker configuration %q: %v\n", configPath, err)
+		_, _ = fmt.Fprintf(os.Stderr, "WARNING: %v\n", err)
 		return connectionConfig{}
 	}
 	return configuration
