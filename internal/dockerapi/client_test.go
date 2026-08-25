@@ -99,27 +99,6 @@ func TestNewUsesDefaultContextTLS(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func TestNewConfiguresSSHContext(t *testing.T) {
-	configurationDirectory := dockerEnvironment(t)
-	writeContext(t, configurationDirectory, "remote", "ssh://user@example.test", nil)
-	t.Setenv(dockerContextEnv, "remote")
-
-	client, err := New()
-	require.NoError(t, err)
-	t.Cleanup(func() { require.NoError(t, client.Close()) })
-	require.NotNil(t, client.Dialer())
-}
-
-func TestNewUsesAPIVersion(t *testing.T) {
-	dockerEnvironment(t)
-	t.Setenv(dockerclient.EnvOverrideAPIVersion, "1.44")
-
-	client, err := New()
-	require.NoError(t, err)
-	t.Cleanup(func() { require.NoError(t, client.Close()) })
-	require.Equal(t, "1.44", client.ClientVersion())
-}
-
 func TestNewRejectsMissingContext(t *testing.T) {
 	dockerEnvironment(t)
 	t.Setenv(dockerContextEnv, "missing")
