@@ -3,6 +3,7 @@
 package dockerapi
 
 import (
+	"cmp"
 	"encoding/csv"
 	"encoding/json"
 	"errors"
@@ -108,13 +109,7 @@ func currentContext(configured string) string {
 	if os.Getenv(dockerclient.EnvOverrideHost) != "" {
 		return defaultContextName
 	}
-	if name := os.Getenv(dockerContextEnv); name != "" {
-		return name
-	}
-	if configured != "" {
-		return configured
-	}
-	return defaultContextName
+	return cmp.Or(os.Getenv(dockerContextEnv), configured, defaultContextName)
 }
 
 func defaultEndpoint(configDirectory string) (dockerendpoint.Endpoint, error) {
