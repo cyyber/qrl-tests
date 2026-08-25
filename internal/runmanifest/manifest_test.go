@@ -4,8 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"path/filepath"
 	"runtime"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -30,8 +33,6 @@ func TestEnrich(t *testing.T) {
 		switch name {
 		case "git":
 			return "3333333333333333333333333333333333333333", nil
-		case "docker":
-			return "28.0.1", nil
 		case "kurtosis":
 			return "CLI Version:   1.20.1\n\nEngine Version: 1.20.1", nil
 		}
@@ -50,7 +51,10 @@ func TestEnrich(t *testing.T) {
 	}, dependencies{
 		getenv: func(key string) string { return environment[key] },
 		probe:  probe,
-		now:    func() time.Time { return started },
+		dockerVersion: func(context.Context) string {
+			return "28.0.1"
+		},
+		now: func() time.Time { return started },
 	})
 
 	require.Equal(t, Sources{
@@ -72,7 +76,6 @@ func TestEnrich(t *testing.T) {
 	}, manifest.GitHub)
 	require.Equal(t, [][]string{
 		{"git", "-C", "/checkout", "rev-parse", "HEAD"},
-		{"docker", "version", "--format", "{{.Server.Version}}"},
 		{"kurtosis", "version"},
 	}, probes)
 	require.NotNil(t, manifest.Images)
@@ -88,11 +91,40 @@ func TestEnrichSurvivesMissingTools(t *testing.T) {
 		probe: func(context.Context, string, ...string) (string, error) {
 			return "", errors.New("not installed")
 		},
+		dockerVersion: func(context.Context) string {
+			return ""
+		},
 		now: time.Now,
 	})
 	require.Empty(t, manifest.Versions.Docker)
 	require.Empty(t, manifest.Versions.Kurtosis)
 	require.Equal(t, runtime.Version(), manifest.Versions.Go)
+}
+
+func TestDockerVersion(t *testing.T) {
+	var unavailable atomic.Bool
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		if unavailable.Load() {
+			http.Error(writer, "unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		writer.Header().Set("Content-Type", "application/json")
+		_, _ = writer.Write([]byte(`{"Version":" 28.0.1\n","ApiVersion":"1.52","MinAPIVersion":"1.24"}`))
+	}))
+	t.Cleanup(server.Close)
+
+	t.Setenv("DOCKER_CONFIG", t.TempDir())
+	t.Setenv("DOCKER_HOST", "tcp://"+server.Listener.Addr().String())
+	t.Setenv("DOCKER_CONTEXT", "")
+	t.Setenv("DOCKER_TLS", "")
+	t.Setenv("DOCKER_TLS_VERIFY", "")
+	t.Setenv("DOCKER_CERT_PATH", "")
+	t.Setenv("DOCKER_API_VERSION", "")
+
+	require.Equal(t, "28.0.1", dockerVersion(t.Context()))
+
+	unavailable.Store(true)
+	require.Empty(t, dockerVersion(t.Context()))
 }
 
 func TestFinish(t *testing.T) {

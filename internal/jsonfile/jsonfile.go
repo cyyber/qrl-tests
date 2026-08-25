@@ -1,4 +1,4 @@
-// Package jsonfile persists report documents as indented JSON files.
+// Package jsonfile reads and writes JSON documents.
 package jsonfile
 
 import (
@@ -7,6 +7,22 @@ import (
 	"os"
 	"path/filepath"
 )
+
+// Read reads and decodes a JSON document from path. The label names the
+// document in errors.
+func Read[T any](path, label string) (T, error) {
+	var zero T
+	payload, err := os.ReadFile(path)
+	if err != nil {
+		return zero, fmt.Errorf("read %s %q: %w", label, path, err)
+	}
+
+	var value T
+	if err := json.Unmarshal(payload, &value); err != nil {
+		return zero, fmt.Errorf("decode %s %q: %w", label, path, err)
+	}
+	return value, nil
+}
 
 // Write encodes value as indented JSON and writes it to path, creating the
 // parent directory when needed. The label names the document in errors.

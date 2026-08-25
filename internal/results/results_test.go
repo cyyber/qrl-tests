@@ -2,12 +2,12 @@ package results
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
 	"testing"
 
+	"github.com/cyyber/qrl-tests/internal/testutil"
 	"github.com/onsi/ginkgo/v2/types"
 	"github.com/stretchr/testify/require"
 )
@@ -53,10 +53,11 @@ func summarizeTestLane(executionErr error, reports ...types.Report) LaneSummary 
 
 func writeReportFile(t *testing.T, laneDir string, specs ...types.SpecReport) {
 	t.Helper()
-	payload, err := json.Marshal([]types.Report{suiteReport(filepath.Base(laneDir), specs...)})
-	require.NoError(t, err)
-	require.NoError(t, os.MkdirAll(laneDir, 0o755))
-	require.NoError(t, os.WriteFile(filepath.Join(laneDir, ReportFileName), payload, 0o600))
+	testutil.WriteJSON(
+		t,
+		filepath.Join(laneDir, ReportFileName),
+		[]types.Report{suiteReport(filepath.Base(laneDir), specs...)},
+	)
 }
 
 func outcomeFromReportDir(reportDir string, executionErr error) Outcome {
@@ -118,12 +119,12 @@ func TestSummarizeWritesPassedLane(t *testing.T) {
 		Counts:  Counts{Specs: 2, Passed: 2},
 	}}, summary.Lanes[0].suites)
 
-	payload, err := os.ReadFile(filepath.Join(root, SummaryFileName))
+	summaryPath := filepath.Join(root, SummaryFileName)
+	payload, err := os.ReadFile(summaryPath)
 	require.NoError(t, err)
 	require.NotContains(t, string(payload), `"suites"`)
 
-	var written Summary
-	require.NoError(t, json.Unmarshal(payload, &written))
+	written := testutil.ReadJSON[Summary](t, summaryPath)
 	require.Equal(t, Summary{
 		Result: "passed",
 		Totals: Counts{Specs: 2, Passed: 2},

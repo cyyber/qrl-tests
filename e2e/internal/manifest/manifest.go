@@ -3,7 +3,6 @@
 package manifest
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 
@@ -31,14 +30,9 @@ func Write(path string, manifest Manifest) error {
 }
 
 func Read(path string) (Manifest, error) {
-	payload, err := os.ReadFile(path)
+	manifest, err := jsonfile.Read[Manifest](path, "test manifest")
 	if err != nil {
-		return Manifest{}, fmt.Errorf("read test manifest: %w", err)
-	}
-
-	var manifest Manifest
-	if err := json.Unmarshal(payload, &manifest); err != nil {
-		return Manifest{}, fmt.Errorf("decode test manifest: %w", err)
+		return Manifest{}, err
 	}
 
 	if _, err := manifest.Environment.Primary(); err != nil {

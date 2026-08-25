@@ -12,7 +12,9 @@ import (
 	"time"
 
 	"github.com/cyyber/qrl-tests/devnet"
+	"github.com/cyyber/qrl-tests/internal/dockerapi"
 	"github.com/cyyber/qrl-tests/internal/jsonfile"
+	dockerclient "github.com/moby/moby/client"
 )
 
 const (
@@ -102,9 +104,10 @@ func (manifest Manifest) Write(path string) error {
 type commandFunc func(context.Context, string, ...string) (string, error)
 
 type dependencies struct {
-	getenv func(string) string
-	probe  commandFunc
-	now    func() time.Time
+	getenv        func(string) string
+	probe         commandFunc
+	dockerVersion func(context.Context) string
+	now           func() time.Time
 }
 
 // Enrich adds source, tool, and CI metadata to a starting manifest.
@@ -112,9 +115,10 @@ type dependencies struct {
 // failing the run the manifest is meant to explain.
 func Enrich(ctx context.Context, testsDir string, manifest Manifest) Manifest {
 	return enrich(ctx, testsDir, manifest, dependencies{
-		getenv: os.Getenv,
-		probe:  probeCommand,
-		now:    time.Now,
+		getenv:        os.Getenv,
+		probe:         probeCommand,
+		dockerVersion: dockerVersion,
+		now:           time.Now,
 	})
 }
 
@@ -129,7 +133,7 @@ func enrich(ctx context.Context, testsDir string, manifest Manifest, deps depend
 	}
 	manifest.Versions = Versions{
 		Go:       runtime.Version(),
-		Docker:   dockerVersion(ctx, deps.probe),
+		Docker:   deps.dockerVersion(ctx),
 		Kurtosis: kurtosisVersion(ctx, deps.probe),
 	}
 	manifest.GitHub = GitHub{
@@ -143,9 +147,21 @@ func enrich(ctx context.Context, testsDir string, manifest Manifest, deps depend
 	return manifest
 }
 
-func dockerVersion(ctx context.Context, command commandFunc) string {
-	version, _ := command(ctx, "docker", "version", "--format", "{{.Server.Version}}")
-	return version
+func dockerVersion(ctx context.Context) string {
+	probeCtx, cancel := context.WithTimeout(ctx, probeTimeout)
+	defer cancel()
+
+	client, err := dockerapi.New()
+	if err != nil {
+		return ""
+	}
+	defer func() { _ = client.Close() }()
+
+	result, err := client.ServerVersion(probeCtx, dockerclient.ServerVersionOptions{})
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(result.Version)
 }
 
 func kurtosisVersion(ctx context.Context, command commandFunc) string {

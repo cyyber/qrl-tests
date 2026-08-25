@@ -3,7 +3,6 @@ package runner
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -140,10 +139,11 @@ func writeGinkgoReport(t *testing.T, laneDir string, state types.SpecState) {
 		LeafNodeType: types.NodeTypeIt,
 		State:        state,
 	}}}
-	payload, err := json.Marshal([]types.Report{report})
-	require.NoError(t, err)
-	require.NoError(t, os.MkdirAll(laneDir, 0o755))
-	require.NoError(t, os.WriteFile(filepath.Join(laneDir, results.ReportFileName), payload, 0o600))
+	testutil.WriteJSON(
+		t,
+		filepath.Join(laneDir, results.ReportFileName),
+		[]types.Report{report},
+	)
 }
 
 func outcomeErrors(outcomes []results.Outcome) []error {
