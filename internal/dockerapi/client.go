@@ -79,7 +79,6 @@ func resolveEndpoint(configDirectory, configuredContext string) (dockerendpoint.
 	if err != nil {
 		return dockerendpoint.Endpoint{}, fmt.Errorf("load Docker context %q: %w", contextName, err)
 	}
-	applyContextGoDebug(metadata)
 	endpointMetadata, err := dockerendpoint.EndpointFromContext(metadata)
 	if err != nil {
 		return dockerendpoint.Endpoint{}, fmt.Errorf("load Docker context %q endpoint: %w", contextName, err)
@@ -89,20 +88,6 @@ func resolveEndpoint(configDirectory, configuredContext string) (dockerendpoint.
 		return dockerendpoint.Endpoint{}, fmt.Errorf("load Docker context %q TLS data: %w", contextName, err)
 	}
 	return endpoint, nil
-}
-
-func applyContextGoDebug(metadata dockercontextstore.Metadata) {
-	if os.Getenv("GODEBUG") != "" {
-		return
-	}
-	fields, ok := metadata.Metadata.(map[string]any)
-	if !ok {
-		return
-	}
-	value, ok := fields["GODEBUG"].(string)
-	if ok {
-		_ = os.Setenv("GODEBUG", value)
-	}
 }
 
 func currentContext(configured string) string {

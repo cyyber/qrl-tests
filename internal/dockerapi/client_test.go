@@ -106,31 +106,6 @@ func TestNewConfiguresSSHContext(t *testing.T) {
 	require.NotNil(t, client.Dialer())
 }
 
-func TestNewAppliesNamedContextGoDebug(t *testing.T) {
-	configurationDirectory := dockerEnvironment(t)
-	t.Setenv("GODEBUG", "")
-	writeContext(
-		t,
-		configurationDirectory,
-		"remote",
-		"tcp://127.0.0.1:23751",
-		nil,
-		map[string]any{"GODEBUG": "dockerapi-test=1"},
-	)
-	t.Setenv(dockerContextEnv, "remote")
-
-	client, err := New()
-	require.NoError(t, err)
-	require.NoError(t, client.Close())
-	require.Equal(t, "dockerapi-test=1", os.Getenv("GODEBUG"))
-
-	t.Setenv("GODEBUG", "user-setting=1")
-	client, err = New()
-	require.NoError(t, err)
-	require.NoError(t, client.Close())
-	require.Equal(t, "user-setting=1", os.Getenv("GODEBUG"))
-}
-
 func TestNewUsesAPIversionAndCustomHeaders(t *testing.T) {
 	configurationDirectory := dockerEnvironment(t)
 	requests := make(chan http.Header, 1)
@@ -227,20 +202,14 @@ func writeContext(
 	name string,
 	host string,
 	tlsFiles map[string][]byte,
-	metadata ...map[string]any,
 ) {
 	t.Helper()
-	var contextMetadata any
-	if len(metadata) > 0 {
-		contextMetadata = metadata[0]
-	}
 	contextStore := dockercontextstore.New(
 		filepath.Join(configurationDirectory, "contexts"),
 		contextStoreConfig(),
 	)
 	require.NoError(t, contextStore.CreateOrUpdate(dockercontextstore.Metadata{
-		Name:     name,
-		Metadata: contextMetadata,
+		Name: name,
 		Endpoints: map[string]any{
 			dockerendpoint.DockerEndpoint: dockerendpoint.EndpointMeta{Host: host},
 		},
