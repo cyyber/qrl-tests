@@ -1,18 +1,15 @@
-// Package dockerapi creates Docker Engine API clients using the same connection
-// settings as the Docker CLI.
+// Package dockerapi creates Docker Engine API clients from Docker environment
+// variables and CLI context configuration.
 package dockerapi
 
 import (
 	"cmp"
-	"encoding/csv"
 	"errors"
 	"fmt"
-	"net/http"
 	"os"
 	"os/user"
 	"path/filepath"
 	"runtime"
-	"strings"
 
 	"github.com/cyyber/qrl-tests/internal/jsonfile"
 	dockercontext "github.com/docker/cli/cli/context"
@@ -23,18 +20,16 @@ import (
 )
 
 const (
-	defaultContextName     = "default"
-	dockerConfigEnv        = "DOCKER_CONFIG"
-	dockerConfigFile       = "config.json"
-	dockerContextEnv       = "DOCKER_CONTEXT"
-	dockerCustomHeadersEnv = "DOCKER_CUSTOM_HEADERS"
-	dockerTLSEnv           = "DOCKER_TLS"
+	defaultContextName = "default"
+	dockerConfigEnv    = "DOCKER_CONFIG"
+	dockerConfigFile   = "config.json"
+	dockerContextEnv   = "DOCKER_CONTEXT"
+	dockerTLSEnv       = "DOCKER_TLS"
 )
 
-// connectionConfig contains only Docker CLI settings used to create API clients.
+// connectionConfig contains the Docker CLI setting used to select an API endpoint.
 type connectionConfig struct {
-	CurrentContext string            `json:"currentContext"`
-	HTTPHeaders    map[string]string `json:"HttpHeaders"`
+	CurrentContext string `json:"currentContext"`
 }
 
 // New creates a Docker Engine API client for the endpoint selected by the Docker
@@ -52,11 +47,6 @@ func New() (dockerclient.APIClient, error) {
 	if err != nil {
 		return nil, fmt.Errorf("configure Docker endpoint: %w", err)
 	}
-	headerOptions, err := httpHeaderOptions(configuration.HTTPHeaders)
-	if err != nil {
-		return nil, err
-	}
-	options = append(options, headerOptions...)
 
 	client, err := dockerclient.New(options...)
 	if err != nil {
@@ -166,29 +156,4 @@ func loadConnectionConfig(directory string) connectionConfig {
 		return connectionConfig{}
 	}
 	return configuration
-}
-
-func httpHeaderOptions(configured map[string]string) ([]dockerclient.Opt, error) {
-	value := os.Getenv(dockerCustomHeadersEnv)
-	if value == "" {
-		if len(configured) == 0 {
-			return nil, nil
-		}
-		return []dockerclient.Opt{dockerclient.WithHTTPHeaders(configured)}, nil
-	}
-
-	fields, err := csv.NewReader(strings.NewReader(value)).Read()
-	if err != nil {
-		return nil, fmt.Errorf("parse %s: %w", dockerCustomHeadersEnv, err)
-	}
-	headers := make(map[string]string, len(fields))
-	for _, field := range fields {
-		key, value, found := strings.Cut(field, "=")
-		key = strings.TrimSpace(key)
-		if key == "" || !found {
-			return nil, fmt.Errorf("parse %s: invalid header %q", dockerCustomHeadersEnv, field)
-		}
-		headers[http.CanonicalHeaderKey(key)] = value
-	}
-	return []dockerclient.Opt{dockerclient.WithHTTPHeaders(headers)}, nil
 }

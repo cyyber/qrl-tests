@@ -8,7 +8,6 @@ import (
 	"os/user"
 	"path/filepath"
 	"runtime"
-	"strings"
 	"testing"
 
 	dockerendpoint "github.com/docker/cli/cli/context/docker"
@@ -51,7 +50,7 @@ func TestNewUsesPlatformDefaultEndpoint(t *testing.T) {
 
 func TestNewUsesNamedContextTLS(t *testing.T) {
 	configurationDirectory := dockerEnvironment(t)
-	server := httptest.NewTLSServer(dockerHandler(nil))
+	server := httptest.NewTLSServer(dockerHandler())
 	defer server.Close()
 
 	certificate := pem.EncodeToMemory(&pem.Block{
@@ -77,7 +76,7 @@ func TestNewUsesNamedContextTLS(t *testing.T) {
 
 func TestNewUsesDefaultContextTLS(t *testing.T) {
 	configurationDirectory := dockerEnvironment(t)
-	server := httptest.NewTLSServer(dockerHandler(nil))
+	server := httptest.NewTLSServer(dockerHandler())
 	defer server.Close()
 
 	require.NoError(t, os.WriteFile(
@@ -106,43 +105,14 @@ func TestNewConfiguresSSHContext(t *testing.T) {
 	require.NotNil(t, client.Dialer())
 }
 
-func TestNewUsesAPIversionAndCustomHeaders(t *testing.T) {
-	configurationDirectory := dockerEnvironment(t)
-	requests := make(chan http.Header, 1)
-	server := httptest.NewServer(dockerHandler(func(request *http.Request) {
-		requests <- request.Header.Clone()
-	}))
-	defer server.Close()
-
-	writeConfig(t, configurationDirectory, `{"HttpHeaders":{"X-Configured":"configured"}}`)
-	t.Setenv(dockerclient.EnvOverrideHost, strings.Replace(server.URL, "http://", "tcp://", 1))
+func TestNewUsesAPIVersion(t *testing.T) {
+	dockerEnvironment(t)
 	t.Setenv(dockerclient.EnvOverrideAPIVersion, "1.44")
 
 	client, err := New()
 	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, client.Close()) })
 	require.Equal(t, "1.44", client.ClientVersion())
-	_, err = client.ServerVersion(t.Context(), dockerclient.ServerVersionOptions{})
-	require.NoError(t, err)
-	require.Equal(t, "configured", (<-requests).Get("X-Configured"))
-	require.NoError(t, client.Close())
-
-	t.Setenv(dockerCustomHeadersEnv, `x-environment=one,"x-comma=two,three"`)
-	client, err = New()
-	require.NoError(t, err)
-	_, err = client.ServerVersion(t.Context(), dockerclient.ServerVersionOptions{})
-	require.NoError(t, err)
-	headers := <-requests
-	require.Empty(t, headers.Get("X-Configured"))
-	require.Equal(t, "one", headers.Get("X-Environment"))
-	require.Equal(t, "two,three", headers.Get("X-Comma"))
-	require.NoError(t, client.Close())
-}
-
-func TestNewRejectsInvalidCustomHeaders(t *testing.T) {
-	dockerEnvironment(t)
-	t.Setenv(dockerCustomHeadersEnv, "missing-equals")
-	_, err := New()
-	require.ErrorContains(t, err, "invalid header")
 }
 
 func TestNewRejectsMissingContext(t *testing.T) {
@@ -187,7 +157,6 @@ func dockerEnvironment(t *testing.T) string {
 	t.Setenv(dockerclient.EnvTLSVerify, "")
 	t.Setenv(dockerclient.EnvOverrideCertPath, "")
 	t.Setenv(dockerclient.EnvOverrideAPIVersion, "")
-	t.Setenv(dockerCustomHeadersEnv, "")
 	return directory
 }
 
@@ -223,11 +192,8 @@ func writeContext(
 	}
 }
 
-func dockerHandler(inspect func(*http.Request)) http.Handler {
-	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		if inspect != nil {
-			inspect(request)
-		}
+func dockerHandler() http.Handler {
+	return http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
 		writer.Header().Set("Content-Type", "application/json")
 		_, _ = writer.Write([]byte(`{"Version":"29.0.0","ApiVersion":"1.52","MinAPIVersion":"1.24"}`))
 	})
