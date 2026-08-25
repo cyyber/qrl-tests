@@ -10,6 +10,7 @@ import (
 	"runtime"
 	"testing"
 
+	"github.com/cyyber/qrl-tests/internal/testutil"
 	dockerendpoint "github.com/docker/cli/cli/context/docker"
 	dockercontextstore "github.com/docker/cli/cli/context/store"
 	dockerclient "github.com/moby/moby/client"
@@ -20,7 +21,11 @@ func TestNewUsesDockerConnectionPrecedence(t *testing.T) {
 	configurationDirectory := dockerEnvironment(t)
 	writeContext(t, configurationDirectory, "configured", "tcp://127.0.0.1:23751", nil)
 	writeContext(t, configurationDirectory, "environment", "tcp://127.0.0.1:23752", nil)
-	writeConfig(t, configurationDirectory, `{"currentContext":"configured"}`)
+	testutil.WriteJSON(
+		t,
+		filepath.Join(configurationDirectory, "config.json"),
+		map[string]string{"currentContext": "configured"},
+	)
 
 	client, err := New()
 	require.NoError(t, err)
@@ -124,7 +129,11 @@ func TestNewRejectsMissingContext(t *testing.T) {
 
 func TestNewToleratesMalformedConfiguration(t *testing.T) {
 	configurationDirectory := dockerEnvironment(t)
-	writeConfig(t, configurationDirectory, `{`)
+	require.NoError(t, os.WriteFile(
+		filepath.Join(configurationDirectory, "config.json"),
+		[]byte("{"),
+		0o600,
+	))
 
 	client, err := New()
 	require.NoError(t, err)
@@ -158,11 +167,6 @@ func dockerEnvironment(t *testing.T) string {
 	t.Setenv(dockerclient.EnvOverrideCertPath, "")
 	t.Setenv(dockerclient.EnvOverrideAPIVersion, "")
 	return directory
-}
-
-func writeConfig(t *testing.T, directory, contents string) {
-	t.Helper()
-	require.NoError(t, os.WriteFile(filepath.Join(directory, "config.json"), []byte(contents), 0o600))
 }
 
 func writeContext(

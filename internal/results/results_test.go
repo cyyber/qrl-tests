@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/cyyber/qrl-tests/internal/jsonfile"
 	"github.com/cyyber/qrl-tests/internal/testutil"
 	"github.com/onsi/ginkgo/v2/types"
 	"github.com/stretchr/testify/require"
@@ -54,11 +53,11 @@ func summarizeTestLane(executionErr error, reports ...types.Report) LaneSummary 
 
 func writeReportFile(t *testing.T, laneDir string, specs ...types.SpecReport) {
 	t.Helper()
-	require.NoError(t, jsonfile.Write(
+	testutil.WriteJSON(
+		t,
 		filepath.Join(laneDir, ReportFileName),
 		[]types.Report{suiteReport(filepath.Base(laneDir), specs...)},
-		"Ginkgo report",
-	))
+	)
 }
 
 func outcomeFromReportDir(reportDir string, executionErr error) Outcome {

@@ -14,3 +14,9 @@ func ReadJSON[T any](t testing.TB, path string) T {
 	require.NoError(t, err)
 	return value
 }
+
+// WriteJSON encodes value and writes it to a JSON file.
+func WriteJSON(t testing.TB, path string, value any) {
+	t.Helper()
+	require.NoError(t, jsonfile.Write(path, value, "JSON file"))
+}
