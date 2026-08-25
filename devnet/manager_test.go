@@ -54,8 +54,8 @@ func (*fakeClient) ServiceLogs(
 	string,
 	[]string,
 	kurtosis.ServiceLogConsumer,
-) error {
-	return nil
+) (map[string]bool, error) {
+	return nil, nil
 }
 
 func (client *fakeClient) DestroyEnclave(ctx context.Context, _ string) error {
@@ -71,8 +71,8 @@ func (client *fakeClient) DestroyEnclave(ctx context.Context, _ string) error {
 
 func testManager(client *fakeClient) *Manager {
 	return &Manager{
-		newClient: func() (kurtosisClient, error) { return client, nil },
-		probe:     func(context.Context, string, string) error { return nil },
+		newKurtosisClient: func() (kurtosisClient, error) { return client, nil },
+		probe:             func(context.Context, string, string) error { return nil },
 		collectDiagnostics: func(context.Context, diagnosticsClient, string, string) error {
 			panic("unexpected diagnostics collection")
 		},

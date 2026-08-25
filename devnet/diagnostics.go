@@ -21,7 +21,12 @@ type diagnosticsClient interface {
 		enclaveName string,
 		serviceUUIDs []string,
 		consume kurtosis.ServiceLogConsumer,
-	) error
+	) (map[string]bool, error)
+}
+
+type diagnosticsSession interface {
+	diagnosticsClient
+	Close() error
 }
 
 type inspectionDiagnostic struct {
@@ -46,11 +51,16 @@ type diagnosticsManifest struct {
 // CollectDiagnostics captures the enclave inspection and per-service logs.
 // Collection continues after individual failures and returns all encountered errors.
 func (manager *Manager) CollectDiagnostics(ctx context.Context, enclaveName, outputDir string) error {
-	client, err := manager.newClient()
+	client, err := manager.newDiagnosticsClient(ctx)
 	if err != nil {
 		return err
 	}
-	return manager.collectDiagnostics(ctx, client, enclaveName, outputDir)
+	collectErr := manager.collectDiagnostics(ctx, client, enclaveName, outputDir)
+	closeErr := client.Close()
+	if closeErr != nil {
+		closeErr = fmt.Errorf("close Kurtosis diagnostics client: %w", closeErr)
+	}
+	return errors.Join(collectErr, closeErr)
 }
 
 func collectDiagnostics(ctx context.Context, client diagnosticsClient, enclaveName, outputDir string) error {
@@ -156,7 +166,7 @@ func collectServiceLogs(
 		outputsByUUID[service.UUID] = output
 	}
 
-	streamErr := client.ServiceLogs(ctx, enclaveName, serviceUUIDs, func(uuid string, lines []string) {
+	notFound, streamErr := client.ServiceLogs(ctx, enclaveName, serviceUUIDs, func(uuid string, lines []string) {
 		output := outputsByUUID[uuid]
 		if output == nil || output.writeErr != nil {
 			return
@@ -180,19 +190,28 @@ func collectServiceLogs(
 	collectionErrors := []error{streamErr}
 	for _, output := range outputs {
 		writeErr := output.close()
-		captureErr := errors.Join(streamErr, writeErr)
+		var notFoundErr error
+		if notFound[output.uuid] {
+			notFoundErr = fmt.Errorf(
+				"Kurtosis service logs not found for %s (%s)",
+				output.diagnostic.Name,
+				output.uuid,
+			)
+		}
+		captureErr := errors.Join(streamErr, notFoundErr, writeErr)
 		output.diagnostic.Captured = captureErr == nil
 		if captureErr != nil {
 			output.diagnostic.Error = captureErr.Error()
 		}
 		serviceDiagnostics = append(serviceDiagnostics, output.diagnostic)
-		collectionErrors = append(collectionErrors, writeErr)
+		collectionErrors = append(collectionErrors, notFoundErr, writeErr)
 	}
 	return serviceDiagnostics, errors.Join(collectionErrors...)
 }
 
 type serviceLogOutput struct {
 	diagnostic serviceDiagnostic
+	uuid       string
 	path       string
 	file       *os.File
 	writer     *bufio.Writer
@@ -208,6 +227,7 @@ func openServiceLog(outputDir string, service kurtosis.ServiceIdentity, disambig
 	path := filepath.Join(outputDir, relativePath)
 	output := &serviceLogOutput{
 		diagnostic: serviceDiagnostic{Name: service.Name, File: filepath.ToSlash(relativePath)},
+		uuid:       service.UUID,
 		path:       path,
 	}
 	file, err := os.OpenFile(path, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)

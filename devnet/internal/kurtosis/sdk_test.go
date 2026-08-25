@@ -4,13 +4,46 @@ import (
 	"context"
 	"errors"
 	"io"
+	"net"
 	"testing"
+	"time"
 
 	"github.com/kurtosis-tech/kurtosis/api/golang/core/kurtosis_core_rpc_api_bindings"
 	"github.com/kurtosis-tech/kurtosis/api/golang/core/lib/services"
 	"github.com/kurtosis-tech/kurtosis/api/golang/engine/kurtosis_engine_rpc_api_bindings"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc"
+	"google.golang.org/protobuf/types/known/emptypb"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
+
+type engineInfoServer struct {
+	kurtosis_engine_rpc_api_bindings.UnimplementedEngineServiceServer
+	started chan struct{}
+}
+
+func (server *engineInfoServer) GetEngineInfo(
+	ctx context.Context,
+	_ *emptypb.Empty,
+) (*kurtosis_engine_rpc_api_bindings.GetEngineInfoResponse, error) {
+	if server.started != nil {
+		close(server.started)
+		<-ctx.Done()
+		return nil, ctx.Err()
+	}
+	return &kurtosis_engine_rpc_api_bindings.GetEngineInfoResponse{EngineVersion: "1.20.0"}, nil
+}
+
+func serveEngine(t *testing.T, engine kurtosis_engine_rpc_api_bindings.EngineServiceServer) string {
+	t.Helper()
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	server := grpc.NewServer()
+	kurtosis_engine_rpc_api_bindings.RegisterEngineServiceServer(server, engine)
+	go func() { _ = server.Serve(listener) }()
+	t.Cleanup(server.Stop)
+	return listener.Addr().String()
+}
 
 type fakeServiceContext struct {
 	labels map[string]string
@@ -46,6 +79,36 @@ func (*fakeServiceContext) GetMaybePublicIPAddress() string { return "127.0.0.1"
 func (fake *fakeServiceContext) GetPublicPorts() map[string]*services.PortSpec { return fake.ports }
 
 func (fake *fakeServiceContext) GetLabels() map[string]string { return fake.labels }
+
+func TestNewDiagnosticsClient(t *testing.T) {
+	client, err := newDiagnosticsClient(t.Context(), serveEngine(t, new(engineInfoServer)))
+	require.NoError(t, err)
+	require.NoError(t, client.Close())
+}
+
+func TestNewDiagnosticsClientHonorsCancellation(t *testing.T) {
+	started := make(chan struct{})
+	address := serveEngine(t, &engineInfoServer{started: started})
+	ctx, cancel := context.WithCancel(t.Context())
+	result := make(chan error, 1)
+	go func() {
+		_, err := newDiagnosticsClient(ctx, address)
+		result <- err
+	}()
+
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("engine validation did not start")
+	}
+	cancel()
+	select {
+	case err := <-result:
+		require.ErrorIs(t, err, context.Canceled)
+	case <-time.After(time.Second):
+		t.Fatal("client creation did not stop after cancellation")
+	}
+}
 
 func TestNewServiceCopiesContext(t *testing.T) {
 	labels := map[string]string{"qrl-package.client-type": "execution"}
@@ -95,6 +158,20 @@ func TestServicePortBindings(t *testing.T) {
 	require.Equal(t, []string{"<none>"}, servicePortBindings(new(kurtosis_core_rpc_api_bindings.ServiceInfo)))
 }
 
+func TestInspectEnclaveRejectsStoppedAPIContainer(t *testing.T) {
+	info := &kurtosis_engine_rpc_api_bindings.EnclaveInfo{
+		Name:               "test-enclave",
+		EnclaveUuid:        "enclave-uuid",
+		ApiContainerStatus: kurtosis_engine_rpc_api_bindings.EnclaveAPIContainerStatus_EnclaveAPIContainerStatus_STOPPED,
+		CreationTime:       timestamppb.Now(),
+	}
+
+	inspection, err := inspectEnclave(t.Context(), info)
+	require.ErrorContains(t, err, "Kurtosis enclave API container is not running: STOPPED")
+	require.Equal(t, "test-enclave", inspection.Name)
+	require.Equal(t, "enclave-uuid", inspection.UUID)
+}
+
 func TestServiceLogs(t *testing.T) {
 	var request *kurtosis_engine_rpc_api_bindings.GetServiceLogsArgs
 	client := &Client{
@@ -117,7 +194,7 @@ func TestServiceLogs(t *testing.T) {
 	}
 
 	captured := make(map[string][]string)
-	err := client.ServiceLogs(
+	notFound, err := client.ServiceLogs(
 		t.Context(),
 		"test-enclave",
 		[]string{"running-uuid", "stopped-uuid"},
@@ -126,11 +203,42 @@ func TestServiceLogs(t *testing.T) {
 		},
 	)
 	require.NoError(t, err)
+	require.Equal(t, map[string]bool{"stopped-uuid": true}, notFound)
 	require.Equal(t, map[string]bool{"running-uuid": true, "stopped-uuid": true}, request.GetServiceUuidSet())
 	require.False(t, request.GetFollowLogs())
 	require.True(t, request.GetReturnAllLogs())
 	require.Equal(t, []string{"first", "second"}, captured["running-uuid"])
 	require.NotContains(t, captured, "stopped-uuid")
+}
+
+func TestReceiveServiceLogsClearsEarlierNotFound(t *testing.T) {
+	stream := &fakeServiceLogsStream{
+		responses: []*kurtosis_engine_rpc_api_bindings.GetServiceLogsResponse{
+			{NotFoundServiceUuidSet: map[string]bool{"service-uuid": true}},
+			{ServiceLogsByServiceUuid: map[string]*kurtosis_engine_rpc_api_bindings.LogLine{
+				"service-uuid": {},
+			}},
+		},
+	}
+
+	notFound, err := receiveServiceLogs(stream, map[string]bool{"service-uuid": true}, nil)
+	require.NoError(t, err)
+	require.Empty(t, notFound)
+}
+
+func TestReceiveServiceLogsKeepsLaterNotFound(t *testing.T) {
+	stream := &fakeServiceLogsStream{
+		responses: []*kurtosis_engine_rpc_api_bindings.GetServiceLogsResponse{
+			{ServiceLogsByServiceUuid: map[string]*kurtosis_engine_rpc_api_bindings.LogLine{
+				"service-uuid": {},
+			}},
+			{NotFoundServiceUuidSet: map[string]bool{"service-uuid": true}},
+		},
+	}
+
+	notFound, err := receiveServiceLogs(stream, map[string]bool{"service-uuid": true}, nil)
+	require.NoError(t, err)
+	require.Equal(t, map[string]bool{"service-uuid": true}, notFound)
 }
 
 func TestServiceLogsStreamFailure(t *testing.T) {
@@ -153,13 +261,14 @@ func TestServiceLogsStreamFailure(t *testing.T) {
 	}
 
 	var captured []string
-	err := client.ServiceLogs(
+	notFound, err := client.ServiceLogs(
 		t.Context(),
 		"test-enclave",
 		[]string{"service-uuid"},
 		func(_ string, lines []string) { captured = append(captured, lines...) },
 	)
 	require.ErrorContains(t, err, "receive Kurtosis service logs: stream reset")
+	require.Empty(t, notFound)
 	require.Equal(t, []string{"partial"}, captured)
 }
 
@@ -180,8 +289,9 @@ func TestServiceLogsEmptyOutput(t *testing.T) {
 				},
 			}
 
-			err := client.ServiceLogs(t.Context(), "test-enclave", []string{"service-uuid"}, nil)
+			notFound, err := client.ServiceLogs(t.Context(), "test-enclave", []string{"service-uuid"}, nil)
 			require.NoError(t, err)
+			require.Empty(t, notFound)
 		})
 	}
 }
@@ -197,11 +307,8 @@ func TestServiceLogsRejectsNilResponse(t *testing.T) {
 			}, nil
 		},
 	}
-	require.ErrorContains(
-		t,
-		client.ServiceLogs(t.Context(), "test-enclave", []string{"service-uuid"}, nil),
-		"nil response",
-	)
+	_, err := client.ServiceLogs(t.Context(), "test-enclave", []string{"service-uuid"}, nil)
+	require.ErrorContains(t, err, "nil response")
 }
 
 func errorLine(message string) *kurtosis_core_rpc_api_bindings.StarlarkRunResponseLine {

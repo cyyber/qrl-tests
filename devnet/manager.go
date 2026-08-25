@@ -27,17 +27,12 @@ const (
 )
 
 type kurtosisClient interface {
+	diagnosticsClient
+
 	EnclaveExists(ctx context.Context, name string) (bool, error)
 	CreateEnclave(ctx context.Context, name string) error
 	RunRemotePackage(ctx context.Context, enclaveName, locator, serializedParams string) error
 	Services(ctx context.Context, enclaveName string) (map[string]kurtosis.Service, error)
-	Inspect(ctx context.Context, enclaveName string) (kurtosis.EnclaveInspection, error)
-	ServiceLogs(
-		ctx context.Context,
-		enclaveName string,
-		serviceUUIDs []string,
-		consume kurtosis.ServiceLogConsumer,
-	) error
 	DestroyEnclave(ctx context.Context, name string) error
 }
 
@@ -54,17 +49,25 @@ type StartOptions struct {
 }
 
 type Manager struct {
-	newClient          func() (kurtosisClient, error)
-	probe              func(ctx context.Context, rpcURL, address string) error
-	collectDiagnostics func(ctx context.Context, client diagnosticsClient, enclave, outputDir string) error
+	newKurtosisClient    func() (kurtosisClient, error)
+	newDiagnosticsClient func(context.Context) (diagnosticsSession, error)
+	probe                func(ctx context.Context, rpcURL, address string) error
+	collectDiagnostics   func(ctx context.Context, client diagnosticsClient, enclave, outputDir string) error
 }
 
 func NewManager() *Manager {
 	return &Manager{
-		newClient: func() (kurtosisClient, error) {
+		newKurtosisClient: func() (kurtosisClient, error) {
 			client, err := kurtosis.NewClient()
 			if err != nil {
 				return nil, fmt.Errorf("connect to Kurtosis engine: %w", err)
+			}
+			return client, nil
+		},
+		newDiagnosticsClient: func(ctx context.Context) (diagnosticsSession, error) {
+			client, err := kurtosis.NewDiagnosticsClient(ctx)
+			if err != nil {
+				return nil, fmt.Errorf("connect to Kurtosis diagnostics API: %w", err)
 			}
 			return client, nil
 		},
@@ -74,7 +77,7 @@ func NewManager() *Manager {
 }
 
 func (manager *Manager) Inspect(ctx context.Context, name string) (Environment, error) {
-	client, err := manager.newClient()
+	client, err := manager.newKurtosisClient()
 	if err != nil {
 		return Environment{}, err
 	}
@@ -112,7 +115,7 @@ func (manager *Manager) Start(ctx context.Context, options StartOptions) (enviro
 		return Environment{}, fmt.Errorf("prepare qrl-package parameters: %w", err)
 	}
 
-	client, err := manager.newClient()
+	client, err := manager.newKurtosisClient()
 	if err != nil {
 		return Environment{}, err
 	}
@@ -182,7 +185,7 @@ func (manager *Manager) finishFailedStart(client kurtosisClient, options StartOp
 }
 
 func (manager *Manager) Stop(ctx context.Context, name string) error {
-	client, err := manager.newClient()
+	client, err := manager.newKurtosisClient()
 	if err != nil {
 		return err
 	}

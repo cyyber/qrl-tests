@@ -27,10 +27,22 @@ type fakeDiagnosticsClient struct {
 	inspection  kurtosis.EnclaveInspection
 	inspectErr  error
 	logs        map[string][]string
+	notFound    map[string]bool
 	logsErr     error
 	logCalls    int
 	requested   []string
 	enclaveName string
+}
+
+type fakeDiagnosticsSession struct {
+	fakeDiagnosticsClient
+	closed   bool
+	closeErr error
+}
+
+func (session *fakeDiagnosticsSession) Close() error {
+	session.closed = true
+	return session.closeErr
 }
 
 func (client *fakeDiagnosticsClient) Inspect(
@@ -45,14 +57,14 @@ func (client *fakeDiagnosticsClient) ServiceLogs(
 	enclaveName string,
 	serviceUUIDs []string,
 	consume kurtosis.ServiceLogConsumer,
-) error {
+) (map[string]bool, error) {
 	client.logCalls++
 	client.enclaveName = enclaveName
 	client.requested = append([]string(nil), serviceUUIDs...)
 	for _, uuid := range serviceUUIDs {
 		consume(uuid, client.logs[uuid])
 	}
-	return client.logsErr
+	return client.notFound, client.logsErr
 }
 
 func diagnosticInspection() kurtosis.EnclaveInspection {
@@ -67,6 +79,31 @@ func diagnosticInspection() kurtosis.EnclaveInspection {
 			{Name: "genesis", UUID: "artifact-uuid"},
 		},
 	}
+}
+
+func TestManagerCollectDiagnosticsClosesClient(t *testing.T) {
+	type contextKey struct{}
+	ctx := context.WithValue(t.Context(), contextKey{}, "sentinel")
+	session := &fakeDiagnosticsSession{closeErr: errors.New("close failed")}
+	manager := &Manager{
+		newDiagnosticsClient: func(factoryCtx context.Context) (diagnosticsSession, error) {
+			require.Equal(t, "sentinel", factoryCtx.Value(contextKey{}))
+			return session, nil
+		},
+		collectDiagnostics: func(
+			context.Context,
+			diagnosticsClient,
+			string,
+			string,
+		) error {
+			return errors.New("collection failed")
+		},
+	}
+
+	err := manager.CollectDiagnostics(ctx, "test", t.TempDir())
+	require.ErrorContains(t, err, "collection failed")
+	require.ErrorContains(t, err, "close Kurtosis diagnostics client: close failed")
+	require.True(t, session.closed)
 }
 
 func TestCollectDiagnostics(t *testing.T) {
@@ -149,6 +186,27 @@ func TestCollectDiagnosticsPartialFailures(t *testing.T) {
 		require.False(t, service.Captured, "a failed stream cannot produce an authoritative capture")
 		require.Contains(t, service.Error, "log stream reset")
 	}
+}
+
+func TestCollectDiagnosticsMissingServiceLogs(t *testing.T) {
+	services := []kurtosis.ServiceIdentity{
+		{Name: "stopped", UUID: "stopped-uuid"},
+		{Name: "running", UUID: "running-uuid"},
+	}
+	client := &fakeDiagnosticsClient{
+		inspection: kurtosis.EnclaveInspection{Name: "test", Services: services},
+		logs:       map[string][]string{"running-uuid": {"captured"}},
+		notFound:   map[string]bool{"stopped-uuid": true},
+	}
+	output := t.TempDir()
+
+	err := collectDiagnostics(t.Context(), client, "test", output)
+	require.ErrorContains(t, err, "Kurtosis service logs not found for stopped (stopped-uuid)")
+
+	manifest := testutil.ReadJSON[diagnosticsManifest](t, filepath.Join(output, "diagnostics.json"))
+	require.False(t, manifest.Services[0].Captured)
+	require.Contains(t, manifest.Services[0].Error, "service logs not found")
+	require.True(t, manifest.Services[1].Captured)
 }
 
 func TestCollectDiagnosticsWithoutServices(t *testing.T) {

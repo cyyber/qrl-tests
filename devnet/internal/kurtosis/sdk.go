@@ -84,12 +84,47 @@ type Client struct {
 	getServiceLogs getServiceLogsFunc
 }
 
+// DiagnosticsClient owns the context-bound engine connection used to collect
+// diagnostics independently of the lifecycle client.
+type DiagnosticsClient struct {
+	engine     kurtosis_engine_rpc_api_bindings.EngineServiceClient
+	connection *grpc.ClientConn
+}
+
 func NewClient() (*Client, error) {
 	engine, err := kurtosis_context.NewKurtosisContextFromLocalEngine()
 	if err != nil {
 		return nil, err
 	}
 	return &Client{engine: engine}, nil
+}
+
+func NewDiagnosticsClient(ctx context.Context) (*DiagnosticsClient, error) {
+	return newDiagnosticsClient(ctx, localEngineAddress())
+}
+
+func newDiagnosticsClient(ctx context.Context, address string) (*DiagnosticsClient, error) {
+	connection, err := newEngineConnection(address)
+	if err != nil {
+		return nil, err
+	}
+	engine := kurtosis_engine_rpc_api_bindings.NewEngineServiceClient(connection)
+	if _, err := engine.GetEngineInfo(ctx, &emptypb.Empty{}); err != nil {
+		closeErr := connection.Close()
+		if closeErr != nil {
+			closeErr = fmt.Errorf("close Kurtosis diagnostics connection: %w", closeErr)
+		}
+		return nil, errors.Join(
+			fmt.Errorf("get Kurtosis engine info: %w", err),
+			ctx.Err(),
+			closeErr,
+		)
+	}
+	return &DiagnosticsClient{engine: engine, connection: connection}, nil
+}
+
+func (client *DiagnosticsClient) Close() error {
+	return client.connection.Close()
 }
 
 func (client *Client) EnclaveExists(ctx context.Context, name string) (bool, error) {
@@ -165,6 +200,32 @@ func (client *Client) Inspect(
 	if err != nil {
 		return EnclaveInspection{}, err
 	}
+	return inspectEnclave(ctx, info)
+}
+
+func (client *DiagnosticsClient) Inspect(
+	ctx context.Context,
+	enclaveName string,
+) (EnclaveInspection, error) {
+	response, err := client.engine.GetEnclavesByUuids(
+		ctx,
+		&kurtosis_engine_rpc_api_bindings.GetEnclavesByUuidsArgs{},
+	)
+	if err != nil {
+		return EnclaveInspection{}, fmt.Errorf("list running Kurtosis enclaves: %w", err)
+	}
+	for _, info := range response.GetEnclaveInfo() {
+		if info.GetName() == enclaveName {
+			return inspectEnclave(ctx, info)
+		}
+	}
+	return EnclaveInspection{}, fmt.Errorf("no running Kurtosis enclave named %q", enclaveName)
+}
+
+func inspectEnclave(
+	ctx context.Context,
+	info *kurtosis_engine_rpc_api_bindings.EnclaveInfo,
+) (EnclaveInspection, error) {
 	inspection := EnclaveInspection{
 		Name:       info.GetName(),
 		UUID:       info.GetEnclaveUuid(),
@@ -177,11 +238,19 @@ func (client *Client) Inspect(
 	} else {
 		inspectionErrors = append(inspectionErrors, errors.New("Kurtosis enclave has no creation time"))
 	}
-	if info.GetApiContainerStatus() != kurtosis_engine_rpc_api_bindings.EnclaveAPIContainerStatus_EnclaveAPIContainerStatus_RUNNING {
+	apiStatus := info.GetApiContainerStatus()
+	if apiStatus != kurtosis_engine_rpc_api_bindings.EnclaveAPIContainerStatus_EnclaveAPIContainerStatus_RUNNING {
+		status := strings.TrimPrefix(apiStatus.String(), "EnclaveAPIContainerStatus_")
+		inspectionErrors = append(
+			inspectionErrors,
+			fmt.Errorf("Kurtosis enclave API container is not running: %s", status),
+		)
 		return inspection, errors.Join(inspectionErrors...)
 	}
 
-	inspection.Services, inspection.FilesArtifacts, err = inspectEnclaveContents(ctx, info)
+	services, artifacts, err := inspectEnclaveContents(ctx, info)
+	inspection.Services = services
+	inspection.FilesArtifacts = artifacts
 	if err != nil {
 		inspectionErrors = append(inspectionErrors, err)
 	}
@@ -315,19 +384,45 @@ func servicePortBindings(service *kurtosis_core_rpc_api_bindings.ServiceInfo) []
 	return result
 }
 
-// ServiceLogs streams all available log lines for every UUID to consume.
+// ServiceLogs streams all available log lines for every UUID to consume and
+// returns the requested UUIDs the engine could not find.
 func (client *Client) ServiceLogs(
 	ctx context.Context,
 	enclaveName string,
 	serviceUUIDs []string,
 	consume ServiceLogConsumer,
-) error {
+) (map[string]bool, error) {
+	return serviceLogs(ctx, enclaveName, serviceUUIDs, consume, client.getServiceLogs)
+}
+
+func (client *DiagnosticsClient) ServiceLogs(
+	ctx context.Context,
+	enclaveName string,
+	serviceUUIDs []string,
+	consume ServiceLogConsumer,
+) (map[string]bool, error) {
+	getServiceLogs := func(
+		ctx context.Context,
+		arguments *kurtosis_engine_rpc_api_bindings.GetServiceLogsArgs,
+	) (serviceLogsStream, error) {
+		return client.engine.GetServiceLogs(ctx, arguments)
+	}
+	return serviceLogs(ctx, enclaveName, serviceUUIDs, consume, getServiceLogs)
+}
+
+func serviceLogs(
+	ctx context.Context,
+	enclaveName string,
+	serviceUUIDs []string,
+	consume ServiceLogConsumer,
+	getServiceLogs getServiceLogsFunc,
+) (map[string]bool, error) {
 	requested := make(map[string]bool, len(serviceUUIDs))
 	for _, uuid := range serviceUUIDs {
 		requested[uuid] = true
 	}
 	if len(requested) == 0 {
-		return nil
+		return nil, nil
 	}
 
 	followLogs := false
@@ -340,20 +435,11 @@ func (client *Client) ServiceLogs(
 		ReturnAllLogs:     &returnAllLogs,
 		NumLogLines:       &numLogLines,
 	}
-	getServiceLogs := client.getServiceLogs
 	closeConnection := func() error { return nil }
 	if getServiceLogs == nil {
-		engineAddress := net.JoinHostPort(
-			"127.0.0.1",
-			strconv.Itoa(int(kurtosis_context.DefaultGrpcEngineServerPortNum)),
-		)
-		connection, err := grpc.NewClient(
-			engineAddress,
-			grpc.WithTransportCredentials(insecure.NewCredentials()),
-			grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(maxGRPCMessageSize)),
-		)
+		connection, err := newEngineConnection(localEngineAddress())
 		if err != nil {
-			return fmt.Errorf("connect to Kurtosis log API: %w", err)
+			return nil, fmt.Errorf("connect to Kurtosis log API: %w", err)
 		}
 		closeConnection = connection.Close
 		logsClient := kurtosis_engine_rpc_api_bindings.NewEngineServiceClient(connection)
@@ -367,16 +453,31 @@ func (client *Client) ServiceLogs(
 
 	stream, err := getServiceLogs(ctx, arguments)
 	if err != nil {
-		return errors.Join(
+		return nil, errors.Join(
 			fmt.Errorf("start Kurtosis service log stream: %w", err),
 			closeConnection(),
 		)
 	}
 
-	streamErr := receiveServiceLogs(stream, requested, consume)
-	return errors.Join(
+	notFound, streamErr := receiveServiceLogs(stream, requested, consume)
+	return notFound, errors.Join(
 		streamErr,
 		closeConnection(),
+	)
+}
+
+func localEngineAddress() string {
+	return net.JoinHostPort(
+		"127.0.0.1",
+		strconv.Itoa(int(kurtosis_context.DefaultGrpcEngineServerPortNum)),
+	)
+}
+
+func newEngineConnection(address string) (*grpc.ClientConn, error) {
+	return grpc.NewClient(
+		address,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(maxGRPCMessageSize)),
 	)
 }
 
@@ -384,23 +485,31 @@ func receiveServiceLogs(
 	stream serviceLogsStream,
 	requested map[string]bool,
 	consume ServiceLogConsumer,
-) error {
+) (map[string]bool, error) {
+	notFound := make(map[string]bool)
 	for {
 		response, err := stream.Recv()
 		if errors.Is(err, io.EOF) {
-			return nil
+			return notFound, nil
 		}
 		if err != nil {
-			return fmt.Errorf("receive Kurtosis service logs: %w", err)
+			return notFound, fmt.Errorf("receive Kurtosis service logs: %w", err)
 		}
 		if response == nil {
-			return errors.New("Kurtosis service log stream returned a nil response")
+			return notFound, errors.New("Kurtosis service log stream returned a nil response")
+		}
+
+		for uuid := range response.GetNotFoundServiceUuidSet() {
+			if requested[uuid] {
+				notFound[uuid] = true
+			}
 		}
 
 		for uuid, logLines := range response.GetServiceLogsByServiceUuid() {
 			if !requested[uuid] {
 				continue
 			}
+			delete(notFound, uuid)
 			if consume != nil {
 				consume(uuid, logLines.GetLine())
 			}
