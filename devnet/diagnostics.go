@@ -55,12 +55,8 @@ func (manager *Manager) CollectDiagnostics(ctx context.Context, enclaveName, out
 	if err != nil {
 		return err
 	}
-	collectErr := manager.collectDiagnostics(ctx, client, enclaveName, outputDir)
-	closeErr := client.Close()
-	if closeErr != nil {
-		closeErr = fmt.Errorf("close Kurtosis diagnostics client: %w", closeErr)
-	}
-	return errors.Join(collectErr, closeErr)
+	defer func() { _ = client.Close() }()
+	return manager.collectDiagnostics(ctx, client, enclaveName, outputDir)
 }
 
 func collectDiagnostics(ctx context.Context, client diagnosticsClient, enclaveName, outputDir string) error {

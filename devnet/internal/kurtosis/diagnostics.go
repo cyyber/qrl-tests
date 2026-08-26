@@ -157,13 +157,13 @@ func inspectEnclaveContents(
 	if err != nil {
 		return nil, nil, fmt.Errorf("connect to Kurtosis API container: %w", err)
 	}
+	defer func() { _ = connection.Close() }()
 	api := kurtosis_core_rpc_api_bindings.NewApiContainerServiceClient(connection)
 	historical, historicalErr := api.GetExistingAndHistoricalServiceIdentifiers(ctx, &emptypb.Empty{})
 	current, currentErr := api.GetServices(ctx, &kurtosis_core_rpc_api_bindings.GetServicesArgs{
 		ServiceIdentifiers: map[string]bool{},
 	})
 	artifacts, artifactsErr := api.ListFilesArtifactNamesAndUuids(ctx, &emptypb.Empty{})
-	closeErr := connection.Close()
 	if historicalErr != nil {
 		historicalErr = fmt.Errorf("get historical Kurtosis services: %w", historicalErr)
 	}
@@ -172,9 +172,6 @@ func inspectEnclaveContents(
 	}
 	if artifactsErr != nil {
 		artifactsErr = fmt.Errorf("get Kurtosis files artifacts: %w", artifactsErr)
-	}
-	if closeErr != nil {
-		closeErr = fmt.Errorf("close Kurtosis API container connection: %w", closeErr)
 	}
 
 	historicalStatus := "UNKNOWN"
@@ -217,7 +214,7 @@ func inspectEnclaveContents(
 		return files[i].Name < files[j].Name
 	})
 
-	return services, files, errors.Join(historicalErr, currentErr, artifactsErr, closeErr)
+	return services, files, errors.Join(historicalErr, currentErr, artifactsErr)
 }
 
 func servicePortBindings(service *kurtosis_core_rpc_api_bindings.ServiceInfo) []string {
@@ -265,15 +262,15 @@ func (client *Client) ServiceLogs(
 	if err != nil {
 		return nil, fmt.Errorf("connect to Kurtosis log API: %w", err)
 	}
+	defer func() { _ = connection.Close() }()
 	logsClient := kurtosis_engine_rpc_api_bindings.NewEngineServiceClient(connection)
-	notFound, streamErr := serviceLogs(
+	return serviceLogs(
 		ctx,
 		enclaveName,
 		serviceUUIDs,
 		consume,
 		engineServiceLogs(logsClient),
 	)
-	return notFound, errors.Join(streamErr, connection.Close())
 }
 
 func (client *DiagnosticsClient) ServiceLogs(
