@@ -23,7 +23,7 @@ func (fake *fakeServiceContext) GetPublicPorts() map[string]*services.PortSpec {
 
 func (fake *fakeServiceContext) GetLabels() map[string]string { return fake.labels }
 
-func TestServiceConversionCopiesContext(t *testing.T) {
+func TestNewServiceCopiesContext(t *testing.T) {
 	labels := map[string]string{"qrl-package.client-type": "execution"}
 	source := &fakeServiceContext{
 		labels: labels,
