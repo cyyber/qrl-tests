@@ -13,11 +13,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-var diagnosticServices = []kurtosis.ServiceIdentity{
-	{Name: "run-generate-genesis", UUID: "aaaa", Status: "STOPPED", Ports: []string{"<none>"}},
-	{Name: "el-1-gqrl-qrysm", UUID: "dddd"},
-}
-
 type fakeDiagnosticsAPI struct {
 	inspection  kurtosis.EnclaveInspection
 	inspectErr  error
@@ -70,7 +65,10 @@ func diagnosticInspection() kurtosis.EnclaveInspection {
 		Status:       "RUNNING",
 		Mode:         "PRODUCTION",
 		CreationTime: time.Date(2026, 8, 24, 12, 0, 0, 0, time.UTC),
-		Services:     diagnosticServices,
+		Services: []kurtosis.ServiceIdentity{
+			{Name: "run-generate-genesis", UUID: "aaaa", Status: "STOPPED", Ports: []string{"<none>"}},
+			{Name: "el-1-gqrl-qrysm", UUID: "dddd"},
+		},
 		FilesArtifacts: []kurtosis.FilesArtifactIdentity{
 			{Name: "genesis", UUID: "artifact-uuid"},
 		},
@@ -146,8 +144,9 @@ func TestCollectDiagnosticsPartialFailures(t *testing.T) {
 	require.NoError(t, os.MkdirAll(failedLog, 0o755))
 	inspectErr := errors.New("inspect unavailable")
 	streamErr := errors.New("log stream reset")
+	inspection := diagnosticInspection()
 	client := &fakeDiagnosticsAPI{
-		inspection: diagnosticInspection(),
+		inspection: inspection,
 		inspectErr: inspectErr,
 		logs: map[string][]string{
 			"dddd": {"captured after failure"},
@@ -161,6 +160,9 @@ func TestCollectDiagnosticsPartialFailures(t *testing.T) {
 	require.ErrorContains(t, err, "inspect Kurtosis enclave qrl-tests-abi: inspect unavailable")
 	require.ErrorContains(t, err, "write diagnostic "+failedLog)
 	require.ErrorContains(t, err, "stream Kurtosis service logs for qrl-tests-abi: log stream reset")
+
+	capturedInspection := testutil.ReadJSON[kurtosis.EnclaveInspection](t, filepath.Join(output, "inspection.json"))
+	require.Equal(t, inspection, capturedInspection)
 
 	partialLog, readErr := os.ReadFile(filepath.Join(output, "services", "el-1-gqrl-qrysm.log"))
 	require.NoError(t, readErr)
@@ -199,13 +201,14 @@ func TestCollectDiagnosticsMissingLogs(t *testing.T) {
 }
 
 func TestCollectDiagnosticsWithoutServices(t *testing.T) {
-	client := new(fakeDiagnosticsAPI)
+	inspection := kurtosis.EnclaveInspection{Name: "empty"}
+	client := &fakeDiagnosticsAPI{inspection: inspection}
 	output := t.TempDir()
 	require.NoError(t, collectDiagnostics(t.Context(), client, "empty", output))
 	require.Zero(t, client.logCalls)
 
-	inspection := testutil.ReadJSON[kurtosis.EnclaveInspection](t, filepath.Join(output, "inspection.json"))
-	require.Equal(t, kurtosis.EnclaveInspection{}, inspection)
+	capturedInspection := testutil.ReadJSON[kurtosis.EnclaveInspection](t, filepath.Join(output, "inspection.json"))
+	require.Equal(t, inspection, capturedInspection)
 	manifest := testutil.ReadJSON[diagnosticsManifest](t, filepath.Join(output, "diagnostics.json"))
 	require.Equal(t, diagnosticsManifest{
 		Enclave:    "empty",
