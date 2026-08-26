@@ -7,8 +7,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
-	"time"
 
 	"github.com/cyyber/qrl-tests/devnet/internal/kurtosis"
 	"github.com/cyyber/qrl-tests/internal/jsonfile"
@@ -82,16 +80,17 @@ func collectInspection(
 	enclaveName,
 	outputDir string,
 ) (inspectionDiagnostic, []kurtosis.ServiceIdentity, error) {
-	const file = "inspect.txt"
+	const file = "inspection.json"
 
 	// Inspection may return useful partial metadata alongside an error.
 	enclave, resultErr := client.Inspect(ctx, enclaveName)
 	if resultErr != nil {
 		resultErr = fmt.Errorf("inspect Kurtosis enclave %s: %w", enclaveName, resultErr)
 	}
-	if err := writeDiagnostic(
+	if err := jsonfile.Write(
 		filepath.Join(outputDir, file),
-		formatInspection(enclave),
+		enclave,
+		"Kurtosis enclave inspection",
 	); err != nil {
 		resultErr = errors.Join(resultErr, err)
 	}
@@ -105,36 +104,6 @@ func collectInspection(
 	}
 
 	return diagnostic, enclave.Services, resultErr
-}
-
-func formatInspection(enclave kurtosis.EnclaveInspection) string {
-	var inspection strings.Builder
-	fmt.Fprintf(&inspection, "Name:\t%s\nUUID:\t%s\nStatus:\t%s\n", enclave.Name, enclave.UUID, enclave.Status)
-	if !enclave.CreationTime.IsZero() {
-		fmt.Fprintf(&inspection, "Creation Time:\t%s\n", enclave.CreationTime.UTC().Format(time.RFC3339))
-	}
-	if enclave.Production {
-		fmt.Fprintln(&inspection, "Flags:\tproduction")
-	} else {
-		fmt.Fprintln(&inspection, "Flags:")
-	}
-	fmt.Fprintln(&inspection, "Files Artifacts:")
-	for _, artifact := range enclave.FilesArtifacts {
-		fmt.Fprintf(&inspection, "%s\t%s\n", artifact.UUID, artifact.Name)
-	}
-	fmt.Fprintln(&inspection, "User Services:")
-	fmt.Fprintln(&inspection, "UUID\tName\tPorts\tStatus")
-	for _, service := range enclave.Services {
-		fmt.Fprintf(
-			&inspection,
-			"%s\t%s\t%s\t%s\n",
-			service.UUID,
-			service.Name,
-			strings.Join(service.Ports, ", "),
-			service.Status,
-		)
-	}
-	return inspection.String()
 }
 
 func collectServiceLogs(
@@ -255,11 +224,4 @@ func (output *serviceLogOutput) close() error {
 	}
 	output.writeErr = errors.Join(output.writeErr, flushErr, closeErr)
 	return output.writeErr
-}
-
-func writeDiagnostic(path, output string) error {
-	if err := os.WriteFile(path, []byte(output), 0o600); err != nil {
-		return fmt.Errorf("write diagnostic %s: %w", path, err)
-	}
-	return nil
 }

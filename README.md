@@ -27,7 +27,7 @@ reports/
     ├── manifest.json         # lane, profile, and network environment
     └── diagnostics/          # created only when the lane fails
         ├── diagnostics.json   # capture status and errors
-        ├── inspect.txt        # Kurtosis enclave inspection
+        ├── inspection.json    # Kurtosis enclave inspection
         └── services/
             └── <service>.log  # log for each discovered service
 ```

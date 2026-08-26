@@ -66,8 +66,8 @@ func diagnosticInspection() kurtosis.EnclaveInspection {
 		Name:         "qrl-tests-abi",
 		UUID:         "enclave-uuid",
 		Status:       "RUNNING",
+		Mode:         "PRODUCTION",
 		CreationTime: time.Date(2026, 8, 24, 12, 0, 0, 0, time.UTC),
-		Production:   true,
 		Services:     diagnosticServices,
 		FilesArtifacts: []kurtosis.FilesArtifactIdentity{
 			{Name: "genesis", UUID: "artifact-uuid"},
@@ -117,15 +117,8 @@ func TestCollectDiagnostics(t *testing.T) {
 	require.Equal(t, "qrl-tests-abi", client.enclaveName)
 	require.Equal(t, []string{"aaaa", "dddd"}, client.requested)
 
-	inspection, err := os.ReadFile(filepath.Join(output, "inspect.txt"))
-	require.NoError(t, err)
-	require.Contains(t, string(inspection), "Name:\tqrl-tests-abi\n")
-	require.Contains(t, string(inspection), "UUID:\tenclave-uuid\n")
-	require.Contains(t, string(inspection), "Status:\tRUNNING\n")
-	require.Contains(t, string(inspection), "Creation Time:\t2026-08-24T12:00:00Z\n")
-	require.Contains(t, string(inspection), "Flags:\tproduction\n")
-	require.Contains(t, string(inspection), "artifact-uuid\tgenesis\n")
-	require.Contains(t, string(inspection), "aaaa\trun-generate-genesis\t<none>\tSTOPPED\n")
+	inspection := testutil.ReadJSON[kurtosis.EnclaveInspection](t, filepath.Join(output, "inspection.json"))
+	require.Equal(t, diagnosticInspection(), inspection)
 
 	genesisLog, err := os.ReadFile(filepath.Join(output, "services", "run-generate-genesis.log"))
 	require.NoError(t, err)

@@ -24,25 +24,25 @@ import (
 const maxGRPCMessageSize = 100 * 1024 * 1024
 
 type ServiceIdentity struct {
-	Name   string
-	UUID   string
-	Status string
-	Ports  []string
+	Name   string   `json:"name"`
+	UUID   string   `json:"uuid"`
+	Status string   `json:"status"`
+	Ports  []string `json:"ports"`
 }
 
 type FilesArtifactIdentity struct {
-	Name string
-	UUID string
+	Name string `json:"name"`
+	UUID string `json:"uuid"`
 }
 
 type EnclaveInspection struct {
-	Name           string
-	UUID           string
-	Status         string
-	CreationTime   time.Time
-	Production     bool
-	Services       []ServiceIdentity
-	FilesArtifacts []FilesArtifactIdentity
+	Name           string                  `json:"name,omitempty"`
+	UUID           string                  `json:"uuid,omitempty"`
+	Status         string                  `json:"status,omitempty"`
+	Mode           string                  `json:"mode,omitempty"`
+	CreationTime   time.Time               `json:"creation_time,omitzero"`
+	Services       []ServiceIdentity       `json:"services,omitempty"`
+	FilesArtifacts []FilesArtifactIdentity `json:"files_artifacts,omitempty"`
 }
 
 type ServiceLogConsumer func(serviceUUID string, lines []string)
@@ -114,10 +114,10 @@ func inspectEnclave(
 	info *kurtosis_engine_rpc_api_bindings.EnclaveInfo,
 ) (EnclaveInspection, error) {
 	inspection := EnclaveInspection{
-		Name:       info.GetName(),
-		UUID:       info.GetEnclaveUuid(),
-		Status:     strings.TrimPrefix(info.GetContainersStatus().String(), "EnclaveContainersStatus_"),
-		Production: info.GetMode() == kurtosis_engine_rpc_api_bindings.EnclaveMode_PRODUCTION,
+		Name:   info.GetName(),
+		UUID:   info.GetEnclaveUuid(),
+		Status: strings.TrimPrefix(info.GetContainersStatus().String(), "EnclaveContainersStatus_"),
+		Mode:   info.GetMode().String(),
 	}
 	var inspectionErrors []error
 	if created := info.GetCreationTime(); created != nil {
