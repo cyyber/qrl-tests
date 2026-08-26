@@ -100,18 +100,17 @@ func TestManagerClosesDiagnosticsClient(t *testing.T) {
 
 func TestCollectDiagnostics(t *testing.T) {
 	output := t.TempDir()
-	logs := make(map[string][]string, len(diagnosticServices))
-	for _, service := range diagnosticServices {
-		logs[service.UUID] = []string{"captured " + service.Name}
-	}
-	logs["aaaa"] = []string{
-		"starting genesis",
-		`el_premine_addrs: {"seed":"0x010000abcd"}`,
-		"genesis failed",
-	}
+	inspection := diagnosticInspection()
 	client := &fakeDiagnosticsAPI{
-		inspection: diagnosticInspection(),
-		logs:       logs,
+		inspection: inspection,
+		logs: map[string][]string{
+			"aaaa": {
+				"starting genesis",
+				`el_premine_addrs: {"seed":"0x010000abcd"}`,
+				"genesis failed",
+			},
+			"dddd": {"captured el-1-gqrl-qrysm"},
+		},
 	}
 
 	require.NoError(t, collectDiagnostics(t.Context(), client, "qrl-tests-abi", output))
@@ -119,8 +118,8 @@ func TestCollectDiagnostics(t *testing.T) {
 	require.Equal(t, "qrl-tests-abi", client.enclaveName)
 	require.Equal(t, []string{"aaaa", "dddd"}, client.requested)
 
-	inspection := testutil.ReadJSON[kurtosis.EnclaveInspection](t, filepath.Join(output, "inspection.json"))
-	require.Equal(t, diagnosticInspection(), inspection)
+	capturedInspection := testutil.ReadJSON[kurtosis.EnclaveInspection](t, filepath.Join(output, "inspection.json"))
+	require.Equal(t, inspection, capturedInspection)
 
 	genesisLog, err := os.ReadFile(filepath.Join(output, "services", "run-generate-genesis.log"))
 	require.NoError(t, err)
@@ -131,27 +130,34 @@ func TestCollectDiagnostics(t *testing.T) {
 	require.Equal(t, "captured el-1-gqrl-qrysm\n", string(executionLog))
 
 	manifest := testutil.ReadJSON[diagnosticsManifest](t, filepath.Join(output, "diagnostics.json"))
-	require.True(t, manifest.Inspection.Captured)
-	require.Equal(t, []serviceDiagnostic{
-		{Name: "run-generate-genesis", File: "services/run-generate-genesis.log", Captured: true},
-		{Name: "el-1-gqrl-qrysm", File: "services/el-1-gqrl-qrysm.log", Captured: true},
-	}, manifest.Services)
+	require.Equal(t, diagnosticsManifest{
+		Enclave:    "qrl-tests-abi",
+		Inspection: inspectionDiagnostic{File: "inspection.json", Captured: true},
+		Services: []serviceDiagnostic{
+			{Name: "run-generate-genesis", File: "services/run-generate-genesis.log", Captured: true},
+			{Name: "el-1-gqrl-qrysm", File: "services/el-1-gqrl-qrysm.log", Captured: true},
+		},
+	}, manifest)
 }
 
 func TestCollectDiagnosticsPartialFailures(t *testing.T) {
 	output := t.TempDir()
 	failedLog := filepath.Join(output, "services", "run-generate-genesis.log")
 	require.NoError(t, os.MkdirAll(failedLog, 0o755))
+	inspectErr := errors.New("inspect unavailable")
+	streamErr := errors.New("log stream reset")
 	client := &fakeDiagnosticsAPI{
 		inspection: diagnosticInspection(),
-		inspectErr: errors.New("inspect unavailable"),
+		inspectErr: inspectErr,
 		logs: map[string][]string{
 			"dddd": {"captured after failure"},
 		},
-		logsErr: errors.New("log stream reset"),
+		logsErr: streamErr,
 	}
 
 	err := collectDiagnostics(t.Context(), client, "qrl-tests-abi", output)
+	require.ErrorIs(t, err, inspectErr)
+	require.ErrorIs(t, err, streamErr)
 	require.ErrorContains(t, err, "inspect Kurtosis enclave qrl-tests-abi: inspect unavailable")
 	require.ErrorContains(t, err, "write diagnostic "+failedLog)
 	require.ErrorContains(t, err, "stream Kurtosis service logs for qrl-tests-abi: log stream reset")
@@ -194,6 +200,15 @@ func TestCollectDiagnosticsMissingLogs(t *testing.T) {
 
 func TestCollectDiagnosticsWithoutServices(t *testing.T) {
 	client := new(fakeDiagnosticsAPI)
-	require.NoError(t, collectDiagnostics(t.Context(), client, "empty", t.TempDir()))
+	output := t.TempDir()
+	require.NoError(t, collectDiagnostics(t.Context(), client, "empty", output))
 	require.Zero(t, client.logCalls)
+
+	inspection := testutil.ReadJSON[kurtosis.EnclaveInspection](t, filepath.Join(output, "inspection.json"))
+	require.Equal(t, kurtosis.EnclaveInspection{}, inspection)
+	manifest := testutil.ReadJSON[diagnosticsManifest](t, filepath.Join(output, "diagnostics.json"))
+	require.Equal(t, diagnosticsManifest{
+		Enclave:    "empty",
+		Inspection: inspectionDiagnostic{File: "inspection.json", Captured: true},
+	}, manifest)
 }

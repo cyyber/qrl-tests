@@ -301,7 +301,7 @@ func receiveServiceLogs(
 			return notFound, nil
 		}
 		if err != nil {
-			return notFound, fmt.Errorf("receive Kurtosis service logs: %w", err)
+			return nil, fmt.Errorf("receive Kurtosis service logs: %w", err)
 		}
 
 		for uuid := range response.GetNotFoundServiceUuidSet() {

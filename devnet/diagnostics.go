@@ -144,7 +144,7 @@ func collectServiceLogs(
 	serviceDiagnostics := make([]serviceDiagnostic, 0, len(services))
 	collectionErrors := []error{streamErr}
 	for _, output := range outputs {
-		diagnostic, localErr := output.finish(streamErr, notFound[output.uuid])
+		diagnostic, localErr := output.finalizeCapture(streamErr, notFound[output.uuid])
 		serviceDiagnostics = append(serviceDiagnostics, diagnostic)
 		collectionErrors = append(collectionErrors, localErr)
 	}
@@ -193,7 +193,7 @@ func (output *serviceLogOutput) writeLines(lines []string) {
 	}
 }
 
-func (output *serviceLogOutput) finish(streamErr error, missing bool) (serviceDiagnostic, error) {
+func (output *serviceLogOutput) finalizeCapture(streamErr error, missing bool) (serviceDiagnostic, error) {
 	var missingErr error
 	if missing {
 		missingErr = fmt.Errorf(
@@ -202,7 +202,7 @@ func (output *serviceLogOutput) finish(streamErr error, missing bool) (serviceDi
 			output.uuid,
 		)
 	}
-	localErr := errors.Join(missingErr, output.close())
+	localErr := errors.Join(missingErr, output.closeOutput())
 	captureErr := errors.Join(streamErr, localErr)
 	output.diagnostic.Captured = captureErr == nil
 	if captureErr != nil {
@@ -212,7 +212,7 @@ func (output *serviceLogOutput) finish(streamErr error, missing bool) (serviceDi
 	return output.diagnostic, localErr
 }
 
-func (output *serviceLogOutput) close() error {
+func (output *serviceLogOutput) closeOutput() error {
 	if output.file == nil {
 		return output.outputErr
 	}

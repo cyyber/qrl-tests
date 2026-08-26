@@ -168,20 +168,25 @@ func (manager *Manager) Start(ctx context.Context, options StartOptions) (enviro
 func (manager *Manager) finishFailedStart(client lifecycleClient, options StartOptions, failure error) error {
 	// Diagnostics and cleanup run on fresh contexts: the start context is
 	// typically already canceled or expired by the time the failure gets here.
+	var diagnosticsErr error
 	if options.FailureDiagnosticsDir != "" {
 		collectCtx, cancel := context.WithTimeout(context.Background(), startDiagnosticsTimeout)
 		if err := manager.CollectDiagnostics(collectCtx, options.EnclaveName, options.FailureDiagnosticsDir); err != nil {
-			failure = errors.Join(failure, fmt.Errorf("collect start diagnostics: %w", err))
+			diagnosticsErr = fmt.Errorf("collect start diagnostics: %w", err)
 		}
 		cancel()
 	}
 
 	cleanupCtx, cancel := context.WithTimeout(context.Background(), startCleanupTimeout)
-	defer cancel()
-	if err := manager.destroyAndConfirm(cleanupCtx, client, options.EnclaveName); err != nil {
-		return errors.Join(failure, fmt.Errorf("clean up failed network: %w", err))
+	cleanupErr := manager.destroyAndConfirm(cleanupCtx, client, options.EnclaveName)
+	cancel()
+	if cleanupErr != nil {
+		cleanupErr = fmt.Errorf("clean up failed network: %w", cleanupErr)
 	}
-	return failure
+	if diagnosticsErr == nil && cleanupErr == nil {
+		return failure
+	}
+	return errors.Join(failure, diagnosticsErr, cleanupErr)
 }
 
 func (manager *Manager) Stop(ctx context.Context, name string) error {

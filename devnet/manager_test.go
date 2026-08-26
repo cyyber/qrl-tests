@@ -222,16 +222,28 @@ func TestStartCreateFailureSkipsCleanup(t *testing.T) {
 	require.Empty(t, client.packageLocator)
 }
 
-func TestStartReportsCleanupFailure(t *testing.T) {
+func TestStartRecoveryFailures(t *testing.T) {
+	startErr := errors.New("package failed")
+	diagnosticsErr := errors.New("logs unavailable")
+	cleanupErr := errors.New("destroy failed")
 	client := &fakeLifecycleClient{
-		runErr:     errors.New("package failed"),
-		destroyErr: errors.New("destroy failed"),
+		runErr:     startErr,
+		destroyErr: cleanupErr,
+	}
+	manager := testManager(client)
+	useDiagnosticsClient(manager)
+	manager.collectDiagnostics = func(context.Context, diagnosticsAPI, string, string) error {
+		return diagnosticsErr
 	}
 
-	_, err := testManager(client).Start(t.Context(), startOptions())
-	require.ErrorContains(t, err, "package failed")
+	options := startOptions()
+	options.FailureDiagnosticsDir = failureDiagnosticsDir
+	_, err := manager.Start(t.Context(), options)
+	require.ErrorIs(t, err, startErr)
+	require.ErrorIs(t, err, diagnosticsErr)
+	require.ErrorIs(t, err, cleanupErr)
+	require.ErrorContains(t, err, "collect start diagnostics: logs unavailable")
 	require.ErrorContains(t, err, "clean up failed network")
-	require.ErrorContains(t, err, "destroy failed")
 }
 
 func TestStartDefaults(t *testing.T) {

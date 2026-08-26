@@ -140,19 +140,21 @@ func TestReceiveServiceLogsKeepsNotFound(t *testing.T) {
 }
 
 func TestServiceLogsStreamFailure(t *testing.T) {
+	streamErr := errors.New("stream reset")
 	getServiceLogs := func(
 		context.Context,
 		*kurtosis_engine_rpc_api_bindings.GetServiceLogsArgs,
 	) (serviceLogsStream, error) {
 		return &fakeServiceLogsStream{
 			responses: []*kurtosis_engine_rpc_api_bindings.GetServiceLogsResponse{
+				{NotFoundServiceUuidSet: map[string]bool{"missing-uuid": true}},
 				{
 					ServiceLogsByServiceUuid: map[string]*kurtosis_engine_rpc_api_bindings.LogLine{
 						"service-uuid": {Line: []string{"partial"}},
 					},
 				},
 			},
-			terminalErr: errors.New("stream reset"),
+			terminalErr: streamErr,
 		}, nil
 	}
 
@@ -160,12 +162,13 @@ func TestServiceLogsStreamFailure(t *testing.T) {
 	notFound, err := serviceLogs(
 		t.Context(),
 		"test-enclave",
-		[]string{"service-uuid"},
+		[]string{"service-uuid", "missing-uuid"},
 		func(_ string, lines []string) { captured = append(captured, lines...) },
 		getServiceLogs,
 	)
+	require.ErrorIs(t, err, streamErr)
 	require.ErrorContains(t, err, "receive Kurtosis service logs: stream reset")
-	require.Empty(t, notFound)
+	require.Nil(t, notFound, "not-found state is provisional until the stream reaches EOF")
 	require.Equal(t, []string{"partial"}, captured)
 }
 
