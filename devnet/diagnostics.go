@@ -49,7 +49,7 @@ type diagnosticsManifest struct {
 }
 
 // CollectDiagnostics captures the enclave inspection and per-service logs.
-// Collection continues after individual failures and returns all encountered errors.
+// Collection continues across independent artifacts and returns their failures.
 func (manager *Manager) CollectDiagnostics(ctx context.Context, enclaveName, outputDir string) error {
 	client, err := manager.newDiagnosticsClient()
 	if err != nil {
@@ -86,27 +86,26 @@ func collectInspection(
 	const file = "inspection.json"
 
 	// Inspection may return useful partial metadata alongside an error.
-	enclave, resultErr := client.Inspect(ctx, enclaveName)
-	if resultErr != nil {
-		resultErr = fmt.Errorf("inspect Kurtosis enclave %s: %w", enclaveName, resultErr)
+	enclave, inspectErr := client.Inspect(ctx, enclaveName)
+	if inspectErr != nil {
+		inspectErr = fmt.Errorf("inspect Kurtosis enclave %s: %w", enclaveName, inspectErr)
 	}
-	if err := jsonfile.Write(
+	writeErr := jsonfile.Write(
 		filepath.Join(outputDir, file),
 		enclave,
 		"Kurtosis enclave inspection",
-	); err != nil {
-		resultErr = errors.Join(resultErr, err)
-	}
+	)
+	captureErr := errors.Join(inspectErr, writeErr)
 
 	diagnostic := inspectionDiagnostic{
 		File:     file,
-		Captured: resultErr == nil,
+		Captured: captureErr == nil,
 	}
-	if resultErr != nil {
-		diagnostic.Error = resultErr.Error()
+	if captureErr != nil {
+		diagnostic.Error = captureErr.Error()
 	}
 
-	return diagnostic, enclave.Services, resultErr
+	return diagnostic, enclave.Services, captureErr
 }
 
 func collectServiceLogs(
@@ -145,22 +144,9 @@ func collectServiceLogs(
 	serviceDiagnostics := make([]serviceDiagnostic, 0, len(services))
 	collectionErrors := []error{streamErr}
 	for _, output := range outputs {
-		writeErr := output.close()
-		var notFoundErr error
-		if notFound[output.uuid] {
-			notFoundErr = fmt.Errorf(
-				"Kurtosis service logs not found for %s (%s)",
-				output.diagnostic.Name,
-				output.uuid,
-			)
-		}
-		captureErr := errors.Join(streamErr, notFoundErr, writeErr)
-		output.diagnostic.Captured = captureErr == nil
-		if captureErr != nil {
-			output.diagnostic.Error = captureErr.Error()
-		}
-		serviceDiagnostics = append(serviceDiagnostics, output.diagnostic)
-		collectionErrors = append(collectionErrors, notFoundErr, writeErr)
+		diagnostic, localErr := output.finish(streamErr, notFound[output.uuid])
+		serviceDiagnostics = append(serviceDiagnostics, diagnostic)
+		collectionErrors = append(collectionErrors, localErr)
 	}
 	return serviceDiagnostics, errors.Join(collectionErrors...)
 }
@@ -171,7 +157,7 @@ type serviceLogOutput struct {
 	path       string
 	file       *os.File
 	writer     *bufio.Writer
-	writeErr   error
+	outputErr  error
 }
 
 func openServiceLog(outputDir string, service kurtosis.ServiceIdentity) *serviceLogOutput {
@@ -183,7 +169,7 @@ func openServiceLog(outputDir string, service kurtosis.ServiceIdentity) *service
 	}
 	file, err := os.OpenFile(output.path, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
 	if err != nil {
-		output.writeErr = fmt.Errorf("write diagnostic %s: %w", output.path, err)
+		output.outputErr = fmt.Errorf("write diagnostic %s: %w", output.path, err)
 		return output
 	}
 	output.file = file
@@ -192,33 +178,51 @@ func openServiceLog(outputDir string, service kurtosis.ServiceIdentity) *service
 }
 
 func (output *serviceLogOutput) writeLines(lines []string) {
-	if output.writeErr != nil {
+	if output.outputErr != nil {
 		return
 	}
 	for _, line := range lines {
 		if _, err := output.writer.WriteString(line); err != nil {
-			output.writeErr = fmt.Errorf("write diagnostic %s: %w", output.path, err)
+			output.outputErr = fmt.Errorf("write diagnostic %s: %w", output.path, err)
 			return
 		}
 		if err := output.writer.WriteByte('\n'); err != nil {
-			output.writeErr = fmt.Errorf("write diagnostic %s: %w", output.path, err)
+			output.outputErr = fmt.Errorf("write diagnostic %s: %w", output.path, err)
 			return
 		}
 	}
 }
 
+func (output *serviceLogOutput) finish(streamErr error, missing bool) (serviceDiagnostic, error) {
+	var missingErr error
+	if missing {
+		missingErr = fmt.Errorf(
+			"Kurtosis service logs not found for %s (%s)",
+			output.diagnostic.Name,
+			output.uuid,
+		)
+	}
+	localErr := errors.Join(missingErr, output.close())
+	captureErr := errors.Join(streamErr, localErr)
+	output.diagnostic.Captured = captureErr == nil
+	if captureErr != nil {
+		output.diagnostic.Error = captureErr.Error()
+	}
+	// streamErr affects every manifest entry but belongs in the aggregate once.
+	return output.diagnostic, localErr
+}
+
 func (output *serviceLogOutput) close() error {
 	if output.file == nil {
-		return output.writeErr
+		return output.outputErr
 	}
-	flushErr := output.writer.Flush()
-	if flushErr != nil {
-		flushErr = fmt.Errorf("write diagnostic %s: %w", output.path, flushErr)
+	if output.outputErr == nil {
+		if err := output.writer.Flush(); err != nil {
+			output.outputErr = fmt.Errorf("write diagnostic %s: %w", output.path, err)
+		}
 	}
-	closeErr := output.file.Close()
-	if closeErr != nil {
-		closeErr = fmt.Errorf("write diagnostic %s: %w", output.path, closeErr)
+	if err := output.file.Close(); err != nil && output.outputErr == nil {
+		output.outputErr = fmt.Errorf("write diagnostic %s: %w", output.path, err)
 	}
-	output.writeErr = errors.Join(output.writeErr, flushErr, closeErr)
-	return output.writeErr
+	return output.outputErr
 }
