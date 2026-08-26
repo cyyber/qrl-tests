@@ -57,7 +57,7 @@ func TestServicePortBindings(t *testing.T) {
 	require.Equal(t, []string{"<none>"}, servicePortBindings(new(kurtosis_core_rpc_api_bindings.ServiceInfo)))
 }
 
-func TestInspectEnclaveRejectsStoppedAPIContainer(t *testing.T) {
+func TestInspectEnclaveStoppedAPI(t *testing.T) {
 	info := &kurtosis_engine_rpc_api_bindings.EnclaveInfo{
 		Name:               "test-enclave",
 		EnclaveUuid:        "enclave-uuid",
@@ -109,7 +109,7 @@ func TestServiceLogs(t *testing.T) {
 	require.NotContains(t, captured, "stopped-uuid")
 }
 
-func TestReceiveServiceLogsClearsEarlierNotFound(t *testing.T) {
+func TestReceiveServiceLogsClearsNotFound(t *testing.T) {
 	stream := &fakeServiceLogsStream{
 		responses: []*kurtosis_engine_rpc_api_bindings.GetServiceLogsResponse{
 			{NotFoundServiceUuidSet: map[string]bool{"service-uuid": true}},
@@ -124,7 +124,7 @@ func TestReceiveServiceLogsClearsEarlierNotFound(t *testing.T) {
 	require.Empty(t, notFound)
 }
 
-func TestReceiveServiceLogsKeepsLaterNotFound(t *testing.T) {
+func TestReceiveServiceLogsKeepsNotFound(t *testing.T) {
 	stream := &fakeServiceLogsStream{
 		responses: []*kurtosis_engine_rpc_api_bindings.GetServiceLogsResponse{
 			{ServiceLogsByServiceUuid: map[string]*kurtosis_engine_rpc_api_bindings.LogLine{

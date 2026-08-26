@@ -97,7 +97,7 @@ func requireLiveBoundedContext(t *testing.T, ctx context.Context, timeout time.D
 	require.LessOrEqual(t, remaining, timeout)
 }
 
-func TestStartCleansUpEnclaveAfterPostCreateFailure(t *testing.T) {
+func TestStartCleansUpFailedEnclave(t *testing.T) {
 	tests := []struct {
 		name      string
 		client    *fakeLifecycleClient
@@ -124,7 +124,7 @@ func TestStartCleansUpEnclaveAfterPostCreateFailure(t *testing.T) {
 	}
 }
 
-func TestStartCollectsDiagnosticsBeforeCleanup(t *testing.T) {
+func TestStartDiagnosticsBeforeCleanup(t *testing.T) {
 	client := &fakeLifecycleClient{runErr: errors.New("package failed")}
 	manager := testManager(client)
 	diagnostics := useDiagnosticsClient(manager)
@@ -147,7 +147,7 @@ func TestStartCollectsDiagnosticsBeforeCleanup(t *testing.T) {
 	require.True(t, client.destroyed)
 }
 
-func TestStartReportsDiagnosticsFailureAlongsideCause(t *testing.T) {
+func TestStartJoinsDiagnosticsError(t *testing.T) {
 	client := &fakeLifecycleClient{runErr: errors.New("package failed")}
 	manager := testManager(client)
 	useDiagnosticsClient(manager)
@@ -163,7 +163,7 @@ func TestStartReportsDiagnosticsFailureAlongsideCause(t *testing.T) {
 	require.True(t, client.destroyed, "a diagnostics failure must not leak the enclave")
 }
 
-func TestStartReportsDiagnosticsClientFailureAlongsideCause(t *testing.T) {
+func TestStartJoinsDiagnosticsClientError(t *testing.T) {
 	client := &fakeLifecycleClient{runErr: errors.New("package failed")}
 	manager := testManager(client)
 	manager.newDiagnosticsClient = func() (diagnosticsClient, error) {
@@ -178,7 +178,7 @@ func TestStartReportsDiagnosticsClientFailureAlongsideCause(t *testing.T) {
 	require.True(t, client.destroyed, "a diagnostics connection failure must not leak the enclave")
 }
 
-func TestStartRecoveryUsesLiveBoundedContextsAfterCancellation(t *testing.T) {
+func TestStartRecoveryAfterCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	client := &fakeLifecycleClient{services: singleParticipant()}

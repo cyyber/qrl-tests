@@ -75,7 +75,7 @@ func diagnosticInspection() kurtosis.EnclaveInspection {
 	}
 }
 
-func TestManagerCollectDiagnosticsClosesClient(t *testing.T) {
+func TestManagerClosesDiagnosticsClient(t *testing.T) {
 	type contextKey struct{}
 	ctx := context.WithValue(t.Context(), contextKey{}, "sentinel")
 	client := new(fakeDiagnosticsClient)
@@ -169,7 +169,7 @@ func TestCollectDiagnosticsPartialFailures(t *testing.T) {
 	}
 }
 
-func TestCollectDiagnosticsMissingServiceLogs(t *testing.T) {
+func TestCollectDiagnosticsMissingLogs(t *testing.T) {
 	services := []kurtosis.ServiceIdentity{
 		{Name: "stopped", UUID: "stopped-uuid"},
 		{Name: "running", UUID: "running-uuid"},
@@ -196,7 +196,7 @@ func TestCollectDiagnosticsWithoutServices(t *testing.T) {
 	require.Zero(t, client.logCalls)
 }
 
-func TestCollectDiagnosticsDuplicateServiceNames(t *testing.T) {
+func TestCollectDiagnosticsDuplicateNames(t *testing.T) {
 	services := []kurtosis.ServiceIdentity{
 		{Name: "recreated", UUID: "old-uuid"},
 		{Name: "recreated", UUID: "new-uuid"},
