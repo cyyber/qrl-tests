@@ -56,13 +56,15 @@ type getServiceLogsFunc func(
 	arguments *kurtosis_engine_rpc_api_bindings.GetServiceLogsArgs,
 ) (serviceLogsStream, error)
 
-// DiagnosticsClient owns the engine connection used to collect diagnostics
-// independently of the lifecycle client.
+// DiagnosticsClient owns the direct engine connection used to collect
+// inspection data and retained logs independently of LifecycleClient.
 type DiagnosticsClient struct {
 	engine     kurtosis_engine_rpc_api_bindings.EngineServiceClient
 	connection *grpc.ClientConn
 }
 
+// NewDiagnosticsClient opens the direct engine connection used by one
+// diagnostics collection.
 func NewDiagnosticsClient() (*DiagnosticsClient, error) {
 	connection, err := newGRPCConnection(localEngineAddress())
 	if err != nil {
@@ -79,17 +81,6 @@ func (client *DiagnosticsClient) Close() error {
 }
 
 // Inspect returns enclave metadata and the identifiers needed for diagnostics.
-func (client *Client) Inspect(
-	ctx context.Context,
-	enclaveName string,
-) (EnclaveInspection, error) {
-	info, err := client.engine.GetEnclave(ctx, enclaveName)
-	if err != nil {
-		return EnclaveInspection{}, err
-	}
-	return inspectEnclave(ctx, info)
-}
-
 func (client *DiagnosticsClient) Inspect(
 	ctx context.Context,
 	enclaveName string,
@@ -249,30 +240,6 @@ func servicePortBindings(service *kurtosis_core_rpc_api_bindings.ServiceInfo) []
 
 // ServiceLogs streams all available log lines for every UUID to consume and
 // returns the requested UUIDs the engine could not find.
-func (client *Client) ServiceLogs(
-	ctx context.Context,
-	enclaveName string,
-	serviceUUIDs []string,
-	consume ServiceLogConsumer,
-) (map[string]bool, error) {
-	if len(serviceUUIDs) == 0 {
-		return nil, nil
-	}
-	connection, err := newGRPCConnection(localEngineAddress())
-	if err != nil {
-		return nil, fmt.Errorf("connect to Kurtosis log API: %w", err)
-	}
-	defer func() { _ = connection.Close() }()
-	logsClient := kurtosis_engine_rpc_api_bindings.NewEngineServiceClient(connection)
-	return serviceLogs(
-		ctx,
-		enclaveName,
-		serviceUUIDs,
-		consume,
-		engineServiceLogs(logsClient),
-	)
-}
-
 func (client *DiagnosticsClient) ServiceLogs(
 	ctx context.Context,
 	enclaveName string,

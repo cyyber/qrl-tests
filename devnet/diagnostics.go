@@ -12,7 +12,9 @@ import (
 	"github.com/cyyber/qrl-tests/internal/jsonfile"
 )
 
-type diagnosticsClient interface {
+// diagnosticsAPI is the direct engine API surface needed to capture failure
+// artifacts. Connection ownership belongs to diagnosticsClient.
+type diagnosticsAPI interface {
 	Inspect(ctx context.Context, enclaveName string) (kurtosis.EnclaveInspection, error)
 	ServiceLogs(
 		ctx context.Context,
@@ -22,8 +24,8 @@ type diagnosticsClient interface {
 	) (map[string]bool, error)
 }
 
-type diagnosticsSession interface {
-	diagnosticsClient
+type diagnosticsClient interface {
+	diagnosticsAPI
 	Close() error
 }
 
@@ -57,14 +59,14 @@ func (manager *Manager) CollectDiagnostics(ctx context.Context, enclaveName, out
 	return manager.collectDiagnostics(ctx, client, enclaveName, outputDir)
 }
 
-func collectDiagnostics(ctx context.Context, client diagnosticsClient, enclaveName, outputDir string) error {
+func collectDiagnostics(ctx context.Context, api diagnosticsAPI, enclaveName, outputDir string) error {
 	if err := os.MkdirAll(outputDir, 0o755); err != nil {
 		return fmt.Errorf("create diagnostics directory: %w", err)
 	}
 
-	inspection, discoveredServices, inspectionErr := collectInspection(ctx, client, enclaveName, outputDir)
+	inspection, discoveredServices, inspectionErr := collectInspection(ctx, api, enclaveName, outputDir)
 	// Partial inspection results remain usable when inspectionErr is non-nil.
-	serviceDiagnostics, serviceLogsErr := collectServiceLogs(ctx, client, enclaveName, outputDir, discoveredServices)
+	serviceDiagnostics, serviceLogsErr := collectServiceLogs(ctx, api, enclaveName, outputDir, discoveredServices)
 	manifest := diagnosticsManifest{
 		Enclave:    enclaveName,
 		Inspection: inspection,
@@ -77,14 +79,14 @@ func collectDiagnostics(ctx context.Context, client diagnosticsClient, enclaveNa
 
 func collectInspection(
 	ctx context.Context,
-	client diagnosticsClient,
+	api diagnosticsAPI,
 	enclaveName,
 	outputDir string,
 ) (inspectionDiagnostic, []kurtosis.ServiceIdentity, error) {
 	const file = "inspection.json"
 
 	// Inspection may return useful partial metadata alongside an error.
-	enclave, resultErr := client.Inspect(ctx, enclaveName)
+	enclave, resultErr := api.Inspect(ctx, enclaveName)
 	if resultErr != nil {
 		resultErr = fmt.Errorf("inspect Kurtosis enclave %s: %w", enclaveName, resultErr)
 	}
@@ -109,7 +111,7 @@ func collectInspection(
 
 func collectServiceLogs(
 	ctx context.Context,
-	client diagnosticsClient,
+	api diagnosticsAPI,
 	enclaveName,
 	outputDir string,
 	services []kurtosis.ServiceIdentity,
@@ -137,7 +139,7 @@ func collectServiceLogs(
 		outputsByUUID[service.UUID] = output
 	}
 
-	notFound, streamErr := client.ServiceLogs(ctx, enclaveName, serviceUUIDs, func(uuid string, lines []string) {
+	notFound, streamErr := api.ServiceLogs(ctx, enclaveName, serviceUUIDs, func(uuid string, lines []string) {
 		output := outputsByUUID[uuid]
 		if output == nil || output.writeErr != nil {
 			return

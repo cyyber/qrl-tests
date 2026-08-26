@@ -18,7 +18,7 @@ var diagnosticServices = []kurtosis.ServiceIdentity{
 	{Name: "el-1-gqrl-qrysm", UUID: "dddd"},
 }
 
-type fakeDiagnosticsClient struct {
+type fakeDiagnosticsAPI struct {
 	inspection  kurtosis.EnclaveInspection
 	inspectErr  error
 	logs        map[string][]string
@@ -29,36 +29,36 @@ type fakeDiagnosticsClient struct {
 	enclaveName string
 }
 
-type fakeDiagnosticsSession struct {
-	fakeDiagnosticsClient
+type fakeDiagnosticsClient struct {
+	fakeDiagnosticsAPI
 	closed bool
 }
 
-func (session *fakeDiagnosticsSession) Close() error {
-	session.closed = true
+func (client *fakeDiagnosticsClient) Close() error {
+	client.closed = true
 	return nil
 }
 
-func (client *fakeDiagnosticsClient) Inspect(
+func (api *fakeDiagnosticsAPI) Inspect(
 	context.Context,
 	string,
 ) (kurtosis.EnclaveInspection, error) {
-	return client.inspection, client.inspectErr
+	return api.inspection, api.inspectErr
 }
 
-func (client *fakeDiagnosticsClient) ServiceLogs(
+func (api *fakeDiagnosticsAPI) ServiceLogs(
 	_ context.Context,
 	enclaveName string,
 	serviceUUIDs []string,
 	consume kurtosis.ServiceLogConsumer,
 ) (map[string]bool, error) {
-	client.logCalls++
-	client.enclaveName = enclaveName
-	client.requested = append([]string(nil), serviceUUIDs...)
+	api.logCalls++
+	api.enclaveName = enclaveName
+	api.requested = append([]string(nil), serviceUUIDs...)
 	for _, uuid := range serviceUUIDs {
-		consume(uuid, client.logs[uuid])
+		consume(uuid, api.logs[uuid])
 	}
-	return client.notFound, client.logsErr
+	return api.notFound, api.logsErr
 }
 
 func diagnosticInspection() kurtosis.EnclaveInspection {
@@ -78,12 +78,12 @@ func diagnosticInspection() kurtosis.EnclaveInspection {
 func TestManagerCollectDiagnosticsClosesClient(t *testing.T) {
 	type contextKey struct{}
 	ctx := context.WithValue(t.Context(), contextKey{}, "sentinel")
-	session := new(fakeDiagnosticsSession)
+	client := new(fakeDiagnosticsClient)
 	manager := &Manager{
-		newDiagnosticsClient: func() (diagnosticsSession, error) { return session, nil },
+		newDiagnosticsClient: func() (diagnosticsClient, error) { return client, nil },
 		collectDiagnostics: func(
 			collectCtx context.Context,
-			_ diagnosticsClient,
+			_ diagnosticsAPI,
 			_, _ string,
 		) error {
 			require.Equal(t, "sentinel", collectCtx.Value(contextKey{}))
@@ -93,7 +93,7 @@ func TestManagerCollectDiagnosticsClosesClient(t *testing.T) {
 
 	err := manager.CollectDiagnostics(ctx, "test", t.TempDir())
 	require.ErrorContains(t, err, "collection failed")
-	require.True(t, session.closed)
+	require.True(t, client.closed)
 }
 
 func TestCollectDiagnostics(t *testing.T) {
@@ -107,7 +107,7 @@ func TestCollectDiagnostics(t *testing.T) {
 		`el_premine_addrs: {"seed":"0x010000abcd"}`,
 		"genesis failed",
 	}
-	client := &fakeDiagnosticsClient{
+	client := &fakeDiagnosticsAPI{
 		inspection: diagnosticInspection(),
 		logs:       logs,
 	}
@@ -140,7 +140,7 @@ func TestCollectDiagnosticsPartialFailures(t *testing.T) {
 	output := t.TempDir()
 	failedLog := filepath.Join(output, "services", "run-generate-genesis.log")
 	require.NoError(t, os.MkdirAll(failedLog, 0o755))
-	client := &fakeDiagnosticsClient{
+	client := &fakeDiagnosticsAPI{
 		inspection: diagnosticInspection(),
 		inspectErr: errors.New("inspect unavailable"),
 		logs: map[string][]string{
@@ -174,7 +174,7 @@ func TestCollectDiagnosticsMissingServiceLogs(t *testing.T) {
 		{Name: "stopped", UUID: "stopped-uuid"},
 		{Name: "running", UUID: "running-uuid"},
 	}
-	client := &fakeDiagnosticsClient{
+	client := &fakeDiagnosticsAPI{
 		inspection: kurtosis.EnclaveInspection{Name: "test", Services: services},
 		logs:       map[string][]string{"running-uuid": {"captured"}},
 		notFound:   map[string]bool{"stopped-uuid": true},
@@ -191,7 +191,7 @@ func TestCollectDiagnosticsMissingServiceLogs(t *testing.T) {
 }
 
 func TestCollectDiagnosticsWithoutServices(t *testing.T) {
-	client := new(fakeDiagnosticsClient)
+	client := new(fakeDiagnosticsAPI)
 	require.NoError(t, collectDiagnostics(t.Context(), client, "empty", t.TempDir()))
 	require.Zero(t, client.logCalls)
 }
@@ -201,7 +201,7 @@ func TestCollectDiagnosticsDuplicateServiceNames(t *testing.T) {
 		{Name: "recreated", UUID: "old-uuid"},
 		{Name: "recreated", UUID: "new-uuid"},
 	}
-	client := &fakeDiagnosticsClient{
+	client := &fakeDiagnosticsAPI{
 		inspection: kurtosis.EnclaveInspection{Name: "test", Services: services},
 		logs: map[string][]string{
 			"old-uuid": {"old"},

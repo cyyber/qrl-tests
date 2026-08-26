@@ -36,19 +36,21 @@ func (service Service) PublicEndpoint(portID, scheme string) (string, error) {
 	return scheme + "://" + net.JoinHostPort(service.PublicIP, strconv.Itoa(int(port))), nil
 }
 
-type Client struct {
+// LifecycleClient manages enclaves and packages through the Kurtosis SDK.
+type LifecycleClient struct {
 	engine *kurtosis_context.KurtosisContext
 }
 
-func NewClient() (*Client, error) {
+// NewLifecycleClient connects to the local Kurtosis engine through its SDK.
+func NewLifecycleClient() (*LifecycleClient, error) {
 	engine, err := kurtosis_context.NewKurtosisContextFromLocalEngine()
 	if err != nil {
 		return nil, err
 	}
-	return &Client{engine: engine}, nil
+	return &LifecycleClient{engine: engine}, nil
 }
 
-func (client *Client) EnclaveExists(ctx context.Context, name string) (bool, error) {
+func (client *LifecycleClient) EnclaveExists(ctx context.Context, name string) (bool, error) {
 	running, err := client.engine.GetEnclaves(ctx)
 	if err != nil {
 		return false, fmt.Errorf("list running Kurtosis enclaves: %w", err)
@@ -57,12 +59,12 @@ func (client *Client) EnclaveExists(ctx context.Context, name string) (bool, err
 	return found, nil
 }
 
-func (client *Client) CreateEnclave(ctx context.Context, name string) error {
+func (client *LifecycleClient) CreateEnclave(ctx context.Context, name string) error {
 	_, err := client.engine.CreateEnclave(ctx, name)
 	return err
 }
 
-func (client *Client) RunRemotePackage(
+func (client *LifecycleClient) RunRemotePackage(
 	ctx context.Context,
 	enclaveName string,
 	locator,
@@ -86,7 +88,7 @@ func (client *Client) RunRemotePackage(
 	return consumeStarlarkCompletion(stream)
 }
 
-func (client *Client) Services(ctx context.Context, enclaveName string) (map[string]Service, error) {
+func (client *LifecycleClient) Services(ctx context.Context, enclaveName string) (map[string]Service, error) {
 	enclave, err := client.engine.GetEnclaveContext(ctx, enclaveName)
 	if err != nil {
 		return nil, err
@@ -112,7 +114,7 @@ func (client *Client) Services(ctx context.Context, enclaveName string) (map[str
 	return result, nil
 }
 
-func (client *Client) DestroyEnclave(ctx context.Context, name string) error {
+func (client *LifecycleClient) DestroyEnclave(ctx context.Context, name string) error {
 	return client.engine.DestroyEnclave(ctx, name)
 }
 

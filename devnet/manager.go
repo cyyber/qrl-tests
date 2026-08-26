@@ -26,9 +26,9 @@ const (
 	PackageLocator = "github.com/cyyber/qrl-package@04fd3133a7107229531da425dc750129bb691514"
 )
 
-type kurtosisClient interface {
-	diagnosticsClient
-
+// lifecycleClient owns normal enclave and package operations through the
+// Kurtosis SDK.
+type lifecycleClient interface {
 	EnclaveExists(ctx context.Context, name string) (bool, error)
 	CreateEnclave(ctx context.Context, name string) error
 	RunRemotePackage(ctx context.Context, enclaveName, locator, serializedParams string) error
@@ -49,22 +49,22 @@ type StartOptions struct {
 }
 
 type Manager struct {
-	newKurtosisClient    func() (kurtosisClient, error)
-	newDiagnosticsClient func() (diagnosticsSession, error)
+	newLifecycleClient   func() (lifecycleClient, error)
+	newDiagnosticsClient func() (diagnosticsClient, error)
 	probe                func(ctx context.Context, rpcURL, address string) error
-	collectDiagnostics   func(ctx context.Context, client diagnosticsClient, enclave, outputDir string) error
+	collectDiagnostics   func(ctx context.Context, api diagnosticsAPI, enclave, outputDir string) error
 }
 
 func NewManager() *Manager {
 	return &Manager{
-		newKurtosisClient: func() (kurtosisClient, error) {
-			client, err := kurtosis.NewClient()
+		newLifecycleClient: func() (lifecycleClient, error) {
+			client, err := kurtosis.NewLifecycleClient()
 			if err != nil {
 				return nil, fmt.Errorf("connect to Kurtosis engine: %w", err)
 			}
 			return client, nil
 		},
-		newDiagnosticsClient: func() (diagnosticsSession, error) {
+		newDiagnosticsClient: func() (diagnosticsClient, error) {
 			client, err := kurtosis.NewDiagnosticsClient()
 			if err != nil {
 				return nil, fmt.Errorf("connect to Kurtosis diagnostics API: %w", err)
@@ -77,7 +77,7 @@ func NewManager() *Manager {
 }
 
 func (manager *Manager) Inspect(ctx context.Context, name string) (Environment, error) {
-	client, err := manager.newKurtosisClient()
+	client, err := manager.newLifecycleClient()
 	if err != nil {
 		return Environment{}, err
 	}
@@ -115,7 +115,7 @@ func (manager *Manager) Start(ctx context.Context, options StartOptions) (enviro
 		return Environment{}, fmt.Errorf("prepare qrl-package parameters: %w", err)
 	}
 
-	client, err := manager.newKurtosisClient()
+	client, err := manager.newLifecycleClient()
 	if err != nil {
 		return Environment{}, err
 	}
@@ -165,12 +165,12 @@ func (manager *Manager) Start(ctx context.Context, options StartOptions) (enviro
 // collects the requested diagnostics and then destroys the partially
 // provisioned network. Diagnostics and cleanup problems are reported alongside
 // the start failure, never instead of it.
-func (manager *Manager) finishFailedStart(client kurtosisClient, options StartOptions, failure error) error {
+func (manager *Manager) finishFailedStart(client lifecycleClient, options StartOptions, failure error) error {
 	// Diagnostics and cleanup run on fresh contexts: the start context is
 	// typically already canceled or expired by the time the failure gets here.
 	if options.FailureDiagnosticsDir != "" {
 		collectCtx, cancel := context.WithTimeout(context.Background(), startDiagnosticsTimeout)
-		if err := manager.collectDiagnostics(collectCtx, client, options.EnclaveName, options.FailureDiagnosticsDir); err != nil {
+		if err := manager.CollectDiagnostics(collectCtx, options.EnclaveName, options.FailureDiagnosticsDir); err != nil {
 			failure = errors.Join(failure, fmt.Errorf("collect start diagnostics: %w", err))
 		}
 		cancel()
@@ -185,7 +185,7 @@ func (manager *Manager) finishFailedStart(client kurtosisClient, options StartOp
 }
 
 func (manager *Manager) Stop(ctx context.Context, name string) error {
-	client, err := manager.newKurtosisClient()
+	client, err := manager.newLifecycleClient()
 	if err != nil {
 		return err
 	}
@@ -199,7 +199,7 @@ func (manager *Manager) Stop(ctx context.Context, name string) error {
 	return manager.destroyAndConfirm(ctx, client, name)
 }
 
-func (manager *Manager) destroyAndConfirm(ctx context.Context, client kurtosisClient, name string) error {
+func (manager *Manager) destroyAndConfirm(ctx context.Context, client lifecycleClient, name string) error {
 	destroyErr := client.DestroyEnclave(ctx, name)
 	// Confirm the deterministic slot is actually free — on a fresh context so
 	// cancellation cannot fake a successful stop — because the next start
