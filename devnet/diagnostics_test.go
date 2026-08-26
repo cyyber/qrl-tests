@@ -56,7 +56,9 @@ func (api *fakeDiagnosticsAPI) ServiceLogs(
 	api.enclaveName = enclaveName
 	api.requested = append([]string(nil), serviceUUIDs...)
 	for _, uuid := range serviceUUIDs {
-		consume(uuid, api.logs[uuid])
+		if lines, ok := api.logs[uuid]; ok {
+			consume(uuid, lines)
+		}
 	}
 	return api.notFound, api.logsErr
 }
@@ -130,10 +132,10 @@ func TestCollectDiagnostics(t *testing.T) {
 
 	manifest := testutil.ReadJSON[diagnosticsManifest](t, filepath.Join(output, "diagnostics.json"))
 	require.True(t, manifest.Inspection.Captured)
-	require.Len(t, manifest.Services, 2)
-	for _, service := range manifest.Services {
-		require.True(t, service.Captured)
-	}
+	require.Equal(t, []serviceDiagnostic{
+		{Name: "run-generate-genesis", File: "services/run-generate-genesis.log", Captured: true},
+		{Name: "el-1-gqrl-qrysm", File: "services/el-1-gqrl-qrysm.log", Captured: true},
+	}, manifest.Services)
 }
 
 func TestCollectDiagnosticsPartialFailures(t *testing.T) {
@@ -194,25 +196,4 @@ func TestCollectDiagnosticsWithoutServices(t *testing.T) {
 	client := new(fakeDiagnosticsAPI)
 	require.NoError(t, collectDiagnostics(t.Context(), client, "empty", t.TempDir()))
 	require.Zero(t, client.logCalls)
-}
-
-func TestCollectDiagnosticsDuplicateNames(t *testing.T) {
-	services := []kurtosis.ServiceIdentity{
-		{Name: "recreated", UUID: "old-uuid"},
-		{Name: "recreated", UUID: "new-uuid"},
-	}
-	client := &fakeDiagnosticsAPI{
-		inspection: kurtosis.EnclaveInspection{Name: "test", Services: services},
-		logs: map[string][]string{
-			"old-uuid": {"old"},
-			"new-uuid": {"new"},
-		},
-	}
-	output := t.TempDir()
-	require.NoError(t, collectDiagnostics(t.Context(), client, "test", output))
-	for uuid, expected := range map[string]string{"old-uuid": "old\n", "new-uuid": "new\n"} {
-		contents, err := os.ReadFile(filepath.Join(output, "services", "recreated-"+uuid+".log"))
-		require.NoError(t, err)
-		require.Equal(t, expected, string(contents))
-	}
 }

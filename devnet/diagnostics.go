@@ -123,17 +123,12 @@ func collectServiceLogs(
 		return nil, fmt.Errorf("create service diagnostics directory: %w", err)
 	}
 
-	nameCounts := make(map[string]int, len(services))
-	for _, service := range services {
-		nameCounts[service.Name]++
-	}
-
 	serviceUUIDs := make([]string, 0, len(services))
 	outputs := make([]*serviceLogOutput, 0, len(services))
 	outputsByUUID := make(map[string]*serviceLogOutput, len(services))
 	for _, service := range services {
 		serviceUUIDs = append(serviceUUIDs, service.UUID)
-		output := openServiceLog(outputDir, service, nameCounts[service.Name] > 1)
+		output := openServiceLog(outputDir, service)
 		outputs = append(outputs, output)
 		outputsByUUID[service.UUID] = output
 	}
@@ -179,21 +174,16 @@ type serviceLogOutput struct {
 	writeErr   error
 }
 
-func openServiceLog(outputDir string, service kurtosis.ServiceIdentity, disambiguate bool) *serviceLogOutput {
-	fileName := service.Name
-	if disambiguate {
-		fileName += "-" + service.UUID
-	}
-	relativePath := filepath.Join("services", fileName+".log")
-	path := filepath.Join(outputDir, relativePath)
+func openServiceLog(outputDir string, service kurtosis.ServiceIdentity) *serviceLogOutput {
+	relativePath := filepath.Join("services", service.Name+".log")
 	output := &serviceLogOutput{
 		diagnostic: serviceDiagnostic{Name: service.Name, File: filepath.ToSlash(relativePath)},
 		uuid:       service.UUID,
-		path:       path,
+		path:       filepath.Join(outputDir, relativePath),
 	}
-	file, err := os.OpenFile(path, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
+	file, err := os.OpenFile(output.path, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
 	if err != nil {
-		output.writeErr = fmt.Errorf("write diagnostic %s: %w", path, err)
+		output.writeErr = fmt.Errorf("write diagnostic %s: %w", output.path, err)
 		return output
 	}
 	output.file = file
