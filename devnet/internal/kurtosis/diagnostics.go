@@ -57,7 +57,7 @@ type getServiceLogsFunc func(
 ) (serviceLogsStream, error)
 
 // DiagnosticsClient owns the direct engine connection used to collect
-// inspection data and retained logs independently of LifecycleClient.
+// inspection data and retained logs independently of EnclaveClient.
 type DiagnosticsClient struct {
 	engine     kurtosis_engine_rpc_api_bindings.EngineServiceClient
 	connection *grpc.ClientConn
