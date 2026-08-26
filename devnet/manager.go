@@ -52,7 +52,7 @@ type Manager struct {
 	newLifecycleClient   func() (lifecycleClient, error)
 	newDiagnosticsClient func() (diagnosticsClient, error)
 	probe                func(ctx context.Context, rpcURL, address string) error
-	collectDiagnostics   func(ctx context.Context, api diagnosticsAPI, enclave, outputDir string) error
+	collectDiagnostics   func(ctx context.Context, client diagnosticsAPI, enclave, outputDir string) error
 }
 
 func NewManager() *Manager {
