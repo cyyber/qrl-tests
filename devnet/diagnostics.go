@@ -123,36 +123,24 @@ func collectServiceLogs(
 		return nil, fmt.Errorf("create service diagnostics directory: %w", err)
 	}
 
-	serviceUUIDs := make([]string, 0, len(services))
-	for _, service := range services {
-		serviceUUIDs = append(serviceUUIDs, service.UUID)
-	}
-	outputs := make([]*serviceLogOutput, 0, len(services))
-	outputsByUUID := make(map[string]*serviceLogOutput, len(services))
 	nameCounts := make(map[string]int, len(services))
 	for _, service := range services {
 		nameCounts[service.Name]++
 	}
+
+	serviceUUIDs := make([]string, 0, len(services))
+	outputs := make([]*serviceLogOutput, 0, len(services))
+	outputsByUUID := make(map[string]*serviceLogOutput, len(services))
 	for _, service := range services {
+		serviceUUIDs = append(serviceUUIDs, service.UUID)
 		output := openServiceLog(outputDir, service, nameCounts[service.Name] > 1)
 		outputs = append(outputs, output)
 		outputsByUUID[service.UUID] = output
 	}
 
 	notFound, streamErr := client.ServiceLogs(ctx, enclaveName, serviceUUIDs, func(uuid string, lines []string) {
-		output := outputsByUUID[uuid]
-		if output == nil || output.writeErr != nil {
-			return
-		}
-		for _, line := range lines {
-			if _, err := output.writer.WriteString(line); err != nil {
-				output.writeErr = fmt.Errorf("write diagnostic %s: %w", output.path, err)
-				return
-			}
-			if err := output.writer.WriteByte('\n'); err != nil {
-				output.writeErr = fmt.Errorf("write diagnostic %s: %w", output.path, err)
-				return
-			}
+		if output := outputsByUUID[uuid]; output != nil {
+			output.writeLines(lines)
 		}
 	})
 	if streamErr != nil {
@@ -211,6 +199,22 @@ func openServiceLog(outputDir string, service kurtosis.ServiceIdentity, disambig
 	output.file = file
 	output.writer = bufio.NewWriter(file)
 	return output
+}
+
+func (output *serviceLogOutput) writeLines(lines []string) {
+	if output.writeErr != nil {
+		return
+	}
+	for _, line := range lines {
+		if _, err := output.writer.WriteString(line); err != nil {
+			output.writeErr = fmt.Errorf("write diagnostic %s: %w", output.path, err)
+			return
+		}
+		if err := output.writer.WriteByte('\n'); err != nil {
+			output.writeErr = fmt.Errorf("write diagnostic %s: %w", output.path, err)
+			return
+		}
+	}
 }
 
 func (output *serviceLogOutput) close() error {

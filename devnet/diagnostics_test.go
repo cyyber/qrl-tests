@@ -210,6 +210,9 @@ func TestCollectDiagnosticsDuplicateNames(t *testing.T) {
 	}
 	output := t.TempDir()
 	require.NoError(t, collectDiagnostics(t.Context(), client, "test", output))
-	require.FileExists(t, filepath.Join(output, "services", "recreated-old-uuid.log"))
-	require.FileExists(t, filepath.Join(output, "services", "recreated-new-uuid.log"))
+	for uuid, expected := range map[string]string{"old-uuid": "old\n", "new-uuid": "new\n"} {
+		contents, err := os.ReadFile(filepath.Join(output, "services", "recreated-"+uuid+".log"))
+		require.NoError(t, err)
+		require.Equal(t, expected, string(contents))
+	}
 }
