@@ -82,24 +82,29 @@ func collectInspection(
 	enclaveName,
 	outputDir string,
 ) (inspectionDiagnostic, []kurtosis.ServiceIdentity, error) {
-	inspection := inspectionDiagnostic{File: "inspect.txt"}
+	const file = "inspect.txt"
 
-	enclave, inspectErr := client.Inspect(ctx, enclaveName)
-	if inspectErr != nil {
-		inspectErr = fmt.Errorf("inspect Kurtosis enclave %s: %w", enclaveName, inspectErr)
+	// Inspection may return useful partial metadata alongside an error.
+	enclave, resultErr := client.Inspect(ctx, enclaveName)
+	if resultErr != nil {
+		resultErr = fmt.Errorf("inspect Kurtosis enclave %s: %w", enclaveName, resultErr)
 	}
-	writeErr := writeDiagnostic(
-		filepath.Join(outputDir, inspection.File),
+	if err := writeDiagnostic(
+		filepath.Join(outputDir, file),
 		formatInspection(enclave),
-	)
-	captureErr := errors.Join(inspectErr, writeErr)
-
-	inspection.Captured = captureErr == nil
-	if captureErr != nil {
-		inspection.Error = captureErr.Error()
+	); err != nil {
+		resultErr = errors.Join(resultErr, err)
 	}
 
-	return inspection, enclave.Services, captureErr
+	diagnostic := inspectionDiagnostic{
+		File:     file,
+		Captured: resultErr == nil,
+	}
+	if resultErr != nil {
+		diagnostic.Error = resultErr.Error()
+	}
+
+	return diagnostic, enclave.Services, resultErr
 }
 
 func formatInspection(enclave kurtosis.EnclaveInspection) string {
