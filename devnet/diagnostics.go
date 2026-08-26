@@ -62,8 +62,9 @@ func collectDiagnostics(ctx context.Context, client diagnosticsClient, enclaveNa
 		return fmt.Errorf("create diagnostics directory: %w", err)
 	}
 
-	inspection, services, inspectionErr := collectInspection(ctx, client, enclaveName, outputDir)
-	serviceDiagnostics, servicesErr := collectServiceLogs(ctx, client, enclaveName, outputDir, services)
+	inspection, discoveredServices, inspectionErr := collectInspection(ctx, client, enclaveName, outputDir)
+	// Partial inspection results remain usable when inspectionErr is non-nil.
+	serviceDiagnostics, serviceLogsErr := collectServiceLogs(ctx, client, enclaveName, outputDir, discoveredServices)
 	manifest := diagnosticsManifest{
 		Enclave:    enclaveName,
 		Inspection: inspection,
@@ -71,7 +72,7 @@ func collectDiagnostics(ctx context.Context, client diagnosticsClient, enclaveNa
 	}
 	manifestErr := jsonfile.Write(filepath.Join(outputDir, "diagnostics.json"), manifest, "diagnostics manifest")
 
-	return errors.Join(inspectionErr, servicesErr, manifestErr)
+	return errors.Join(inspectionErr, serviceLogsErr, manifestErr)
 }
 
 func collectInspection(
