@@ -123,13 +123,10 @@ func collectServiceLogs(
 	}
 
 	serviceUUIDs := make([]string, 0, len(services))
-	outputs := make([]*serviceLogOutput, 0, len(services))
 	outputsByUUID := make(map[string]*serviceLogOutput, len(services))
 	for _, service := range services {
 		serviceUUIDs = append(serviceUUIDs, service.UUID)
-		output := openServiceLog(outputDir, service)
-		outputs = append(outputs, output)
-		outputsByUUID[service.UUID] = output
+		outputsByUUID[service.UUID] = openServiceLog(outputDir, service)
 	}
 
 	notFound, streamErr := client.ServiceLogs(ctx, enclaveName, serviceUUIDs, func(uuid string, lines []string) {
@@ -143,8 +140,8 @@ func collectServiceLogs(
 
 	serviceDiagnostics := make([]serviceDiagnostic, 0, len(services))
 	collectionErrors := []error{streamErr}
-	for _, output := range outputs {
-		diagnostic, localErr := output.finalizeCapture(streamErr, notFound[output.uuid])
+	for _, uuid := range serviceUUIDs {
+		diagnostic, localErr := outputsByUUID[uuid].finalizeCapture(streamErr, notFound[uuid])
 		serviceDiagnostics = append(serviceDiagnostics, diagnostic)
 		collectionErrors = append(collectionErrors, localErr)
 	}
