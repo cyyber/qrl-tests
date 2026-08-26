@@ -52,7 +52,6 @@ type Manager struct {
 	newEnclaveClient     func() (enclaveClient, error)
 	newDiagnosticsClient func() (diagnosticsClient, error)
 	probe                func(ctx context.Context, rpcURL, address string) error
-	collectDiagnostics   func(ctx context.Context, client diagnosticsAPI, enclave, outputDir string) error
 }
 
 func NewManager() *Manager {
@@ -71,8 +70,7 @@ func NewManager() *Manager {
 			}
 			return client, nil
 		},
-		probe:              probeNetwork,
-		collectDiagnostics: collectDiagnostics,
+		probe: probeNetwork,
 	}
 }
 

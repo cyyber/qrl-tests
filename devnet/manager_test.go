@@ -3,14 +3,13 @@ package devnet
 import (
 	"context"
 	"errors"
+	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/cyyber/qrl-tests/devnet/internal/kurtosis"
 	"github.com/stretchr/testify/require"
 )
-
-const failureDiagnosticsDir = "reports/lanes/execution/diagnostics"
 
 type fakeEnclaveClient struct {
 	exists         bool
@@ -60,9 +59,6 @@ func testManager(client *fakeEnclaveClient) *Manager {
 			panic("unexpected diagnostics client")
 		},
 		probe: func(context.Context, string, string) error { return nil },
-		collectDiagnostics: func(context.Context, diagnosticsAPI, string, string) error {
-			panic("unexpected diagnostics collection")
-		},
 	}
 }
 
@@ -129,37 +125,36 @@ func TestStartDiagnosticsBeforeCleanup(t *testing.T) {
 	manager := testManager(client)
 	diagnostics := useDiagnosticsClient(manager)
 	diagnosticsCalls := 0
-	manager.collectDiagnostics = func(_ context.Context, source diagnosticsAPI, enclave, outputDir string) error {
+	diagnostics.onInspect = func(_ context.Context, enclave string) {
 		require.False(t, client.destroyed, "diagnostics must run before the enclave is destroyed")
-		require.Same(t, diagnostics, source)
 		require.Equal(t, "failed-start", enclave)
-		require.Equal(t, failureDiagnosticsDir, outputDir)
 		diagnosticsCalls++
-		return nil
 	}
 
+	diagnosticsDir := t.TempDir()
 	options := startOptions()
-	options.FailureDiagnosticsDir = failureDiagnosticsDir
+	options.FailureDiagnosticsDir = diagnosticsDir
 	_, err := manager.Start(t.Context(), options)
 	require.ErrorContains(t, err, "package failed")
 	require.Equal(t, 1, diagnosticsCalls)
 	require.True(t, diagnostics.closed)
+	require.FileExists(t, filepath.Join(diagnosticsDir, "diagnostics.json"))
 	require.True(t, client.destroyed)
 }
 
 func TestStartJoinsDiagnosticsError(t *testing.T) {
 	client := &fakeEnclaveClient{runErr: errors.New("package failed")}
 	manager := testManager(client)
-	useDiagnosticsClient(manager)
-	manager.collectDiagnostics = func(context.Context, diagnosticsAPI, string, string) error {
-		return errors.New("logs unavailable")
-	}
+	diagnosticsErr := errors.New("logs unavailable")
+	diagnostics := useDiagnosticsClient(manager)
+	diagnostics.inspectErr = diagnosticsErr
 
 	options := startOptions()
-	options.FailureDiagnosticsDir = failureDiagnosticsDir
+	options.FailureDiagnosticsDir = t.TempDir()
 	_, err := manager.Start(t.Context(), options)
+	require.ErrorIs(t, err, diagnosticsErr)
 	require.ErrorContains(t, err, "package failed")
-	require.ErrorContains(t, err, "collect start diagnostics: logs unavailable")
+	require.ErrorContains(t, err, "collect start diagnostics: inspect Kurtosis enclave failed-start: logs unavailable")
 	require.True(t, client.destroyed, "a diagnostics failure must not leak the enclave")
 }
 
@@ -171,7 +166,7 @@ func TestStartJoinsDiagnosticsClientError(t *testing.T) {
 	}
 
 	options := startOptions()
-	options.FailureDiagnosticsDir = failureDiagnosticsDir
+	options.FailureDiagnosticsDir = t.TempDir()
 	_, err := manager.Start(t.Context(), options)
 	require.ErrorContains(t, err, "package failed")
 	require.ErrorContains(t, err, "collect start diagnostics: engine unavailable")
@@ -188,20 +183,19 @@ func TestStartRecoveryAfterCancellation(t *testing.T) {
 		destroyCalls++
 	}
 	manager := testManager(client)
-	useDiagnosticsClient(manager)
+	diagnostics := useDiagnosticsClient(manager)
 	manager.probe = func(context.Context, string, string) error {
 		cancel()
 		return errors.New("not ready")
 	}
 	diagnosticsCalls := 0
-	manager.collectDiagnostics = func(ctx context.Context, _ diagnosticsAPI, _, _ string) error {
+	diagnostics.onInspect = func(ctx context.Context, _ string) {
 		requireLiveBoundedContext(t, ctx, startDiagnosticsTimeout)
 		diagnosticsCalls++
-		return nil
 	}
 
 	options := startOptions()
-	options.FailureDiagnosticsDir = failureDiagnosticsDir
+	options.FailureDiagnosticsDir = t.TempDir()
 	_, err := manager.Start(ctx, options)
 	require.ErrorContains(t, err, "wait for network readiness: not ready")
 	require.ErrorIs(t, err, context.Canceled)
@@ -213,7 +207,7 @@ func TestStartRecoveryAfterCancellation(t *testing.T) {
 func TestStartCreateFailureSkipsCleanup(t *testing.T) {
 	client := &fakeEnclaveClient{createErr: errors.New("create failed")}
 	options := startOptions()
-	options.FailureDiagnosticsDir = failureDiagnosticsDir
+	options.FailureDiagnosticsDir = t.TempDir()
 
 	_, err := testManager(client).Start(t.Context(), options)
 	require.ErrorContains(t, err, "create failed")
@@ -231,18 +225,16 @@ func TestStartRecoveryFailures(t *testing.T) {
 		destroyErr: cleanupErr,
 	}
 	manager := testManager(client)
-	useDiagnosticsClient(manager)
-	manager.collectDiagnostics = func(context.Context, diagnosticsAPI, string, string) error {
-		return diagnosticsErr
-	}
+	diagnostics := useDiagnosticsClient(manager)
+	diagnostics.inspectErr = diagnosticsErr
 
 	options := startOptions()
-	options.FailureDiagnosticsDir = failureDiagnosticsDir
+	options.FailureDiagnosticsDir = t.TempDir()
 	_, err := manager.Start(t.Context(), options)
 	require.ErrorIs(t, err, startErr)
 	require.ErrorIs(t, err, diagnosticsErr)
 	require.ErrorIs(t, err, cleanupErr)
-	require.ErrorContains(t, err, "collect start diagnostics: logs unavailable")
+	require.ErrorContains(t, err, "collect start diagnostics: inspect Kurtosis enclave failed-start: logs unavailable")
 	require.ErrorContains(t, err, "clean up failed network")
 }
 

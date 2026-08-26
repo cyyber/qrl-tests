@@ -56,7 +56,7 @@ func (manager *Manager) CollectDiagnostics(ctx context.Context, enclaveName, out
 		return err
 	}
 	defer func() { _ = client.Close() }()
-	return manager.collectDiagnostics(ctx, client, enclaveName, outputDir)
+	return collectDiagnostics(ctx, client, enclaveName, outputDir)
 }
 
 func collectDiagnostics(ctx context.Context, client diagnosticsAPI, enclaveName, outputDir string) error {

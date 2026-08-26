@@ -16,6 +16,7 @@ import (
 type fakeDiagnosticsAPI struct {
 	inspection  kurtosis.EnclaveInspection
 	inspectErr  error
+	onInspect   func(context.Context, string)
 	logs        map[string][]string
 	notFound    map[string]bool
 	logsErr     error
@@ -35,9 +36,12 @@ func (client *fakeDiagnosticsClient) Close() error {
 }
 
 func (api *fakeDiagnosticsAPI) Inspect(
-	context.Context,
-	string,
+	ctx context.Context,
+	enclaveName string,
 ) (kurtosis.EnclaveInspection, error) {
+	if api.onInspect != nil {
+		api.onInspect(ctx, enclaveName)
+	}
 	return api.inspection, api.inspectErr
 }
 
@@ -78,21 +82,20 @@ func diagnosticInspection() kurtosis.EnclaveInspection {
 func TestManagerClosesDiagnosticsClient(t *testing.T) {
 	type contextKey struct{}
 	ctx := context.WithValue(t.Context(), contextKey{}, "sentinel")
-	client := new(fakeDiagnosticsClient)
+	collectionErr := errors.New("collection failed")
+	client := &fakeDiagnosticsClient{fakeDiagnosticsAPI: fakeDiagnosticsAPI{
+		inspectErr: collectionErr,
+		onInspect: func(collectCtx context.Context, enclaveName string) {
+			require.Equal(t, "sentinel", collectCtx.Value(contextKey{}))
+			require.Equal(t, "test", enclaveName)
+		},
+	}}
 	manager := &Manager{
 		newDiagnosticsClient: func() (diagnosticsClient, error) { return client, nil },
-		collectDiagnostics: func(
-			collectCtx context.Context,
-			_ diagnosticsAPI,
-			_, _ string,
-		) error {
-			require.Equal(t, "sentinel", collectCtx.Value(contextKey{}))
-			return errors.New("collection failed")
-		},
 	}
 
 	err := manager.CollectDiagnostics(ctx, "test", t.TempDir())
-	require.ErrorContains(t, err, "collection failed")
+	require.ErrorIs(t, err, collectionErr)
 	require.True(t, client.closed)
 }
 
