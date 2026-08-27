@@ -37,7 +37,7 @@ var _ = ginkgo.Describe(
 
 			jsPath = ginkgo.GinkgoT().TempDir()
 			ginkgo.By("preparing the console scripts")
-			gomega.Expect(prepareWorkspace(jsPath)).To(gomega.Succeed())
+			gomega.Expect(prepareWorkspace(jsPath, node.NetworkExpectations)).To(gomega.Succeed())
 		})
 
 		ginkgo.It("validates console and RPC APIs against the live network", func(ctx ginkgo.SpecContext) {

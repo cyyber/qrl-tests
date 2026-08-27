@@ -16,10 +16,11 @@ const (
 )
 
 type Manifest struct {
-	Lane           string             `json:"lane,omitempty"`
-	Profile        devnet.Profile     `json:"profile,omitempty"`
-	Environment    devnet.Environment `json:"environment"`
-	ExecutionImage string             `json:"execution_image,omitempty"`
+	Lane                string                      `json:"lane,omitempty"`
+	Profile             devnet.Profile              `json:"profile,omitempty"`
+	Environment         devnet.Environment          `json:"environment"`
+	ExecutionImage      string                      `json:"execution_image,omitempty"`
+	NetworkExpectations *devnet.NetworkExpectations `json:"network_expectations,omitempty"`
 }
 
 func Write(path string, manifest Manifest) error {

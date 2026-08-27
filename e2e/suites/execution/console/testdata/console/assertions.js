@@ -4,6 +4,12 @@ function requireHexQuantity(name, value) {
     }
 }
 
+function requireDecimalString(name, value) {
+    if (typeof value !== "string" || !/^(?:0|[1-9][0-9]*)$/.test(value)) {
+        throw new Error(name + " is not a decimal string: " + value);
+    }
+}
+
 function requireHash(name, value) {
     if (typeof value !== "string" || !/^0x[0-9a-f]{64}$/i.test(value)) {
         throw new Error(name + " is not a 32-byte hash: " + value);

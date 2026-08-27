@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cyyber/qrl-tests/devnet"
 	containertypes "github.com/moby/moby/api/types/container"
 	dockerclient "github.com/moby/moby/client"
 	"github.com/stretchr/testify/require"
@@ -52,6 +53,35 @@ func TestConsoleFixtures(t *testing.T) {
 	for _, name := range []string{"api.js", "assertions.js", "harness.js"} {
 		_, err := fs.Stat(consoleFixtures, "testdata/console/"+name)
 		require.NoErrorf(t, err, "%s", name)
+	}
+}
+
+func TestPrepareWorkspace(t *testing.T) {
+	expectations := &devnet.NetworkExpectations{
+		ChainID:            "0x539",
+		NetworkID:          "1337",
+		ExecutionPeerCount: 0,
+	}
+	for name, testCase := range map[string]struct {
+		expectations *devnet.NetworkExpectations
+		want         string
+	}{
+		"built-in": {
+			expectations: expectations,
+			want:         "var EXPECTED = {\"chain_id\":\"0x539\",\"network_id\":\"1337\",\"execution_peer_count\":0};\n",
+		},
+		"unspecified": {
+			want: "var EXPECTED = null;\n",
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			destination := t.TempDir()
+			require.NoError(t, prepareWorkspace(destination, testCase.expectations))
+			contents, err := os.ReadFile(filepath.Join(destination, "expectations.js"))
+			require.NoError(t, err)
+			require.Equal(t, testCase.want, string(contents))
+			require.FileExists(t, filepath.Join(destination, "api.js"))
+		})
 	}
 }
 
@@ -182,6 +212,7 @@ func TestDockerConsoleEngine(t *testing.T) {
 	jsPath := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(jsPath, "harness.js"), []byte("fixture"), 0o600))
 	require.NoError(t, os.WriteFile(filepath.Join(jsPath, "assertions.js"), []byte("assertions"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(jsPath, "expectations.js"), []byte("expectations"), 0o600))
 	client := &fakeDockerClient{}
 	t.Cleanup(func() {
 		if client.serverConn != nil {
@@ -203,7 +234,7 @@ func TestDockerConsoleEngine(t *testing.T) {
 		"attach",
 		"--datadir", "/tmp/qrl-tests-console",
 		"--jspath", "/tmp/qrl-tests-js",
-		"--exec", "loadScript('harness.js');loadScript('assertions.js');loadScript('api.js')",
+		"--exec", "loadScript('harness.js');loadScript('assertions.js');loadScript('expectations.js');loadScript('api.js')",
 		"http://host.docker.internal:8545",
 	}, client.createOptions.Config.Cmd)
 	require.True(t, client.createOptions.Config.AttachStdout)
@@ -229,6 +260,7 @@ func TestDockerConsoleEngine(t *testing.T) {
 	}
 	require.Equal(t, "fixture", contents["qrl-tests-js/harness.js"])
 	require.Equal(t, "assertions", contents["qrl-tests-js/assertions.js"])
+	require.Equal(t, "expectations", contents["qrl-tests-js/expectations.js"])
 
 	process, err := engine.start(t.Context(), containerID)
 	require.NoError(t, err)

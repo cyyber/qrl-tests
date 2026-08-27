@@ -31,15 +31,30 @@ check("provider dispatch and console namespaces respond", function () {
             throw new Error("missing rpc module " + name);
         }
     });
-    if (typeof web3.version.node !== "string") {
-        throw new Error("web3.version.node did not return a string");
+    var clientVersion = web3.version.node;
+    var listening = net.listening;
+    var peerCount = net.peerCount;
+    var nodeInfo = admin.nodeInfo;
+    var peers = admin.peers;
+    if (typeof clientVersion !== "string" || clientVersion === "") {
+        throw new Error("web3.version.node did not return a client version");
     }
-    if (typeof net.version !== "string" || typeof net.listening !== "boolean" ||
-        typeof net.peerCount !== "number") {
+    if (listening !== true || typeof peerCount !== "number" ||
+        peerCount < 0 || peerCount % 1 !== 0) {
         throw new Error("unexpected net namespace");
     }
-    if (!admin.nodeInfo || !(admin.peers instanceof Array)) {
+    if (!nodeInfo || nodeInfo.name !== clientVersion || !(peers instanceof Array)) {
         throw new Error("unexpected admin namespace");
+    }
+    if (EXPECTED !== null) {
+        var expectedPeerCount = EXPECTED.execution_peer_count;
+        if (peerCount !== expectedPeerCount || peers.length !== expectedPeerCount) {
+            throw new Error(
+                "unexpected execution peer count: net=" + peerCount +
+                ", admin=" + peers.length +
+                ", want=" + expectedPeerCount
+            );
+        }
     }
     var status = txpool.status;
     if (typeof status.pending !== "number" || typeof status.queued !== "number") {
@@ -47,11 +62,18 @@ check("provider dispatch and console namespaces respond", function () {
     }
 });
 
-check("qrl.chainId matches the network ID", function () {
+check("chain and network IDs are canonical", function () {
     var chainID = qrl.chainId();
-    var expected = "0x" + web3.toBigNumber(net.version).toString(16);
-    if (chainID !== expected) {
-        throw new Error("unexpected chain ID: got " + chainID + ", want " + expected);
+    var networkID = net.version;
+    requireHexQuantity("qrl.chainId", chainID);
+    requireDecimalString("net.version", networkID);
+    if (EXPECTED !== null) {
+        if (chainID !== EXPECTED.chain_id) {
+            throw new Error("unexpected chain ID: got " + chainID + ", want " + EXPECTED.chain_id);
+        }
+        if (networkID !== EXPECTED.network_id) {
+            throw new Error("unexpected network ID: got " + networkID + ", want " + EXPECTED.network_id);
+        }
     }
 });
 
@@ -101,9 +123,7 @@ check("qrl.feeHistory returns coherent history", function () {
 });
 
 check("QIP-55 Q-address checksum round-trips", function () {
-    var miner = qrl.getBlock(qrl.blockNumber).miner;
-    requireAddress("miner", miner);
-    var lower = "Q" + miner.slice(1).toLowerCase();
+    var lower = "Q" + qrl.getBlock("latest").miner.slice(1).toLowerCase();
     var checksummed = web3.toChecksumAddress(lower);
     if (!web3.isChecksumAddress(checksummed) || !web3.isAddress(checksummed)) {
         throw new Error("invalid checksummed address: " + checksummed);
@@ -111,17 +131,12 @@ check("QIP-55 Q-address checksum round-trips", function () {
     if ("Q" + checksummed.slice(1).toLowerCase() !== lower) {
         throw new Error("checksumming changed the address bytes");
     }
-    var letterIndex = checksummed.search(/[a-fA-F]/);
-    if (letterIndex === -1) {
-        throw new Error("checksummed address has no alphabetic nibble");
-    }
-    var character = checksummed.charAt(letterIndex);
-    var flipped = character === character.toLowerCase() ?
-        character.toUpperCase() : character.toLowerCase();
-    var mangled = checksummed.slice(0, letterIndex) +
-        flipped + checksummed.slice(letterIndex + 1);
-    if (web3.isChecksumAddress(mangled)) {
-        throw new Error("case-mangled address passes checksum validation");
+    var mangled = checksummed.replace(/[a-fA-F]/, function (character) {
+        return character === character.toLowerCase() ?
+            character.toUpperCase() : character.toLowerCase();
+    });
+    if (mangled === checksummed || web3.isChecksumAddress(mangled)) {
+        throw new Error("checksum mutation was not rejected: " + mangled);
     }
 });
 
