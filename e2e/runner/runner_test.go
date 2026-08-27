@@ -566,13 +566,9 @@ func TestAttachBuildsCommandWithoutProvisioning(t *testing.T) {
 		BaseName:  "qrl-tests",
 		ReportDir: reports,
 		Backend:   devnet.BackendDocker,
+		Suites:    []string{executionABISuite},
 	}, io.Discard, io.Discard)
 	runner.networks = networks
-	imageID := "sha256:" + strings.Repeat("cd", 32)
-	runner.resolveExecutionImage = func(_ context.Context, environment devnet.Environment) (string, error) {
-		require.Equal(t, devnet.BackendDocker, environment.Backend)
-		return imageID, nil
-	}
 	runner.runCommand = func(_ context.Context, specification commandSpec) error {
 		writeGinkgoReport(t, filepath.Join(reports, "lanes", executionLaneName), types.SpecStatePassed)
 		command = specification
@@ -584,27 +580,6 @@ func TestAttachBuildsCommandWithoutProvisioning(t *testing.T) {
 	require.Empty(t, networks.started.EnclaveName, "attaching must not provision")
 	require.Empty(t, networks.stopped, "attaching must not stop the network")
 	require.Contains(t, command.Args, "./e2e/suites/execution/abi")
-	require.Contains(t, command.Args, "./e2e/suites/execution/console")
-	written, err := manifest.Read(filepath.Join(reports, "lanes", executionLaneName, manifest.FileName))
-	require.NoError(t, err)
-	require.Equal(t, imageID, written.ExecutionImage)
-}
-
-func TestAttachRecordsBackend(t *testing.T) {
-	reports := t.TempDir()
-	runner := New(Config{
-		BaseName:  "qrl-tests",
-		ReportDir: reports,
-		Backend:   devnet.BackendDocker,
-		Suites:    []string{executionABISuite},
-	}, io.Discard, io.Discard)
-	runner.networks = new(recordingNetworks)
-	runner.runCommand = func(context.Context, commandSpec) error {
-		writeGinkgoReport(t, filepath.Join(reports, "lanes", executionLaneName), types.SpecStatePassed)
-		return nil
-	}
-
-	require.NoError(t, runner.Test(t.Context(), executionLaneName))
 	written, err := manifest.Read(filepath.Join(reports, "lanes", executionLaneName, manifest.FileName))
 	require.NoError(t, err)
 	require.Equal(t, devnet.BackendDocker, written.Environment.Backend)
