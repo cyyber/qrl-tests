@@ -9,7 +9,6 @@ import (
 	"github.com/kurtosis-tech/kurtosis/api/golang/core/kurtosis_core_rpc_api_bindings"
 	"github.com/kurtosis-tech/kurtosis/api/golang/engine/kurtosis_engine_rpc_api_bindings"
 	"github.com/stretchr/testify/require"
-	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 type fakeServiceLogsStream struct {
@@ -59,7 +58,6 @@ func TestServicePortBindings(t *testing.T) {
 
 func TestMergeServiceIdentities(t *testing.T) {
 	historical := []*kurtosis_core_rpc_api_bindings.ServiceIdentifiers{
-		{Name: "zeta", ServiceUuid: "historical-only"},
 		{Name: "stale-name", ServiceUuid: "shared"},
 		{Name: "same", ServiceUuid: "z"},
 		{Name: "same", ServiceUuid: "a"},
@@ -72,25 +70,30 @@ func TestMergeServiceIdentities(t *testing.T) {
 				Status: kurtosis_core_rpc_api_bindings.Container_RUNNING,
 			},
 		},
+		"current-only": {
+			Name:        "beta",
+			ServiceUuid: "current-only",
+			Container: &kurtosis_core_rpc_api_bindings.Container{
+				Status: kurtosis_core_rpc_api_bindings.Container_RUNNING,
+			},
+		},
 	}
 
-	for _, test := range []struct {
-		name             string
-		currentComplete  bool
-		historicalStatus string
-	}{
-		{name: "complete current set", currentComplete: true, historicalStatus: "HISTORICAL"},
-		{name: "incomplete current set", historicalStatus: "UNKNOWN"},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			require.Equal(t, []ServiceIdentity{
-				{Name: "alpha", UUID: "shared", Status: "RUNNING", Ports: []string{"<none>"}},
-				{Name: "same", UUID: "a", Status: test.historicalStatus, Ports: []string{"<unknown>"}},
-				{Name: "same", UUID: "z", Status: test.historicalStatus, Ports: []string{"<unknown>"}},
-				{Name: "zeta", UUID: "historical-only", Status: test.historicalStatus, Ports: []string{"<unknown>"}},
-			}, mergeServiceIdentities(historical, current, test.currentComplete))
-		})
-	}
+	t.Run("complete current set", func(t *testing.T) {
+		require.Equal(t, []ServiceIdentity{
+			{Name: "alpha", UUID: "shared", Status: "RUNNING", Ports: []string{"<none>"}},
+			{Name: "beta", UUID: "current-only", Status: "RUNNING", Ports: []string{"<none>"}},
+			{Name: "same", UUID: "a", Status: "HISTORICAL", Ports: []string{"<unknown>"}},
+			{Name: "same", UUID: "z", Status: "HISTORICAL", Ports: []string{"<unknown>"}},
+		}, mergeServiceIdentities(historical, current, true))
+	})
+	t.Run("incomplete current set", func(t *testing.T) {
+		require.Equal(t, []ServiceIdentity{
+			{Name: "same", UUID: "a", Status: "UNKNOWN", Ports: []string{"<unknown>"}},
+			{Name: "same", UUID: "z", Status: "UNKNOWN", Ports: []string{"<unknown>"}},
+			{Name: "stale-name", UUID: "shared", Status: "UNKNOWN", Ports: []string{"<unknown>"}},
+		}, mergeServiceIdentities(historical, nil, false))
+	})
 }
 
 func TestFileArtifactIdentities(t *testing.T) {
@@ -112,10 +115,10 @@ func TestInspectEnclaveStoppedAPI(t *testing.T) {
 		Name:               "test-enclave",
 		EnclaveUuid:        "enclave-uuid",
 		ApiContainerStatus: kurtosis_engine_rpc_api_bindings.EnclaveAPIContainerStatus_EnclaveAPIContainerStatus_STOPPED,
-		CreationTime:       timestamppb.Now(),
 	}
 
 	inspection, err := inspectEnclave(t.Context(), info)
+	require.ErrorContains(t, err, "Kurtosis enclave has no creation time")
 	require.ErrorContains(t, err, "Kurtosis enclave API container is not running: STOPPED")
 	require.Equal(t, "test-enclave", inspection.Name)
 	require.Equal(t, "enclave-uuid", inspection.UUID)
