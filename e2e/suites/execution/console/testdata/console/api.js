@@ -84,15 +84,21 @@ check("header API returns the latest header", function () {
 
 check("state and fee APIs respond", function () {
     var miner = qrl.getBlock("latest").miner;
-    if (!(qrl.getBalance(miner, "latest") >= 0)) {
-        throw new Error("invalid balance");
+    var balance = qrl.getBalance(miner, "latest");
+    if (!balance.gte(0)) {
+        throw new Error("invalid balance: " + balance);
     }
     var nonce = qrl.getTransactionCount(miner, "latest");
     if (typeof nonce !== "number" || nonce < 0) {
         throw new Error("invalid nonce: " + nonce);
     }
-    if (!(qrl.gasPrice > 0) || !(qrl.maxPriorityFeePerGas >= 0)) {
-        throw new Error("invalid fee data");
+    var gasPrice = qrl.gasPrice;
+    var priorityFee = qrl.maxPriorityFeePerGas;
+    if (!gasPrice.gt(0) || !priorityFee.gte(0)) {
+        throw new Error(
+            "invalid fee data: gasPrice=" + gasPrice +
+            ", maxPriorityFeePerGas=" + priorityFee
+        );
     }
 });
 
