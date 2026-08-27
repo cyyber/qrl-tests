@@ -24,9 +24,7 @@ func (stream *fakeServiceLogsStream) Recv() (*kurtosis_engine_rpc_api_bindings.G
 		return response, nil
 	}
 	if stream.terminalErr != nil {
-		err := stream.terminalErr
-		stream.terminalErr = nil
-		return nil, err
+		return nil, stream.terminalErr
 	}
 	return nil, io.EOF
 }
@@ -58,19 +56,19 @@ func TestServicePortBindings(t *testing.T) {
 
 func TestMergeServiceIdentities(t *testing.T) {
 	identifiers := []*kurtosis_core_rpc_api_bindings.ServiceIdentifiers{
-		{Name: "stale-name", ServiceUuid: "shared"},
-		{Name: "same", ServiceUuid: "z"},
-		{Name: "same", ServiceUuid: "a"},
+		{Name: "alpha", ServiceUuid: "shared"},
+		{Name: "gamma", ServiceUuid: "z"},
+		{Name: "gamma", ServiceUuid: "a"},
 	}
 	current := map[string]*kurtosis_core_rpc_api_bindings.ServiceInfo{
-		"shared": {
+		"alpha": {
 			Name:        "alpha",
 			ServiceUuid: "shared",
 			Container: &kurtosis_core_rpc_api_bindings.Container{
 				Status: kurtosis_core_rpc_api_bindings.Container_RUNNING,
 			},
 		},
-		"current-only": {
+		"beta": {
 			Name:        "beta",
 			ServiceUuid: "current-only",
 			Container: &kurtosis_core_rpc_api_bindings.Container{
@@ -83,15 +81,15 @@ func TestMergeServiceIdentities(t *testing.T) {
 		require.Equal(t, []ServiceIdentity{
 			{Name: "alpha", UUID: "shared", Status: "RUNNING", Ports: []string{"<none>"}},
 			{Name: "beta", UUID: "current-only", Status: "RUNNING", Ports: []string{"<none>"}},
-			{Name: "same", UUID: "a", Status: "HISTORICAL", Ports: []string{"<unknown>"}},
-			{Name: "same", UUID: "z", Status: "HISTORICAL", Ports: []string{"<unknown>"}},
+			{Name: "gamma", UUID: "a", Status: "HISTORICAL", Ports: []string{"<unknown>"}},
+			{Name: "gamma", UUID: "z", Status: "HISTORICAL", Ports: []string{"<unknown>"}},
 		}, mergeServiceIdentities(identifiers, current, true))
 	})
 	t.Run("incomplete current set", func(t *testing.T) {
 		require.Equal(t, []ServiceIdentity{
-			{Name: "same", UUID: "a", Status: "UNKNOWN", Ports: []string{"<unknown>"}},
-			{Name: "same", UUID: "z", Status: "UNKNOWN", Ports: []string{"<unknown>"}},
-			{Name: "stale-name", UUID: "shared", Status: "UNKNOWN", Ports: []string{"<unknown>"}},
+			{Name: "alpha", UUID: "shared", Status: "UNKNOWN", Ports: []string{"<unknown>"}},
+			{Name: "gamma", UUID: "a", Status: "UNKNOWN", Ports: []string{"<unknown>"}},
+			{Name: "gamma", UUID: "z", Status: "UNKNOWN", Ports: []string{"<unknown>"}},
 		}, mergeServiceIdentities(identifiers, nil, false))
 	})
 }
@@ -141,11 +139,33 @@ func TestServiceLogs(t *testing.T) {
 	)
 	require.NoError(t, err)
 	require.Equal(t, map[string]bool{"stopped-uuid": true}, notFound)
+	require.Equal(t, "test-enclave", request.GetEnclaveIdentifier())
 	require.Equal(t, map[string]bool{"running-uuid": true, "stopped-uuid": true}, request.GetServiceUuidSet())
 	require.False(t, request.GetFollowLogs())
 	require.True(t, request.GetReturnAllLogs())
 	require.Equal(t, []string{"first", "second"}, captured["running-uuid"])
 	require.NotContains(t, captured, "stopped-uuid")
+}
+
+func TestServiceLogsStartFailure(t *testing.T) {
+	startErr := errors.New("engine unavailable")
+	getServiceLogs := func(
+		context.Context,
+		*kurtosis_engine_rpc_api_bindings.GetServiceLogsArgs,
+	) (serviceLogsStream, error) {
+		return nil, startErr
+	}
+
+	notFound, err := serviceLogs(
+		t.Context(),
+		"test-enclave",
+		[]string{"service-uuid"},
+		nil,
+		getServiceLogs,
+	)
+	require.ErrorIs(t, err, startErr)
+	require.ErrorContains(t, err, "start Kurtosis service log stream: engine unavailable")
+	require.Nil(t, notFound)
 }
 
 func TestReceiveServiceLogsClearsNotFound(t *testing.T) {
