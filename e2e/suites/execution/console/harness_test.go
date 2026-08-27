@@ -35,18 +35,6 @@ const (
 	watchedSuiteExitTimeout        = 5 * time.Second
 )
 
-type consoleScenario struct {
-	name        string
-	description string
-}
-
-var consoleScenarios = []consoleScenario{
-	{
-		name:        "api",
-		description: "validates console and RPC APIs against the live network",
-	},
-}
-
 //go:embed testdata/console/*.js
 var consoleFixtures embed.FS
 

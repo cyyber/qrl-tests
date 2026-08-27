@@ -48,13 +48,9 @@ func TestParseSuiteResult(t *testing.T) {
 	}
 }
 
-func TestSuiteFixtures(t *testing.T) {
-	names := []string{"harness"}
-	for _, scenario := range consoleScenarios {
-		names = append(names, scenario.name)
-	}
-	for _, name := range names {
-		_, err := fs.Stat(consoleFixtures, "testdata/console/"+name+".js")
+func TestConsoleFixtures(t *testing.T) {
+	for _, name := range []string{"api.js", "harness.js"} {
+		_, err := fs.Stat(consoleFixtures, "testdata/console/"+name)
 		require.NoErrorf(t, err, "%s", name)
 	}
 }
