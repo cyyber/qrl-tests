@@ -5,8 +5,9 @@ function createConsoleSuite(name) {
                 if (fn() === false) {
                     throw new Error("assertion returned false");
                 }
-            } catch (e) {
-                throw new Error(desc + " -- " + e);
+            } catch (error) {
+                console.error("CONSOLE_E2E_FAIL " + name + " " + desc + " -- " + error);
+                throw error;
             }
             console.log("PASS: " + desc);
         },
@@ -14,19 +15,4 @@ function createConsoleSuite(name) {
             console.log("CONSOLE_E2E_PASS " + name);
         }
     };
-}
-
-function zeros(n) {
-    return new Array(n + 1).join("0");
-}
-
-function waitForReceipt(txHash) {
-    for (var i = 0; i < 60; i++) {
-        var receipt = qrl.getTransactionReceipt(txHash);
-        if (receipt !== null && receipt.blockNumber !== null) {
-            return receipt;
-        }
-        admin.sleep(5);
-    }
-    throw new Error("transaction not mined within timeout: " + txHash);
 }

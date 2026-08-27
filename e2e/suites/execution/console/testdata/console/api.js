@@ -2,7 +2,7 @@ var suite = createConsoleSuite("api");
 var check = suite.check;
 
 function requireHexQuantity(name, value) {
-    if (typeof value !== "string" || !/^0x[0-9a-f]+$/i.test(value)) {
+    if (typeof value !== "string" || !/^0x(?:0|[1-9a-fA-F][0-9a-fA-F]*)$/.test(value)) {
         throw new Error(name + " is not a hex quantity: " + value);
     }
 }
@@ -25,10 +25,10 @@ check("block APIs agree", function () {
         throw new Error("unexpected qrl.blockNumber: " + blockNumber);
     }
     var block = qrl.getBlock(blockNumber);
-    var byHash = qrl.getBlock(block.hash);
     requireHash("block hash", block.hash);
     requireAddress("block fee recipient", block.miner);
-    if (byHash.hash !== block.hash || byHash.number !== block.number) {
+    var byHash = qrl.getBlock(block.hash);
+    if (!byHash || byHash.hash !== block.hash || byHash.number !== block.number) {
         throw new Error("block lookup mismatch");
     }
 });
@@ -59,7 +59,8 @@ check("provider dispatch and console namespaces respond", function () {
     if (!admin.nodeInfo || !(admin.peers instanceof Array)) {
         throw new Error("unexpected admin namespace");
     }
-    if (typeof txpool.status.pending !== "number" || typeof txpool.status.queued !== "number") {
+    var status = txpool.status;
+    if (typeof status.pending !== "number" || typeof status.queued !== "number") {
         throw new Error("unexpected txpool namespace");
     }
 });
@@ -67,7 +68,11 @@ check("provider dispatch and console namespaces respond", function () {
 check("qrl.chainId matches the network ID", function () {
     var chainID = qrl.chainId();
     requireHexQuantity("qrl.chainId", chainID);
-    return web3.toDecimal(chainID) === web3.toDecimal(net.version);
+    var chainIDDecimal = web3.toBigNumber(chainID).toString(10);
+    var networkIDDecimal = web3.toBigNumber(net.version).toString(10);
+    if (chainIDDecimal !== networkIDDecimal) {
+        throw new Error("chain ID " + chainIDDecimal + " does not match network ID " + networkIDDecimal);
+    }
 });
 
 check("header API returns the latest header", function () {
@@ -94,11 +99,18 @@ check("state and fee APIs respond", function () {
 check("qrl.feeHistory returns coherent history", function () {
     var history = qrl.feeHistory(1, "latest", []);
     requireHexQuantity("oldestBlock", history.oldestBlock);
-    if (!(history.baseFeePerGas instanceof Array) || history.baseFeePerGas.length < 1) {
-        throw new Error("missing baseFeePerGas: " + JSON.stringify(history));
+    if (!(history.baseFeePerGas instanceof Array) || history.baseFeePerGas.length !== 2) {
+        throw new Error("unexpected baseFeePerGas: " + JSON.stringify(history));
     }
+    history.baseFeePerGas.forEach(function (baseFee, index) {
+        requireHexQuantity("baseFeePerGas[" + index + "]", baseFee);
+    });
     if (!(history.gasUsedRatio instanceof Array) || history.gasUsedRatio.length !== 1) {
         throw new Error("unexpected gasUsedRatio: " + JSON.stringify(history));
+    }
+    var gasUsedRatio = history.gasUsedRatio[0];
+    if (typeof gasUsedRatio !== "number" || !(gasUsedRatio >= 0 && gasUsedRatio <= 1)) {
+        throw new Error("invalid gasUsedRatio: " + gasUsedRatio);
     }
 });
 
