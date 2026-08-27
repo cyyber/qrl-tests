@@ -6,7 +6,6 @@ import (
 	"math/rand/v2"
 	"path/filepath"
 
-	"github.com/cyyber/qrl-tests/devnet"
 	"github.com/cyyber/qrl-tests/e2e/internal/lanes"
 	"github.com/cyyber/qrl-tests/e2e/internal/manifest"
 	"github.com/cyyber/qrl-tests/internal/results"
@@ -25,11 +24,10 @@ type runPlan struct {
 }
 
 type laneRun struct {
-	definition          lanes.Lane
-	enclaveName         string
-	reportDir           string
-	seed                int64
-	networkExpectations *devnet.NetworkExpectations
+	definition  lanes.Lane
+	enclaveName string
+	reportDir   string
+	seed        int64
 }
 
 func (lane laneRun) manifestPath() string {
@@ -84,20 +82,11 @@ func planLanes(configuration Config, selected []lanes.Lane, mode runMode) (runPl
 		if seed == 0 {
 			seed = 1 + rand.Int64N(math.MaxInt32)
 		}
-		var expectations *devnet.NetworkExpectations
-		if mode.provisionsNetwork() && lane.NeedsExecutionImage() && configuration.Parameters == nil {
-			configured, found := lane.Profile.Expectations()
-			if !found {
-				return runPlan{}, fmt.Errorf("profile %q has no network expectations", lane.Profile)
-			}
-			expectations = &configured
-		}
 		laneRuns[index] = laneRun{
-			definition:          lane,
-			enclaveName:         enclaveName,
-			reportDir:           reportDir,
-			seed:                seed,
-			networkExpectations: expectations,
+			definition:  lane,
+			enclaveName: enclaveName,
+			reportDir:   reportDir,
+			seed:        seed,
 		}
 	}
 	return runPlan{testsDir: testsDir, reportRoot: reportRoot, mode: mode, lanes: laneRuns}, nil

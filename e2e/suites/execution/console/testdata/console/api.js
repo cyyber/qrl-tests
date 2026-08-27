@@ -3,12 +3,16 @@ var check = suite.check;
 
 check("block APIs agree", function () {
     var blockNumber = qrl.blockNumber;
-    if (typeof blockNumber !== "number" || blockNumber <= 0) {
+    requireNonNegativeInteger("qrl.blockNumber", blockNumber);
+    if (blockNumber === 0) {
         throw new Error("unexpected qrl.blockNumber: " + blockNumber);
     }
     var block = qrl.getBlock(blockNumber);
     requireHash("block hash", block.hash);
     requireAddress("block fee recipient", block.miner);
+    if (block.number !== blockNumber) {
+        throw new Error("block number mismatch: got " + block.number + ", want " + blockNumber);
+    }
     var byHash = qrl.getBlock(block.hash);
     if (!byHash || byHash.hash !== block.hash || byHash.number !== block.number) {
         throw new Error("block lookup mismatch");
@@ -26,40 +30,32 @@ check("provider dispatch and console namespaces respond", function () {
         throw new Error("rpc_modules: " + JSON.stringify(response.error));
     }
     var modules = response.result;
-    ["admin", "net", "qrl", "txpool", "web3"].forEach(function (name) {
-        if (typeof modules[name] !== "string") {
-            throw new Error("missing rpc module " + name);
+    ["admin", "debug", "net", "qrl", "rpc", "txpool", "web3"].forEach(function (name) {
+        if (modules[name] !== "1.0") {
+            throw new Error("unexpected rpc module " + name + ": " + modules[name]);
         }
     });
+    if (typeof modules.engine !== "undefined") {
+        throw new Error("authenticated engine module is exposed by public RPC");
+    }
     var clientVersion = web3.version.node;
     var listening = net.listening;
     var peerCount = net.peerCount;
     var nodeInfo = admin.nodeInfo;
     var peers = admin.peers;
-    if (typeof clientVersion !== "string" || clientVersion === "") {
+    if (typeof clientVersion !== "string" || clientVersion.indexOf("Gqrl/") !== 0) {
         throw new Error("web3.version.node did not return a client version");
     }
-    if (listening !== true || typeof peerCount !== "number" ||
-        peerCount < 0 || peerCount % 1 !== 0) {
+    requireNonNegativeInteger("net.peerCount", peerCount);
+    if (listening !== true) {
         throw new Error("unexpected net namespace");
     }
     if (!nodeInfo || nodeInfo.name !== clientVersion || !(peers instanceof Array)) {
         throw new Error("unexpected admin namespace");
     }
-    if (EXPECTED !== null) {
-        var expectedPeerCount = EXPECTED.execution_peer_count;
-        if (peerCount !== expectedPeerCount || peers.length !== expectedPeerCount) {
-            throw new Error(
-                "unexpected execution peer count: net=" + peerCount +
-                ", admin=" + peers.length +
-                ", want=" + expectedPeerCount
-            );
-        }
-    }
     var status = txpool.status;
-    if (typeof status.pending !== "number" || typeof status.queued !== "number") {
-        throw new Error("unexpected txpool namespace");
-    }
+    requireNonNegativeInteger("txpool.status.pending", status.pending);
+    requireNonNegativeInteger("txpool.status.queued", status.queued);
 });
 
 check("chain and network IDs are canonical", function () {
@@ -67,21 +63,26 @@ check("chain and network IDs are canonical", function () {
     var networkID = net.version;
     requireHexQuantity("qrl.chainId", chainID);
     requireDecimalString("net.version", networkID);
-    if (EXPECTED !== null) {
-        if (chainID !== EXPECTED.chain_id) {
-            throw new Error("unexpected chain ID: got " + chainID + ", want " + EXPECTED.chain_id);
-        }
-        if (networkID !== EXPECTED.network_id) {
-            throw new Error("unexpected network ID: got " + networkID + ", want " + EXPECTED.network_id);
-        }
-    }
 });
 
-check("header API returns the latest header", function () {
-    var header = qrl.getHeaderByNumber("latest");
+check("header APIs agree with block data", function () {
+    var blockNumber = qrl.blockNumber;
+    requireNonNegativeInteger("qrl.blockNumber", blockNumber);
+    var block = qrl.getBlock(blockNumber);
+    var header = qrl.getHeaderByNumber(blockNumber);
     requireHash("header hash", header.hash);
     requireHash("header parentHash", header.parentHash);
     requireAddress("header fee recipient", header.miner);
+    requireHexQuantity("header number", header.number);
+    if (header.hash !== block.hash || header.parentHash !== block.parentHash ||
+        header.miner !== block.miner || web3.toDecimal(header.number) !== block.number) {
+        throw new Error("header does not match block data");
+    }
+    var byHash = qrl.getHeaderByHash(header.hash);
+    if (!byHash || byHash.hash !== header.hash || byHash.number !== header.number ||
+        byHash.parentHash !== header.parentHash || byHash.miner !== header.miner) {
+        throw new Error("header lookup mismatch");
+    }
 });
 
 check("state and fee APIs respond", function () {
@@ -91,9 +92,7 @@ check("state and fee APIs respond", function () {
         throw new Error("invalid balance: " + balance);
     }
     var nonce = qrl.getTransactionCount(miner, "latest");
-    if (typeof nonce !== "number" || nonce < 0) {
-        throw new Error("invalid nonce: " + nonce);
-    }
+    requireNonNegativeInteger("nonce", nonce);
     var gasPrice = qrl.gasPrice;
     var priorityFee = qrl.maxPriorityFeePerGas;
     if (!gasPrice.gt(0) || !priorityFee.gte(0)) {

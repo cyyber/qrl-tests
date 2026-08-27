@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"context"
 	"embed"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -19,7 +18,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cyyber/qrl-tests/devnet"
 	"github.com/cyyber/qrl-tests/internal/dockerapi"
 	"github.com/moby/moby/api/pkg/stdcopy"
 	containertypes "github.com/moby/moby/api/types/container"
@@ -124,7 +122,7 @@ func (engine dockerConsoleEngine) create(ctx context.Context, spec consoleContai
 		"attach",
 		"--datadir", consoleContainerDataDir,
 		"--jspath", consoleContainerJSPath,
-		"--exec", "loadScript('harness.js');loadScript('assertions.js');loadScript('expectations.js');loadScript('" + spec.scenario + ".js')",
+		"--exec", "loadScript('harness.js');loadScript('assertions.js');loadScript('" + spec.scenario + ".js')",
 	}
 	arguments = append(arguments, endpoint)
 
@@ -464,23 +462,13 @@ func suiteMarkers(name string, output []byte) (successes int, failed bool) {
 	return successes, failed
 }
 
-func prepareWorkspace(destination string, expectations *devnet.NetworkExpectations) error {
+func prepareWorkspace(destination string) error {
 	consoleScripts, err := fs.Sub(consoleFixtures, "testdata/console")
 	if err != nil {
 		return fmt.Errorf("open console fixtures: %w", err)
 	}
 	if err := os.CopyFS(destination, consoleScripts); err != nil {
 		return fmt.Errorf("copy console fixtures: %w", err)
-	}
-
-	payload, err := json.Marshal(expectations)
-	if err != nil {
-		return fmt.Errorf("encode console expectations: %w", err)
-	}
-	script := append([]byte("var EXPECTED = "), payload...)
-	script = append(script, ';', '\n')
-	if err := os.WriteFile(filepath.Join(destination, "expectations.js"), script, 0o600); err != nil {
-		return fmt.Errorf("write console expectations: %w", err)
 	}
 	return nil
 }

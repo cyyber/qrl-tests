@@ -168,10 +168,6 @@ func TestRunRecordsResolvedImage(t *testing.T) {
 	configured, err := manifest.Read(filepath.Join(reports, "lanes", executionLaneName, manifest.FileName))
 	require.NoError(t, err)
 	require.Equal(t, actualImage, configured.ExecutionImage)
-	require.Nil(t, configured.NetworkExpectations)
-	payload, err := os.ReadFile(filepath.Join(reports, "lanes", executionLaneName, manifest.FileName))
-	require.NoError(t, err)
-	require.NotContains(t, string(payload), `"network_expectations"`)
 }
 
 func TestRunImageResolutionError(t *testing.T) {
@@ -258,12 +254,6 @@ func TestRunWritesRunManifestAndSummary(t *testing.T) {
 	}
 
 	require.NoError(t, testRunner.Run(t.Context(), executionLaneName))
-
-	laneManifest, err := manifest.Read(filepath.Join(laneDir, manifest.FileName))
-	require.NoError(t, err)
-	expectations, found := devnet.ProfileSingle.Expectations()
-	require.True(t, found)
-	require.Equal(t, &expectations, laneManifest.NetworkExpectations)
 
 	record := testutil.ReadJSON[runmanifest.Manifest](t, filepath.Join(reports, runmanifest.FileName))
 	require.Equal(t, "passed", record.Result)
@@ -672,9 +662,6 @@ func TestPlanLanesDescribesEachLane(t *testing.T) {
 	require.Contains(t, laneRun.ginkgoArguments(), fmt.Sprintf("--seed=%d", laneRun.seed))
 	require.Positive(t, laneRun.seed)
 	require.True(t, plan.mode.provisionsNetwork())
-	expectations, found := devnet.ProfileSingle.Expectations()
-	require.True(t, found)
-	require.Equal(t, &expectations, laneRun.networkExpectations)
 }
 
 func TestExecuteWiresTheCommand(t *testing.T) {

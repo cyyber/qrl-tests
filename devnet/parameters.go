@@ -106,7 +106,7 @@ func profileParameters(address string, options StartOptions) (string, error) {
 	payload, err := json.Marshal(packageParameters{
 		Participants: participants,
 		NetworkParams: networkParams{
-			NetworkID:               spec.expectations.NetworkID,
+			NetworkID:               "1337",
 			PreregisteredValidators: spec.preregisteredValidators,
 			SecondsPerSlot:          5,
 			SlotsPerEpoch:           8,

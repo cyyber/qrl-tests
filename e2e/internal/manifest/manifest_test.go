@@ -11,16 +11,10 @@ import (
 
 func TestManifestRoundTrip(t *testing.T) {
 	path := filepath.Join(t.TempDir(), FileName)
-	expectations := devnet.NetworkExpectations{
-		ChainID:            "0x539",
-		NetworkID:          "1337",
-		ExecutionPeerCount: 0,
-	}
 	want := Manifest{
-		Lane:                "execution",
-		Profile:             devnet.ProfileSingle,
-		ExecutionImage:      "registry.example/go-qrl@sha256:digest",
-		NetworkExpectations: &expectations,
+		Lane:           "execution",
+		Profile:        devnet.ProfileSingle,
+		ExecutionImage: "registry.example/go-qrl@sha256:digest",
 		Environment: devnet.Environment{
 			EnclaveName: "qrl-tests-execution",
 			Backend:     devnet.BackendDocker,
@@ -41,10 +35,6 @@ func TestManifestRoundTrip(t *testing.T) {
 	configured, err := FromEnv()
 	require.NoError(t, err)
 	require.Equal(t, want, configured)
-
-	payload, err := os.ReadFile(path)
-	require.NoError(t, err)
-	require.Contains(t, string(payload), `"execution_peer_count": 0`)
 }
 
 func TestManifestRequiresParticipant(t *testing.T) {

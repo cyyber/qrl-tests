@@ -57,6 +57,7 @@ func (runner *Runner) acquireLane(ctx context.Context, plan runPlan, lane laneRu
 		Profile:               lane.definition.Profile,
 		FailureDiagnosticsDir: filepath.Join(lane.reportDir, diagnosticsDirectory),
 	}
+
 	startCtx, cancelStart := context.WithTimeout(ctx, runner.configuration.StartTimeout)
 	environment, err := runner.networks.Start(startCtx, options)
 	cancelStart()
@@ -154,11 +155,10 @@ func (runner *Runner) executeLane(ctx context.Context, plan runPlan, lane laneRu
 
 	manifestPath := lane.manifestPath()
 	if err := manifest.Write(manifestPath, manifest.Manifest{
-		Lane:                definition.Name,
-		Profile:             definition.Profile,
-		Environment:         lease.environment,
-		ExecutionImage:      executionImage,
-		NetworkExpectations: lane.networkExpectations,
+		Lane:           definition.Name,
+		Profile:        definition.Profile,
+		Environment:    lease.environment,
+		ExecutionImage: executionImage,
 	}); err != nil {
 		outcome.Err = fmt.Errorf("test infrastructure failed: %w", err)
 		return outcome
