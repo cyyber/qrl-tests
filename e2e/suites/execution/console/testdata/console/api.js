@@ -131,17 +131,17 @@ check("QIP-55 Q-address checksum round-trips", function () {
     if ("Q" + checksummed.slice(1).toLowerCase() !== lower) {
         throw new Error("checksumming changed the address bytes");
     }
-    for (var i = 1; i < checksummed.length; i++) {
-        var character = checksummed.charAt(i);
-        if (/[a-fA-F]/.test(character)) {
-            var flipped = character === character.toLowerCase() ?
-                character.toUpperCase() : character.toLowerCase();
-            var mangled = checksummed.slice(0, i) + flipped + checksummed.slice(i + 1);
-            if (web3.isChecksumAddress(mangled)) {
-                throw new Error("case-mangled address passes checksum validation");
-            }
-            break;
-        }
+    var letterIndex = checksummed.search(/[a-fA-F]/);
+    if (letterIndex === -1) {
+        throw new Error("checksummed address has no alphabetic nibble");
+    }
+    var character = checksummed.charAt(letterIndex);
+    var flipped = character === character.toLowerCase() ?
+        character.toUpperCase() : character.toLowerCase();
+    var mangled = checksummed.slice(0, letterIndex) +
+        flipped + checksummed.slice(letterIndex + 1);
+    if (web3.isChecksumAddress(mangled)) {
+        throw new Error("case-mangled address passes checksum validation");
     }
 });
 
