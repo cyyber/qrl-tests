@@ -73,9 +73,6 @@ func diagnosticInspection() kurtosis.EnclaveInspection {
 			{Name: "run-generate-genesis", UUID: "aaaa", Status: "STOPPED", Ports: []string{"<none>"}},
 			{Name: "el-1-gqrl-qrysm", UUID: "dddd"},
 		},
-		FilesArtifacts: []kurtosis.FilesArtifactIdentity{
-			{Name: "genesis", UUID: "artifact-uuid"},
-		},
 	}
 }
 

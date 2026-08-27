@@ -57,7 +57,7 @@ func TestServicePortBindings(t *testing.T) {
 }
 
 func TestMergeServiceIdentities(t *testing.T) {
-	historical := []*kurtosis_core_rpc_api_bindings.ServiceIdentifiers{
+	identifiers := []*kurtosis_core_rpc_api_bindings.ServiceIdentifiers{
 		{Name: "stale-name", ServiceUuid: "shared"},
 		{Name: "same", ServiceUuid: "z"},
 		{Name: "same", ServiceUuid: "a"},
@@ -85,29 +85,15 @@ func TestMergeServiceIdentities(t *testing.T) {
 			{Name: "beta", UUID: "current-only", Status: "RUNNING", Ports: []string{"<none>"}},
 			{Name: "same", UUID: "a", Status: "HISTORICAL", Ports: []string{"<unknown>"}},
 			{Name: "same", UUID: "z", Status: "HISTORICAL", Ports: []string{"<unknown>"}},
-		}, mergeServiceIdentities(historical, current, true))
+		}, mergeServiceIdentities(identifiers, current, true))
 	})
 	t.Run("incomplete current set", func(t *testing.T) {
 		require.Equal(t, []ServiceIdentity{
 			{Name: "same", UUID: "a", Status: "UNKNOWN", Ports: []string{"<unknown>"}},
 			{Name: "same", UUID: "z", Status: "UNKNOWN", Ports: []string{"<unknown>"}},
 			{Name: "stale-name", UUID: "shared", Status: "UNKNOWN", Ports: []string{"<unknown>"}},
-		}, mergeServiceIdentities(historical, nil, false))
+		}, mergeServiceIdentities(identifiers, nil, false))
 	})
-}
-
-func TestFileArtifactIdentities(t *testing.T) {
-	artifacts := []*kurtosis_core_rpc_api_bindings.FilesArtifactNameAndUuid{
-		{FileName: "zeta", FileUuid: "z"},
-		{FileName: "alpha", FileUuid: "b"},
-		{FileName: "alpha", FileUuid: "a"},
-	}
-
-	require.Equal(t, []FilesArtifactIdentity{
-		{Name: "alpha", UUID: "a"},
-		{Name: "alpha", UUID: "b"},
-		{Name: "zeta", UUID: "z"},
-	}, fileArtifactIdentities(artifacts))
 }
 
 func TestInspectEnclaveStoppedAPI(t *testing.T) {

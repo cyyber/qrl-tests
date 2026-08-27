@@ -30,19 +30,13 @@ type ServiceIdentity struct {
 	Ports  []string `json:"ports"`
 }
 
-type FilesArtifactIdentity struct {
-	Name string `json:"name"`
-	UUID string `json:"uuid"`
-}
-
 type EnclaveInspection struct {
-	Name           string                  `json:"name,omitempty"`
-	UUID           string                  `json:"uuid,omitempty"`
-	Status         string                  `json:"status,omitempty"`
-	Mode           string                  `json:"mode,omitempty"`
-	CreationTime   time.Time               `json:"creation_time,omitzero"`
-	Services       []ServiceIdentity       `json:"services,omitempty"`
-	FilesArtifacts []FilesArtifactIdentity `json:"files_artifacts,omitempty"`
+	Name         string            `json:"name,omitempty"`
+	UUID         string            `json:"uuid,omitempty"`
+	Status       string            `json:"status,omitempty"`
+	Mode         string            `json:"mode,omitempty"`
+	CreationTime time.Time         `json:"creation_time,omitzero"`
+	Services     []ServiceIdentity `json:"services,omitempty"`
 }
 
 type ServiceLogConsumer func(serviceUUID string, lines []string)
@@ -124,67 +118,59 @@ func inspectEnclave(
 		)
 	}
 
-	services, artifacts, contentsErr := inspectEnclaveContents(ctx, info)
+	services, servicesErr := inspectServices(ctx, info)
 	inspection.Services = services
-	inspection.FilesArtifacts = artifacts
-	return inspection, errors.Join(creationTimeErr, contentsErr)
+	return inspection, errors.Join(creationTimeErr, servicesErr)
 }
 
-func inspectEnclaveContents(
+func inspectServices(
 	ctx context.Context,
 	info *kurtosis_engine_rpc_api_bindings.EnclaveInfo,
-) ([]ServiceIdentity, []FilesArtifactIdentity, error) {
+) ([]ServiceIdentity, error) {
 	host := info.GetApiContainerHostMachineInfo()
 	if host == nil || host.GetIpOnHostMachine() == "" || host.GetGrpcPortOnHostMachine() == 0 {
-		return nil, nil, errors.New("Kurtosis enclave has no API container endpoint")
+		return nil, errors.New("Kurtosis enclave has no API container endpoint")
 	}
 	address := net.JoinHostPort(host.GetIpOnHostMachine(), strconv.Itoa(int(host.GetGrpcPortOnHostMachine())))
 	connection, err := newGRPCConnection(address)
 	if err != nil {
-		return nil, nil, fmt.Errorf("connect to Kurtosis API container: %w", err)
+		return nil, fmt.Errorf("connect to Kurtosis API container: %w", err)
 	}
 	defer func() { _ = connection.Close() }()
-	api := kurtosis_core_rpc_api_bindings.NewApiContainerServiceClient(connection)
-	historical, historicalErr := api.GetExistingAndHistoricalServiceIdentifiers(ctx, &emptypb.Empty{})
-	current, currentErr := api.GetServices(ctx, &kurtosis_core_rpc_api_bindings.GetServicesArgs{
+	apiClient := kurtosis_core_rpc_api_bindings.NewApiContainerServiceClient(connection)
+	identifiers, identifiersErr := apiClient.GetExistingAndHistoricalServiceIdentifiers(ctx, &emptypb.Empty{})
+	current, currentErr := apiClient.GetServices(ctx, &kurtosis_core_rpc_api_bindings.GetServicesArgs{
 		ServiceIdentifiers: map[string]bool{},
 	})
-	artifacts, artifactsErr := api.ListFilesArtifactNamesAndUuids(ctx, &emptypb.Empty{})
-	if historicalErr != nil {
-		historicalErr = fmt.Errorf("get historical Kurtosis services: %w", historicalErr)
+	if identifiersErr != nil {
+		identifiersErr = fmt.Errorf("get Kurtosis service identifiers: %w", identifiersErr)
 	}
 	if currentErr != nil {
 		currentErr = fmt.Errorf("get current Kurtosis services: %w", currentErr)
 	}
-	if artifactsErr != nil {
-		artifactsErr = fmt.Errorf("get Kurtosis files artifacts: %w", artifactsErr)
-	}
-
 	services := mergeServiceIdentities(
-		historical.GetAllIdentifiers(),
+		identifiers.GetAllIdentifiers(),
 		current.GetServiceInfo(),
 		currentErr == nil,
 	)
-	files := fileArtifactIdentities(artifacts.GetFileNamesAndUuids())
-
-	return services, files, errors.Join(historicalErr, currentErr, artifactsErr)
+	return services, errors.Join(identifiersErr, currentErr)
 }
 
 func mergeServiceIdentities(
-	historical []*kurtosis_core_rpc_api_bindings.ServiceIdentifiers,
+	identifiers []*kurtosis_core_rpc_api_bindings.ServiceIdentifiers,
 	current map[string]*kurtosis_core_rpc_api_bindings.ServiceInfo,
 	currentComplete bool,
 ) []ServiceIdentity {
-	historicalStatus := "UNKNOWN"
+	unmatchedStatus := "UNKNOWN"
 	if currentComplete {
-		historicalStatus = "HISTORICAL"
+		unmatchedStatus = "HISTORICAL"
 	}
-	servicesByUUID := make(map[string]ServiceIdentity, len(historical)+len(current))
-	for _, identifier := range historical {
+	servicesByUUID := make(map[string]ServiceIdentity, len(identifiers)+len(current))
+	for _, identifier := range identifiers {
 		servicesByUUID[identifier.GetServiceUuid()] = ServiceIdentity{
 			Name:   identifier.GetName(),
 			UUID:   identifier.GetServiceUuid(),
-			Status: historicalStatus,
+			Status: unmatchedStatus,
 			Ports:  []string{"<unknown>"},
 		}
 	}
@@ -199,22 +185,6 @@ func mergeServiceIdentities(
 	return slices.SortedFunc(maps.Values(servicesByUUID), func(a, b ServiceIdentity) int {
 		return cmp.Or(cmp.Compare(a.Name, b.Name), cmp.Compare(a.UUID, b.UUID))
 	})
-}
-
-func fileArtifactIdentities(
-	artifacts []*kurtosis_core_rpc_api_bindings.FilesArtifactNameAndUuid,
-) []FilesArtifactIdentity {
-	files := make([]FilesArtifactIdentity, 0, len(artifacts))
-	for _, artifact := range artifacts {
-		files = append(files, FilesArtifactIdentity{
-			Name: artifact.GetFileName(),
-			UUID: artifact.GetFileUuid(),
-		})
-	}
-	slices.SortFunc(files, func(a, b FilesArtifactIdentity) int {
-		return cmp.Or(cmp.Compare(a.Name, b.Name), cmp.Compare(a.UUID, b.UUID))
-	})
-	return files
 }
 
 func servicePortBindings(service *kurtosis_core_rpc_api_bindings.ServiceInfo) []string {
