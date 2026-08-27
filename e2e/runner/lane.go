@@ -43,6 +43,9 @@ func (runner *Runner) acquireLane(ctx context.Context, plan runPlan, lane laneRu
 		if err != nil {
 			return laneLease{}, fmt.Errorf("inspect network: %w", err)
 		}
+		if environment.Backend == "" {
+			environment.Backend = runner.configuration.Backend
+		}
 		return laneLease{environment: environment}, nil
 	}
 
@@ -137,7 +140,6 @@ func (runner *Runner) executeLane(ctx context.Context, plan runPlan, lane laneRu
 	stderr := io.MultiWriter(runner.stderr, laneLog)
 	executionImage := ""
 	if definition.NeedsExecutionImage() {
-		lease.environment.Backend = runner.configuration.Backend
 		resolveCtx, cancelResolve := context.WithTimeout(ctx, executionImageResolutionTimeout)
 		executionImage, err = runner.resolveExecutionImage(resolveCtx, lease.environment)
 		cancelResolve()

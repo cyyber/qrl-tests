@@ -590,6 +590,27 @@ func TestAttachBuildsCommandWithoutProvisioning(t *testing.T) {
 	require.Equal(t, imageID, written.ExecutionImage)
 }
 
+func TestAttachRecordsBackend(t *testing.T) {
+	reports := t.TempDir()
+	runner := New(Config{
+		BaseName:  "qrl-tests",
+		ReportDir: reports,
+		Backend:   devnet.BackendDocker,
+		Suites:    []string{executionABISuite},
+	}, io.Discard, io.Discard)
+	runner.networks = new(recordingNetworks)
+	runner.runCommand = func(context.Context, commandSpec) error {
+		writeGinkgoReport(t, filepath.Join(reports, "lanes", executionLaneName), types.SpecStatePassed)
+		return nil
+	}
+
+	require.NoError(t, runner.Test(t.Context(), executionLaneName))
+	written, err := manifest.Read(filepath.Join(reports, "lanes", executionLaneName, manifest.FileName))
+	require.NoError(t, err)
+	require.Equal(t, devnet.BackendDocker, written.Environment.Backend)
+	require.Empty(t, written.ExecutionImage)
+}
+
 func TestAttachRejectsCustomParameters(t *testing.T) {
 	runner := New(Config{Parameters: []byte(`{}`)}, io.Discard, io.Discard)
 	require.ErrorContains(t, runner.Test(t.Context(), executionLaneName), "existing network")
