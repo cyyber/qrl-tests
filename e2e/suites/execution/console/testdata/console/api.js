@@ -1,24 +1,6 @@
 var suite = createConsoleSuite("api");
 var check = suite.check;
 
-function requireHexQuantity(name, value) {
-    if (typeof value !== "string" || !/^0x(?:0|[1-9a-fA-F][0-9a-fA-F]*)$/.test(value)) {
-        throw new Error(name + " is not a hex quantity: " + value);
-    }
-}
-
-function requireHash(name, value) {
-    if (typeof value !== "string" || !/^0x[0-9a-f]{64}$/i.test(value)) {
-        throw new Error(name + " is not a 32-byte hash: " + value);
-    }
-}
-
-function requireAddress(name, value) {
-    if (typeof value !== "string" || !/^Q[0-9a-fA-F]{128}$/.test(value)) {
-        throw new Error(name + " is not a QRL address: " + value);
-    }
-}
-
 check("block APIs agree", function () {
     var blockNumber = qrl.blockNumber;
     if (typeof blockNumber !== "number" || blockNumber <= 0) {
@@ -67,11 +49,9 @@ check("provider dispatch and console namespaces respond", function () {
 
 check("qrl.chainId matches the network ID", function () {
     var chainID = qrl.chainId();
-    requireHexQuantity("qrl.chainId", chainID);
-    var chainIDDecimal = web3.toBigNumber(chainID).toString(10);
-    var networkIDDecimal = web3.toBigNumber(net.version).toString(10);
-    if (chainIDDecimal !== networkIDDecimal) {
-        throw new Error("chain ID " + chainIDDecimal + " does not match network ID " + networkIDDecimal);
+    var expected = "0x" + web3.toBigNumber(net.version).toString(16);
+    if (chainID !== expected) {
+        throw new Error("unexpected chain ID: got " + chainID + ", want " + expected);
     }
 });
 

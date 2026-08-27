@@ -49,7 +49,7 @@ func TestParseSuiteResult(t *testing.T) {
 }
 
 func TestConsoleFixtures(t *testing.T) {
-	for _, name := range []string{"api.js", "harness.js"} {
+	for _, name := range []string{"api.js", "assertions.js", "harness.js"} {
 		_, err := fs.Stat(consoleFixtures, "testdata/console/"+name)
 		require.NoErrorf(t, err, "%s", name)
 	}
@@ -181,6 +181,7 @@ func (client *fakeDockerClient) ContainerRemove(
 func TestDockerConsoleEngine(t *testing.T) {
 	jsPath := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(jsPath, "harness.js"), []byte("fixture"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(jsPath, "assertions.js"), []byte("assertions"), 0o600))
 	client := &fakeDockerClient{}
 	t.Cleanup(func() {
 		if client.serverConn != nil {
@@ -202,7 +203,7 @@ func TestDockerConsoleEngine(t *testing.T) {
 		"attach",
 		"--datadir", "/tmp/qrl-tests-console",
 		"--jspath", "/tmp/qrl-tests-js",
-		"--exec", "loadScript('harness.js');loadScript('api.js')",
+		"--exec", "loadScript('harness.js');loadScript('assertions.js');loadScript('api.js')",
 		"http://host.docker.internal:8545",
 	}, client.createOptions.Config.Cmd)
 	require.True(t, client.createOptions.Config.AttachStdout)
@@ -227,6 +228,7 @@ func TestDockerConsoleEngine(t *testing.T) {
 		contents[header.Name] = string(content)
 	}
 	require.Equal(t, "fixture", contents["qrl-tests-js/harness.js"])
+	require.Equal(t, "assertions", contents["qrl-tests-js/assertions.js"])
 
 	process, err := engine.start(t.Context(), containerID)
 	require.NoError(t, err)

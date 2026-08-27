@@ -122,7 +122,7 @@ func (engine dockerConsoleEngine) create(ctx context.Context, spec consoleContai
 		"attach",
 		"--datadir", consoleContainerDataDir,
 		"--jspath", consoleContainerJSPath,
-		"--exec", "loadScript('harness.js');loadScript('" + spec.scenario + ".js')",
+		"--exec", "loadScript('harness.js');loadScript('assertions.js');loadScript('" + spec.scenario + ".js')",
 	}
 	arguments = append(arguments, endpoint)
 
