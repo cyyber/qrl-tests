@@ -3,7 +3,6 @@
 package console
 
 import (
-	"path/filepath"
 	"testing"
 
 	"github.com/cyyber/qrl-tests/e2e/internal/live"
@@ -36,7 +35,7 @@ var _ = ginkgo.Describe(
 
 			gomega.Expect(node.ExecutionImage).NotTo(gomega.BeEmpty())
 
-			jsPath = filepath.Join(ginkgo.GinkgoT().TempDir(), "js")
+			jsPath = ginkgo.GinkgoT().TempDir()
 			ginkgo.By("preparing the console scripts")
 			gomega.Expect(prepareWorkspace(jsPath)).To(gomega.Succeed())
 		})
