@@ -57,6 +57,56 @@ func TestServicePortBindings(t *testing.T) {
 	require.Equal(t, []string{"<none>"}, servicePortBindings(new(kurtosis_core_rpc_api_bindings.ServiceInfo)))
 }
 
+func TestMergeServiceIdentities(t *testing.T) {
+	historical := []*kurtosis_core_rpc_api_bindings.ServiceIdentifiers{
+		{Name: "zeta", ServiceUuid: "historical-only"},
+		{Name: "stale-name", ServiceUuid: "shared"},
+		{Name: "same", ServiceUuid: "z"},
+		{Name: "same", ServiceUuid: "a"},
+	}
+	current := map[string]*kurtosis_core_rpc_api_bindings.ServiceInfo{
+		"shared": {
+			Name:        "alpha",
+			ServiceUuid: "shared",
+			Container: &kurtosis_core_rpc_api_bindings.Container{
+				Status: kurtosis_core_rpc_api_bindings.Container_RUNNING,
+			},
+		},
+	}
+
+	for _, test := range []struct {
+		name             string
+		currentComplete  bool
+		historicalStatus string
+	}{
+		{name: "complete current set", currentComplete: true, historicalStatus: "HISTORICAL"},
+		{name: "incomplete current set", historicalStatus: "UNKNOWN"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			require.Equal(t, []ServiceIdentity{
+				{Name: "alpha", UUID: "shared", Status: "RUNNING", Ports: []string{"<none>"}},
+				{Name: "same", UUID: "a", Status: test.historicalStatus, Ports: []string{"<unknown>"}},
+				{Name: "same", UUID: "z", Status: test.historicalStatus, Ports: []string{"<unknown>"}},
+				{Name: "zeta", UUID: "historical-only", Status: test.historicalStatus, Ports: []string{"<unknown>"}},
+			}, mergeServiceIdentities(historical, current, test.currentComplete))
+		})
+	}
+}
+
+func TestFileArtifactIdentities(t *testing.T) {
+	artifacts := []*kurtosis_core_rpc_api_bindings.FilesArtifactNameAndUuid{
+		{FileName: "zeta", FileUuid: "z"},
+		{FileName: "alpha", FileUuid: "b"},
+		{FileName: "alpha", FileUuid: "a"},
+	}
+
+	require.Equal(t, []FilesArtifactIdentity{
+		{Name: "alpha", UUID: "a"},
+		{Name: "alpha", UUID: "b"},
+		{Name: "zeta", UUID: "z"},
+	}, fileArtifactIdentities(artifacts))
+}
+
 func TestInspectEnclaveStoppedAPI(t *testing.T) {
 	info := &kurtosis_engine_rpc_api_bindings.EnclaveInfo{
 		Name:               "test-enclave",

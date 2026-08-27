@@ -1,6 +1,7 @@
 package kurtosis
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -8,7 +9,6 @@ import (
 	"maps"
 	"net"
 	"slices"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -56,15 +56,13 @@ type getServiceLogsFunc func(
 	arguments *kurtosis_engine_rpc_api_bindings.GetServiceLogsArgs,
 ) (serviceLogsStream, error)
 
-// DiagnosticsClient owns the direct engine connection used to collect
-// inspection data and retained logs independently of EnclaveClient.
+// DiagnosticsClient collects enclave metadata and retained service logs from Kurtosis.
 type DiagnosticsClient struct {
 	engine     kurtosis_engine_rpc_api_bindings.EngineServiceClient
 	connection *grpc.ClientConn
 }
 
-// NewDiagnosticsClient opens the direct engine connection used by one
-// diagnostics collection.
+// NewDiagnosticsClient creates a direct client for the local Kurtosis engine.
 func NewDiagnosticsClient() (*DiagnosticsClient, error) {
 	connection, err := newGRPCConnection(localEngineAddress())
 	if err != nil {
@@ -80,7 +78,8 @@ func (client *DiagnosticsClient) Close() error {
 	return client.connection.Close()
 }
 
-// Inspect returns enclave metadata and the identifiers needed for diagnostics.
+// Inspect returns metadata for the named running enclave. It may return partial
+// metadata with an error.
 func (client *DiagnosticsClient) Inspect(
 	ctx context.Context,
 	enclaveName string,
@@ -110,29 +109,25 @@ func inspectEnclave(
 		Status: strings.TrimPrefix(info.GetContainersStatus().String(), "EnclaveContainersStatus_"),
 		Mode:   info.GetMode().String(),
 	}
-	var inspectionErrors []error
+	var creationTimeErr error
 	if created := info.GetCreationTime(); created != nil {
 		inspection.CreationTime = created.AsTime()
 	} else {
-		inspectionErrors = append(inspectionErrors, errors.New("Kurtosis enclave has no creation time"))
+		creationTimeErr = errors.New("Kurtosis enclave has no creation time")
 	}
 	apiStatus := info.GetApiContainerStatus()
 	if apiStatus != kurtosis_engine_rpc_api_bindings.EnclaveAPIContainerStatus_EnclaveAPIContainerStatus_RUNNING {
 		status := strings.TrimPrefix(apiStatus.String(), "EnclaveAPIContainerStatus_")
-		inspectionErrors = append(
-			inspectionErrors,
+		return inspection, errors.Join(
+			creationTimeErr,
 			fmt.Errorf("Kurtosis enclave API container is not running: %s", status),
 		)
-		return inspection, errors.Join(inspectionErrors...)
 	}
 
-	services, artifacts, err := inspectEnclaveContents(ctx, info)
+	services, artifacts, contentsErr := inspectEnclaveContents(ctx, info)
 	inspection.Services = services
 	inspection.FilesArtifacts = artifacts
-	if err != nil {
-		inspectionErrors = append(inspectionErrors, err)
-	}
-	return inspection, errors.Join(inspectionErrors...)
+	return inspection, errors.Join(creationTimeErr, contentsErr)
 }
 
 func inspectEnclaveContents(
@@ -165,12 +160,27 @@ func inspectEnclaveContents(
 		artifactsErr = fmt.Errorf("get Kurtosis files artifacts: %w", artifactsErr)
 	}
 
+	services := mergeServiceIdentities(
+		historical.GetAllIdentifiers(),
+		current.GetServiceInfo(),
+		currentErr == nil,
+	)
+	files := fileArtifactIdentities(artifacts.GetFileNamesAndUuids())
+
+	return services, files, errors.Join(historicalErr, currentErr, artifactsErr)
+}
+
+func mergeServiceIdentities(
+	historical []*kurtosis_core_rpc_api_bindings.ServiceIdentifiers,
+	current map[string]*kurtosis_core_rpc_api_bindings.ServiceInfo,
+	currentComplete bool,
+) []ServiceIdentity {
 	historicalStatus := "UNKNOWN"
-	if currentErr == nil {
+	if currentComplete {
 		historicalStatus = "HISTORICAL"
 	}
-	servicesByUUID := make(map[string]ServiceIdentity)
-	for _, identifier := range historical.GetAllIdentifiers() {
+	servicesByUUID := make(map[string]ServiceIdentity, len(historical)+len(current))
+	for _, identifier := range historical {
 		servicesByUUID[identifier.GetServiceUuid()] = ServiceIdentity{
 			Name:   identifier.GetName(),
 			UUID:   identifier.GetServiceUuid(),
@@ -178,7 +188,7 @@ func inspectEnclaveContents(
 			Ports:  []string{"<unknown>"},
 		}
 	}
-	for _, service := range current.GetServiceInfo() {
+	for _, service := range current {
 		servicesByUUID[service.GetServiceUuid()] = ServiceIdentity{
 			Name:   service.GetName(),
 			UUID:   service.GetServiceUuid(),
@@ -186,26 +196,25 @@ func inspectEnclaveContents(
 			Ports:  servicePortBindings(service),
 		}
 	}
-	services := slices.Collect(maps.Values(servicesByUUID))
-	sort.Slice(services, func(i, j int) bool {
-		if services[i].Name == services[j].Name {
-			return services[i].UUID < services[j].UUID
-		}
-		return services[i].Name < services[j].Name
+	return slices.SortedFunc(maps.Values(servicesByUUID), func(a, b ServiceIdentity) int {
+		return cmp.Or(cmp.Compare(a.Name, b.Name), cmp.Compare(a.UUID, b.UUID))
 	})
+}
 
-	files := make([]FilesArtifactIdentity, 0, len(artifacts.GetFileNamesAndUuids()))
-	for _, artifact := range artifacts.GetFileNamesAndUuids() {
+func fileArtifactIdentities(
+	artifacts []*kurtosis_core_rpc_api_bindings.FilesArtifactNameAndUuid,
+) []FilesArtifactIdentity {
+	files := make([]FilesArtifactIdentity, 0, len(artifacts))
+	for _, artifact := range artifacts {
 		files = append(files, FilesArtifactIdentity{
 			Name: artifact.GetFileName(),
 			UUID: artifact.GetFileUuid(),
 		})
 	}
-	sort.Slice(files, func(i, j int) bool {
-		return files[i].Name < files[j].Name
+	slices.SortFunc(files, func(a, b FilesArtifactIdentity) int {
+		return cmp.Or(cmp.Compare(a.Name, b.Name), cmp.Compare(a.UUID, b.UUID))
 	})
-
-	return services, files, errors.Join(historicalErr, currentErr, artifactsErr)
+	return files
 }
 
 func servicePortBindings(service *kurtosis_core_rpc_api_bindings.ServiceInfo) []string {
@@ -238,8 +247,9 @@ func servicePortBindings(service *kurtosis_core_rpc_api_bindings.ServiceInfo) []
 	return result
 }
 
-// ServiceLogs streams all available log lines for every UUID to consume and
-// returns the requested UUIDs the engine could not find.
+// ServiceLogs streams all retained log lines for the requested service UUIDs.
+// Missing UUIDs are authoritative only after a clean EOF; on stream failure,
+// ServiceLogs returns a nil map because earlier not-found responses are provisional.
 func (client *DiagnosticsClient) ServiceLogs(
 	ctx context.Context,
 	enclaveName string,
