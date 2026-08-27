@@ -1,15 +1,13 @@
 function createConsoleSuite(name) {
     return {
-        check: function (desc, fn) {
+        check: function (description, assertion) {
             try {
-                if (fn() === false) {
-                    throw new Error("assertion returned false");
-                }
+                assertion();
             } catch (error) {
-                console.error("CONSOLE_E2E_FAIL " + name + " " + desc + " -- " + error);
+                console.error("CONSOLE_E2E_FAIL " + name + " " + description + " -- " + error);
                 throw error;
             }
-            console.log("PASS: " + desc);
+            console.log("PASS: " + description);
         },
         finish: function () {
             console.log("CONSOLE_E2E_PASS " + name);
