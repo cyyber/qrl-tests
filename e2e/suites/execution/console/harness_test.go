@@ -11,9 +11,7 @@ import (
 	"io/fs"
 	"net"
 	"net/url"
-	"os"
 	"path"
-	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -32,7 +30,7 @@ const (
 	consoleContainerDataDir        = "/tmp/qrl-tests-console"
 	consoleContainerHost           = "host.docker.internal"
 	consoleContainerCleanupTimeout = 30 * time.Second
-	watchedSuiteExitTimeout        = 5 * time.Second
+	consoleProcessExitTimeout      = 5 * time.Second
 )
 
 //go:embed testdata/console/*.js
@@ -46,7 +44,7 @@ type consoleContainerSpec struct {
 
 type consoleContainerEngine interface {
 	create(context.Context, consoleContainerSpec) (string, error)
-	copyFixtures(context.Context, string, string) error
+	copyFixtures(context.Context, string) error
 	start(context.Context, string) (consoleContainerProcess, error)
 	remove(context.Context, string) error
 }
@@ -147,12 +145,8 @@ func (engine dockerConsoleEngine) create(ctx context.Context, spec consoleContai
 	return created.ID, nil
 }
 
-func (engine dockerConsoleEngine) copyFixtures(ctx context.Context, containerID, jsPath string) error {
-	jsPath, err := filepath.Abs(jsPath)
-	if err != nil {
-		return fmt.Errorf("resolve console fixture directory: %w", err)
-	}
-	archive, err := consoleFixtureArchive(jsPath)
+func (engine dockerConsoleEngine) copyFixtures(ctx context.Context, containerID string) error {
+	archive, err := consoleFixtureArchive()
 	if err != nil {
 		return err
 	}
@@ -165,50 +159,45 @@ func (engine dockerConsoleEngine) copyFixtures(ctx context.Context, containerID,
 	return nil
 }
 
-func consoleFixtureArchive(jsPath string) ([]byte, error) {
+func consoleFixtureArchive() ([]byte, error) {
+	fixtures, err := fs.Sub(consoleFixtures, "testdata/console")
+	if err != nil {
+		return nil, fmt.Errorf("open console fixtures: %w", err)
+	}
+	entries, err := fs.ReadDir(fixtures, ".")
+	if err != nil {
+		return nil, fmt.Errorf("read console fixtures: %w", err)
+	}
+
 	var archive bytes.Buffer
 	writer := tar.NewWriter(&archive)
-	err := filepath.WalkDir(jsPath, func(filePath string, entry fs.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-		info, err := entry.Info()
-		if err != nil {
-			return err
-		}
-		var link string
-		if info.Mode()&os.ModeSymlink != 0 {
-			link, err = os.Readlink(filePath)
-			if err != nil {
-				return err
-			}
-		}
-		header, err := tar.FileInfoHeader(info, link)
-		if err != nil {
-			return err
-		}
-		relative, err := filepath.Rel(jsPath, filePath)
-		if err != nil {
-			return err
-		}
-		header.Name = path.Join(path.Base(consoleContainerJSPath), filepath.ToSlash(relative))
-		if err := writer.WriteHeader(header); err != nil {
-			return err
-		}
-		if !info.Mode().IsRegular() {
-			return nil
-		}
-		file, err := os.Open(filePath)
-		if err != nil {
-			return err
-		}
-		_, copyErr := io.Copy(writer, file)
-		closeErr := file.Close()
-		return errors.Join(copyErr, closeErr)
-	})
-	if err != nil {
-		_ = writer.Close()
+	fixtureDirectory := path.Base(consoleContainerJSPath)
+	if err := writer.WriteHeader(&tar.Header{
+		Name:     fixtureDirectory,
+		Mode:     0o755,
+		Typeflag: tar.TypeDir,
+	}); err != nil {
 		return nil, fmt.Errorf("archive console fixtures: %w", err)
+	}
+	for _, entry := range entries {
+		if !entry.Type().IsRegular() {
+			continue
+		}
+		contents, err := fs.ReadFile(fixtures, entry.Name())
+		if err != nil {
+			return nil, fmt.Errorf("read console fixture %s: %w", entry.Name(), err)
+		}
+		if err := writer.WriteHeader(&tar.Header{
+			Name:     path.Join(fixtureDirectory, entry.Name()),
+			Mode:     0o644,
+			Size:     int64(len(contents)),
+			Typeflag: tar.TypeReg,
+		}); err != nil {
+			return nil, fmt.Errorf("archive console fixture %s: %w", entry.Name(), err)
+		}
+		if _, err := writer.Write(contents); err != nil {
+			return nil, fmt.Errorf("archive console fixture %s: %w", entry.Name(), err)
+		}
 	}
 	if err := writer.Close(); err != nil {
 		return nil, fmt.Errorf("archive console fixtures: %w", err)
@@ -291,7 +280,7 @@ func removeConsoleContainer(engine consoleContainerEngine, containerID, scenario
 	return nil
 }
 
-func runSuite(ctx context.Context, image, jsPath, rpcURL, name string) (result error) {
+func runSuite(ctx context.Context, image, rpcURL, name string) (result error) {
 	engine, closer, err := newDockerConsoleEngine()
 	if err != nil {
 		return err
@@ -299,13 +288,12 @@ func runSuite(ctx context.Context, image, jsPath, rpcURL, name string) (result e
 	defer func() {
 		result = errors.Join(result, closer.Close())
 	}()
-	return runSuiteWithEngine(ctx, image, jsPath, rpcURL, name, engine)
+	return runSuiteWithEngine(ctx, image, rpcURL, name, engine)
 }
 
 func runSuiteWithEngine(
 	ctx context.Context,
 	image string,
-	jsPath string,
 	rpcURL string,
 	name string,
 	engine consoleContainerEngine,
@@ -322,7 +310,7 @@ func runSuiteWithEngine(
 	defer func() {
 		result = errors.Join(result, removeConsoleContainer(engine, containerID, spec.scenario))
 	}()
-	if err := engine.copyFixtures(ctx, containerID, jsPath); err != nil {
+	if err := engine.copyFixtures(ctx, containerID); err != nil {
 		return fmt.Errorf("copy console suite %s fixtures: %w", spec.scenario, err)
 	}
 
@@ -335,7 +323,7 @@ func runSuiteWithEngine(
 }
 
 func runSuiteProcess(ctx context.Context, process consoleContainerProcess, name string) error {
-	var output synchronizedBuffer
+	var output bytes.Buffer
 	outputDone := make(chan error, 1)
 	go func() {
 		outputDone <- process.readOutput(&output)
@@ -381,7 +369,7 @@ func waitForConsoleExit(
 	process consoleContainerProcess,
 	processDone <-chan error,
 ) error {
-	timer := time.NewTimer(watchedSuiteExitTimeout)
+	timer := time.NewTimer(consoleProcessExitTimeout)
 	defer timer.Stop()
 	select {
 	case err := <-processDone:
@@ -400,7 +388,7 @@ func waitForConsoleOutput(
 	process consoleContainerProcess,
 	outputDone <-chan error,
 ) error {
-	timer := time.NewTimer(watchedSuiteExitTimeout)
+	timer := time.NewTimer(consoleProcessExitTimeout)
 	defer timer.Stop()
 	select {
 	case err := <-outputDone:
@@ -411,27 +399,10 @@ func waitForConsoleOutput(
 	case <-timer.C:
 		process.close()
 		return errors.Join(
-			fmt.Errorf("console output stream did not close within %s", watchedSuiteExitTimeout),
+			fmt.Errorf("console output stream did not close within %s", consoleProcessExitTimeout),
 			<-outputDone,
 		)
 	}
-}
-
-type synchronizedBuffer struct {
-	lock sync.Mutex
-	data bytes.Buffer
-}
-
-func (buffer *synchronizedBuffer) Write(data []byte) (int, error) {
-	buffer.lock.Lock()
-	defer buffer.lock.Unlock()
-	return buffer.data.Write(data)
-}
-
-func (buffer *synchronizedBuffer) Bytes() []byte {
-	buffer.lock.Lock()
-	defer buffer.lock.Unlock()
-	return bytes.Clone(buffer.data.Bytes())
 }
 
 func parseSuiteResult(name string, output []byte) error {
@@ -460,15 +431,4 @@ func suiteMarkers(name string, output []byte) (successes int, failed bool) {
 		}
 	}
 	return successes, failed
-}
-
-func prepareWorkspace(destination string) error {
-	consoleScripts, err := fs.Sub(consoleFixtures, "testdata/console")
-	if err != nil {
-		return fmt.Errorf("open console fixtures: %w", err)
-	}
-	if err := os.CopyFS(destination, consoleScripts); err != nil {
-		return fmt.Errorf("copy console fixtures: %w", err)
-	}
-	return nil
 }
