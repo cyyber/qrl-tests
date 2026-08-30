@@ -12,7 +12,6 @@ import (
 	"net"
 	"net/url"
 	"path"
-	"strings"
 	"sync"
 	"time"
 
@@ -191,30 +190,18 @@ func (process *dockerConsoleProcess) close() {
 	})
 }
 
-func consoleContainerEndpoint(endpoint string) (string, error) {
-	parsed, err := url.Parse(endpoint)
+func consoleContainerEndpoint(rpcURL string) (string, error) {
+	endpoint, err := url.Parse(rpcURL)
 	if err != nil {
 		return "", fmt.Errorf("parse console endpoint: %w", err)
 	}
-	if parsed.Scheme == "" || parsed.Host == "" {
-		return "", fmt.Errorf("parse console endpoint: URL must include a scheme and host")
+	port := endpoint.Port()
+	if endpoint.Scheme == "" || endpoint.Hostname() == "" || port == "" {
+		return "", errors.New("parse console endpoint: URL must include a scheme, host, and port")
 	}
 
-	host := strings.TrimSuffix(parsed.Hostname(), ".")
-	if host == "" {
-		return "", fmt.Errorf("parse console endpoint: URL must include a host")
-	}
-	address := net.ParseIP(host)
-	if !strings.EqualFold(host, "localhost") && (address == nil || !address.IsLoopback()) {
-		return endpoint, nil
-	}
-
-	port := parsed.Port()
-	parsed.Host = consoleContainerHost
-	if port != "" {
-		parsed.Host = net.JoinHostPort(consoleContainerHost, port)
-	}
-	return parsed.String(), nil
+	endpoint.Host = net.JoinHostPort(consoleContainerHost, port)
+	return endpoint.String(), nil
 }
 
 func consoleFixtureArchive() ([]byte, error) {

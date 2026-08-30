@@ -230,7 +230,11 @@ func TestConsoleContainerEndpoint(t *testing.T) {
 		},
 		"non-loopback": {
 			endpoint: "https://rpc.example:443",
-			want:     "https://rpc.example:443",
+			want:     "https://host.docker.internal:443",
+		},
+		"missing port": {
+			endpoint: "https://rpc.example",
+			wantErr:  true,
 		},
 		"missing host": {
 			endpoint: "http:///rpc",
