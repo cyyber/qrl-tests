@@ -245,15 +245,6 @@ func consoleFixtureArchive() ([]byte, error) {
 	return archive.Bytes(), nil
 }
 
-func removeConsoleContainer(engine consoleContainerEngine, containerID, scenario string) error {
-	cleanupCtx, cancel := context.WithTimeout(context.Background(), consoleContainerCleanupTimeout)
-	defer cancel()
-	if err := engine.removeContainer(cleanupCtx, containerID); err != nil {
-		return fmt.Errorf("remove console suite %s container: %w", scenario, err)
-	}
-	return nil
-}
-
 func runSuite(ctx context.Context, image, rpcURL, name string) error {
 	client, err := dockerapi.New()
 	if err != nil {
@@ -280,7 +271,11 @@ func runSuiteWithEngine(
 		return err
 	}
 	defer func() {
-		result = errors.Join(result, removeConsoleContainer(engine, containerID, config.scenario))
+		cleanupCtx, cancel := context.WithTimeout(context.Background(), consoleContainerCleanupTimeout)
+		defer cancel()
+		if err := engine.removeContainer(cleanupCtx, containerID); err != nil {
+			result = errors.Join(result, fmt.Errorf("remove console suite %s container: %w", config.scenario, err))
+		}
 	}()
 	if err := engine.copyFixtures(ctx, containerID); err != nil {
 		return fmt.Errorf("copy console suite %s fixtures: %w", config.scenario, err)
