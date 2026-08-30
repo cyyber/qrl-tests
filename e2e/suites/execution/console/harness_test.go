@@ -36,14 +36,14 @@ const (
 //go:embed testdata/console/*.js
 var consoleFixtures embed.FS
 
-type consoleContainerSpec struct {
+type consoleContainerConfig struct {
 	image    string
-	endpoint string
+	rpcURL   string
 	scenario string
 }
 
 type consoleContainerEngine interface {
-	createContainer(context.Context, consoleContainerSpec) (string, error)
+	createContainer(context.Context, consoleContainerConfig) (string, error)
 	copyFixtures(context.Context, string) error
 	startContainer(context.Context, string) (consoleContainerProcess, error)
 	removeContainer(context.Context, string) error
@@ -102,23 +102,23 @@ func consoleContainerEndpoint(endpoint string) (string, error) {
 	return parsed.String(), nil
 }
 
-func (engine dockerConsoleEngine) createContainer(ctx context.Context, spec consoleContainerSpec) (string, error) {
-	endpoint, err := consoleContainerEndpoint(spec.endpoint)
+func (engine dockerConsoleEngine) createContainer(ctx context.Context, config consoleContainerConfig) (string, error) {
+	endpoint, err := consoleContainerEndpoint(config.rpcURL)
 	if err != nil {
-		return "", fmt.Errorf("create console suite %s container: %w", spec.scenario, err)
+		return "", fmt.Errorf("create console suite %s container: %w", config.scenario, err)
 	}
 
 	arguments := []string{
 		"attach",
 		"--datadir", consoleContainerDataDir,
 		"--jspath", consoleContainerJSPath,
-		"--exec", "loadScript('harness.js');loadScript('assertions.js');loadScript('" + spec.scenario + ".js')",
+		"--exec", "loadScript('harness.js');loadScript('assertions.js');loadScript('" + config.scenario + ".js')",
 	}
 	arguments = append(arguments, endpoint)
 
 	created, err := engine.client.ContainerCreate(ctx, dockerclient.ContainerCreateOptions{
 		Config: &containertypes.Config{
-			Image:        spec.image,
+			Image:        config.image,
 			Entrypoint:   []string{"gqrl"},
 			Cmd:          arguments,
 			AttachStdout: true,
@@ -129,10 +129,10 @@ func (engine dockerConsoleEngine) createContainer(ctx context.Context, spec cons
 		},
 	})
 	if err != nil {
-		return "", fmt.Errorf("create console suite %s container: %w", spec.scenario, err)
+		return "", fmt.Errorf("create console suite %s container: %w", config.scenario, err)
 	}
 	if created.ID == "" {
-		return "", fmt.Errorf("create console suite %s container: Docker returned no container ID", spec.scenario)
+		return "", fmt.Errorf("create console suite %s container: Docker returned no container ID", config.scenario)
 	}
 	return created.ID, nil
 }
@@ -288,28 +288,28 @@ func runSuiteWithEngine(
 	name string,
 	engine consoleContainerEngine,
 ) (result error) {
-	spec := consoleContainerSpec{
+	config := consoleContainerConfig{
 		image:    image,
-		endpoint: rpcURL,
+		rpcURL:   rpcURL,
 		scenario: name,
 	}
-	containerID, err := engine.createContainer(ctx, spec)
+	containerID, err := engine.createContainer(ctx, config)
 	if err != nil {
 		return err
 	}
 	defer func() {
-		result = errors.Join(result, removeConsoleContainer(engine, containerID, spec.scenario))
+		result = errors.Join(result, removeConsoleContainer(engine, containerID, config.scenario))
 	}()
 	if err := engine.copyFixtures(ctx, containerID); err != nil {
-		return fmt.Errorf("copy console suite %s fixtures: %w", spec.scenario, err)
+		return fmt.Errorf("copy console suite %s fixtures: %w", config.scenario, err)
 	}
 
 	process, err := engine.startContainer(ctx, containerID)
 	if err != nil {
-		return fmt.Errorf("start console suite %s: %w", spec.scenario, err)
+		return fmt.Errorf("start console suite %s: %w", config.scenario, err)
 	}
 	defer process.close()
-	return runSuiteProcess(ctx, process, spec.scenario)
+	return runSuiteProcess(ctx, process, config.scenario)
 }
 
 func runSuiteProcess(ctx context.Context, process consoleContainerProcess, name string) error {

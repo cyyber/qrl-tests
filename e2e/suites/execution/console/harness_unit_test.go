@@ -32,7 +32,7 @@ func TestParseSuiteResult(t *testing.T) {
 const fakeContainerID = "console-container"
 
 type fakeConsoleEngine struct {
-	spec             consoleContainerSpec
+	config           consoleContainerConfig
 	calls            []string
 	process          fakeConsoleProcessConfig
 	onStart          func()
@@ -48,9 +48,9 @@ func (engine *fakeConsoleEngine) copyFixtures(_ context.Context, containerID str
 	return engine.copyErr
 }
 
-func (engine *fakeConsoleEngine) createContainer(_ context.Context, spec consoleContainerSpec) (string, error) {
+func (engine *fakeConsoleEngine) createContainer(_ context.Context, config consoleContainerConfig) (string, error) {
 	engine.calls = append(engine.calls, "create")
-	engine.spec = spec
+	engine.config = config
 	if engine.createErr != nil {
 		return "", engine.createErr
 	}
@@ -158,9 +158,9 @@ func TestDockerConsoleEngine(t *testing.T) {
 	})
 	engine := dockerConsoleEngine{client: client}
 
-	containerID, err := engine.createContainer(t.Context(), consoleContainerSpec{
+	containerID, err := engine.createContainer(t.Context(), consoleContainerConfig{
 		image:    "registry.example/go-qrl@sha256:digest",
-		endpoint: "http://127.0.0.1:8545",
+		rpcURL:   "http://127.0.0.1:8545",
 		scenario: "api",
 	})
 	require.NoError(t, err)
@@ -324,11 +324,11 @@ func TestRunSuite(t *testing.T) {
 		engine,
 	)
 	require.NoError(t, err)
-	require.Equal(t, consoleContainerSpec{
+	require.Equal(t, consoleContainerConfig{
 		image:    "registry.example/go-qrl@sha256:digest",
-		endpoint: "http://127.0.0.1:8545",
+		rpcURL:   "http://127.0.0.1:8545",
 		scenario: "api",
-	}, engine.spec)
+	}, engine.config)
 	require.Equal(t, fakeConsoleLifecycle, engine.calls)
 }
 
