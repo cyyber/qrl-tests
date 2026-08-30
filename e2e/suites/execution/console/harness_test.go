@@ -272,14 +272,12 @@ func removeConsoleContainer(engine consoleContainerEngine, containerID, scenario
 	return nil
 }
 
-func runSuite(ctx context.Context, image, rpcURL, name string) (result error) {
+func runSuite(ctx context.Context, image, rpcURL, name string) error {
 	client, err := dockerapi.New()
 	if err != nil {
 		return fmt.Errorf("create Docker client: %w", err)
 	}
-	defer func() {
-		result = errors.Join(result, client.Close())
-	}()
+	defer func() { _ = client.Close() }()
 	return runSuiteWithEngine(ctx, image, rpcURL, name, dockerConsoleEngine{client: client})
 }
 
