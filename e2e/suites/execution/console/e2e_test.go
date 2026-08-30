@@ -22,7 +22,10 @@ var _ = ginkgo.Describe(
 	ginkgo.ContinueOnFailure,
 	ginkgo.Label("e2e", "console"),
 	func() {
-		var node *live.Node
+		var (
+			node           *live.Node
+			fixtureArchive []byte
+		)
 
 		ginkgo.BeforeAll(func(ctx ginkgo.SpecContext) {
 			var err error
@@ -31,11 +34,13 @@ var _ = ginkgo.Describe(
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 			gomega.Expect(node.ExecutionImage).NotTo(gomega.BeEmpty())
+			fixtureArchive, err = consoleFixtureArchive(nil)
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 		})
 
 		ginkgo.It("validates console and RPC APIs against the live network", func(ctx ginkgo.SpecContext) {
 			gomega.Expect(
-				runSuite(ctx, node.ExecutionImage, node.ExecutionRPCURL, "api"),
+				runSuite(ctx, node.ExecutionImage, node.ExecutionRPCURL, "api", fixtureArchive),
 			).To(gomega.Succeed())
 		})
 	},
