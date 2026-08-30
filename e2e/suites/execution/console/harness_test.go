@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/fs"
 	"net"
 	"net/url"
 	"path"
@@ -205,11 +204,7 @@ func consoleContainerEndpoint(rpcURL string) (string, error) {
 }
 
 func consoleFixtureArchive() ([]byte, error) {
-	fixtures, err := fs.Sub(consoleFixtures, "testdata/console")
-	if err != nil {
-		return nil, fmt.Errorf("open console fixtures: %w", err)
-	}
-	entries, err := fs.ReadDir(fixtures, ".")
+	entries, err := consoleFixtures.ReadDir("testdata/console")
 	if err != nil {
 		return nil, fmt.Errorf("read console fixtures: %w", err)
 	}
@@ -228,7 +223,7 @@ func consoleFixtureArchive() ([]byte, error) {
 		if !entry.Type().IsRegular() {
 			continue
 		}
-		contents, err := fs.ReadFile(fixtures, entry.Name())
+		contents, err := consoleFixtures.ReadFile(path.Join("testdata/console", entry.Name()))
 		if err != nil {
 			return nil, fmt.Errorf("read console fixture %s: %w", entry.Name(), err)
 		}
@@ -322,12 +317,11 @@ func runSuiteProcess(ctx context.Context, process consoleContainerProcess, name 
 		}
 	case <-ctx.Done():
 		process.close()
-		processErr = ctx.Err()
 		outputErr = <-outputDone
 	}
 	resultOutput := output.Bytes()
-	if ctx.Err() != nil {
-		return fmt.Errorf("console suite %s: %w\n%s", name, ctx.Err(), resultOutput)
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("console suite %s: %w\n%s", name, err, resultOutput)
 	}
 	if processErr != nil {
 		return fmt.Errorf("run console suite %s: %w\n%s", name, processErr, resultOutput)
@@ -383,29 +377,22 @@ func waitForConsoleOutput(
 }
 
 func parseSuiteResult(name string, output []byte) error {
-	matches, failed := suiteMarkers(name, output)
-	if failed {
-		return fmt.Errorf("console suite %s emitted a failure marker", name)
-	}
-	if matches != 1 {
-		return fmt.Errorf("console suite %s emitted %d success markers", name, matches)
-	}
-	return nil
-}
-
-func suiteMarkers(name string, output []byte) (successes int, failed bool) {
 	successMarker := []byte(resultPrefix + name)
 	failureMarker := []byte(failurePrefix + name)
 	failureDetailPrefix := []byte(failurePrefix + name + " ")
+	successes := 0
 	for _, line := range bytes.Split(output, []byte{'\n'}) {
 		line = bytes.TrimSpace(line)
 		if bytes.Equal(line, failureMarker) ||
 			bytes.HasPrefix(line, failureDetailPrefix) {
-			failed = true
+			return fmt.Errorf("console suite %s emitted a failure marker", name)
 		}
 		if bytes.Equal(line, successMarker) {
 			successes++
 		}
 	}
-	return successes, failed
+	if successes != 1 {
+		return fmt.Errorf("console suite %s emitted %d success markers", name, successes)
+	}
+	return nil
 }

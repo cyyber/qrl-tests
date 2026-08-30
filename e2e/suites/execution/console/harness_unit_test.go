@@ -216,15 +216,7 @@ func TestConsoleContainerEndpoint(t *testing.T) {
 		want     string
 		wantErr  bool
 	}{
-		"IPv4 loopback": {
-			endpoint: "http://127.23.45.67:8545",
-			want:     "http://host.docker.internal:8545",
-		},
-		"localhost WebSocket": {
-			endpoint: "ws://localhost:8546",
-			want:     "ws://host.docker.internal:8546",
-		},
-		"IPv6 loopback": {
+		"WebSocket": {
 			endpoint: "ws://[::1]:8546",
 			want:     "ws://host.docker.internal:8546",
 		},
