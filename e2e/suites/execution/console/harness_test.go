@@ -43,10 +43,10 @@ type consoleContainerSpec struct {
 }
 
 type consoleContainerEngine interface {
-	create(context.Context, consoleContainerSpec) (string, error)
+	createContainer(context.Context, consoleContainerSpec) (string, error)
 	copyFixtures(context.Context, string) error
-	start(context.Context, string) (consoleContainerProcess, error)
-	remove(context.Context, string) error
+	startContainer(context.Context, string) (consoleContainerProcess, error)
+	removeContainer(context.Context, string) error
 }
 
 type consoleContainerProcess interface {
@@ -102,7 +102,7 @@ func consoleContainerEndpoint(endpoint string) (string, error) {
 	return parsed.String(), nil
 }
 
-func (engine dockerConsoleEngine) create(ctx context.Context, spec consoleContainerSpec) (string, error) {
+func (engine dockerConsoleEngine) createContainer(ctx context.Context, spec consoleContainerSpec) (string, error) {
 	endpoint, err := consoleContainerEndpoint(spec.endpoint)
 	if err != nil {
 		return "", fmt.Errorf("create console suite %s container: %w", spec.scenario, err)
@@ -197,7 +197,7 @@ func consoleFixtureArchive() ([]byte, error) {
 	return archive.Bytes(), nil
 }
 
-func (engine dockerConsoleEngine) start(
+func (engine dockerConsoleEngine) startContainer(
 	ctx context.Context,
 	containerID string,
 ) (consoleContainerProcess, error) {
@@ -256,7 +256,7 @@ func (process *dockerConsoleProcess) close() {
 	})
 }
 
-func (engine dockerConsoleEngine) remove(ctx context.Context, containerID string) error {
+func (engine dockerConsoleEngine) removeContainer(ctx context.Context, containerID string) error {
 	if _, err := engine.client.ContainerRemove(ctx, containerID, dockerclient.ContainerRemoveOptions{Force: true}); err != nil {
 		return fmt.Errorf("remove Docker container: %w", err)
 	}
@@ -266,7 +266,7 @@ func (engine dockerConsoleEngine) remove(ctx context.Context, containerID string
 func removeConsoleContainer(engine consoleContainerEngine, containerID, scenario string) error {
 	cleanupCtx, cancel := context.WithTimeout(context.Background(), consoleContainerCleanupTimeout)
 	defer cancel()
-	if err := engine.remove(cleanupCtx, containerID); err != nil {
+	if err := engine.removeContainer(cleanupCtx, containerID); err != nil {
 		return fmt.Errorf("remove console suite %s container: %w", scenario, err)
 	}
 	return nil
@@ -293,7 +293,7 @@ func runSuiteWithEngine(
 		endpoint: rpcURL,
 		scenario: name,
 	}
-	containerID, err := engine.create(ctx, spec)
+	containerID, err := engine.createContainer(ctx, spec)
 	if err != nil {
 		return err
 	}
@@ -304,7 +304,7 @@ func runSuiteWithEngine(
 		return fmt.Errorf("copy console suite %s fixtures: %w", spec.scenario, err)
 	}
 
-	process, err := engine.start(ctx, containerID)
+	process, err := engine.startContainer(ctx, containerID)
 	if err != nil {
 		return fmt.Errorf("start console suite %s: %w", spec.scenario, err)
 	}

@@ -48,7 +48,7 @@ func (engine *fakeConsoleEngine) copyFixtures(_ context.Context, containerID str
 	return engine.copyErr
 }
 
-func (engine *fakeConsoleEngine) create(_ context.Context, spec consoleContainerSpec) (string, error) {
+func (engine *fakeConsoleEngine) createContainer(_ context.Context, spec consoleContainerSpec) (string, error) {
 	engine.calls = append(engine.calls, "create")
 	engine.spec = spec
 	if engine.createErr != nil {
@@ -57,7 +57,7 @@ func (engine *fakeConsoleEngine) create(_ context.Context, spec consoleContainer
 	return fakeContainerID, nil
 }
 
-func (engine *fakeConsoleEngine) start(
+func (engine *fakeConsoleEngine) startContainer(
 	ctx context.Context,
 	containerID string,
 ) (consoleContainerProcess, error) {
@@ -72,7 +72,7 @@ func (engine *fakeConsoleEngine) start(
 	return process, nil
 }
 
-func (engine *fakeConsoleEngine) remove(ctx context.Context, containerID string) error {
+func (engine *fakeConsoleEngine) removeContainer(ctx context.Context, containerID string) error {
 	engine.calls = append(engine.calls, "remove:"+containerID)
 	engine.removeContextErr = ctx.Err()
 	return engine.removeErr
@@ -158,7 +158,7 @@ func TestDockerConsoleEngine(t *testing.T) {
 	})
 	engine := dockerConsoleEngine{client: client}
 
-	containerID, err := engine.create(t.Context(), consoleContainerSpec{
+	containerID, err := engine.createContainer(t.Context(), consoleContainerSpec{
 		image:    "registry.example/go-qrl@sha256:digest",
 		endpoint: "http://127.0.0.1:8545",
 		scenario: "api",
@@ -202,11 +202,11 @@ func TestDockerConsoleEngine(t *testing.T) {
 		require.Equal(t, string(expected), contents["qrl-tests-js/"+name])
 	}
 
-	process, err := engine.start(t.Context(), containerID)
+	process, err := engine.startContainer(t.Context(), containerID)
 	require.NoError(t, err)
 	require.NoError(t, process.wait())
 	process.close()
-	require.NoError(t, engine.remove(t.Context(), containerID))
+	require.NoError(t, engine.removeContainer(t.Context(), containerID))
 	require.Equal(t, []string{"create", "copy", "attach", "wait:next-exit", "start", "remove:true"}, client.calls)
 }
 
