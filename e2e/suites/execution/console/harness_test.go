@@ -68,40 +68,6 @@ type dockerConsoleEngine struct {
 	client consoleDockerClient
 }
 
-type dockerConsoleProcess struct {
-	ctx       context.Context
-	cancel    context.CancelFunc
-	attach    dockerclient.ContainerAttachResult
-	waiter    dockerclient.ContainerWaitResult
-	closeOnce sync.Once
-}
-
-func consoleContainerEndpoint(endpoint string) (string, error) {
-	parsed, err := url.Parse(endpoint)
-	if err != nil {
-		return "", fmt.Errorf("parse console endpoint: %w", err)
-	}
-	if parsed.Scheme == "" || parsed.Host == "" {
-		return "", fmt.Errorf("parse console endpoint: URL must include a scheme and host")
-	}
-
-	host := strings.TrimSuffix(parsed.Hostname(), ".")
-	if host == "" {
-		return "", fmt.Errorf("parse console endpoint: URL must include a host")
-	}
-	address := net.ParseIP(host)
-	if !strings.EqualFold(host, "localhost") && (address == nil || !address.IsLoopback()) {
-		return endpoint, nil
-	}
-
-	port := parsed.Port()
-	parsed.Host = consoleContainerHost
-	if port != "" {
-		parsed.Host = net.JoinHostPort(consoleContainerHost, port)
-	}
-	return parsed.String(), nil
-}
-
 func (engine dockerConsoleEngine) createContainer(ctx context.Context, config consoleContainerConfig) (string, error) {
 	endpoint, err := consoleContainerEndpoint(config.rpcURL)
 	if err != nil {
@@ -151,6 +117,106 @@ func (engine dockerConsoleEngine) copyFixtures(ctx context.Context, containerID 
 	return nil
 }
 
+func (engine dockerConsoleEngine) startContainer(
+	ctx context.Context,
+	containerID string,
+) (consoleContainerProcess, error) {
+	processCtx, cancel := context.WithCancel(ctx)
+	attached, err := engine.client.ContainerAttach(processCtx, containerID, dockerclient.ContainerAttachOptions{
+		Stream: true,
+		Stdout: true,
+		Stderr: true,
+	})
+	if err != nil {
+		cancel()
+		return nil, fmt.Errorf("attach to console container: %w", err)
+	}
+	waiter := engine.client.ContainerWait(processCtx, containerID, dockerclient.ContainerWaitOptions{
+		Condition: containertypes.WaitConditionNextExit,
+	})
+	if _, err := engine.client.ContainerStart(processCtx, containerID, dockerclient.ContainerStartOptions{}); err != nil {
+		cancel()
+		attached.Close()
+		return nil, fmt.Errorf("start console container: %w", err)
+	}
+	return &dockerConsoleProcess{
+		ctx:    processCtx,
+		cancel: cancel,
+		attach: attached,
+		waiter: waiter,
+	}, nil
+}
+
+func (engine dockerConsoleEngine) removeContainer(ctx context.Context, containerID string) error {
+	if _, err := engine.client.ContainerRemove(ctx, containerID, dockerclient.ContainerRemoveOptions{Force: true}); err != nil {
+		return fmt.Errorf("remove Docker container: %w", err)
+	}
+	return nil
+}
+
+type dockerConsoleProcess struct {
+	ctx       context.Context
+	cancel    context.CancelFunc
+	attach    dockerclient.ContainerAttachResult
+	waiter    dockerclient.ContainerWaitResult
+	closeOnce sync.Once
+}
+
+func (process *dockerConsoleProcess) readOutput(destination io.Writer) error {
+	_, err := stdcopy.StdCopy(destination, destination, process.attach.Reader)
+	return err
+}
+
+func (process *dockerConsoleProcess) wait() error {
+	select {
+	case response := <-process.waiter.Result:
+		if response.Error != nil {
+			return errors.New(response.Error.Message)
+		}
+		if response.StatusCode != 0 {
+			return fmt.Errorf("exit status %d", response.StatusCode)
+		}
+		return nil
+	case err := <-process.waiter.Error:
+		return err
+	case <-process.ctx.Done():
+		return process.ctx.Err()
+	}
+}
+
+func (process *dockerConsoleProcess) close() {
+	process.closeOnce.Do(func() {
+		process.cancel()
+		process.attach.Close()
+	})
+}
+
+func consoleContainerEndpoint(endpoint string) (string, error) {
+	parsed, err := url.Parse(endpoint)
+	if err != nil {
+		return "", fmt.Errorf("parse console endpoint: %w", err)
+	}
+	if parsed.Scheme == "" || parsed.Host == "" {
+		return "", fmt.Errorf("parse console endpoint: URL must include a scheme and host")
+	}
+
+	host := strings.TrimSuffix(parsed.Hostname(), ".")
+	if host == "" {
+		return "", fmt.Errorf("parse console endpoint: URL must include a host")
+	}
+	address := net.ParseIP(host)
+	if !strings.EqualFold(host, "localhost") && (address == nil || !address.IsLoopback()) {
+		return endpoint, nil
+	}
+
+	port := parsed.Port()
+	parsed.Host = consoleContainerHost
+	if port != "" {
+		parsed.Host = net.JoinHostPort(consoleContainerHost, port)
+	}
+	return parsed.String(), nil
+}
+
 func consoleFixtureArchive() ([]byte, error) {
 	fixtures, err := fs.Sub(consoleFixtures, "testdata/console")
 	if err != nil {
@@ -195,72 +261,6 @@ func consoleFixtureArchive() ([]byte, error) {
 		return nil, fmt.Errorf("archive console fixtures: %w", err)
 	}
 	return archive.Bytes(), nil
-}
-
-func (engine dockerConsoleEngine) startContainer(
-	ctx context.Context,
-	containerID string,
-) (consoleContainerProcess, error) {
-	processCtx, cancel := context.WithCancel(ctx)
-	attached, err := engine.client.ContainerAttach(processCtx, containerID, dockerclient.ContainerAttachOptions{
-		Stream: true,
-		Stdout: true,
-		Stderr: true,
-	})
-	if err != nil {
-		cancel()
-		return nil, fmt.Errorf("attach to console container: %w", err)
-	}
-	waiter := engine.client.ContainerWait(processCtx, containerID, dockerclient.ContainerWaitOptions{
-		Condition: containertypes.WaitConditionNextExit,
-	})
-	if _, err := engine.client.ContainerStart(processCtx, containerID, dockerclient.ContainerStartOptions{}); err != nil {
-		cancel()
-		attached.Close()
-		return nil, fmt.Errorf("start console container: %w", err)
-	}
-	return &dockerConsoleProcess{
-		ctx:    processCtx,
-		cancel: cancel,
-		attach: attached,
-		waiter: waiter,
-	}, nil
-}
-
-func (process *dockerConsoleProcess) readOutput(destination io.Writer) error {
-	_, err := stdcopy.StdCopy(destination, destination, process.attach.Reader)
-	return err
-}
-
-func (process *dockerConsoleProcess) wait() error {
-	select {
-	case response := <-process.waiter.Result:
-		if response.Error != nil {
-			return errors.New(response.Error.Message)
-		}
-		if response.StatusCode != 0 {
-			return fmt.Errorf("exit status %d", response.StatusCode)
-		}
-		return nil
-	case err := <-process.waiter.Error:
-		return err
-	case <-process.ctx.Done():
-		return process.ctx.Err()
-	}
-}
-
-func (process *dockerConsoleProcess) close() {
-	process.closeOnce.Do(func() {
-		process.cancel()
-		process.attach.Close()
-	})
-}
-
-func (engine dockerConsoleEngine) removeContainer(ctx context.Context, containerID string) error {
-	if _, err := engine.client.ContainerRemove(ctx, containerID, dockerclient.ContainerRemoveOptions{Force: true}); err != nil {
-		return fmt.Errorf("remove Docker container: %w", err)
-	}
-	return nil
 }
 
 func removeConsoleContainer(engine consoleContainerEngine, containerID, scenario string) error {
