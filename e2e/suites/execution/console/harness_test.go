@@ -76,14 +76,6 @@ type dockerConsoleProcess struct {
 	closeOnce sync.Once
 }
 
-func newDockerConsoleEngine() (*dockerConsoleEngine, io.Closer, error) {
-	client, err := dockerapi.New()
-	if err != nil {
-		return nil, nil, fmt.Errorf("create Docker client: %w", err)
-	}
-	return &dockerConsoleEngine{client: client}, client, nil
-}
-
 func consoleContainerEndpoint(endpoint string) (string, error) {
 	parsed, err := url.Parse(endpoint)
 	if err != nil {
@@ -281,14 +273,14 @@ func removeConsoleContainer(engine consoleContainerEngine, containerID, scenario
 }
 
 func runSuite(ctx context.Context, image, rpcURL, name string) (result error) {
-	engine, closer, err := newDockerConsoleEngine()
+	client, err := dockerapi.New()
 	if err != nil {
-		return err
+		return fmt.Errorf("create Docker client: %w", err)
 	}
 	defer func() {
-		result = errors.Join(result, closer.Close())
+		result = errors.Join(result, client.Close())
 	}()
-	return runSuiteWithEngine(ctx, image, rpcURL, name, engine)
+	return runSuiteWithEngine(ctx, image, rpcURL, name, dockerConsoleEngine{client: client})
 }
 
 func runSuiteWithEngine(
