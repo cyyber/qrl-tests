@@ -7,7 +7,7 @@ go test -tags=e2e -run '^$' ./e2e/suites/execution/abi
 ```
 
 Regenerate the bindings after changing the fixture contract at
-[`contracts/testdata/EventEmitter.hyp`](contracts/testdata/EventEmitter.hyp) —
+[`contracts/EventEmitter.hyp`](contracts/EventEmitter.hyp) —
 `hypc --version` must report `commit.2b9a0f1d`:
 
 ```bash

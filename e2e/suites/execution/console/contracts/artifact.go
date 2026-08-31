@@ -14,10 +14,10 @@ type Artifact struct {
 	bytecodeHex string
 }
 
-//go:embed testdata/ConsoleProbe.abi
+//go:embed ConsoleProbe.abi
 var consoleProbeABI []byte
 
-//go:embed testdata/ConsoleProbe.bin
+//go:embed ConsoleProbe.bin
 var consoleProbeBytecode string
 
 // ConsoleProbe exercises contract interactions through the console.
