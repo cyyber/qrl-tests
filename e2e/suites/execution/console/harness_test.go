@@ -479,13 +479,19 @@ func runConsoleProcess(
 	output := newConsoleOutput(name, interactive)
 	completions := make(chan consoleProcessCompletion, 3)
 	go func() {
+		readErr := process.readOutput(output)
+		result := output.complete(readErr)
 		completions <- consoleProcessCompletion{
 			kind:   consoleOutputComplete,
-			output: output.complete(process.readOutput(output)),
+			output: result,
 		}
 	}()
 	go func() {
-		completions <- consoleProcessCompletion{kind: consoleProcessComplete, err: process.wait()}
+		waitErr := process.wait()
+		completions <- consoleProcessCompletion{
+			kind: consoleProcessComplete,
+			err:  waitErr,
+		}
 	}()
 
 	terminal := output.terminal
