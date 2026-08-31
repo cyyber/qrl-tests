@@ -865,31 +865,49 @@ func TestRunWatchedProcessAlreadyExited(t *testing.T) {
 	})
 }
 
-func TestRunWatchedShutdownTimeout(t *testing.T) {
-	synctest.Test(t, func(t *testing.T) {
-		exitGate := make(chan struct{})
-		process := newFakeConsoleProcess(t.Context(), fakeConsoleProcessConfig{
-			output:   passPrefix + "events\n",
-			exitGate: exitGate,
-			pending:  true,
+func TestRunShutdownTimeout(t *testing.T) {
+	t.Run("exit request", func(t *testing.T) {
+		synctest.Test(t, func(t *testing.T) {
+			exitGate := make(chan struct{})
+			process := newFakeConsoleProcess(t.Context(), fakeConsoleProcessConfig{
+				output:   passPrefix + "events\n",
+				exitGate: exitGate,
+				pending:  true,
+			})
+			started := time.Now()
+
+			err := runConsoleProcess(t.Context(), process, "events", true)
+
+			require.ErrorContains(t, err, "console process did not shut down within 5s")
+			require.Equal(t, consoleProcessExitTimeout, time.Since(started))
+			require.Equal(t, 1, process.exitRequestCount())
 		})
-		started := time.Now()
+	})
 
-		err := runConsoleProcess(t.Context(), process, "events", true)
+	t.Run("output", func(t *testing.T) {
+		synctest.Test(t, func(t *testing.T) {
+			readGate := make(chan struct{})
+			process := newFakeConsoleProcess(t.Context(), fakeConsoleProcessConfig{
+				output:   passPrefix + "api\n",
+				readGate: readGate,
+			})
+			started := time.Now()
 
-		require.ErrorContains(t, err, "console process did not shut down within 5s")
-		require.Equal(t, consoleProcessExitTimeout, time.Since(started))
-		require.Equal(t, 1, process.exitRequestCount())
+			err := runConsoleProcess(t.Context(), process, "api", false)
+
+			require.ErrorContains(t, err, "console process did not shut down within 5s")
+			require.Equal(t, consoleProcessExitTimeout, time.Since(started))
+			close(readGate)
+		})
 	})
 }
 
 func TestFinishConsoleProcessCancellation(t *testing.T) {
 	shutdownErr := errors.New("shutdown timeout")
-	err := finishConsoleProcess("events", consoleProcessState{
-		output: consoleOutputResult{
+	err := finishConsoleProcess("events", consoleProcessResult{
+		output: &consoleOutputResult{
 			output: []byte(passPrefix + "events\n"),
 		},
-		outputComplete:  true,
 		processComplete: true,
 		processErr:      context.Canceled,
 		supervisorErr:   shutdownErr,
@@ -900,8 +918,31 @@ func TestFinishConsoleProcessCancellation(t *testing.T) {
 	require.NotContains(t, err.Error(), "run console suite events")
 }
 
+func TestOutputFailurePreventsExitRequest(t *testing.T) {
+	terminal := make(chan struct{})
+	close(terminal)
+	process := newFakeConsoleProcess(t.Context(), fakeConsoleProcessConfig{})
+	supervisor := &consoleProcessSupervisor{
+		ctx:         t.Context(),
+		process:     process,
+		interactive: true,
+		terminal:    terminal,
+		processDone: make(chan error),
+	}
+	defer supervisor.cancel()
+
+	supervisor.handleOutput(consoleOutputResult{
+		terminalDetected: true,
+		err:              errors.New("read failed"),
+	})
+	supervisor.requestExit()
+
+	require.Zero(t, process.exitRequestCount())
+}
+
 func TestRunWatchedFailures(t *testing.T) {
 	exitErr := errors.New("exit request failed")
+	processErr := errors.New("process failed")
 	for _, testCase := range []struct {
 		name       string
 		process    fakeConsoleProcessConfig
@@ -931,6 +972,16 @@ func TestRunWatchedFailures(t *testing.T) {
 			wantErr:    exitErr,
 			wantDetail: "stop console suite events",
 			wantExit:   true,
+		},
+		{
+			name: "process after pass",
+			process: fakeConsoleProcessConfig{
+				output:  passPrefix + "events\n",
+				waitErr: processErr,
+				pending: true,
+			},
+			wantErr:  processErr,
+			wantExit: true,
 		},
 		{
 			name:       "early exit",
