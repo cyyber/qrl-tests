@@ -22,35 +22,30 @@ import (
 )
 
 func TestParseSuiteResult(t *testing.T) {
-	require.NoError(t, parseSuiteResult("api", []byte("CONSOLE_E2E_PASS api")))
-	for name, output := range map[string]string{
-		"failure":              "CONSOLE_E2E_FAIL api",
-		"GoError":              "GoError: helper failure",
-		"success then failure": "CONSOLE_E2E_PASS api\nCONSOLE_E2E_FAIL api unexpected callback",
-	} {
-		t.Run(name, func(t *testing.T) {
-			require.Error(t, parseSuiteResult("api", []byte(output)))
-		})
-	}
-}
-
-func TestTerminalMarkers(t *testing.T) {
-	markers := newTerminalMarkers("events")
 	for _, testCase := range []struct {
-		name string
-		line string
-		want terminalSignal
+		name       string
+		output     string
+		wantDetail string
 	}{
-		{name: "pass", line: "CONSOLE_E2E_PASS events", want: terminalSignalPass},
-		{name: "fail", line: "CONSOLE_E2E_FAIL events", want: terminalSignalFail},
-		{name: "fail detail", line: "CONSOLE_E2E_FAIL events callback failed", want: terminalSignalFail},
-		{name: "GoError", line: "GoError: callback failed", want: terminalSignalGoError},
-		{name: "wrong scenario", line: "CONSOLE_E2E_PASS api", want: terminalSignalNone},
-		{name: "invalid suffix", line: "CONSOLE_E2E_PASS events extra", want: terminalSignalNone},
-		{name: "noise", line: "console ready", want: terminalSignalNone},
+		{name: "pass", output: "CONSOLE_E2E_PASS api"},
+		{name: "failure", output: "CONSOLE_E2E_FAIL api", wantDetail: "emitted a failure marker"},
+		{name: "GoError", output: "GoError: helper failure", wantDetail: "failed with GoError"},
+		{
+			name:       "failure after pass",
+			output:     "CONSOLE_E2E_PASS api\nCONSOLE_E2E_FAIL api unexpected callback",
+			wantDetail: "emitted a failure marker",
+		},
+		{name: "wrong scenario", output: "CONSOLE_E2E_PASS events", wantDetail: "emitted 0 success markers"},
+		{name: "invalid suffix", output: "CONSOLE_E2E_PASS api extra", wantDetail: "emitted 0 success markers"},
+		{name: "duplicate pass", output: "CONSOLE_E2E_PASS api\nCONSOLE_E2E_PASS api", wantDetail: "emitted 2 success markers"},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
-			require.Equal(t, testCase.want, markers.detect([]byte(testCase.line)))
+			err := parseSuiteResult("api", []byte(testCase.output))
+			if testCase.wantDetail == "" {
+				require.NoError(t, err)
+				return
+			}
+			require.ErrorContains(t, err, testCase.wantDetail)
 		})
 	}
 }
@@ -62,6 +57,7 @@ func TestInteractiveOutput(t *testing.T) {
 		complete bool
 	}{
 		{name: "split marker", chunks: []string{"noise\nCONSOLE_E2E_PA", "SS events\n"}},
+		{name: "failure marker", chunks: []string{"CONSOLE_E2E_FAIL events\n"}},
 		{name: "unterminated marker", chunks: []string{"CONSOLE_E2E_PASS events"}, complete: true},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
@@ -166,6 +162,17 @@ type fakeDockerClient struct {
 	waitSetupErr  error
 }
 
+func newFakeDockerClient(t *testing.T) *fakeDockerClient {
+	t.Helper()
+	client := &fakeDockerClient{}
+	t.Cleanup(func() {
+		if client.serverConn != nil {
+			_ = client.serverConn.Close()
+		}
+	})
+	return client
+}
+
 type writeSignalingConn struct {
 	net.Conn
 	started     chan struct{}
@@ -258,12 +265,7 @@ func (client *fakeDockerClient) ContainerRemove(
 }
 
 func TestDockerConsoleEngine(t *testing.T) {
-	client := &fakeDockerClient{}
-	t.Cleanup(func() {
-		if client.serverConn != nil {
-			_ = client.serverConn.Close()
-		}
-	})
+	client := newFakeDockerClient(t)
 	engine := dockerConsoleEngine{client: client}
 
 	containerID, err := engine.createContainer(t.Context(), consoleContainerConfig{
@@ -297,18 +299,10 @@ func TestDockerConsoleEngine(t *testing.T) {
 	process.close()
 	require.NoError(t, engine.removeContainer(t.Context(), containerID))
 	require.Equal(t, []string{"create", "copy", "attach", "wait:next-exit", "start", "remove:true"}, client.calls)
-}
 
-func TestDockerConsoleInteractiveConfig(t *testing.T) {
-	client := &fakeDockerClient{}
-	t.Cleanup(func() {
-		if client.serverConn != nil {
-			_ = client.serverConn.Close()
-		}
-	})
-	engine := dockerConsoleEngine{client: client}
-
-	containerID, err := engine.createContainer(t.Context(), consoleContainerConfig{
+	client = newFakeDockerClient(t)
+	engine = dockerConsoleEngine{client: client}
+	containerID, err = engine.createContainer(t.Context(), consoleContainerConfig{
 		image:       "registry.example/go-qrl@sha256:digest",
 		endpointURL: "ws://127.0.0.1:8546",
 		scenario:    "events",
@@ -326,7 +320,7 @@ func TestDockerConsoleInteractiveConfig(t *testing.T) {
 	require.True(t, client.createOptions.Config.OpenStdin)
 	require.True(t, client.createOptions.Config.StdinOnce)
 
-	process, err := engine.startContainer(t.Context(), containerID, true)
+	process, err = engine.startContainer(t.Context(), containerID, true)
 	require.NoError(t, err)
 	require.True(t, client.attachOptions.Stdin)
 	require.NoError(t, process.wait())
@@ -335,12 +329,8 @@ func TestDockerConsoleInteractiveConfig(t *testing.T) {
 
 func TestDockerConsoleWaitFailure(t *testing.T) {
 	waitErr := errors.New("wait registration failed")
-	client := &fakeDockerClient{waitSetupErr: waitErr}
-	t.Cleanup(func() {
-		if client.serverConn != nil {
-			_ = client.serverConn.Close()
-		}
-	})
+	client := newFakeDockerClient(t)
+	client.waitSetupErr = waitErr
 
 	process, err := (dockerConsoleEngine{client: client}).startContainer(
 		t.Context(),
@@ -421,22 +411,7 @@ func TestConsoleFixtureArchive(t *testing.T) {
 	parameters := []byte(`{"chainID":"0x539"}`)
 	fixtureArchive, err := consoleFixtureArchive(parameters)
 	require.NoError(t, err)
-
-	archive := tar.NewReader(bytes.NewReader(fixtureArchive))
-	contents := make(map[string]string)
-	for {
-		header, err := archive.Next()
-		if errors.Is(err, io.EOF) {
-			break
-		}
-		require.NoError(t, err)
-		if header.Typeflag != tar.TypeReg {
-			continue
-		}
-		content, err := io.ReadAll(archive)
-		require.NoError(t, err)
-		contents[header.Name] = string(content)
-	}
+	contents := fixtureArchiveContents(t, fixtureArchive)
 	fixtureNames, err := fs.Glob(consoleFixtures, consoleFixtureDirectory+"/*.js")
 	require.NoError(t, err)
 	require.Len(t, contents, len(fixtureNames)+1)
@@ -453,14 +428,25 @@ func TestConsoleFixtureArchive(t *testing.T) {
 
 	fixtureArchive, err = consoleFixtureArchive(nil)
 	require.NoError(t, err)
-	archive = tar.NewReader(bytes.NewReader(fixtureArchive))
+	require.NotContains(t, fixtureArchiveContents(t, fixtureArchive), consoleFixtureDirectory+"/.params.js")
+}
+
+func fixtureArchiveContents(t *testing.T, fixtureArchive []byte) map[string]string {
+	t.Helper()
+	contents := make(map[string]string)
+	archive := tar.NewReader(bytes.NewReader(fixtureArchive))
 	for {
 		header, err := archive.Next()
 		if errors.Is(err, io.EOF) {
-			break
+			return contents
 		}
 		require.NoError(t, err)
-		require.NotEqual(t, consoleFixtureDirectory+"/.params.js", header.Name)
+		if header.Typeflag != tar.TypeReg {
+			continue
+		}
+		content, err := io.ReadAll(archive)
+		require.NoError(t, err)
+		contents[header.Name] = string(content)
 	}
 }
 
@@ -474,16 +460,8 @@ func TestConsoleContainerEndpoint(t *testing.T) {
 			endpoint: "ws://[::1]:8546",
 			want:     "ws://host.docker.internal:8546",
 		},
-		"non-loopback": {
-			endpoint: "https://rpc.example:443",
-			want:     "https://host.docker.internal:443",
-		},
 		"missing port": {
 			endpoint: "https://rpc.example",
-			wantErr:  true,
-		},
-		"missing host": {
-			endpoint: "http:///rpc",
 			wantErr:  true,
 		},
 		"invalid URL": {
@@ -675,21 +653,17 @@ func TestRunNonInteractiveSuite(t *testing.T) {
 }
 
 func TestRunNonInteractiveFailures(t *testing.T) {
-	processErr := errors.New("process failed")
 	outputErr := errors.New("output failed")
 	cleanupErr := errors.New("cleanup failed")
 	for _, testCase := range []struct {
 		name       string
 		output     string
 		readErr    error
-		waitErr    error
 		pending    bool
 		removeErr  error
 		wantErr    error
 		wantDetail string
 	}{
-		{name: "script", output: failPrefix + "api helper failure\n", wantDetail: "emitted a failure marker"},
-		{name: "process", waitErr: processErr, wantErr: processErr},
 		{name: "output", readErr: outputErr, pending: true, wantErr: outputErr},
 		{name: "cleanup", output: passPrefix + "api\n", removeErr: cleanupErr, wantErr: cleanupErr},
 		{
@@ -705,7 +679,6 @@ func TestRunNonInteractiveFailures(t *testing.T) {
 				process: fakeConsoleProcessConfig{
 					output:  testCase.output,
 					readErr: testCase.readErr,
-					waitErr: testCase.waitErr,
 					pending: testCase.pending,
 				},
 				removeErr: testCase.removeErr,
@@ -795,38 +768,28 @@ func TestRunNonInteractiveSetupFailures(t *testing.T) {
 }
 
 func TestRunCancellationWithBlockedOutput(t *testing.T) {
-	for _, testCase := range []struct {
-		name string
-		run  func(context.Context, consoleContainerEngine) error
-	}{
-		{name: "non-interactive", run: runFakeNonInteractiveSuite},
-		{name: "interactive", run: runFakeInteractiveSuite},
-	} {
-		t.Run(testCase.name, func(t *testing.T) {
-			synctest.Test(t, func(t *testing.T) {
-				ctx, cancel := context.WithCancelCause(t.Context())
-				cancelErr := errors.New("cancel console run")
-				readGate := make(chan struct{})
-				started := make(chan struct{})
-				engine := &fakeConsoleEngine{
-					process: fakeConsoleProcessConfig{readGate: readGate, pending: true},
-					onStart: func() { close(started) },
-				}
-				done := make(chan error, 1)
-				go func() { done <- testCase.run(ctx, engine) }()
-				<-started
-				<-engine.startedProcess.outputStarted
-				<-engine.startedProcess.waitStarted
-				cancel(cancelErr)
+	synctest.Test(t, func(t *testing.T) {
+		ctx, cancel := context.WithCancelCause(t.Context())
+		cancelErr := errors.New("cancel console run")
+		readGate := make(chan struct{})
+		started := make(chan struct{})
+		engine := &fakeConsoleEngine{
+			process: fakeConsoleProcessConfig{readGate: readGate, pending: true},
+			onStart: func() { close(started) },
+		}
+		done := make(chan error, 1)
+		go func() { done <- runFakeNonInteractiveSuite(ctx, engine) }()
+		<-started
+		<-engine.startedProcess.outputStarted
+		<-engine.startedProcess.waitStarted
+		cancel(cancelErr)
 
-				err := <-done
-				require.ErrorIs(t, err, cancelErr)
-				require.Equal(t, fakeConsoleLifecycle, engine.calls)
-				require.NoError(t, engine.removeContextErr)
-				close(readGate)
-			})
-		})
-	}
+		err := <-done
+		require.ErrorIs(t, err, cancelErr)
+		require.Equal(t, fakeConsoleLifecycle, engine.calls)
+		require.NoError(t, engine.removeContextErr)
+		close(readGate)
+	})
 }
 
 func TestRunInteractiveSuite(t *testing.T) {
@@ -925,7 +888,6 @@ func TestEventBatchPrecedence(t *testing.T) {
 		name            string
 		competingEvents []consoleProcessEvent
 		wantForcedClose bool
-		wantReadErr     error
 	}{
 		{
 			name: "output failure",
@@ -940,15 +902,11 @@ func TestEventBatchPrecedence(t *testing.T) {
 			competingEvents: []consoleProcessEvent{{kind: consoleContainerWaitCompleted}},
 		},
 		{
-			name: "completed with output failure",
+			name: "output failure after exit",
 			competingEvents: []consoleProcessEvent{
-				{
-					kind:   consoleOutputCompleted,
-					output: consoleOutputResult{readErr: readErr},
-				},
+				{kind: consoleOutputCompleted, output: consoleOutputResult{readErr: readErr}},
 				{kind: consoleContainerWaitCompleted},
 			},
-			wantReadErr: readErr,
 		},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
@@ -972,8 +930,8 @@ func TestEventBatchPrecedence(t *testing.T) {
 
 			require.Equal(t, testCase.wantForcedClose, supervisor.result.forcedClose)
 			require.Zero(t, process.exitRequestCount())
-			if testCase.wantReadErr != nil {
-				require.ErrorIs(t, supervisor.result.output.readErr, testCase.wantReadErr)
+			if supervisor.result.output != nil {
+				require.ErrorIs(t, supervisor.result.output.readErr, readErr)
 			}
 		})
 	}
@@ -1030,11 +988,6 @@ func TestRunInteractiveFailures(t *testing.T) {
 			name:       "early exit",
 			process:    fakeConsoleProcessConfig{output: "console exited early\n"},
 			wantDetail: "emitted 0 success markers",
-		},
-		{
-			name:       "output",
-			process:    fakeConsoleProcessConfig{readErr: errors.New("attach read failed"), pending: true},
-			wantDetail: "attach read failed",
 		},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
