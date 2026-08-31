@@ -323,7 +323,7 @@ func runScenarioWithEngine(
 		return fmt.Errorf("start console suite %s: %w", config.scenario, err)
 	}
 	defer process.close()
-	return runConsoleProcess(ctx, process, config.scenario, config.interactive)
+	return newConsoleProcessSupervisor(ctx, process, config.scenario, config.interactive).run()
 }
 
 type terminalSignal uint8
@@ -445,15 +445,6 @@ type consoleProcessSupervisor struct {
 	shutdownDone   <-chan struct{}
 	cancelShutdown context.CancelFunc
 	result         consoleProcessResult
-}
-
-func runConsoleProcess(
-	ctx context.Context,
-	process consoleContainerProcess,
-	name string,
-	interactive bool,
-) error {
-	return newConsoleProcessSupervisor(ctx, process, name, interactive).run()
 }
 
 func newConsoleProcessSupervisor(

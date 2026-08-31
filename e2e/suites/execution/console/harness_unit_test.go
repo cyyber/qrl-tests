@@ -876,7 +876,7 @@ func TestRunShutdownTimeout(t *testing.T) {
 			})
 			started := time.Now()
 
-			err := runConsoleProcess(t.Context(), process, "events", true)
+			err := newConsoleProcessSupervisor(t.Context(), process, "events", true).run()
 
 			require.ErrorContains(t, err, "console process did not shut down within 5s")
 			require.Equal(t, consoleProcessExitTimeout, time.Since(started))
@@ -893,7 +893,7 @@ func TestRunShutdownTimeout(t *testing.T) {
 			})
 			started := time.Now()
 
-			err := runConsoleProcess(t.Context(), process, "api", false)
+			err := newConsoleProcessSupervisor(t.Context(), process, "api", false).run()
 
 			require.ErrorContains(t, err, "console process did not shut down within 5s")
 			require.Equal(t, consoleProcessExitTimeout, time.Since(started))
