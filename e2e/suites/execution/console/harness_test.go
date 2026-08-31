@@ -633,14 +633,14 @@ func (supervisor *consoleProcessSupervisor) cancelShutdownDeadline() {
 }
 
 func finishConsoleProcess(name string, result consoleProcessResult, supervisorErr error) error {
-	naturalExit := result.containerWaitCompleted && result.containerWaitErr == nil && !result.forcedClose
+	exitedGracefully := result.containerWaitCompleted && result.containerWaitErr == nil && !result.forcedClose
 	containerWaitErr := result.containerWaitErr
 	if (result.forcedClose || supervisorErr != nil) &&
 		errors.Is(containerWaitErr, context.Canceled) {
 		containerWaitErr = nil
 	}
 	exitRequestErr := result.exitRequestErr
-	if naturalExit ||
+	if exitedGracefully ||
 		(supervisorErr != nil && errors.Is(exitRequestErr, supervisorErr)) {
 		exitRequestErr = nil
 	}
