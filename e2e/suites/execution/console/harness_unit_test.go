@@ -85,7 +85,7 @@ func TestInteractiveOutput(t *testing.T) {
 
 			select {
 			case event := <-events:
-				require.Equal(t, consoleScenarioResultDetected, event.kind)
+				require.Equal(t, consoleTerminalSignalDetected, event.kind)
 			default:
 				t.Fatal("terminal marker was not detected")
 			}
@@ -961,14 +961,14 @@ func TestEventBatchPrecedence(t *testing.T) {
 			}
 			defer supervisor.cancelShutdownDeadline()
 			defer process.close()
-			supervisor.events <- consoleProcessEvent{kind: consoleScenarioResultDetected}
+			supervisor.events <- consoleProcessEvent{kind: consoleTerminalSignalDetected}
 			for _, event := range testCase.competingEvents {
 				supervisor.events <- event
 			}
 
 			firstEvent := <-supervisor.events
-			scenarioResultDetected := supervisor.recordEventBatch(firstEvent)
-			supervisor.respondToEvents(scenarioResultDetected)
+			terminalSignalDetected := supervisor.recordEventBatch(firstEvent)
+			supervisor.respondToEvents(terminalSignalDetected)
 
 			require.Equal(t, testCase.wantForcedClose, supervisor.result.forcedClose)
 			require.Zero(t, process.exitRequestCount())

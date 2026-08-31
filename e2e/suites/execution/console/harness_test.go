@@ -359,7 +359,7 @@ func (markers terminalMarkers) detect(line []byte) terminalSignal {
 type consoleProcessEventKind uint8
 
 const (
-	consoleScenarioResultDetected consoleProcessEventKind = iota
+	consoleTerminalSignalDetected consoleProcessEventKind = iota
 	consoleOutputCompleted
 	consoleContainerWaitCompleted
 	consoleExitRequestFailed
@@ -413,7 +413,7 @@ func (output *consoleOutput) inspect(line []byte) {
 		return
 	}
 	output.watchForResult = false
-	output.events <- consoleProcessEvent{kind: consoleScenarioResultDetected}
+	output.events <- consoleProcessEvent{kind: consoleTerminalSignalDetected}
 }
 
 func (output *consoleOutput) complete(readErr error) consoleOutputResult {
@@ -492,8 +492,8 @@ func (supervisor *consoleProcessSupervisor) run() error {
 	for !supervisor.requiredResultsComplete() {
 		select {
 		case firstEvent := <-supervisor.events:
-			scenarioResultDetected := supervisor.recordEventBatch(firstEvent)
-			supervisor.respondToEvents(scenarioResultDetected)
+			terminalSignalDetected := supervisor.recordEventBatch(firstEvent)
+			supervisor.respondToEvents(terminalSignalDetected)
 		case <-supervisor.ctx.Done():
 			return supervisor.abort(context.Cause(supervisor.ctx))
 		case <-supervisor.shutdownDone:
@@ -507,35 +507,28 @@ func (supervisor *consoleProcessSupervisor) requiredResultsComplete() bool {
 	return supervisor.result.output != nil && supervisor.result.containerWaitCompleted
 }
 
-func (supervisor *consoleProcessSupervisor) recordEvent(event consoleProcessEvent) bool {
-	switch event.kind {
-	case consoleScenarioResultDetected:
-		return true
-	case consoleOutputCompleted:
-		output := event.output
-		supervisor.result.output = &output
-	case consoleContainerWaitCompleted:
-		supervisor.result.containerWaitCompleted = true
-		supervisor.result.containerWaitErr = event.err
-	case consoleExitRequestFailed:
-		supervisor.result.exitRequestErr = event.err
-	}
-	return false
-}
-
 // recordEventBatch records the first event and every event already queued so
 // response precedence does not depend on the order of already-ready events.
 func (supervisor *consoleProcessSupervisor) recordEventBatch(
 	event consoleProcessEvent,
-) (scenarioResultDetected bool) {
+) (terminalSignalDetected bool) {
 	for {
-		if supervisor.recordEvent(event) {
-			scenarioResultDetected = true
+		switch event.kind {
+		case consoleTerminalSignalDetected:
+			terminalSignalDetected = true
+		case consoleOutputCompleted:
+			output := event.output
+			supervisor.result.output = &output
+		case consoleContainerWaitCompleted:
+			supervisor.result.containerWaitCompleted = true
+			supervisor.result.containerWaitErr = event.err
+		case consoleExitRequestFailed:
+			supervisor.result.exitRequestErr = event.err
 		}
 		select {
 		case event = <-supervisor.events:
 		default:
-			return scenarioResultDetected
+			return terminalSignalDetected
 		}
 	}
 }
@@ -548,7 +541,7 @@ func (supervisor *consoleProcessSupervisor) recordReadyEvents() {
 	}
 }
 
-func (supervisor *consoleProcessSupervisor) respondToEvents(scenarioResultDetected bool) {
+func (supervisor *consoleProcessSupervisor) respondToEvents(terminalSignalDetected bool) {
 	if supervisor.requiredResultsComplete() {
 		return
 	}
@@ -561,7 +554,7 @@ func (supervisor *consoleProcessSupervisor) respondToEvents(scenarioResultDetect
 		supervisor.forceClose()
 	case supervisor.result.exitRequestErr != nil && !containerWaitSucceeded:
 		supervisor.forceClose()
-	case supervisor.interactive && scenarioResultDetected:
+	case supervisor.interactive && terminalSignalDetected:
 		supervisor.requestExit()
 	case supervisor.interactive && outputCompleted &&
 		!containerWaitCompleted && !supervisor.exitRequested:
