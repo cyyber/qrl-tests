@@ -10,6 +10,7 @@ import (
 	"io"
 	"net"
 	"net/url"
+	"sync"
 	"time"
 
 	"github.com/cyyber/qrl-tests/internal/dockerapi"
@@ -173,10 +174,11 @@ func (engine dockerConsoleEngine) removeContainer(ctx context.Context, container
 }
 
 type dockerConsoleProcess struct {
-	ctx    context.Context
-	cancel context.CancelFunc
-	attach dockerclient.ContainerAttachResult
-	waiter dockerclient.ContainerWaitResult
+	ctx       context.Context
+	cancel    context.CancelFunc
+	attach    dockerclient.ContainerAttachResult
+	waiter    dockerclient.ContainerWaitResult
+	closeOnce sync.Once
 }
 
 func (process *dockerConsoleProcess) readOutput(destination io.Writer) error {
@@ -226,8 +228,10 @@ func (process *dockerConsoleProcess) wait() error {
 }
 
 func (process *dockerConsoleProcess) close() {
-	process.cancel()
-	process.attach.Close()
+	process.closeOnce.Do(func() {
+		process.cancel()
+		process.attach.Close()
+	})
 }
 
 func consoleContainerEndpoint(endpointURL string) (string, error) {
@@ -507,8 +511,8 @@ func (supervisor *consoleProcessSupervisor) requiredResultsComplete() bool {
 	return supervisor.result.output != nil && supervisor.result.containerWaitCompleted
 }
 
-// recordEventBatch drains currently queued events before responding, so
-// simultaneous completions are handled from one consistent state snapshot.
+// recordEventBatch drains events already queued before responding, so each
+// response uses all state currently available to the supervisor.
 func (supervisor *consoleProcessSupervisor) recordEventBatch(
 	event consoleProcessEvent,
 ) (terminalSignalDetected bool) {
