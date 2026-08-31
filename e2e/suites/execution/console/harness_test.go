@@ -372,22 +372,28 @@ type consoleProcessEvent struct {
 }
 
 type consoleOutput struct {
-	data                 bytes.Buffer
-	line                 []byte
-	scenarioResultEvents chan<- consoleProcessEvent
-	markers              terminalMarkers
+	data           bytes.Buffer
+	line           []byte
+	events         chan<- consoleProcessEvent
+	watchForResult bool
+	markers        terminalMarkers
 }
 
-func newConsoleOutput(name string, scenarioResultEvents chan<- consoleProcessEvent) *consoleOutput {
+func newConsoleOutput(
+	name string,
+	events chan<- consoleProcessEvent,
+	watchForResult bool,
+) *consoleOutput {
 	return &consoleOutput{
-		scenarioResultEvents: scenarioResultEvents,
-		markers:              newTerminalMarkers(name),
+		events:         events,
+		watchForResult: watchForResult,
+		markers:        newTerminalMarkers(name),
 	}
 }
 
 func (output *consoleOutput) Write(data []byte) (int, error) {
 	written, err := output.data.Write(data)
-	if output.scenarioResultEvents == nil {
+	if !output.watchForResult {
 		return written, err
 	}
 	output.line = append(output.line, data[:written]...)
@@ -403,15 +409,15 @@ func (output *consoleOutput) Write(data []byte) (int, error) {
 }
 
 func (output *consoleOutput) inspect(line []byte) {
-	if output.scenarioResultEvents == nil || output.markers.detect(line) == terminalSignalNone {
+	if !output.watchForResult || output.markers.detect(line) == terminalSignalNone {
 		return
 	}
-	output.scenarioResultEvents <- consoleProcessEvent{kind: consoleScenarioResultDetected}
-	output.scenarioResultEvents = nil
+	output.watchForResult = false
+	output.events <- consoleProcessEvent{kind: consoleScenarioResultDetected}
 }
 
 func (output *consoleOutput) complete(readErr error) consoleOutputResult {
-	if output.scenarioResultEvents != nil && len(output.line) > 0 {
+	if output.watchForResult && len(output.line) > 0 {
 		output.inspect(output.line)
 	}
 	return consoleOutputResult{
@@ -457,11 +463,9 @@ func newConsoleProcessSupervisor(
 	// Each event kind is emitted at most once. The buffer lets every final send
 	// complete even if the supervisor returns early.
 	events := make(chan consoleProcessEvent, 4)
-	var scenarioResultEvents chan<- consoleProcessEvent
-	if interactive {
-		scenarioResultEvents = events
-	}
-	output := newConsoleOutput(name, scenarioResultEvents)
+	// --exec scenarios exit on their own. Interactive preload scenarios watch
+	// for a terminal result so the supervisor can request a graceful exit.
+	output := newConsoleOutput(name, events, interactive)
 	go func() {
 		readErr := process.readOutput(output)
 		events <- consoleProcessEvent{
@@ -557,7 +561,7 @@ func (supervisor *consoleProcessSupervisor) respondToEvents(scenarioResultDetect
 		supervisor.forceClose()
 	case supervisor.result.exitRequestErr != nil && !containerWaitSucceeded:
 		supervisor.forceClose()
-	case scenarioResultDetected:
+	case supervisor.interactive && scenarioResultDetected:
 		supervisor.requestExit()
 	case supervisor.interactive && outputCompleted &&
 		!containerWaitCompleted && !supervisor.exitRequested:

@@ -55,7 +55,7 @@ func TestTerminalMarkers(t *testing.T) {
 	}
 }
 
-func TestWatchedOutput(t *testing.T) {
+func TestInteractiveOutput(t *testing.T) {
 	for _, testCase := range []struct {
 		name     string
 		chunks   []string
@@ -66,7 +66,7 @@ func TestWatchedOutput(t *testing.T) {
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
 			events := make(chan consoleProcessEvent, 1)
-			output := newConsoleOutput("events", events)
+			output := newConsoleOutput("events", events, true)
 			for _, chunk := range testCase.chunks {
 				_, err := io.WriteString(output, chunk)
 				require.NoError(t, err)
@@ -626,7 +626,7 @@ func (process *fakeConsoleProcess) exitRequestCount() int {
 	return int(process.exitRequests.Load())
 }
 
-func runFakeSuite(ctx context.Context, engine consoleContainerEngine) error {
+func runFakeNonInteractiveSuite(ctx context.Context, engine consoleContainerEngine) error {
 	return runScenarioWithEngine(ctx, consoleContainerConfig{
 		image:       "image",
 		endpointURL: "http://127.0.0.1:8545",
@@ -634,7 +634,7 @@ func runFakeSuite(ctx context.Context, engine consoleContainerEngine) error {
 	}, fakeFixtureArchive, engine)
 }
 
-func runFakeWatchedSuite(ctx context.Context, engine consoleContainerEngine) error {
+func runFakeInteractiveSuite(ctx context.Context, engine consoleContainerEngine) error {
 	return runScenarioWithEngine(ctx, consoleContainerConfig{
 		image:       "image",
 		endpointURL: "ws://127.0.0.1:8546",
@@ -650,7 +650,7 @@ var fakeConsoleLifecycle = []string{
 	"remove:" + fakeContainerID,
 }
 
-func TestRunSuite(t *testing.T) {
+func TestRunNonInteractiveSuite(t *testing.T) {
 	engine := &fakeConsoleEngine{process: fakeConsoleProcessConfig{output: passPrefix + "api\n"}}
 	err := runScenarioWithEngine(
 		t.Context(),
@@ -670,10 +670,11 @@ func TestRunSuite(t *testing.T) {
 	}, engine.config)
 	require.Equal(t, fakeFixtureArchive, engine.fixtureArchive)
 	require.False(t, engine.startInteractive)
+	require.Zero(t, engine.startedProcess.exitRequestCount())
 	require.Equal(t, fakeConsoleLifecycle, engine.calls)
 }
 
-func TestRunSuiteFailures(t *testing.T) {
+func TestRunNonInteractiveFailures(t *testing.T) {
 	processErr := errors.New("process failed")
 	outputErr := errors.New("output failed")
 	cleanupErr := errors.New("cleanup failed")
@@ -709,7 +710,7 @@ func TestRunSuiteFailures(t *testing.T) {
 				},
 				removeErr: testCase.removeErr,
 			}
-			err := runFakeSuite(t.Context(), engine)
+			err := runFakeNonInteractiveSuite(t.Context(), engine)
 			require.Error(t, err)
 			if testCase.wantErr != nil {
 				require.ErrorIs(t, err, testCase.wantErr)
@@ -722,7 +723,7 @@ func TestRunSuiteFailures(t *testing.T) {
 	}
 }
 
-func TestRunSuiteJoinsErrors(t *testing.T) {
+func TestRunNonInteractiveJoinsErrors(t *testing.T) {
 	processErr := errors.New("process failed")
 	outputErr := errors.New("output failed")
 	for _, testCase := range []struct {
@@ -745,7 +746,7 @@ func TestRunSuiteJoinsErrors(t *testing.T) {
 					waitGate: waitGate,
 				}, onStart: func() { close(started) }}
 				done := make(chan error, 1)
-				go func() { done <- runFakeSuite(t.Context(), engine) }()
+				go func() { done <- runFakeNonInteractiveSuite(t.Context(), engine) }()
 				<-started
 				<-engine.startedProcess.outputStarted
 				<-engine.startedProcess.waitStarted
@@ -770,7 +771,7 @@ func TestRunSuiteJoinsErrors(t *testing.T) {
 	}
 }
 
-func TestRunSuiteSetupFailures(t *testing.T) {
+func TestRunNonInteractiveSetupFailures(t *testing.T) {
 	setupErr := errors.New("setup failed")
 	for _, testCase := range []struct {
 		name      string
@@ -786,7 +787,7 @@ func TestRunSuiteSetupFailures(t *testing.T) {
 		}},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
-			err := runFakeSuite(t.Context(), &testCase.engine)
+			err := runFakeNonInteractiveSuite(t.Context(), &testCase.engine)
 			require.ErrorIs(t, err, setupErr)
 			require.Equal(t, testCase.wantCalls, testCase.engine.calls)
 		})
@@ -798,8 +799,8 @@ func TestRunCancellationWithBlockedOutput(t *testing.T) {
 		name string
 		run  func(context.Context, consoleContainerEngine) error
 	}{
-		{name: "suite", run: runFakeSuite},
-		{name: "watched", run: runFakeWatchedSuite},
+		{name: "non-interactive", run: runFakeNonInteractiveSuite},
+		{name: "interactive", run: runFakeInteractiveSuite},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
@@ -828,13 +829,13 @@ func TestRunCancellationWithBlockedOutput(t *testing.T) {
 	}
 }
 
-func TestRunWatchedSuite(t *testing.T) {
+func TestRunInteractiveSuite(t *testing.T) {
 	engine := &fakeConsoleEngine{process: fakeConsoleProcessConfig{
 		output:  passPrefix + "events\n",
 		pending: true,
 	}}
 
-	err := runFakeWatchedSuite(t.Context(), engine)
+	err := runFakeInteractiveSuite(t.Context(), engine)
 	require.NoError(t, err)
 	require.True(t, engine.config.interactive)
 	require.True(t, engine.startInteractive)
@@ -842,7 +843,7 @@ func TestRunWatchedSuite(t *testing.T) {
 	require.Equal(t, fakeConsoleLifecycle, engine.calls)
 }
 
-func TestRunWatchedProcessAlreadyExited(t *testing.T) {
+func TestRunInteractiveProcessAlreadyExited(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		readGate := make(chan struct{})
 		started := make(chan struct{})
@@ -854,7 +855,7 @@ func TestRunWatchedProcessAlreadyExited(t *testing.T) {
 			onStart: func() { close(started) },
 		}
 		done := make(chan error, 1)
-		go func() { done <- runFakeWatchedSuite(t.Context(), engine) }()
+		go func() { done <- runFakeInteractiveSuite(t.Context(), engine) }()
 		<-started
 		<-engine.startedProcess.outputStarted
 		<-engine.startedProcess.waitDone
@@ -978,7 +979,7 @@ func TestEventBatchPrecedence(t *testing.T) {
 	}
 }
 
-func TestRunWatchedFailures(t *testing.T) {
+func TestRunInteractiveFailures(t *testing.T) {
 	exitRequestErr := errors.New("exit request failed")
 	processErr := errors.New("process failed")
 	for _, testCase := range []struct {
@@ -1038,7 +1039,7 @@ func TestRunWatchedFailures(t *testing.T) {
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
 			engine := &fakeConsoleEngine{process: testCase.process}
-			err := runFakeWatchedSuite(t.Context(), engine)
+			err := runFakeInteractiveSuite(t.Context(), engine)
 			if testCase.wantErr != nil {
 				require.ErrorIs(t, err, testCase.wantErr)
 			}
@@ -1051,7 +1052,7 @@ func TestRunWatchedFailures(t *testing.T) {
 	}
 }
 
-func TestRunWatchedBlockedExit(t *testing.T) {
+func TestRunInteractiveBlockedExit(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		ctx, cancel := context.WithCancelCause(t.Context())
 		cancelErr := errors.New("cancel blocked exit")
@@ -1066,7 +1067,7 @@ func TestRunWatchedBlockedExit(t *testing.T) {
 			onStart: func() { close(started) },
 		}
 		done := make(chan error, 1)
-		go func() { done <- runFakeWatchedSuite(ctx, engine) }()
+		go func() { done <- runFakeInteractiveSuite(ctx, engine) }()
 		<-started
 		<-engine.startedProcess.exitRequestStarted
 		cancel(cancelErr)
