@@ -358,10 +358,10 @@ func (markers terminalMarkers) detect(line []byte) terminalSignal {
 type consoleProcessEventKind uint8
 
 const (
-	consoleTerminalDetected consoleProcessEventKind = iota
+	consoleScenarioResultDetected consoleProcessEventKind = iota
 	consoleOutputCompleted
-	consoleProcessCompleted
-	consoleExitRequestCompleted
+	consoleContainerWaitCompleted
+	consoleExitRequestFailed
 )
 
 type consoleProcessEvent struct {
@@ -371,22 +371,22 @@ type consoleProcessEvent struct {
 }
 
 type consoleOutput struct {
-	data           bytes.Buffer
-	line           []byte
-	terminalEvents chan<- consoleProcessEvent
-	markers        terminalMarkers
+	data                 bytes.Buffer
+	line                 []byte
+	scenarioResultEvents chan<- consoleProcessEvent
+	markers              terminalMarkers
 }
 
-func newConsoleOutput(name string, terminalEvents chan<- consoleProcessEvent) *consoleOutput {
+func newConsoleOutput(name string, scenarioResultEvents chan<- consoleProcessEvent) *consoleOutput {
 	return &consoleOutput{
-		terminalEvents: terminalEvents,
-		markers:        newTerminalMarkers(name),
+		scenarioResultEvents: scenarioResultEvents,
+		markers:              newTerminalMarkers(name),
 	}
 }
 
 func (output *consoleOutput) Write(data []byte) (int, error) {
 	written, err := output.data.Write(data)
-	if output.terminalEvents == nil {
+	if output.scenarioResultEvents == nil {
 		return written, err
 	}
 	output.line = append(output.line, data[:written]...)
@@ -402,15 +402,15 @@ func (output *consoleOutput) Write(data []byte) (int, error) {
 }
 
 func (output *consoleOutput) inspect(line []byte) {
-	if output.terminalEvents == nil || output.markers.detect(line) == terminalSignalNone {
+	if output.scenarioResultEvents == nil || output.markers.detect(line) == terminalSignalNone {
 		return
 	}
-	output.terminalEvents <- consoleProcessEvent{kind: consoleTerminalDetected}
-	output.terminalEvents = nil
+	output.scenarioResultEvents <- consoleProcessEvent{kind: consoleScenarioResultDetected}
+	output.scenarioResultEvents = nil
 }
 
 func (output *consoleOutput) complete(err error) consoleOutputResult {
-	if output.terminalEvents != nil && len(output.line) > 0 {
+	if output.scenarioResultEvents != nil && len(output.line) > 0 {
 		output.inspect(output.line)
 	}
 	return consoleOutputResult{
@@ -425,11 +425,11 @@ type consoleOutputResult struct {
 }
 
 type consoleProcessResult struct {
-	output          *consoleOutputResult
-	processComplete bool
-	forcedClose     bool
-	processErr      error
-	exitErr         error
+	output                 *consoleOutputResult
+	containerWaitCompleted bool
+	forcedClose            bool
+	containerWaitErr       error
+	exitErr                error
 }
 
 type consoleProcessSupervisor struct {
@@ -456,11 +456,11 @@ func newConsoleProcessSupervisor(
 	// Each event kind is emitted at most once. The buffer lets every final send
 	// complete even if the supervisor returns early.
 	events := make(chan consoleProcessEvent, 4)
-	var terminalEvents chan<- consoleProcessEvent
+	var scenarioResultEvents chan<- consoleProcessEvent
 	if interactive {
-		terminalEvents = events
+		scenarioResultEvents = events
 	}
-	output := newConsoleOutput(name, terminalEvents)
+	output := newConsoleOutput(name, scenarioResultEvents)
 	go func() {
 		readErr := process.readOutput(output)
 		events <- consoleProcessEvent{
@@ -469,7 +469,7 @@ func newConsoleProcessSupervisor(
 		}
 	}()
 	go func() {
-		events <- consoleProcessEvent{kind: consoleProcessCompleted, err: process.wait()}
+		events <- consoleProcessEvent{kind: consoleContainerWaitCompleted, err: process.wait()}
 	}()
 
 	return &consoleProcessSupervisor{
@@ -486,9 +486,13 @@ func (supervisor *consoleProcessSupervisor) run() error {
 	for !supervisor.complete() {
 		select {
 		case event := <-supervisor.events:
-			sawTerminal := supervisor.record(event)
-			sawTerminal = supervisor.drainReadyEvents() || sawTerminal
-			supervisor.reconcile(sawTerminal)
+			// Drain ready events before reconciling so output errors and container-wait
+			// results take precedence over requesting console exit.
+			sawScenarioResult := supervisor.record(event)
+			if supervisor.drainReadyEvents() {
+				sawScenarioResult = true
+			}
+			supervisor.reconcile(sawScenarioResult)
 		case <-supervisor.ctx.Done():
 			return supervisor.abort(context.Cause(supervisor.ctx))
 		case <-supervisor.shutdownDone:
@@ -499,67 +503,70 @@ func (supervisor *consoleProcessSupervisor) run() error {
 }
 
 func (supervisor *consoleProcessSupervisor) complete() bool {
-	return supervisor.result.output != nil && supervisor.result.processComplete
+	return supervisor.result.output != nil && supervisor.result.containerWaitCompleted
 }
 
 func (supervisor *consoleProcessSupervisor) record(event consoleProcessEvent) bool {
 	switch event.kind {
-	case consoleTerminalDetected:
+	case consoleScenarioResultDetected:
 		return true
 	case consoleOutputCompleted:
 		output := event.output
 		supervisor.result.output = &output
-	case consoleProcessCompleted:
-		supervisor.result.processComplete = true
-		supervisor.result.processErr = event.err
-	case consoleExitRequestCompleted:
+	case consoleContainerWaitCompleted:
+		supervisor.result.containerWaitCompleted = true
+		supervisor.result.containerWaitErr = event.err
+	case consoleExitRequestFailed:
 		supervisor.result.exitErr = event.err
 	}
 	return false
 }
 
-func (supervisor *consoleProcessSupervisor) drainReadyEvents() (sawTerminal bool) {
+func (supervisor *consoleProcessSupervisor) drainReadyEvents() (sawScenarioResult bool) {
 	for {
 		select {
 		case event := <-supervisor.events:
-			sawTerminal = supervisor.record(event) || sawTerminal
+			if supervisor.record(event) {
+				sawScenarioResult = true
+			}
 		default:
-			return sawTerminal
+			return sawScenarioResult
 		}
 	}
 }
 
-func (supervisor *consoleProcessSupervisor) reconcile(sawTerminal bool) {
-	successfulExit := supervisor.result.processComplete && supervisor.result.processErr == nil
+func (supervisor *consoleProcessSupervisor) reconcile(sawScenarioResult bool) {
+	containerExited := supervisor.result.containerWaitCompleted && supervisor.result.containerWaitErr == nil
 	switch {
 	case supervisor.result.output != nil && supervisor.result.output.err != nil:
 		supervisor.forceClose()
-	case supervisor.result.exitErr != nil && !successfulExit:
+	case supervisor.result.exitErr != nil && !containerExited:
 		supervisor.forceClose()
-	case sawTerminal:
+	case sawScenarioResult:
 		supervisor.requestExit()
 	case supervisor.interactive && supervisor.result.output != nil &&
-		!supervisor.result.processComplete && !supervisor.exitRequested:
+		!supervisor.result.containerWaitCompleted && !supervisor.exitRequested:
 		supervisor.forceClose()
 	}
 
 	if !supervisor.complete() &&
-		(supervisor.result.output != nil || supervisor.result.processComplete ||
-			supervisor.exitRequested) {
+		(supervisor.result.output != nil || supervisor.result.containerWaitCompleted) {
 		supervisor.beginShutdown()
 	}
 }
 
 func (supervisor *consoleProcessSupervisor) requestExit() {
-	if supervisor.result.processComplete || supervisor.exitRequested || supervisor.result.forcedClose {
+	if supervisor.result.containerWaitCompleted || supervisor.exitRequested || supervisor.result.forcedClose {
 		return
 	}
 	supervisor.exitRequested = true
 	supervisor.beginShutdown()
 	go func() {
-		supervisor.events <- consoleProcessEvent{
-			kind: consoleExitRequestCompleted,
-			err:  supervisor.process.requestExit(supervisor.shutdownCtx),
+		if err := supervisor.process.requestExit(supervisor.shutdownCtx); err != nil {
+			supervisor.events <- consoleProcessEvent{
+				kind: consoleExitRequestFailed,
+				err:  err,
+			}
 		}
 	}()
 }
@@ -591,6 +598,7 @@ func (supervisor *consoleProcessSupervisor) abort(err error) error {
 
 func (supervisor *consoleProcessSupervisor) finish(supervisorErr error) error {
 	supervisor.drainReadyEvents()
+	// Cancellation or shutdown expiry can race the final completion event.
 	if supervisorErr == nil {
 		switch {
 		case context.Cause(supervisor.ctx) != nil:
@@ -609,11 +617,11 @@ func (supervisor *consoleProcessSupervisor) cancel() {
 }
 
 func finishConsoleProcess(name string, result consoleProcessResult, supervisorErr error) error {
-	naturalExit := result.processComplete && result.processErr == nil && !result.forcedClose
-	processErr := result.processErr
+	naturalExit := result.containerWaitCompleted && result.containerWaitErr == nil && !result.forcedClose
+	containerWaitErr := result.containerWaitErr
 	if (result.forcedClose || supervisorErr != nil) &&
-		errors.Is(processErr, context.Canceled) {
-		processErr = nil
+		errors.Is(containerWaitErr, context.Canceled) {
+		containerWaitErr = nil
 	}
 	exitErr := result.exitErr
 	if naturalExit ||
@@ -631,8 +639,8 @@ func finishConsoleProcess(name string, result consoleProcessResult, supervisorEr
 			)
 		}
 	}
-	if processErr != nil {
-		resultErr = errors.Join(resultErr, fmt.Errorf("run console suite %s: %w", name, processErr))
+	if containerWaitErr != nil {
+		resultErr = errors.Join(resultErr, fmt.Errorf("run console suite %s: %w", name, containerWaitErr))
 	}
 	if exitErr != nil {
 		resultErr = errors.Join(resultErr, fmt.Errorf("stop console suite %s: %w", name, exitErr))

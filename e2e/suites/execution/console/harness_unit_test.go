@@ -85,7 +85,7 @@ func TestWatchedOutput(t *testing.T) {
 
 			select {
 			case event := <-events:
-				require.Equal(t, consoleTerminalDetected, event.kind)
+				require.Equal(t, consoleScenarioResultDetected, event.kind)
 			default:
 				t.Fatal("terminal marker was not detected")
 			}
@@ -909,8 +909,8 @@ func TestFinishConsoleProcessCancellation(t *testing.T) {
 		output: &consoleOutputResult{
 			output: []byte(passPrefix + "events\n"),
 		},
-		processComplete: true,
-		processErr:      context.Canceled,
+		containerWaitCompleted: true,
+		containerWaitErr:       context.Canceled,
 	}, shutdownErr)
 
 	require.ErrorIs(t, err, shutdownErr)
@@ -928,15 +928,17 @@ func TestOutputFailurePreventsExitRequest(t *testing.T) {
 	}
 	defer supervisor.cancel()
 	defer process.close()
-	supervisor.events <- consoleProcessEvent{kind: consoleTerminalDetected}
+	supervisor.events <- consoleProcessEvent{kind: consoleScenarioResultDetected}
 	supervisor.events <- consoleProcessEvent{
 		kind:   consoleOutputCompleted,
 		output: consoleOutputResult{err: errors.New("read failed")},
 	}
 
-	sawTerminal := supervisor.record(<-supervisor.events)
-	sawTerminal = supervisor.drainReadyEvents() || sawTerminal
-	supervisor.reconcile(sawTerminal)
+	sawScenarioResult := supervisor.record(<-supervisor.events)
+	if supervisor.drainReadyEvents() {
+		sawScenarioResult = true
+	}
+	supervisor.reconcile(sawScenarioResult)
 
 	require.True(t, supervisor.result.forcedClose)
 	require.Zero(t, process.exitRequestCount())
