@@ -443,7 +443,7 @@ type consoleProcessSupervisor struct {
 
 	shutdownCtx    context.Context
 	shutdownDone   <-chan struct{}
-	cancelShutdown context.CancelFunc
+	shutdownCancel context.CancelFunc
 	result         consoleProcessResult
 }
 
@@ -482,17 +482,12 @@ func newConsoleProcessSupervisor(
 }
 
 func (supervisor *consoleProcessSupervisor) run() error {
-	defer supervisor.cancel()
+	defer supervisor.cancelShutdownDeadline()
 	for !supervisor.complete() {
 		select {
-		case event := <-supervisor.events:
-			// Drain ready events before reconciling so output errors and container-wait
-			// results take precedence over requesting console exit.
-			sawScenarioResult := supervisor.record(event)
-			if supervisor.drainReadyEvents() {
-				sawScenarioResult = true
-			}
-			supervisor.reconcile(sawScenarioResult)
+		case firstEvent := <-supervisor.events:
+			scenarioResultDetected := supervisor.recordEventBatch(firstEvent)
+			supervisor.respondToEvents(scenarioResultDetected)
 		case <-supervisor.ctx.Done():
 			return supervisor.abort(context.Cause(supervisor.ctx))
 		case <-supervisor.shutdownDone:
@@ -506,7 +501,7 @@ func (supervisor *consoleProcessSupervisor) complete() bool {
 	return supervisor.result.output != nil && supervisor.result.containerWaitCompleted
 }
 
-func (supervisor *consoleProcessSupervisor) record(event consoleProcessEvent) bool {
+func (supervisor *consoleProcessSupervisor) recordEvent(event consoleProcessEvent) bool {
 	switch event.kind {
 	case consoleScenarioResultDetected:
 		return true
@@ -522,36 +517,51 @@ func (supervisor *consoleProcessSupervisor) record(event consoleProcessEvent) bo
 	return false
 }
 
-func (supervisor *consoleProcessSupervisor) drainReadyEvents() (sawScenarioResult bool) {
+// recordEventBatch records the first event and every event already queued so
+// response precedence does not depend on delivery order.
+func (supervisor *consoleProcessSupervisor) recordEventBatch(
+	event consoleProcessEvent,
+) (scenarioResultDetected bool) {
 	for {
+		if supervisor.recordEvent(event) {
+			scenarioResultDetected = true
+		}
 		select {
-		case event := <-supervisor.events:
-			if supervisor.record(event) {
-				sawScenarioResult = true
-			}
+		case event = <-supervisor.events:
 		default:
-			return sawScenarioResult
+			return scenarioResultDetected
 		}
 	}
 }
 
-func (supervisor *consoleProcessSupervisor) reconcile(sawScenarioResult bool) {
-	containerExited := supervisor.result.containerWaitCompleted && supervisor.result.containerWaitErr == nil
+func (supervisor *consoleProcessSupervisor) drainReadyEvents() {
+	select {
+	case firstEvent := <-supervisor.events:
+		supervisor.recordEventBatch(firstEvent)
+	default:
+	}
+}
+
+func (supervisor *consoleProcessSupervisor) respondToEvents(scenarioResultDetected bool) {
+	outputCompleted := supervisor.result.output != nil
+	containerWaitCompleted := supervisor.result.containerWaitCompleted
+	containerWaitSucceeded := containerWaitCompleted && supervisor.result.containerWaitErr == nil
 	switch {
-	case supervisor.result.output != nil && supervisor.result.output.readErr != nil:
+	case outputCompleted && supervisor.result.output.readErr != nil:
 		supervisor.forceClose()
-	case supervisor.result.exitRequestErr != nil && !containerExited:
+	case supervisor.result.exitRequestErr != nil && !containerWaitSucceeded:
 		supervisor.forceClose()
-	case sawScenarioResult:
+	case scenarioResultDetected:
 		supervisor.requestExit()
-	case supervisor.interactive && supervisor.result.output != nil &&
-		!supervisor.result.containerWaitCompleted && !supervisor.exitRequested:
+	case supervisor.interactive && outputCompleted &&
+		!containerWaitCompleted && !supervisor.exitRequested:
 		supervisor.forceClose()
 	}
 
+	// Once either required result arrives, bound the wait for the other.
 	if !supervisor.complete() &&
-		(supervisor.result.output != nil || supervisor.result.containerWaitCompleted) {
-		supervisor.beginShutdown()
+		(outputCompleted || containerWaitCompleted) {
+		supervisor.startShutdownDeadline()
 	}
 }
 
@@ -560,7 +570,7 @@ func (supervisor *consoleProcessSupervisor) requestExit() {
 		return
 	}
 	supervisor.exitRequested = true
-	supervisor.beginShutdown()
+	supervisor.startShutdownDeadline()
 	go func() {
 		if err := supervisor.process.requestExit(supervisor.shutdownCtx); err != nil {
 			supervisor.events <- consoleProcessEvent{
@@ -571,11 +581,11 @@ func (supervisor *consoleProcessSupervisor) requestExit() {
 	}()
 }
 
-func (supervisor *consoleProcessSupervisor) beginShutdown() {
+func (supervisor *consoleProcessSupervisor) startShutdownDeadline() {
 	if supervisor.shutdownCtx != nil {
 		return
 	}
-	supervisor.shutdownCtx, supervisor.cancelShutdown = context.WithTimeoutCause(
+	supervisor.shutdownCtx, supervisor.shutdownCancel = context.WithTimeoutCause(
 		supervisor.ctx,
 		consoleProcessExitTimeout,
 		fmt.Errorf("console process did not shut down within %s", consoleProcessExitTimeout),
@@ -610,9 +620,9 @@ func (supervisor *consoleProcessSupervisor) finish(supervisorErr error) error {
 	return finishConsoleProcess(supervisor.name, supervisor.result, supervisorErr)
 }
 
-func (supervisor *consoleProcessSupervisor) cancel() {
-	if supervisor.cancelShutdown != nil {
-		supervisor.cancelShutdown()
+func (supervisor *consoleProcessSupervisor) cancelShutdownDeadline() {
+	if supervisor.shutdownCancel != nil {
+		supervisor.shutdownCancel()
 	}
 }
 

@@ -918,30 +918,46 @@ func TestFinishConsoleProcessCancellation(t *testing.T) {
 	require.NotContains(t, err.Error(), "run console suite events")
 }
 
-func TestOutputFailurePreventsExitRequest(t *testing.T) {
-	process := newFakeConsoleProcess(t.Context(), fakeConsoleProcessConfig{})
-	supervisor := &consoleProcessSupervisor{
-		ctx:         t.Context(),
-		process:     process,
-		interactive: true,
-		events:      make(chan consoleProcessEvent, 2),
-	}
-	defer supervisor.cancel()
-	defer process.close()
-	supervisor.events <- consoleProcessEvent{kind: consoleScenarioResultDetected}
-	supervisor.events <- consoleProcessEvent{
-		kind:   consoleOutputCompleted,
-		output: consoleOutputResult{readErr: errors.New("read failed")},
-	}
+func TestEventBatchPrecedence(t *testing.T) {
+	for _, testCase := range []struct {
+		name            string
+		competingEvent  consoleProcessEvent
+		wantForcedClose bool
+	}{
+		{
+			name: "output failure",
+			competingEvent: consoleProcessEvent{
+				kind:   consoleOutputCompleted,
+				output: consoleOutputResult{readErr: errors.New("read failed")},
+			},
+			wantForcedClose: true,
+		},
+		{
+			name:           "container exited",
+			competingEvent: consoleProcessEvent{kind: consoleContainerWaitCompleted},
+		},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			process := newFakeConsoleProcess(t.Context(), fakeConsoleProcessConfig{})
+			supervisor := &consoleProcessSupervisor{
+				ctx:         t.Context(),
+				process:     process,
+				interactive: true,
+				events:      make(chan consoleProcessEvent, 2),
+			}
+			defer supervisor.cancelShutdownDeadline()
+			defer process.close()
+			supervisor.events <- consoleProcessEvent{kind: consoleScenarioResultDetected}
+			supervisor.events <- testCase.competingEvent
 
-	sawScenarioResult := supervisor.record(<-supervisor.events)
-	if supervisor.drainReadyEvents() {
-		sawScenarioResult = true
-	}
-	supervisor.reconcile(sawScenarioResult)
+			firstEvent := <-supervisor.events
+			scenarioResultDetected := supervisor.recordEventBatch(firstEvent)
+			supervisor.respondToEvents(scenarioResultDetected)
 
-	require.True(t, supervisor.result.forcedClose)
-	require.Zero(t, process.exitRequestCount())
+			require.Equal(t, testCase.wantForcedClose, supervisor.result.forcedClose)
+			require.Zero(t, process.exitRequestCount())
+		})
+	}
 }
 
 func TestRunWatchedFailures(t *testing.T) {
