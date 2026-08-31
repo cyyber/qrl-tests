@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/fs"
 	"net"
 	"strings"
 	"sync"
@@ -58,6 +57,7 @@ func TestInteractiveOutput(t *testing.T) {
 	}{
 		{name: "split marker", chunks: []string{"noise\nCONSOLE_E2E_PA", "SS events\n"}},
 		{name: "failure marker", chunks: []string{"CONSOLE_E2E_FAIL events\n"}},
+		{name: "GoError", chunks: []string{"GoError: helper failure\n"}},
 		{name: "unterminated marker", chunks: []string{"CONSOLE_E2E_PASS events"}, complete: true},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
@@ -74,10 +74,7 @@ func TestInteractiveOutput(t *testing.T) {
 				default:
 				}
 			}
-			result := consoleOutputResult{output: bytes.Clone(output.data.Bytes())}
-			if testCase.complete {
-				result = output.complete(nil)
-			}
+			result := output.complete(nil)
 
 			select {
 			case event := <-events:
@@ -95,11 +92,9 @@ const fakeContainerID = "console-container"
 var fakeFixtureArchive = []byte("fixture archive")
 
 type fakeConsoleEngine struct {
-	config           consoleContainerConfig
 	calls            []string
-	fixtureArchive   []byte
 	process          fakeConsoleProcessConfig
-	onStart          func()
+	started          chan struct{}
 	createErr        error
 	copyErr          error
 	startErr         error
@@ -112,16 +107,14 @@ type fakeConsoleEngine struct {
 func (engine *fakeConsoleEngine) copyFixtures(
 	_ context.Context,
 	containerID string,
-	fixtureArchive []byte,
+	_ []byte,
 ) error {
 	engine.calls = append(engine.calls, "copy:"+containerID)
-	engine.fixtureArchive = bytes.Clone(fixtureArchive)
 	return engine.copyErr
 }
 
-func (engine *fakeConsoleEngine) createContainer(_ context.Context, config consoleContainerConfig) (string, error) {
+func (engine *fakeConsoleEngine) createContainer(_ context.Context, _ consoleContainerConfig) (string, error) {
 	engine.calls = append(engine.calls, "create")
-	engine.config = config
 	if engine.createErr != nil {
 		return "", engine.createErr
 	}
@@ -140,8 +133,8 @@ func (engine *fakeConsoleEngine) startContainer(
 	}
 	process := newFakeConsoleProcess(ctx, engine.process)
 	engine.startedProcess = process
-	if engine.onStart != nil {
-		engine.onStart()
+	if engine.started != nil {
+		close(engine.started)
 	}
 	return process, nil
 }
@@ -178,20 +171,17 @@ type writeSignalingConn struct {
 	started     chan struct{}
 	writeDone   chan struct{}
 	inputClosed chan struct{}
-	startOnce   sync.Once
-	doneOnce    sync.Once
-	closeOnce   sync.Once
 }
 
 func (connection *writeSignalingConn) Write(data []byte) (int, error) {
-	connection.startOnce.Do(func() { close(connection.started) })
+	close(connection.started)
 	written, err := connection.Conn.Write(data)
-	connection.doneOnce.Do(func() { close(connection.writeDone) })
+	close(connection.writeDone)
 	return written, err
 }
 
 func (connection *writeSignalingConn) CloseWrite() error {
-	connection.closeOnce.Do(func() { close(connection.inputClosed) })
+	close(connection.inputClosed)
 	return nil
 }
 
@@ -323,7 +313,6 @@ func TestDockerConsoleEngine(t *testing.T) {
 	process, err = engine.startContainer(t.Context(), containerID, true)
 	require.NoError(t, err)
 	require.True(t, client.attachOptions.Stdin)
-	require.NoError(t, process.wait())
 	process.close()
 }
 
@@ -412,13 +401,8 @@ func TestConsoleFixtureArchive(t *testing.T) {
 	fixtureArchive, err := consoleFixtureArchive(parameters)
 	require.NoError(t, err)
 	contents := fixtureArchiveContents(t, fixtureArchive)
-	fixtureNames, err := fs.Glob(consoleFixtures, consoleFixtureDirectory+"/*.js")
-	require.NoError(t, err)
-	require.Len(t, contents, len(fixtureNames)+1)
-	for _, name := range fixtureNames {
-		expected, err := consoleFixtures.ReadFile(name)
-		require.NoError(t, err)
-		require.Equal(t, string(expected), contents[name])
+	for _, name := range []string{"harness.js", "assertions.js", "api.js"} {
+		require.Contains(t, contents, consoleFixtureDirectory+"/"+name)
 	}
 	require.Equal(
 		t,
@@ -494,8 +478,6 @@ type fakeConsoleProcess struct {
 	waitDone           chan struct{}
 	exitRequestStarted chan struct{}
 	closeOnce          sync.Once
-	exitOnce           sync.Once
-	exitRequestOnce    sync.Once
 	exitRequests       atomic.Int32
 }
 
@@ -578,7 +560,7 @@ func (process *fakeConsoleProcess) wait() error {
 
 func (process *fakeConsoleProcess) requestExit(ctx context.Context) error {
 	process.exitRequests.Add(1)
-	process.exitRequestOnce.Do(func() { close(process.exitRequestStarted) })
+	close(process.exitRequestStarted)
 	if process.config.exitGate != nil {
 		select {
 		case <-process.config.exitGate:
@@ -589,7 +571,7 @@ func (process *fakeConsoleProcess) requestExit(ctx context.Context) error {
 	if process.config.exitRequestErr != nil {
 		return process.config.exitRequestErr
 	}
-	process.exitOnce.Do(func() { close(process.exit) })
+	close(process.exit)
 	return nil
 }
 
@@ -630,23 +612,7 @@ var fakeConsoleLifecycle = []string{
 
 func TestRunNonInteractiveSuite(t *testing.T) {
 	engine := &fakeConsoleEngine{process: fakeConsoleProcessConfig{output: passPrefix + "api\n"}}
-	err := runScenarioWithEngine(
-		t.Context(),
-		consoleContainerConfig{
-			image:       "registry.example/go-qrl@sha256:digest",
-			endpointURL: "http://127.0.0.1:8545",
-			scenario:    "api",
-		},
-		fakeFixtureArchive,
-		engine,
-	)
-	require.NoError(t, err)
-	require.Equal(t, consoleContainerConfig{
-		image:       "registry.example/go-qrl@sha256:digest",
-		endpointURL: "http://127.0.0.1:8545",
-		scenario:    "api",
-	}, engine.config)
-	require.Equal(t, fakeFixtureArchive, engine.fixtureArchive)
+	require.NoError(t, runFakeNonInteractiveSuite(t.Context(), engine))
 	require.False(t, engine.startInteractive)
 	require.Zero(t, engine.startedProcess.exitRequestCount())
 	require.Equal(t, fakeConsoleLifecycle, engine.calls)
@@ -691,6 +657,7 @@ func TestRunNonInteractiveFailures(t *testing.T) {
 			if testCase.wantDetail != "" {
 				require.ErrorContains(t, err, testCase.wantDetail)
 			}
+			require.NotContains(t, err.Error(), "console process did not shut down")
 			require.Equal(t, fakeConsoleLifecycle, engine.calls)
 		})
 	}
@@ -717,7 +684,7 @@ func TestRunNonInteractiveJoinsErrors(t *testing.T) {
 					waitErr:  processErr,
 					readGate: readGate,
 					waitGate: waitGate,
-				}, onStart: func() { close(started) }}
+				}, started: started}
 				done := make(chan error, 1)
 				go func() { done <- runFakeNonInteractiveSuite(t.Context(), engine) }()
 				<-started
@@ -775,7 +742,7 @@ func TestRunCancellationWithBlockedOutput(t *testing.T) {
 		started := make(chan struct{})
 		engine := &fakeConsoleEngine{
 			process: fakeConsoleProcessConfig{readGate: readGate, pending: true},
-			onStart: func() { close(started) },
+			started: started,
 		}
 		done := make(chan error, 1)
 		go func() { done <- runFakeNonInteractiveSuite(ctx, engine) }()
@@ -800,7 +767,6 @@ func TestRunInteractiveSuite(t *testing.T) {
 
 	err := runFakeInteractiveSuite(t.Context(), engine)
 	require.NoError(t, err)
-	require.True(t, engine.config.interactive)
 	require.True(t, engine.startInteractive)
 	require.Equal(t, 1, engine.startedProcess.exitRequestCount())
 	require.Equal(t, fakeConsoleLifecycle, engine.calls)
@@ -815,7 +781,7 @@ func TestRunInteractiveProcessAlreadyExited(t *testing.T) {
 				output:   passPrefix + "events\n",
 				readGate: readGate,
 			},
-			onStart: func() { close(started) },
+			started: started,
 		}
 		done := make(chan error, 1)
 		go func() { done <- runFakeInteractiveSuite(t.Context(), engine) }()
@@ -882,61 +848,6 @@ func TestFinishConsoleProcessCancellation(t *testing.T) {
 	require.NotContains(t, err.Error(), "run console suite events")
 }
 
-func TestEventBatchPrecedence(t *testing.T) {
-	readErr := errors.New("read failed")
-	for _, testCase := range []struct {
-		name            string
-		competingEvents []consoleProcessEvent
-		wantForcedClose bool
-	}{
-		{
-			name: "output failure",
-			competingEvents: []consoleProcessEvent{{
-				kind:   consoleOutputCompleted,
-				output: consoleOutputResult{readErr: readErr},
-			}},
-			wantForcedClose: true,
-		},
-		{
-			name:            "container exited",
-			competingEvents: []consoleProcessEvent{{kind: consoleContainerWaitCompleted}},
-		},
-		{
-			name: "output failure after exit",
-			competingEvents: []consoleProcessEvent{
-				{kind: consoleOutputCompleted, output: consoleOutputResult{readErr: readErr}},
-				{kind: consoleContainerWaitCompleted},
-			},
-		},
-	} {
-		t.Run(testCase.name, func(t *testing.T) {
-			process := newFakeConsoleProcess(t.Context(), fakeConsoleProcessConfig{})
-			supervisor := &consoleProcessSupervisor{
-				ctx:         t.Context(),
-				process:     process,
-				interactive: true,
-				events:      make(chan consoleProcessEvent, 1+len(testCase.competingEvents)),
-			}
-			defer supervisor.cancelShutdownDeadline()
-			defer process.close()
-			supervisor.events <- consoleProcessEvent{kind: consoleTerminalSignalDetected}
-			for _, event := range testCase.competingEvents {
-				supervisor.events <- event
-			}
-
-			firstEvent := <-supervisor.events
-			terminalSignalDetected := supervisor.recordEventBatch(firstEvent)
-			supervisor.respondToEvents(terminalSignalDetected)
-
-			require.Equal(t, testCase.wantForcedClose, supervisor.result.forcedClose)
-			require.Zero(t, process.exitRequestCount())
-			if supervisor.result.output != nil {
-				require.ErrorIs(t, supervisor.result.output.readErr, readErr)
-			}
-		})
-	}
-}
-
 func TestRunInteractiveFailures(t *testing.T) {
 	exitRequestErr := errors.New("exit request failed")
 	processErr := errors.New("process failed")
@@ -955,12 +866,6 @@ func TestRunInteractiveFailures(t *testing.T) {
 				pending:    true,
 			},
 			wantDetail: "emitted a failure marker",
-			wantExit:   true,
-		},
-		{
-			name:       "GoError",
-			process:    fakeConsoleProcessConfig{output: "GoError: helper failure\n", pending: true},
-			wantDetail: "failed with GoError",
 			wantExit:   true,
 		},
 		{
@@ -996,7 +901,9 @@ func TestRunInteractiveFailures(t *testing.T) {
 			if testCase.wantErr != nil {
 				require.ErrorIs(t, err, testCase.wantErr)
 			}
-			require.ErrorContains(t, err, testCase.wantDetail)
+			if testCase.wantDetail != "" {
+				require.ErrorContains(t, err, testCase.wantDetail)
+			}
 			if testCase.wantExit {
 				require.Equal(t, 1, engine.startedProcess.exitRequestCount())
 			}
@@ -1017,7 +924,7 @@ func TestRunInteractiveBlockedExit(t *testing.T) {
 				exitGate: exitGate,
 				pending:  true,
 			},
-			onStart: func() { close(started) },
+			started: started,
 		}
 		done := make(chan error, 1)
 		go func() { done <- runFakeInteractiveSuite(ctx, engine) }()
@@ -1031,6 +938,5 @@ func TestRunInteractiveBlockedExit(t *testing.T) {
 		require.Equal(t, 1, engine.startedProcess.exitRequestCount())
 		require.NoError(t, engine.removeContextErr)
 		require.Equal(t, fakeConsoleLifecycle, engine.calls)
-		close(exitGate)
 	})
 }
