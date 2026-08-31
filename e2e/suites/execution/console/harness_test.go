@@ -409,19 +409,19 @@ func (output *consoleOutput) inspect(line []byte) {
 	output.scenarioResultEvents = nil
 }
 
-func (output *consoleOutput) complete(err error) consoleOutputResult {
+func (output *consoleOutput) complete(readErr error) consoleOutputResult {
 	if output.scenarioResultEvents != nil && len(output.line) > 0 {
 		output.inspect(output.line)
 	}
 	return consoleOutputResult{
-		output: bytes.Clone(output.data.Bytes()),
-		err:    err,
+		output:  bytes.Clone(output.data.Bytes()),
+		readErr: readErr,
 	}
 }
 
 type consoleOutputResult struct {
-	output []byte
-	err    error
+	output  []byte
+	readErr error
 }
 
 type consoleProcessResult struct {
@@ -429,7 +429,7 @@ type consoleProcessResult struct {
 	containerWaitCompleted bool
 	forcedClose            bool
 	containerWaitErr       error
-	exitErr                error
+	exitRequestErr         error
 }
 
 type consoleProcessSupervisor struct {
@@ -517,7 +517,7 @@ func (supervisor *consoleProcessSupervisor) record(event consoleProcessEvent) bo
 		supervisor.result.containerWaitCompleted = true
 		supervisor.result.containerWaitErr = event.err
 	case consoleExitRequestFailed:
-		supervisor.result.exitErr = event.err
+		supervisor.result.exitRequestErr = event.err
 	}
 	return false
 }
@@ -538,9 +538,9 @@ func (supervisor *consoleProcessSupervisor) drainReadyEvents() (sawScenarioResul
 func (supervisor *consoleProcessSupervisor) reconcile(sawScenarioResult bool) {
 	containerExited := supervisor.result.containerWaitCompleted && supervisor.result.containerWaitErr == nil
 	switch {
-	case supervisor.result.output != nil && supervisor.result.output.err != nil:
+	case supervisor.result.output != nil && supervisor.result.output.readErr != nil:
 		supervisor.forceClose()
-	case supervisor.result.exitErr != nil && !containerExited:
+	case supervisor.result.exitRequestErr != nil && !containerExited:
 		supervisor.forceClose()
 	case sawScenarioResult:
 		supervisor.requestExit()
@@ -623,38 +623,35 @@ func finishConsoleProcess(name string, result consoleProcessResult, supervisorEr
 		errors.Is(containerWaitErr, context.Canceled) {
 		containerWaitErr = nil
 	}
-	exitErr := result.exitErr
+	exitRequestErr := result.exitRequestErr
 	if naturalExit ||
-		(supervisorErr != nil && errors.Is(exitErr, supervisorErr)) {
-		exitErr = nil
+		(supervisorErr != nil && errors.Is(exitRequestErr, supervisorErr)) {
+		exitRequestErr = nil
 	}
 
 	var resultErr error
 	if result.output != nil {
 		resultErr = parseSuiteResult(name, result.output.output)
-		if result.output.err != nil {
+		if result.output.readErr != nil {
 			resultErr = errors.Join(
 				resultErr,
-				fmt.Errorf("read console suite %s output: %w", name, result.output.err),
+				fmt.Errorf("read console suite %s output: %w", name, result.output.readErr),
 			)
 		}
 	}
 	if containerWaitErr != nil {
 		resultErr = errors.Join(resultErr, fmt.Errorf("run console suite %s: %w", name, containerWaitErr))
 	}
-	if exitErr != nil {
-		resultErr = errors.Join(resultErr, fmt.Errorf("stop console suite %s: %w", name, exitErr))
+	if exitRequestErr != nil {
+		resultErr = errors.Join(resultErr, fmt.Errorf("stop console suite %s: %w", name, exitRequestErr))
 	}
 	if supervisorErr != nil {
 		resultErr = errors.Join(resultErr, fmt.Errorf("console suite %s: %w", name, supervisorErr))
 	}
-	if resultErr == nil {
-		return nil
+	if resultErr != nil && result.output != nil && len(result.output.output) > 0 {
+		return fmt.Errorf("%w\n%s", resultErr, result.output.output)
 	}
-	if result.output == nil || len(result.output.output) == 0 {
-		return resultErr
-	}
-	return fmt.Errorf("%w\n%s", resultErr, result.output.output)
+	return resultErr
 }
 
 func parseSuiteResult(name string, output []byte) error {

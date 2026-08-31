@@ -392,15 +392,15 @@ func TestDockerConsoleRequestExit(t *testing.T) {
 	t.Run("cancellation", func(t *testing.T) {
 		process, connection, _ := newProcess(t)
 		exitCtx, cancelExit := context.WithCancelCause(t.Context())
-		exitErr := errors.New("cancel console exit")
+		exitRequestErr := errors.New("cancel console exit")
 		done := make(chan error, 1)
 		go func() { done <- process.requestExit(exitCtx) }()
 		<-connection.started
-		cancelExit(exitErr)
+		cancelExit(exitRequestErr)
 
 		select {
 		case err := <-done:
-			require.ErrorIs(t, err, exitErr)
+			require.ErrorIs(t, err, exitRequestErr)
 		case <-time.After(time.Second):
 			t.Fatal("console exit request remained blocked after cancellation")
 		}
@@ -522,15 +522,15 @@ type fakeConsoleProcess struct {
 }
 
 type fakeConsoleProcessConfig struct {
-	output     string
-	exitOutput string
-	readErr    error
-	waitErr    error
-	exitErr    error
-	readGate   <-chan struct{}
-	waitGate   <-chan struct{}
-	exitGate   <-chan struct{}
-	pending    bool
+	output         string
+	exitOutput     string
+	readErr        error
+	waitErr        error
+	exitRequestErr error
+	readGate       <-chan struct{}
+	waitGate       <-chan struct{}
+	exitGate       <-chan struct{}
+	pending        bool
 }
 
 func newFakeConsoleProcess(ctx context.Context, config fakeConsoleProcessConfig) *fakeConsoleProcess {
@@ -608,8 +608,8 @@ func (process *fakeConsoleProcess) requestExit(ctx context.Context) error {
 			return context.Cause(ctx)
 		}
 	}
-	if process.config.exitErr != nil {
-		return process.config.exitErr
+	if process.config.exitRequestErr != nil {
+		return process.config.exitRequestErr
 	}
 	process.exitOnce.Do(func() { close(process.exit) })
 	return nil
@@ -931,7 +931,7 @@ func TestOutputFailurePreventsExitRequest(t *testing.T) {
 	supervisor.events <- consoleProcessEvent{kind: consoleScenarioResultDetected}
 	supervisor.events <- consoleProcessEvent{
 		kind:   consoleOutputCompleted,
-		output: consoleOutputResult{err: errors.New("read failed")},
+		output: consoleOutputResult{readErr: errors.New("read failed")},
 	}
 
 	sawScenarioResult := supervisor.record(<-supervisor.events)
@@ -945,7 +945,7 @@ func TestOutputFailurePreventsExitRequest(t *testing.T) {
 }
 
 func TestRunWatchedFailures(t *testing.T) {
-	exitErr := errors.New("exit request failed")
+	exitRequestErr := errors.New("exit request failed")
 	processErr := errors.New("process failed")
 	for _, testCase := range []struct {
 		name       string
@@ -971,9 +971,13 @@ func TestRunWatchedFailures(t *testing.T) {
 			wantExit:   true,
 		},
 		{
-			name:       "exit request",
-			process:    fakeConsoleProcessConfig{output: passPrefix + "events\n", exitErr: exitErr, pending: true},
-			wantErr:    exitErr,
+			name: "exit request",
+			process: fakeConsoleProcessConfig{
+				output:         passPrefix + "events\n",
+				exitRequestErr: exitRequestErr,
+				pending:        true,
+			},
+			wantErr:    exitRequestErr,
 			wantDetail: "stop console suite events",
 			wantExit:   true,
 		},
