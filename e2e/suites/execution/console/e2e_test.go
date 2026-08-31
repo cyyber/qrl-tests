@@ -57,13 +57,21 @@ var _ = ginkgo.Describe(
 
 		ginkgo.It("deploys a contract and validates VM64 ABI, receipts, events, and filters", func(ctx ginkgo.SpecContext) {
 			gomega.Expect(
-				runSuite(ctx, node.ExecutionImage, node.ExecutionRPCURL, "contract", fixtureArchive),
+				runScenario(ctx, consoleContainerConfig{
+					image:       node.ExecutionImage,
+					endpointURL: node.ExecutionRPCURL,
+					scenario:    "contract",
+				}, fixtureArchive),
 			).To(gomega.Succeed())
 		})
 
 		ginkgo.It("formats and decodes indexed VM64 scalar topics", func(ctx ginkgo.SpecContext) {
 			gomega.Expect(
-				runSuite(ctx, node.ExecutionImage, node.ExecutionRPCURL, "topics", fixtureArchive),
+				runScenario(ctx, consoleContainerConfig{
+					image:       node.ExecutionImage,
+					endpointURL: node.ExecutionRPCURL,
+					scenario:    "topics",
+				}, fixtureArchive),
 			).To(gomega.Succeed())
 		})
 	},
