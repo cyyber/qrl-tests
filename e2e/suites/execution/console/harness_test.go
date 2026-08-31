@@ -271,14 +271,6 @@ func consoleFixtureArchive(parameters []byte) ([]byte, error) {
 	return archive.Bytes(), nil
 }
 
-func runSuite(ctx context.Context, image, endpointURL, name string, fixtureArchive []byte) error {
-	return runScenario(ctx, consoleContainerConfig{
-		image:       image,
-		endpointURL: endpointURL,
-		scenario:    name,
-	}, fixtureArchive)
-}
-
 func runScenario(
 	ctx context.Context,
 	config consoleContainerConfig,

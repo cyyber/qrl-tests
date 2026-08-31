@@ -40,7 +40,11 @@ var _ = ginkgo.Describe(
 
 		ginkgo.It("validates console and RPC APIs against the live network", func(ctx ginkgo.SpecContext) {
 			gomega.Expect(
-				runSuite(ctx, node.ExecutionImage, node.ExecutionRPCURL, "api", fixtureArchive),
+				runScenario(ctx, consoleContainerConfig{
+					image:       node.ExecutionImage,
+					endpointURL: node.ExecutionRPCURL,
+					scenario:    "api",
+				}, fixtureArchive),
 			).To(gomega.Succeed())
 		})
 	},
