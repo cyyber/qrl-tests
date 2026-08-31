@@ -919,22 +919,35 @@ func TestFinishConsoleProcessCancellation(t *testing.T) {
 }
 
 func TestEventBatchPrecedence(t *testing.T) {
+	readErr := errors.New("read failed")
 	for _, testCase := range []struct {
 		name            string
-		competingEvent  consoleProcessEvent
+		competingEvents []consoleProcessEvent
 		wantForcedClose bool
+		wantReadErr     error
 	}{
 		{
 			name: "output failure",
-			competingEvent: consoleProcessEvent{
+			competingEvents: []consoleProcessEvent{{
 				kind:   consoleOutputCompleted,
-				output: consoleOutputResult{readErr: errors.New("read failed")},
-			},
+				output: consoleOutputResult{readErr: readErr},
+			}},
 			wantForcedClose: true,
 		},
 		{
-			name:           "container exited",
-			competingEvent: consoleProcessEvent{kind: consoleContainerWaitCompleted},
+			name:            "container exited",
+			competingEvents: []consoleProcessEvent{{kind: consoleContainerWaitCompleted}},
+		},
+		{
+			name: "completed with output failure",
+			competingEvents: []consoleProcessEvent{
+				{
+					kind:   consoleOutputCompleted,
+					output: consoleOutputResult{readErr: readErr},
+				},
+				{kind: consoleContainerWaitCompleted},
+			},
+			wantReadErr: readErr,
 		},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
@@ -943,12 +956,14 @@ func TestEventBatchPrecedence(t *testing.T) {
 				ctx:         t.Context(),
 				process:     process,
 				interactive: true,
-				events:      make(chan consoleProcessEvent, 2),
+				events:      make(chan consoleProcessEvent, 1+len(testCase.competingEvents)),
 			}
 			defer supervisor.cancelShutdownDeadline()
 			defer process.close()
 			supervisor.events <- consoleProcessEvent{kind: consoleScenarioResultDetected}
-			supervisor.events <- testCase.competingEvent
+			for _, event := range testCase.competingEvents {
+				supervisor.events <- event
+			}
 
 			firstEvent := <-supervisor.events
 			scenarioResultDetected := supervisor.recordEventBatch(firstEvent)
@@ -956,6 +971,9 @@ func TestEventBatchPrecedence(t *testing.T) {
 
 			require.Equal(t, testCase.wantForcedClose, supervisor.result.forcedClose)
 			require.Zero(t, process.exitRequestCount())
+			if testCase.wantReadErr != nil {
+				require.ErrorIs(t, supervisor.result.output.readErr, testCase.wantReadErr)
+			}
 		})
 	}
 }

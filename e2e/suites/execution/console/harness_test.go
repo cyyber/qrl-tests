@@ -184,20 +184,21 @@ func (process *dockerConsoleProcess) readOutput(destination io.Writer) error {
 	return err
 }
 
+func (process *dockerConsoleProcess) sendExitCommand() error {
+	_, writeErr := io.WriteString(process.attach.Conn, "exit\n")
+	if writeErr != nil {
+		writeErr = fmt.Errorf("write console exit command: %w", writeErr)
+	}
+	closeErr := process.attach.CloseWrite()
+	if closeErr != nil {
+		closeErr = fmt.Errorf("close console process input: %w", closeErr)
+	}
+	return errors.Join(writeErr, closeErr)
+}
+
 func (process *dockerConsoleProcess) requestExit(ctx context.Context) error {
 	done := make(chan error, 1)
-	go func() {
-		_, writeErr := io.WriteString(process.attach.Conn, "exit\n")
-		if writeErr != nil {
-			writeErr = fmt.Errorf("write console exit command: %w", writeErr)
-		}
-		closeErr := process.attach.CloseWrite()
-		if closeErr != nil {
-			closeErr = fmt.Errorf("close console process input: %w", closeErr)
-		}
-		done <- errors.Join(writeErr, closeErr)
-	}()
-
+	go func() { done <- process.sendExitCommand() }()
 	select {
 	case err := <-done:
 		return err
@@ -245,15 +246,15 @@ func consoleContainerEndpoint(endpointURL string) (string, error) {
 
 func consoleFixtureArchive(parameters []byte) ([]byte, error) {
 	var archive bytes.Buffer
-	writer := tar.NewWriter(&archive)
-	if err := writer.AddFS(consoleFixtures); err != nil {
+	tarWriter := tar.NewWriter(&archive)
+	if err := tarWriter.AddFS(consoleFixtures); err != nil {
 		return nil, fmt.Errorf("archive console fixtures: %w", err)
 	}
 
 	if len(parameters) > 0 {
 		parameterScript := append([]byte("var PARAMS = "), parameters...)
 		parameterScript = append(parameterScript, ';', '\n')
-		if err := writer.WriteHeader(&tar.Header{
+		if err := tarWriter.WriteHeader(&tar.Header{
 			Name:     consoleFixtureDirectory + "/.params.js",
 			Mode:     0o600,
 			Size:     int64(len(parameterScript)),
@@ -261,11 +262,11 @@ func consoleFixtureArchive(parameters []byte) ([]byte, error) {
 		}); err != nil {
 			return nil, fmt.Errorf("archive console parameters: %w", err)
 		}
-		if _, err := writer.Write(parameterScript); err != nil {
+		if _, err := tarWriter.Write(parameterScript); err != nil {
 			return nil, fmt.Errorf("archive console parameters: %w", err)
 		}
 	}
-	if err := writer.Close(); err != nil {
+	if err := tarWriter.Close(); err != nil {
 		return nil, fmt.Errorf("archive console fixtures: %w", err)
 	}
 	return archive.Bytes(), nil
@@ -483,7 +484,7 @@ func newConsoleProcessSupervisor(
 
 func (supervisor *consoleProcessSupervisor) run() error {
 	defer supervisor.cancelShutdownDeadline()
-	for !supervisor.complete() {
+	for !supervisor.requiredResultsComplete() {
 		select {
 		case firstEvent := <-supervisor.events:
 			scenarioResultDetected := supervisor.recordEventBatch(firstEvent)
@@ -497,7 +498,7 @@ func (supervisor *consoleProcessSupervisor) run() error {
 	return supervisor.finish(nil)
 }
 
-func (supervisor *consoleProcessSupervisor) complete() bool {
+func (supervisor *consoleProcessSupervisor) requiredResultsComplete() bool {
 	return supervisor.result.output != nil && supervisor.result.containerWaitCompleted
 }
 
@@ -518,7 +519,7 @@ func (supervisor *consoleProcessSupervisor) recordEvent(event consoleProcessEven
 }
 
 // recordEventBatch records the first event and every event already queued so
-// response precedence does not depend on delivery order.
+// response precedence does not depend on the order of already-ready events.
 func (supervisor *consoleProcessSupervisor) recordEventBatch(
 	event consoleProcessEvent,
 ) (scenarioResultDetected bool) {
@@ -534,7 +535,7 @@ func (supervisor *consoleProcessSupervisor) recordEventBatch(
 	}
 }
 
-func (supervisor *consoleProcessSupervisor) drainReadyEvents() {
+func (supervisor *consoleProcessSupervisor) recordReadyEvents() {
 	select {
 	case firstEvent := <-supervisor.events:
 		supervisor.recordEventBatch(firstEvent)
@@ -543,6 +544,10 @@ func (supervisor *consoleProcessSupervisor) drainReadyEvents() {
 }
 
 func (supervisor *consoleProcessSupervisor) respondToEvents(scenarioResultDetected bool) {
+	if supervisor.requiredResultsComplete() {
+		return
+	}
+
 	outputCompleted := supervisor.result.output != nil
 	containerWaitCompleted := supervisor.result.containerWaitCompleted
 	containerWaitSucceeded := containerWaitCompleted && supervisor.result.containerWaitErr == nil
@@ -559,8 +564,7 @@ func (supervisor *consoleProcessSupervisor) respondToEvents(scenarioResultDetect
 	}
 
 	// Once either required result arrives, bound the wait for the other.
-	if !supervisor.complete() &&
-		(outputCompleted || containerWaitCompleted) {
+	if outputCompleted || containerWaitCompleted {
 		supervisor.startShutdownDeadline()
 	}
 }
@@ -607,7 +611,7 @@ func (supervisor *consoleProcessSupervisor) abort(err error) error {
 }
 
 func (supervisor *consoleProcessSupervisor) finish(supervisorErr error) error {
-	supervisor.drainReadyEvents()
+	supervisor.recordReadyEvents()
 	// Cancellation or shutdown expiry can race the final completion event.
 	if supervisorErr == nil {
 		switch {
@@ -667,19 +671,16 @@ func finishConsoleProcess(name string, result consoleProcessResult, supervisorEr
 func parseSuiteResult(name string, output []byte) error {
 	markers := newTerminalMarkers(name)
 	successes := 0
-	failure, goError := false, false
+	goError := false
 	for _, line := range bytes.Split(output, []byte{'\n'}) {
 		switch markers.detect(line) {
 		case terminalSignalPass:
 			successes++
 		case terminalSignalFail:
-			failure = true
+			return fmt.Errorf("console suite %s emitted a failure marker", name)
 		case terminalSignalGoError:
 			goError = true
 		}
-	}
-	if failure {
-		return fmt.Errorf("console suite %s emitted a failure marker", name)
 	}
 	if goError {
 		return fmt.Errorf("console suite %s failed with GoError", name)
