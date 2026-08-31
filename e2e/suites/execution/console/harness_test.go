@@ -470,7 +470,8 @@ func newConsoleProcessSupervisor(
 		}
 	}()
 	go func() {
-		events <- consoleProcessEvent{kind: consoleContainerWaitCompleted, err: process.wait()}
+		waitErr := process.wait()
+		events <- consoleProcessEvent{kind: consoleContainerWaitCompleted, err: waitErr}
 	}()
 
 	return &consoleProcessSupervisor{
