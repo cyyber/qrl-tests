@@ -5,9 +5,9 @@ package console
 import (
 	"testing"
 
-	"github.com/cyyber/qrl-tests/e2e/internal/consolefixture"
 	"github.com/cyyber/qrl-tests/e2e/internal/live"
 	"github.com/cyyber/qrl-tests/e2e/internal/testsuite"
+	"github.com/cyyber/qrl-tests/e2e/suites/execution/console/contracts"
 	ginkgo "github.com/onsi/ginkgo/v2"
 	gomega "github.com/onsi/gomega"
 )
@@ -37,9 +37,9 @@ var _ = ginkgo.Describe(
 			gomega.Expect(node.ExecutionImage).NotTo(gomega.BeEmpty())
 
 			ginkgo.By("preparing the console scripts and deployment transaction")
-			bytecode, err := consolefixture.Bytecode()
+			bytecode, err := contracts.ConsoleProbe.Bytecode()
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
-			parameters, err := deploymentParameters(ctx, node, consolefixture.ABI, bytecode)
+			parameters, err := deploymentParameters(ctx, node, contracts.ConsoleProbe.ABI, bytecode)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 			fixtureArchive, err = consoleFixtureArchive(parameters)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())

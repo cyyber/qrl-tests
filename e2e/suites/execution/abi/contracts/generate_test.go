@@ -1,4 +1,4 @@
-package abifixture
+package contracts
 
 import (
 	"encoding/json"

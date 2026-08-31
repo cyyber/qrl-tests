@@ -1,4 +1,4 @@
-package consolefixture
+package contracts
 
 import (
 	"strings"
@@ -8,11 +8,11 @@ import (
 	"github.com/theQRL/go-qrl/accounts/abi"
 )
 
-func TestGeneratedArtifacts(t *testing.T) {
-	_, err := abi.JSON(strings.NewReader(string(ABI)))
+func TestConsoleProbe(t *testing.T) {
+	_, err := abi.JSON(strings.NewReader(string(ConsoleProbe.ABI)))
 	require.NoError(t, err)
 
-	bytecode, err := Bytecode()
+	bytecode, err := ConsoleProbe.Bytecode()
 	require.NoError(t, err)
 	require.NotEmpty(t, bytecode)
 }

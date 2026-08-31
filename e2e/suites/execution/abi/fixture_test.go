@@ -6,8 +6,8 @@ import (
 	"context"
 	"math/big"
 
-	"github.com/cyyber/qrl-tests/e2e/internal/abifixture"
 	"github.com/cyyber/qrl-tests/e2e/internal/testsuite"
+	"github.com/cyyber/qrl-tests/e2e/suites/execution/abi/contracts"
 	ginkgo "github.com/onsi/ginkgo/v2"
 	gomega "github.com/onsi/gomega"
 	"github.com/theQRL/go-qrl/accounts/abi"
@@ -31,7 +31,7 @@ type liveFixture struct {
 	deploymentBlock *big.Int
 	address         common.Address
 	contract        *bind.BoundContract
-	binding         *abifixture.EventEmitter
+	binding         *contracts.EventEmitter
 	initial         *big.Int
 }
 
@@ -77,7 +77,7 @@ func setupLiveSuite(ctx context.Context) *liveSuite {
 
 	inputs.payload = patternedBytes(129, 7)
 
-	parsed := mustSucceed(abifixture.EventEmitterMetaData.GetAbi())
+	parsed := mustSucceed(contracts.EventEmitterMetaData.GetAbi())
 
 	return &liveSuite{
 		client:      node.Execution,
@@ -96,13 +96,13 @@ func (suite *liveSuite) deployEventEmitter(ctx context.Context) *liveFixture {
 	initial := new(big.Int).Add(new(big.Int).Lsh(big.NewInt(1), 500), big.NewInt(1337))
 	deploymentNote := "dynamic constructor value: " + suite.inputs.note
 	deploymentPayload := suite.inputs.payload
-	deploymentRecord := abifixture.EventEmitterRecord{
+	deploymentRecord := contracts.EventEmitterRecord{
 		Amount:    suite.inputs.amount,
 		Recipient: suite.from,
 		Tag:       suite.inputs.tag,
 	}
 	deploymentNumbers := []uint16{0, 1, 0xffff, 0x1234}
-	address, tx, binding, err := abifixture.DeployEventEmitter(
+	address, tx, binding, err := contracts.DeployEventEmitter(
 		deploymentAuth,
 		suite.client,
 		initial,
