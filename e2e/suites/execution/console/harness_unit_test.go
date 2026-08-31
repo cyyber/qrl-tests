@@ -39,15 +39,15 @@ func TestSuiteMarker(t *testing.T) {
 	for _, testCase := range []struct {
 		name string
 		line string
-		want suiteMarkerKind
+		want resultLineKind
 	}{
-		{name: "success", line: "CONSOLE_E2E_PASS events", want: suiteMarkerSuccess},
-		{name: "failure", line: "CONSOLE_E2E_FAIL events", want: suiteMarkerFailure},
-		{name: "failure detail", line: "CONSOLE_E2E_FAIL events callback failed", want: suiteMarkerFailure},
-		{name: "GoError", line: "GoError: callback failed", want: suiteMarkerGoError},
-		{name: "wrong scenario", line: "CONSOLE_E2E_PASS api", want: suiteMarkerNone},
-		{name: "invalid suffix", line: "CONSOLE_E2E_PASS events extra", want: suiteMarkerNone},
-		{name: "noise", line: "console ready", want: suiteMarkerNone},
+		{name: "success", line: "CONSOLE_E2E_PASS events", want: resultLineSuccess},
+		{name: "failure", line: "CONSOLE_E2E_FAIL events", want: resultLineFailure},
+		{name: "failure detail", line: "CONSOLE_E2E_FAIL events callback failed", want: resultLineFailure},
+		{name: "GoError", line: "GoError: callback failed", want: resultLineGoError},
+		{name: "wrong scenario", line: "CONSOLE_E2E_PASS api", want: resultLineNone},
+		{name: "invalid suffix", line: "CONSOLE_E2E_PASS events extra", want: resultLineNone},
+		{name: "noise", line: "console ready", want: resultLineNone},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
 			require.Equal(t, testCase.want, markers.classify([]byte(testCase.line)))

@@ -327,18 +327,13 @@ func runScenarioWithEngine(
 	return runConsoleProcess(ctx, process, config.scenario, config.interactive)
 }
 
-type consoleOutputResult struct {
-	output []byte
-	err    error
-}
-
-type suiteMarkerKind uint8
+type resultLineKind uint8
 
 const (
-	suiteMarkerNone suiteMarkerKind = iota
-	suiteMarkerSuccess
-	suiteMarkerFailure
-	suiteMarkerGoError
+	resultLineNone resultLineKind = iota
+	resultLineSuccess
+	resultLineFailure
+	resultLineGoError
 )
 
 type suiteResultMarkers struct {
@@ -355,17 +350,17 @@ func newSuiteResultMarkers(name string) suiteResultMarkers {
 	}
 }
 
-func (markers suiteResultMarkers) classify(line []byte) suiteMarkerKind {
+func (markers suiteResultMarkers) classify(line []byte) resultLineKind {
 	line = bytes.TrimSpace(line)
 	switch {
 	case bytes.Equal(line, markers.success):
-		return suiteMarkerSuccess
+		return resultLineSuccess
 	case bytes.Equal(line, markers.failure), bytes.HasPrefix(line, markers.failureDetail):
-		return suiteMarkerFailure
+		return resultLineFailure
 	case bytes.Contains(line, []byte("GoError:")):
-		return suiteMarkerGoError
+		return resultLineGoError
 	default:
-		return suiteMarkerNone
+		return resultLineNone
 	}
 }
 
@@ -403,7 +398,7 @@ func (output *consoleOutput) Write(data []byte) (int, error) {
 }
 
 func (output *consoleOutput) inspect(line []byte) {
-	if output.markers.classify(line) == suiteMarkerNone {
+	if output.markers.classify(line) == resultLineNone {
 		return
 	}
 	output.terminalOnce.Do(func() { close(output.terminal) })
@@ -427,6 +422,11 @@ const (
 	consoleProcessComplete
 	consoleExitRequestComplete
 )
+
+type consoleOutputResult struct {
+	output []byte
+	err    error
+}
 
 type consoleProcessCompletion struct {
 	kind   consoleProcessCompletionKind
@@ -639,11 +639,11 @@ func parseSuiteResult(name string, output []byte) error {
 	failure, goError := false, false
 	for _, line := range bytes.Split(output, []byte{'\n'}) {
 		switch markers.classify(line) {
-		case suiteMarkerSuccess:
+		case resultLineSuccess:
 			successes++
-		case suiteMarkerFailure:
+		case resultLineFailure:
 			failure = true
-		case suiteMarkerGoError:
+		case resultLineGoError:
 			goError = true
 		}
 	}
