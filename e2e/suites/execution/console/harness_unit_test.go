@@ -34,23 +34,23 @@ func TestParseSuiteResult(t *testing.T) {
 	}
 }
 
-func TestSuiteMarker(t *testing.T) {
-	markers := newSuiteResultMarkers("events")
+func TestTerminalMarkers(t *testing.T) {
+	markers := newTerminalMarkers("events")
 	for _, testCase := range []struct {
 		name string
 		line string
-		want resultLineKind
+		want terminalSignal
 	}{
-		{name: "success", line: "CONSOLE_E2E_PASS events", want: resultLineSuccess},
-		{name: "failure", line: "CONSOLE_E2E_FAIL events", want: resultLineFailure},
-		{name: "failure detail", line: "CONSOLE_E2E_FAIL events callback failed", want: resultLineFailure},
-		{name: "GoError", line: "GoError: callback failed", want: resultLineGoError},
-		{name: "wrong scenario", line: "CONSOLE_E2E_PASS api", want: resultLineNone},
-		{name: "invalid suffix", line: "CONSOLE_E2E_PASS events extra", want: resultLineNone},
-		{name: "noise", line: "console ready", want: resultLineNone},
+		{name: "pass", line: "CONSOLE_E2E_PASS events", want: terminalSignalPass},
+		{name: "fail", line: "CONSOLE_E2E_FAIL events", want: terminalSignalFail},
+		{name: "fail detail", line: "CONSOLE_E2E_FAIL events callback failed", want: terminalSignalFail},
+		{name: "GoError", line: "GoError: callback failed", want: terminalSignalGoError},
+		{name: "wrong scenario", line: "CONSOLE_E2E_PASS api", want: terminalSignalNone},
+		{name: "invalid suffix", line: "CONSOLE_E2E_PASS events extra", want: terminalSignalNone},
+		{name: "noise", line: "console ready", want: terminalSignalNone},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
-			require.Equal(t, testCase.want, markers.classify([]byte(testCase.line)))
+			require.Equal(t, testCase.want, markers.detect([]byte(testCase.line)))
 		})
 	}
 }
@@ -72,7 +72,7 @@ func TestWatchedOutput(t *testing.T) {
 			}
 			if testCase.complete {
 				select {
-				case <-output.terminalSignal():
+				case <-output.terminal:
 					t.Fatal("unterminated marker became visible before output completed")
 				default:
 				}
@@ -83,7 +83,7 @@ func TestWatchedOutput(t *testing.T) {
 			}
 
 			select {
-			case <-output.terminalSignal():
+			case <-output.terminal:
 				// Expected.
 			default:
 				t.Fatal("terminal marker was not detected")
@@ -650,7 +650,7 @@ var fakeConsoleLifecycle = []string{
 }
 
 func TestRunSuite(t *testing.T) {
-	engine := &fakeConsoleEngine{process: fakeConsoleProcessConfig{output: resultPrefix + "api\n"}}
+	engine := &fakeConsoleEngine{process: fakeConsoleProcessConfig{output: passPrefix + "api\n"}}
 	err := runScenarioWithEngine(
 		t.Context(),
 		consoleContainerConfig{
@@ -686,13 +686,13 @@ func TestRunSuiteFailures(t *testing.T) {
 		wantErr    error
 		wantDetail string
 	}{
-		{name: "script", output: failurePrefix + "api helper failure\n", wantDetail: "emitted a failure marker"},
+		{name: "script", output: failPrefix + "api helper failure\n", wantDetail: "emitted a failure marker"},
 		{name: "process", waitErr: processErr, wantErr: processErr},
 		{name: "output", readErr: outputErr, pending: true, wantErr: outputErr},
-		{name: "cleanup", output: resultPrefix + "api\n", removeErr: cleanupErr, wantErr: cleanupErr},
+		{name: "cleanup", output: passPrefix + "api\n", removeErr: cleanupErr, wantErr: cleanupErr},
 		{
 			name:       "script and cleanup",
-			output:     failurePrefix + "api helper failure\n",
+			output:     failPrefix + "api helper failure\n",
 			removeErr:  cleanupErr,
 			wantErr:    cleanupErr,
 			wantDetail: "emitted a failure marker",
@@ -737,7 +737,7 @@ func TestRunSuiteJoinsErrors(t *testing.T) {
 				waitGate := make(chan struct{})
 				started := make(chan struct{})
 				engine := &fakeConsoleEngine{process: fakeConsoleProcessConfig{
-					output:   resultPrefix + "api\n",
+					output:   passPrefix + "api\n",
 					readErr:  outputErr,
 					waitErr:  processErr,
 					readGate: readGate,
@@ -763,7 +763,7 @@ func TestRunSuiteJoinsErrors(t *testing.T) {
 				err := <-done
 				require.ErrorIs(t, err, processErr)
 				require.ErrorIs(t, err, outputErr)
-				require.ErrorContains(t, err, resultPrefix+"api")
+				require.ErrorContains(t, err, passPrefix+"api")
 			})
 		})
 	}
@@ -829,7 +829,7 @@ func TestRunCancellationWithBlockedOutput(t *testing.T) {
 
 func TestRunWatchedSuite(t *testing.T) {
 	engine := &fakeConsoleEngine{process: fakeConsoleProcessConfig{
-		output:  resultPrefix + "events\n",
+		output:  passPrefix + "events\n",
 		pending: true,
 	}}
 
@@ -847,7 +847,7 @@ func TestRunWatchedProcessAlreadyExited(t *testing.T) {
 		started := make(chan struct{})
 		engine := &fakeConsoleEngine{
 			process: fakeConsoleProcessConfig{
-				output:   resultPrefix + "events\n",
+				output:   passPrefix + "events\n",
 				readGate: readGate,
 			},
 			onStart: func() { close(started) },
@@ -869,7 +869,7 @@ func TestRunWatchedShutdownTimeout(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		exitGate := make(chan struct{})
 		process := newFakeConsoleProcess(t.Context(), fakeConsoleProcessConfig{
-			output:   resultPrefix + "events\n",
+			output:   passPrefix + "events\n",
 			exitGate: exitGate,
 			pending:  true,
 		})
@@ -887,7 +887,7 @@ func TestFinishConsoleProcessCancellation(t *testing.T) {
 	shutdownErr := errors.New("shutdown timeout")
 	err := finishConsoleProcess("events", consoleProcessState{
 		output: consoleOutputResult{
-			output: []byte(resultPrefix + "events\n"),
+			output: []byte(passPrefix + "events\n"),
 		},
 		outputComplete:  true,
 		processComplete: true,
@@ -912,8 +912,8 @@ func TestRunWatchedFailures(t *testing.T) {
 		{
 			name: "failure after success",
 			process: fakeConsoleProcessConfig{
-				output:     resultPrefix + "events\n",
-				exitOutput: failurePrefix + "events helper failure\n",
+				output:     passPrefix + "events\n",
+				exitOutput: failPrefix + "events helper failure\n",
 				pending:    true,
 			},
 			wantDetail: "emitted a failure marker",
@@ -927,7 +927,7 @@ func TestRunWatchedFailures(t *testing.T) {
 		},
 		{
 			name:       "exit request",
-			process:    fakeConsoleProcessConfig{output: resultPrefix + "events\n", exitErr: exitErr, pending: true},
+			process:    fakeConsoleProcessConfig{output: passPrefix + "events\n", exitErr: exitErr, pending: true},
 			wantErr:    exitErr,
 			wantDetail: "stop console suite events",
 			wantExit:   true,
@@ -966,7 +966,7 @@ func TestRunWatchedBlockedExit(t *testing.T) {
 		started := make(chan struct{})
 		engine := &fakeConsoleEngine{
 			process: fakeConsoleProcessConfig{
-				output:   resultPrefix + "events\n",
+				output:   passPrefix + "events\n",
 				exitGate: exitGate,
 				pending:  true,
 			},

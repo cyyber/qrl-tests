@@ -20,8 +20,8 @@ import (
 )
 
 const (
-	resultPrefix  = "CONSOLE_E2E_PASS "
-	failurePrefix = "CONSOLE_E2E_FAIL "
+	passPrefix = "CONSOLE_E2E_PASS "
+	failPrefix = "CONSOLE_E2E_FAIL "
 
 	consoleFixtureDirectory        = "testdata/console"
 	consoleContainerRoot           = "/tmp"
@@ -327,40 +327,40 @@ func runScenarioWithEngine(
 	return runConsoleProcess(ctx, process, config.scenario, config.interactive)
 }
 
-type resultLineKind uint8
+type terminalSignal uint8
 
 const (
-	resultLineNone resultLineKind = iota
-	resultLineSuccess
-	resultLineFailure
-	resultLineGoError
+	terminalSignalNone terminalSignal = iota
+	terminalSignalPass
+	terminalSignalFail
+	terminalSignalGoError
 )
 
-type suiteResultMarkers struct {
-	success       []byte
-	failure       []byte
-	failureDetail []byte
+type terminalMarkers struct {
+	pass             []byte
+	fail             []byte
+	failDetailPrefix []byte
 }
 
-func newSuiteResultMarkers(name string) suiteResultMarkers {
-	return suiteResultMarkers{
-		success:       []byte(resultPrefix + name),
-		failure:       []byte(failurePrefix + name),
-		failureDetail: []byte(failurePrefix + name + " "),
+func newTerminalMarkers(name string) terminalMarkers {
+	return terminalMarkers{
+		pass:             []byte(passPrefix + name),
+		fail:             []byte(failPrefix + name),
+		failDetailPrefix: []byte(failPrefix + name + " "),
 	}
 }
 
-func (markers suiteResultMarkers) classify(line []byte) resultLineKind {
+func (markers terminalMarkers) detect(line []byte) terminalSignal {
 	line = bytes.TrimSpace(line)
 	switch {
-	case bytes.Equal(line, markers.success):
-		return resultLineSuccess
-	case bytes.Equal(line, markers.failure), bytes.HasPrefix(line, markers.failureDetail):
-		return resultLineFailure
+	case bytes.Equal(line, markers.pass):
+		return terminalSignalPass
+	case bytes.Equal(line, markers.fail), bytes.HasPrefix(line, markers.failDetailPrefix):
+		return terminalSignalFail
 	case bytes.Contains(line, []byte("GoError:")):
-		return resultLineGoError
+		return terminalSignalGoError
 	default:
-		return resultLineNone
+		return terminalSignalNone
 	}
 }
 
@@ -369,11 +369,11 @@ type consoleOutput struct {
 	line         []byte
 	terminal     chan struct{}
 	terminalOnce sync.Once
-	markers      suiteResultMarkers
+	markers      terminalMarkers
 }
 
 func newConsoleOutput(name string, watched bool) *consoleOutput {
-	output := &consoleOutput{markers: newSuiteResultMarkers(name)}
+	output := &consoleOutput{markers: newTerminalMarkers(name)}
 	if watched {
 		output.terminal = make(chan struct{})
 	}
@@ -398,7 +398,7 @@ func (output *consoleOutput) Write(data []byte) (int, error) {
 }
 
 func (output *consoleOutput) inspect(line []byte) {
-	if output.markers.classify(line) == resultLineNone {
+	if output.markers.detect(line) == terminalSignalNone {
 		return
 	}
 	output.terminalOnce.Do(func() { close(output.terminal) })
@@ -409,10 +409,6 @@ func (output *consoleOutput) complete(err error) consoleOutputResult {
 		output.inspect(output.line)
 	}
 	return consoleOutputResult{output: bytes.Clone(output.data.Bytes()), err: err}
-}
-
-func (output *consoleOutput) terminalSignal() <-chan struct{} {
-	return output.terminal
 }
 
 type consoleProcessCompletionKind uint8
@@ -492,7 +488,7 @@ func runConsoleProcess(
 		completions <- consoleProcessCompletion{kind: consoleProcessComplete, err: process.wait()}
 	}()
 
-	terminal := output.terminalSignal()
+	terminal := output.terminal
 	state := consoleProcessState{}
 	var shutdownCtx context.Context
 	var shutdownDone <-chan struct{}
@@ -634,16 +630,16 @@ func finishConsoleProcess(name string, state consoleProcessState) error {
 }
 
 func parseSuiteResult(name string, output []byte) error {
-	markers := newSuiteResultMarkers(name)
+	markers := newTerminalMarkers(name)
 	successes := 0
 	failure, goError := false, false
 	for _, line := range bytes.Split(output, []byte{'\n'}) {
-		switch markers.classify(line) {
-		case resultLineSuccess:
+		switch markers.detect(line) {
+		case terminalSignalPass:
 			successes++
-		case resultLineFailure:
+		case terminalSignalFail:
 			failure = true
-		case resultLineGoError:
+		case terminalSignalGoError:
 			goError = true
 		}
 	}
