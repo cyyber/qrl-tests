@@ -586,23 +586,6 @@ func (process *fakeConsoleProcess) exitRequestCount() int {
 	return int(process.exitRequests.Load())
 }
 
-func runFakeNonInteractiveSuite(ctx context.Context, engine consoleContainerEngine) error {
-	return runScenarioWithEngine(ctx, consoleContainerConfig{
-		image:       "image",
-		endpointURL: "http://127.0.0.1:8545",
-		scenario:    "api",
-	}, fakeFixtureArchive, engine)
-}
-
-func runFakeInteractiveSuite(ctx context.Context, engine consoleContainerEngine) error {
-	return runScenarioWithEngine(ctx, consoleContainerConfig{
-		image:       "image",
-		endpointURL: "ws://127.0.0.1:8546",
-		scenario:    "events",
-		interactive: true,
-	}, fakeFixtureArchive, engine)
-}
-
 var fakeConsoleLifecycle = []string{
 	"create",
 	"copy:" + fakeContainerID,
@@ -612,7 +595,11 @@ var fakeConsoleLifecycle = []string{
 
 func TestRunNonInteractiveSuite(t *testing.T) {
 	engine := &fakeConsoleEngine{process: fakeConsoleProcessConfig{output: passPrefix + "api\n"}}
-	require.NoError(t, runFakeNonInteractiveSuite(t.Context(), engine))
+	require.NoError(t, runScenarioWithEngine(t.Context(), consoleContainerConfig{
+		image:       "image",
+		endpointURL: "http://127.0.0.1:8545",
+		scenario:    "api",
+	}, fakeFixtureArchive, engine))
 	require.False(t, engine.startInteractive)
 	require.Zero(t, engine.startedProcess.exitRequestCount())
 	require.Equal(t, fakeConsoleLifecycle, engine.calls)
@@ -649,7 +636,11 @@ func TestRunNonInteractiveFailures(t *testing.T) {
 				},
 				removeErr: testCase.removeErr,
 			}
-			err := runFakeNonInteractiveSuite(t.Context(), engine)
+			err := runScenarioWithEngine(t.Context(), consoleContainerConfig{
+				image:       "image",
+				endpointURL: "http://127.0.0.1:8545",
+				scenario:    "api",
+			}, fakeFixtureArchive, engine)
 			require.Error(t, err)
 			if testCase.wantErr != nil {
 				require.ErrorIs(t, err, testCase.wantErr)
@@ -686,7 +677,13 @@ func TestRunNonInteractiveJoinsErrors(t *testing.T) {
 					waitGate: waitGate,
 				}, started: started}
 				done := make(chan error, 1)
-				go func() { done <- runFakeNonInteractiveSuite(t.Context(), engine) }()
+				go func() {
+					done <- runScenarioWithEngine(t.Context(), consoleContainerConfig{
+						image:       "image",
+						endpointURL: "http://127.0.0.1:8545",
+						scenario:    "api",
+					}, fakeFixtureArchive, engine)
+				}()
 				<-started
 				<-engine.startedProcess.outputStarted
 				<-engine.startedProcess.waitStarted
@@ -727,7 +724,11 @@ func TestRunNonInteractiveSetupFailures(t *testing.T) {
 		}},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
-			err := runFakeNonInteractiveSuite(t.Context(), &testCase.engine)
+			err := runScenarioWithEngine(t.Context(), consoleContainerConfig{
+				image:       "image",
+				endpointURL: "http://127.0.0.1:8545",
+				scenario:    "api",
+			}, fakeFixtureArchive, &testCase.engine)
 			require.ErrorIs(t, err, setupErr)
 			require.Equal(t, testCase.wantCalls, testCase.engine.calls)
 		})
@@ -745,7 +746,13 @@ func TestRunCancellationWithBlockedOutput(t *testing.T) {
 			started: started,
 		}
 		done := make(chan error, 1)
-		go func() { done <- runFakeNonInteractiveSuite(ctx, engine) }()
+		go func() {
+			done <- runScenarioWithEngine(ctx, consoleContainerConfig{
+				image:       "image",
+				endpointURL: "http://127.0.0.1:8545",
+				scenario:    "api",
+			}, fakeFixtureArchive, engine)
+		}()
 		<-started
 		<-engine.startedProcess.outputStarted
 		<-engine.startedProcess.waitStarted
@@ -765,7 +772,12 @@ func TestRunInteractiveSuite(t *testing.T) {
 		pending: true,
 	}}
 
-	err := runFakeInteractiveSuite(t.Context(), engine)
+	err := runScenarioWithEngine(t.Context(), consoleContainerConfig{
+		image:       "image",
+		endpointURL: "ws://127.0.0.1:8546",
+		scenario:    "events",
+		interactive: true,
+	}, fakeFixtureArchive, engine)
 	require.NoError(t, err)
 	require.True(t, engine.startInteractive)
 	require.Equal(t, 1, engine.startedProcess.exitRequestCount())
@@ -784,7 +796,14 @@ func TestRunInteractiveProcessAlreadyExited(t *testing.T) {
 			started: started,
 		}
 		done := make(chan error, 1)
-		go func() { done <- runFakeInteractiveSuite(t.Context(), engine) }()
+		go func() {
+			done <- runScenarioWithEngine(t.Context(), consoleContainerConfig{
+				image:       "image",
+				endpointURL: "ws://127.0.0.1:8546",
+				scenario:    "events",
+				interactive: true,
+			}, fakeFixtureArchive, engine)
+		}()
 		<-started
 		<-engine.startedProcess.outputStarted
 		<-engine.startedProcess.waitDone
@@ -897,7 +916,12 @@ func TestRunInteractiveFailures(t *testing.T) {
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
 			engine := &fakeConsoleEngine{process: testCase.process}
-			err := runFakeInteractiveSuite(t.Context(), engine)
+			err := runScenarioWithEngine(t.Context(), consoleContainerConfig{
+				image:       "image",
+				endpointURL: "ws://127.0.0.1:8546",
+				scenario:    "events",
+				interactive: true,
+			}, fakeFixtureArchive, engine)
 			if testCase.wantErr != nil {
 				require.ErrorIs(t, err, testCase.wantErr)
 			}
@@ -927,7 +951,14 @@ func TestRunInteractiveBlockedExit(t *testing.T) {
 			started: started,
 		}
 		done := make(chan error, 1)
-		go func() { done <- runFakeInteractiveSuite(ctx, engine) }()
+		go func() {
+			done <- runScenarioWithEngine(ctx, consoleContainerConfig{
+				image:       "image",
+				endpointURL: "ws://127.0.0.1:8546",
+				scenario:    "events",
+				interactive: true,
+			}, fakeFixtureArchive, engine)
+		}()
 		<-started
 		<-engine.startedProcess.exitRequestStarted
 		cancel(cancelErr)
