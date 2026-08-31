@@ -507,8 +507,8 @@ func (supervisor *consoleProcessSupervisor) requiredResultsComplete() bool {
 	return supervisor.result.output != nil && supervisor.result.containerWaitCompleted
 }
 
-// recordEventBatch records the first event and every event already queued so
-// response precedence does not depend on the order of already-ready events.
+// recordEventBatch drains currently queued events before responding, so
+// simultaneous completions are handled from one consistent state snapshot.
 func (supervisor *consoleProcessSupervisor) recordEventBatch(
 	event consoleProcessEvent,
 ) (terminalSignalDetected bool) {
