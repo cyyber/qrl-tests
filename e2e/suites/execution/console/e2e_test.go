@@ -3,7 +3,6 @@
 package console
 
 import (
-	"context"
 	"testing"
 
 	"github.com/cyyber/qrl-tests/e2e/internal/consolefixture"
@@ -15,15 +14,6 @@ import (
 
 func TestE2E(t *testing.T) {
 	testsuite.Run(t, "Console E2E suite")
-}
-
-func runWatchedSuite(ctx context.Context, image, endpointURL, name string, fixtureArchive []byte) error {
-	return runScenario(ctx, consoleContainerConfig{
-		image:       image,
-		endpointURL: endpointURL,
-		scenario:    name,
-		interactive: true,
-	}, fixtureArchive)
 }
 
 var _ = ginkgo.Describe(
@@ -89,25 +79,23 @@ var _ = ginkgo.Describe(
 
 		ginkgo.It("deploys a contract through the embedded web3 contract factory", func(ctx ginkgo.SpecContext) {
 			gomega.Expect(
-				runWatchedSuite(
-					ctx,
-					node.ExecutionImage,
-					node.ExecutionWebSocketURL,
-					"constructor",
-					fixtureArchive,
-				),
+				runScenario(ctx, consoleContainerConfig{
+					image:       node.ExecutionImage,
+					endpointURL: node.ExecutionWebSocketURL,
+					scenario:    "constructor",
+					interactive: true,
+				}, fixtureArchive),
 			).To(gomega.Succeed())
 		})
 
 		ginkgo.It("submits a contract transaction and watches indexed events over WebSocket", func(ctx ginkgo.SpecContext) {
 			gomega.Expect(
-				runWatchedSuite(
-					ctx,
-					node.ExecutionImage,
-					node.ExecutionWebSocketURL,
-					"events",
-					fixtureArchive,
-				),
+				runScenario(ctx, consoleContainerConfig{
+					image:       node.ExecutionImage,
+					endpointURL: node.ExecutionWebSocketURL,
+					scenario:    "events",
+					interactive: true,
+				}, fixtureArchive),
 			).To(gomega.Succeed())
 		})
 	},
