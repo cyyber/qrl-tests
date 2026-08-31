@@ -9,10 +9,10 @@ import (
 )
 
 func TestConsoleProbe(t *testing.T) {
-	_, err := abi.JSON(strings.NewReader(string(ConsoleProbe.ABI)))
+	_, err := abi.JSON(strings.NewReader(string(ConsoleProbeABI)))
 	require.NoError(t, err)
 
-	bytecode, err := ConsoleProbe.Bytecode()
+	bytecode, err := ConsoleProbeBytecode()
 	require.NoError(t, err)
 	require.NotEmpty(t, bytecode)
 }
