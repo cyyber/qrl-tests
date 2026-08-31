@@ -174,11 +174,10 @@ func (engine dockerConsoleEngine) removeContainer(ctx context.Context, container
 }
 
 type dockerConsoleProcess struct {
-	ctx       context.Context
-	cancel    context.CancelFunc
-	attach    dockerclient.ContainerAttachResult
-	waiter    dockerclient.ContainerWaitResult
-	closeOnce sync.Once
+	ctx    context.Context
+	cancel context.CancelFunc
+	attach dockerclient.ContainerAttachResult
+	waiter dockerclient.ContainerWaitResult
 }
 
 func (process *dockerConsoleProcess) readOutput(destination io.Writer) error {
@@ -227,10 +226,8 @@ func (process *dockerConsoleProcess) wait() error {
 }
 
 func (process *dockerConsoleProcess) close() {
-	process.closeOnce.Do(func() {
-		process.cancel()
-		process.attach.Close()
-	})
+	process.cancel()
+	process.attach.Close()
 }
 
 func consoleContainerEndpoint(endpointURL string) (string, error) {
