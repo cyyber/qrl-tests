@@ -65,14 +65,15 @@ func TestWatchedOutput(t *testing.T) {
 		{name: "unterminated marker", chunks: []string{"CONSOLE_E2E_PASS events"}, complete: true},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
-			output := newConsoleOutput("events", true)
+			events := make(chan consoleProcessEvent, 1)
+			output := newConsoleOutput("events", events)
 			for _, chunk := range testCase.chunks {
 				_, err := io.WriteString(output, chunk)
 				require.NoError(t, err)
 			}
 			if testCase.complete {
 				select {
-				case <-output.terminal:
+				case <-events:
 					t.Fatal("unterminated marker became visible before output completed")
 				default:
 				}
@@ -83,8 +84,8 @@ func TestWatchedOutput(t *testing.T) {
 			}
 
 			select {
-			case <-output.terminal:
-				// Expected.
+			case event := <-events:
+				require.Equal(t, consoleTerminalDetected, event.kind)
 			default:
 				t.Fatal("terminal marker was not detected")
 			}
@@ -910,8 +911,7 @@ func TestFinishConsoleProcessCancellation(t *testing.T) {
 		},
 		processComplete: true,
 		processErr:      context.Canceled,
-		supervisorErr:   shutdownErr,
-	})
+	}, shutdownErr)
 
 	require.ErrorIs(t, err, shutdownErr)
 	require.NotErrorIs(t, err, context.Canceled)
@@ -919,24 +919,26 @@ func TestFinishConsoleProcessCancellation(t *testing.T) {
 }
 
 func TestOutputFailurePreventsExitRequest(t *testing.T) {
-	terminal := make(chan struct{})
-	close(terminal)
 	process := newFakeConsoleProcess(t.Context(), fakeConsoleProcessConfig{})
 	supervisor := &consoleProcessSupervisor{
 		ctx:         t.Context(),
 		process:     process,
 		interactive: true,
-		terminal:    terminal,
-		processDone: make(chan error),
+		events:      make(chan consoleProcessEvent, 2),
 	}
 	defer supervisor.cancel()
+	defer process.close()
+	supervisor.events <- consoleProcessEvent{kind: consoleTerminalDetected}
+	supervisor.events <- consoleProcessEvent{
+		kind:   consoleOutputCompleted,
+		output: consoleOutputResult{err: errors.New("read failed")},
+	}
 
-	supervisor.handleOutput(consoleOutputResult{
-		terminalDetected: true,
-		err:              errors.New("read failed"),
-	})
-	supervisor.requestExit()
+	sawTerminal := supervisor.record(<-supervisor.events)
+	sawTerminal = supervisor.drainReadyEvents() || sawTerminal
+	supervisor.reconcile(sawTerminal)
 
+	require.True(t, supervisor.result.forcedClose)
 	require.Zero(t, process.exitRequestCount())
 }
 
