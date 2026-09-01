@@ -111,9 +111,9 @@ func prepareTopicParameters(ctx context.Context, node *live.Node) ([]byte, error
 	}
 	return encodeParameters(consoleParameters{
 		Address:             auth.From.Hex(),
-		IndexedABI:          json.RawMessage(indexedEventABIJSON),
-		IndexedTxHash:       indexedTx.Hash().Hex(),
-		IndexedRaw:          hexutil.Encode(indexedRaw),
+		ABI:                 json.RawMessage(indexedEventABIJSON),
+		TxHash:              indexedTx.Hash().Hex(),
+		RawTransaction:      hexutil.Encode(indexedRaw),
 		IndexedDelta:        indexedDelta.String(),
 		IndexedAmount:       indexedAmount.String(),
 		IndexedCode:         hexutil.Encode(indexedCode[:]),

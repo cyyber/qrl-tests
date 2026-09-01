@@ -20,8 +20,13 @@ function expectTopicError(topic, blockNumber, address) {
             address: address,
             topics: [topic]
         });
-    } catch (e) {
-        return true;
+    } catch (error) {
+        var message = String(error);
+        if (message.indexOf("invalid length 32") < 0 ||
+            message.indexOf("expected 64 for topic") < 0) {
+            throw new Error("unexpected topic validation error: " + message);
+        }
+        return;
     }
     throw new Error("RPC unexpectedly accepted topic " + topic);
 }
@@ -87,7 +92,7 @@ check("receipt APIs expose one VM64 event", function () {
     throw new Error("block receipts omit deployment transaction");
 });
 
-var vm64Amount = PARAMS.storeValue;
+var vm64Amount = "6703903964971298549787012499102923063739682910296196688861780721860882015036773488400937149083451713845015929093243025426876941405973284973216824503046708";
 var vm64Delta = "-3351951982485649274893506249551461531869841455148098344430890360930441007518386744200468574541725856922507964546621512713438470702986642486608412251520982";
 var vm64Tag = patternedHex(64, 1, 0x80);
 var vm64Payload = patternedHex(129, 29, 7);
@@ -217,7 +222,7 @@ check("raw log filters support exact, wildcard, and OR topics", function () {
 });
 
 check("raw log filters reject 32-byte topics", function () {
-    return expectTopicError(signatureHash, receipt.blockNumber, receipt.contractAddress);
+    expectTopicError(signatureHash, receipt.blockNumber, receipt.contractAddress);
 });
 
 suite.finish();

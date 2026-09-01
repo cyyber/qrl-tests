@@ -17,9 +17,9 @@ function sameTopics(got, want) {
 
 var receipt = null;
 check("indexed event transaction is accepted and mined", function () {
-    var txHash = qrl.sendRawTransaction(PARAMS.indexedRawTransaction);
-    if (txHash !== PARAMS.indexedTxHash) {
-        throw new Error("tx hash mismatch: have " + txHash + " want " + PARAMS.indexedTxHash);
+    var txHash = qrl.sendRawTransaction(PARAMS.rawTransaction);
+    if (txHash !== PARAMS.txHash) {
+        throw new Error("tx hash mismatch: have " + txHash + " want " + PARAMS.txHash);
     }
     receipt = waitForReceipt(txHash);
     if (Number(receipt.status) !== 1 || !receipt.contractAddress) {
@@ -36,7 +36,7 @@ check("receipt preserves indexed VM64 topics", function () {
     }
 });
 
-var contract = qrl.contract(PARAMS.indexedABI).at(receipt.contractAddress);
+var contract = qrl.contract(PARAMS.abi).at(receipt.contractAddress);
 var block = web3.toHex(receipt.blockNumber);
 
 check("generated filters encode and decode indexed bool and 512-bit integers", function () {
@@ -63,7 +63,7 @@ check("generated filters preserve indexed bytes33 alignment", function () {
     }
 });
 
-check("generated filters encode and decode indexed addresses and dynamic values", function () {
+check("generated filters encode indexed addresses and expose dynamic topic hashes", function () {
     var expectedAddress = web3.toChecksumAddress(PARAMS.address);
     var events = contract.IndexedReference({
         account: PARAMS.address,

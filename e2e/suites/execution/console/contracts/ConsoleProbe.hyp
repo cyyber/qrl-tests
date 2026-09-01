@@ -3,13 +3,6 @@ pragma hyperion >=0.1.0;
 
 contract ConsoleProbe {
     event Deployed(uint256 value);
-    event Stored(
-        address indexed sender,
-        string indexed label,
-        bytes indexed payload,
-        uint512 value
-    );
-    uint512 public stored;
 
     constructor() {
         emit Deployed(1337);
@@ -61,22 +54,5 @@ contract ConsoleProbe {
 
     function failReason() external pure {
         revert("console wrapper revert");
-    }
-
-    function store(
-        uint512 value,
-        string calldata label,
-        bytes calldata payload
-    ) external {
-        stored = value;
-        emit Stored(msg.sender, label, payload, value);
-    }
-
-    function pay(uint512 marker) external payable {
-        stored = marker + msg.value;
-    }
-
-    function failTransaction() external {
-        revert("console transaction revert");
     }
 }
