@@ -137,9 +137,9 @@ func prepareTopicParameters(ctx context.Context, node *live.Node) ([]byte, error
 		IndexedLabelTopic:   labelTopic.Hex(),
 		IndexedPayload:      hexutil.Encode(indexedPayload),
 		IndexedPayloadTopic: payloadTopic.Hex(),
-		NumberTopics:        topicStrings(numberTopics),
-		BytesTopics:         topicStrings(bytesTopics),
-		ReferenceTopics:     topicStrings(referenceTopics),
+		NumberTopics:        topicHexStrings(numberTopics),
+		BytesTopics:         topicHexStrings(bytesTopics),
+		ReferenceTopics:     topicHexStrings(referenceTopics),
 	})
 }
 
@@ -182,7 +182,7 @@ func indexedEventInitCode(events ...[]common.LogTopic) []byte {
 	)
 }
 
-func topicStrings(topics []common.LogTopic) []string {
+func topicHexStrings(topics []common.LogTopic) []string {
 	encoded := make([]string, len(topics))
 	for index, topic := range topics {
 		encoded[index] = topic.Hex()
