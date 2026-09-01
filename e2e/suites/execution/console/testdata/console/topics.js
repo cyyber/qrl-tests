@@ -15,15 +15,17 @@ function sameTopics(got, want) {
     return true;
 }
 
-var txHash = qrl.sendRawTransaction(PARAMS.indexedRawTransaction);
-if (txHash !== PARAMS.indexedTxHash) {
-    throw new Error("indexed event transaction hash mismatch");
-}
-
-var receipt = waitForReceipt(txHash);
-if (Number(receipt.status) !== 1) {
-    throw new Error("indexed event transaction failed: " + JSON.stringify(receipt));
-}
+var receipt = null;
+check("indexed event transaction is accepted and mined", function () {
+    var txHash = qrl.sendRawTransaction(PARAMS.indexedRawTransaction);
+    if (txHash !== PARAMS.indexedTxHash) {
+        throw new Error("tx hash mismatch: have " + txHash + " want " + PARAMS.indexedTxHash);
+    }
+    receipt = waitForReceipt(txHash);
+    if (Number(receipt.status) !== 1 || !receipt.contractAddress) {
+        throw new Error("indexed event transaction failed: " + JSON.stringify(receipt));
+    }
+});
 
 check("receipt preserves indexed VM64 scalar topics", function () {
     if (receipt.logs.length !== 2 ||
