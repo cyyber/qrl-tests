@@ -45,7 +45,7 @@ var _ = ginkgo.Describe(
 			ginkgo.By("preparing the contract fixture")
 			bytecode := testsuite.MustSucceed(contracts.ConsoleProbeBytecode())
 			parameters := testsuite.MustSucceed(
-				prepareDeploymentParameters(ctx, node, contracts.ConsoleProbeABI, bytecode),
+				prepareContractParameters(ctx, node, contracts.ConsoleProbeABI, bytecode),
 			)
 			fixtureArchive := testsuite.MustSucceed(consoleFixtureArchive(parameters))
 			gomega.Expect(

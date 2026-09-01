@@ -26,7 +26,7 @@ type preparedDeployment struct {
 	raw  []byte
 }
 
-func prepareDeploymentParameters(
+func prepareContractParameters(
 	ctx context.Context,
 	node *live.Node,
 	abiJSON, bytecode []byte,
