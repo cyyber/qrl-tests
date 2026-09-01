@@ -3,9 +3,9 @@ var check = suite.check;
 var deployedValue = 1337;
 var eventSignature = "Deployed(uint256)";
 
-function patternedHex(length, multiplier, addend) {
+function patternedHexData(byteLength, multiplier, addend) {
     var out = "0x";
-    for (var i = 0; i < length; i++) {
+    for (var i = 0; i < byteLength; i++) {
         var value = (i * multiplier + addend) & 0xff;
         out += (value < 16 ? "0" : "") + value.toString(16);
     }
@@ -99,8 +99,8 @@ check("receipt APIs expose one VM64 event", function () {
 
 var vm64Amount = "6703903964971298549787012499102923063739682910296196688861780721860882015036773488400937149083451713845015929093243025426876941405973284973216824503046708";
 var vm64Delta = "-3351951982485649274893506249551461531869841455148098344430890360930441007518386744200468574541725856922507964546621512713438470702986642486608412251520982";
-var vm64Tag = patternedHex(64, 1, 0x80);
-var vm64Payload = patternedHex(129, 29, 7);
+var vm64Tag = patternedHexData(64, 1, 0x80);
+var vm64Payload = patternedHexData(129, 29, 7);
 var vm64Note = "VM64 string crosses the 64-byte ABI word boundary: 0123456789abcdef0123456789abcdef";
 
 check("contract echoes VM64 scalar and dynamic values", function () {
@@ -134,8 +134,8 @@ check("contract echoes VM64 scalar and dynamic values", function () {
 check("contract echoes fixed-byte boundaries", function () {
     var values = [
         "0xa5",
-        patternedHex(32, 1, 1),
-        patternedHex(33, 1, 0x40),
+        patternedHexData(32, 1, 1),
+        patternedHexData(33, 1, 0x40),
         vm64Tag
     ];
     var echoed = contract.echoFixed(values[0], values[1], values[2], values[3]);
@@ -150,7 +150,7 @@ check("contract echoes fixed-byte boundaries", function () {
 });
 
 check("contract echoes fixed and dynamic arrays", function () {
-    var secondTag = patternedHex(64, 29, 7);
+    var secondTag = patternedHexData(64, 29, 7);
     var echoed = contract.echoArrays([0, 1, vm64Amount], [vm64Tag, secondTag]);
     if (!(echoed instanceof Array) || echoed.length !== 2 ||
         echoed[0].length !== 3 || echoed[1].length !== 2) {
@@ -173,7 +173,7 @@ check("contract wrapper dispatches overloaded methods", function () {
         throw new Error("unexpected overloaded integer result: " + integer);
     }
 
-    var bytes = patternedHex(33, 7, 3);
+    var bytes = patternedHexData(33, 7, 3);
     if (contract.overloaded["bytes33"](bytes).toLowerCase() !== bytes) {
         throw new Error("unexpected overloaded bytes result");
     }
