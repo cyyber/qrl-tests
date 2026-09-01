@@ -8,9 +8,6 @@ if (!(managed instanceof Array) || managed.length === 0) {
     throw new Error("unexpected node-managed accounts: " + JSON.stringify(managed));
 }
 
-var contractABI = PARAMS.abi.filter(function (entry) {
-    return entry.type !== "constructor";
-}).concat(PARAMS.constructorABI);
 var callbackCount = 0;
 var receiptPolls = 0;
 var receiptPollLimit = 60;
@@ -29,8 +26,8 @@ function failConstructor(failure) {
     stopReceiptMonitor();
 }
 
-qrl.contract(contractABI).new(
-    PARAMS.storeValue,
+qrl.contract(PARAMS.abi).new(
+    PARAMS.constructorAmount,
     PARAMS.recipient,
     PARAMS.constructorTag,
     PARAMS.constructorPayload,
@@ -85,8 +82,18 @@ qrl.contract(contractABI).new(
                 if (!web3.isChecksumAddress(contract.address) || qrl.getCode(contract.address) === "0x") {
                     throw new Error("constructor returned an invalid deployed contract");
                 }
-                if (contract.stored().toString(10) !== "0") {
-                    throw new Error("deployed contract methods were not attached");
+                var expectedRecipient = web3.toChecksumAddress(PARAMS.recipient);
+                var expectedPayloadHash = web3.sha3(PARAMS.constructorPayload, {encoding: "hex"});
+                if (contract.stored().toString(10) !== PARAMS.constructorAmount ||
+                    contract.constructorRecipient() !== expectedRecipient ||
+                    contract.constructorTag().toLowerCase() !== PARAMS.constructorTag.toLowerCase() ||
+                    contract.constructorPayloadHash().toLowerCase() !== expectedPayloadHash.toLowerCase()) {
+                    throw new Error("constructor arguments were not decoded: " + JSON.stringify({
+                        amount: contract.stored().toString(10),
+                        recipient: contract.constructorRecipient(),
+                        tag: contract.constructorTag(),
+                        payloadHash: contract.constructorPayloadHash()
+                    }));
                 }
             });
             suite.finish();

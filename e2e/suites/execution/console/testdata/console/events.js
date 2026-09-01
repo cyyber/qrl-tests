@@ -68,7 +68,9 @@ function stopStoreReceiptMonitor() {
 function failEvents(failure) {
     stopStoreReceiptMonitor();
     console.error("CONSOLE_E2E_FAIL events " + failure);
-    watcher.stopWatching();
+    if (watcher && watcher.filterId !== null) {
+        watcher.stopWatching();
+    }
 }
 
 var watcher = contract.Stored({
@@ -76,6 +78,11 @@ var watcher = contract.Stored({
     label: PARAMS.storeLabel,
     payload: PARAMS.storePayload
 }, {fromBlock: "latest"});
+if (watcher.filterId === null) {
+    var filterFailure = new Error("Stored event filter creation failed");
+    failEvents(filterFailure);
+    throw filterFailure;
+}
 watcher.watch(function (error, event) {
     try {
         if (error) {

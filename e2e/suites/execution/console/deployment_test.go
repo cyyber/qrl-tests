@@ -76,8 +76,19 @@ func prepareDeploymentTransaction(
 	if err != nil {
 		return preparedDeployment{}, err
 	}
+	arguments := constructorArguments{
+		amount:    new(big.Int),
+		recipient: auth.From,
+		payload:   []byte{},
+	}
 
-	_, tx, contract, err := bind.DeployContract(auth, contractABI, bytecode, node.Execution)
+	_, tx, contract, err := bind.DeployContract(
+		auth,
+		contractABI,
+		bytecode,
+		node.Execution,
+		arguments.values()...,
+	)
 	if err != nil {
 		return preparedDeployment{}, fmt.Errorf("prepare deployment transaction: %w", err)
 	}

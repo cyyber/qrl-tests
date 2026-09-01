@@ -9,8 +9,21 @@ import (
 )
 
 func TestConsoleProbe(t *testing.T) {
-	_, err := abi.JSON(strings.NewReader(string(ConsoleProbeABI)))
+	contractABI, err := abi.JSON(strings.NewReader(string(ConsoleProbeABI)))
 	require.NoError(t, err)
+	constructorTypes := make([]string, len(contractABI.Constructor.Inputs))
+	for index, input := range contractABI.Constructor.Inputs {
+		constructorTypes[index] = input.Type.String()
+	}
+	require.Equal(t, []string{"uint512", "address", "bytes33", "bytes"}, constructorTypes)
+	for _, method := range []string{
+		"constructorPayloadHash",
+		"constructorRecipient",
+		"constructorTag",
+		"stored",
+	} {
+		require.Contains(t, contractABI.Methods, method)
+	}
 
 	bytecode, err := ConsoleProbeBytecode()
 	require.NoError(t, err)

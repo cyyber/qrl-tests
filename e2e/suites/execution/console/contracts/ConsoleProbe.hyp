@@ -10,8 +10,20 @@ contract ConsoleProbe {
         uint512 value
     );
     uint512 public stored;
+    address public constructorRecipient;
+    bytes33 public constructorTag;
+    bytes32 public constructorPayloadHash;
 
-    constructor() {
+    constructor(
+        uint512 amount,
+        address recipient,
+        bytes33 tag,
+        bytes memory payload
+    ) {
+        stored = amount;
+        constructorRecipient = recipient;
+        constructorTag = tag;
+        constructorPayloadHash = keccak256(payload);
         emit Deployed(1337);
     }
 
