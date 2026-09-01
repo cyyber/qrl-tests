@@ -70,6 +70,22 @@ var _ = ginkgo.Describe(
 			).To(gomega.Succeed())
 		})
 
+		ginkgo.It("transfers value through the node-managed console account", func(ctx ginkgo.SpecContext) {
+			ginkgo.By("funding the node-managed console account")
+			gomega.Expect(fundManagedAccount(ctx, node)).To(gomega.Succeed())
+			parameters, err := prepareTransactionParameters()
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+			fixtureArchive, err := consoleFixtureArchive(parameters)
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+			gomega.Expect(
+				runScenario(ctx, consoleContainerConfig{
+					image:       node.ExecutionImage,
+					endpointURL: node.ExecutionRPCURL,
+					scenario:    "transactions",
+				}, fixtureArchive),
+			).To(gomega.Succeed())
+		})
+
 		ginkgo.It("deploys a contract through the embedded web3 contract factory", func(ctx ginkgo.SpecContext) {
 			ginkgo.By("funding the node-managed console account")
 			gomega.Expect(fundManagedAccount(ctx, node)).To(gomega.Succeed())
