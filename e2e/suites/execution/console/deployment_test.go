@@ -20,32 +20,18 @@ type deploymentParameters struct {
 	ABI            json.RawMessage `json:"abi"`
 }
 
-type topicParameters struct {
-	deploymentParameters
-	IndexedDelta        string   `json:"indexedDelta"`
-	IndexedAmount       string   `json:"indexedAmount"`
-	IndexedCode         string   `json:"indexedCode"`
-	IndexedLabel        string   `json:"indexedLabel"`
-	IndexedLabelTopic   string   `json:"indexedLabelTopic"`
-	IndexedPayload      string   `json:"indexedPayload"`
-	IndexedPayloadTopic string   `json:"indexedPayloadTopic"`
-	NumberTopics        []string `json:"numberTopics"`
-	BytesTopics         []string `json:"bytesTopics"`
-	ReferenceTopics     []string `json:"referenceTopics"`
-}
-
 type preparedDeployment struct {
 	auth *bind.TransactOpts
 	tx   *types.Transaction
 	raw  []byte
 }
 
-func prepareContractParameters(
+func prepareDeploymentParameters(
 	ctx context.Context,
 	node *live.Node,
 	abiJSON, bytecode []byte,
 ) ([]byte, error) {
-	deployment, err := prepareDeployment(ctx, node, abiJSON, bytecode)
+	deployment, err := prepareDeploymentTransaction(ctx, node, abiJSON, bytecode)
 	if err != nil {
 		return nil, err
 	}
@@ -57,7 +43,9 @@ func prepareContractParameters(
 	})
 }
 
-func prepareDeployment(
+// prepareDeploymentTransaction builds and signs the creation transaction.
+// The console scenario broadcasts its raw encoding.
+func prepareDeploymentTransaction(
 	ctx context.Context,
 	node *live.Node,
 	abiJSON, bytecode []byte,

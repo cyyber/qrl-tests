@@ -16,6 +16,20 @@ import (
 	"github.com/theQRL/go-qrl/crypto"
 )
 
+type topicParameters struct {
+	deploymentParameters
+	IndexedDelta        string   `json:"indexedDelta"`
+	IndexedAmount       string   `json:"indexedAmount"`
+	IndexedCode         string   `json:"indexedCode"`
+	IndexedLabel        string   `json:"indexedLabel"`
+	IndexedLabelTopic   string   `json:"indexedLabelTopic"`
+	IndexedPayload      string   `json:"indexedPayload"`
+	IndexedPayloadTopic string   `json:"indexedPayloadTopic"`
+	NumberTopics        []string `json:"numberTopics"`
+	BytesTopics         []string `json:"bytesTopics"`
+	ReferenceTopics     []string `json:"referenceTopics"`
+}
+
 const indexedEventABIJSON = `[{
   "anonymous":false,
   "inputs":[
