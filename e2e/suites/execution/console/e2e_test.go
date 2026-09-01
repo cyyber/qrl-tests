@@ -57,7 +57,7 @@ var _ = ginkgo.Describe(
 			).To(gomega.Succeed())
 		})
 
-		ginkgo.It("encodes and decodes indexed VM64 topics", func(ctx ginkgo.SpecContext) {
+		ginkgo.It("validates indexed VM64 event topics and generated filters", func(ctx ginkgo.SpecContext) {
 			ginkgo.By("preparing the indexed topic fixture")
 			parameters := testsuite.MustSucceed(prepareTopicParameters(ctx, node))
 			fixtureArchive := testsuite.MustSucceed(consoleFixtureArchive(parameters))
