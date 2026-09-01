@@ -49,20 +49,12 @@ func prepareContractParameters(
 	if err != nil {
 		return nil, err
 	}
-	return encodeParameters(deploymentParameters{
+	return json.Marshal(deploymentParameters{
 		Sender:         deployment.auth.From.Hex(),
 		TxHash:         deployment.tx.Hash().Hex(),
 		RawTransaction: hexutil.Encode(deployment.raw),
 		ABI:            abiJSON,
 	})
-}
-
-func encodeParameters(parameters any) ([]byte, error) {
-	parameterJSON, err := json.Marshal(parameters)
-	if err != nil {
-		return nil, fmt.Errorf("encode console parameters: %w", err)
-	}
-	return parameterJSON, nil
 }
 
 func prepareDeployment(

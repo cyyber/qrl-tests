@@ -109,7 +109,7 @@ func prepareTopicParameters(ctx context.Context, node *live.Node) ([]byte, error
 	if err != nil {
 		return nil, fmt.Errorf("encode indexed-event transaction: %w", err)
 	}
-	return encodeParameters(topicParameters{
+	return json.Marshal(topicParameters{
 		deploymentParameters: deploymentParameters{
 			Sender:         auth.From.Hex(),
 			ABI:            json.RawMessage(indexedEventABIJSON),
