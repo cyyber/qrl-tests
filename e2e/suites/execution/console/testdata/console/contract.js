@@ -201,7 +201,7 @@ check("contract event filter decodes the emitted log", function () {
     }
 });
 
-check("raw log filters support exact, wildcard, and OR topics", function () {
+check("raw log filters support exact, wildcard, OR, and non-matching topics", function () {
     var options = {
         fromBlock: web3.toHex(receipt.blockNumber),
         toBlock: web3.toHex(receipt.blockNumber),
@@ -213,8 +213,13 @@ check("raw log filters support exact, wildcard, and OR topics", function () {
     var wildcard = qrl.getLogs(options);
     options.topics = [[otherTopic, expectedTopic]];
     var alternatives = qrl.getLogs(options);
+    options.topics = [otherTopic];
+    var missing = qrl.getLogs(options);
     if (exact.length !== 1 || wildcard.length !== 1 || alternatives.length !== 1) {
         throw new Error("unexpected filtered logs");
+    }
+    if (missing.length !== 0) {
+        throw new Error("non-matching topic returned logs: " + JSON.stringify(missing));
     }
     if (exact[0].topics[0] !== expectedTopic) {
         throw new Error("unexpected exact topic: " + exact[0].topics[0]);

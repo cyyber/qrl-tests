@@ -45,11 +45,18 @@ check("generated filters encode and decode indexed bool and 512-bit integers", f
         delta: PARAMS.indexedDelta,
         amount: PARAMS.indexedAmount
     }, {fromBlock: block, toBlock: block}).get();
+    var missing = contract.IndexedNumbers({
+        amount: "0"
+    }, {fromBlock: block, toBlock: block}).get();
     if (events.length !== 1 ||
         events[0].args.flag !== true ||
         events[0].args.delta.toString(10) !== PARAMS.indexedDelta ||
         events[0].args.amount.toString(10) !== PARAMS.indexedAmount) {
         throw new Error("unexpected indexed scalar event: " + JSON.stringify(events));
+    }
+    if (missing.length !== 0) {
+        throw new Error("non-matching indexed scalar filter returned events: " +
+            JSON.stringify(missing));
     }
 });
 
@@ -57,9 +64,16 @@ check("generated filters preserve indexed bytes33 alignment", function () {
     var events = contract.IndexedBytes({
         code: PARAMS.indexedCode
     }, {fromBlock: block, toBlock: block}).get();
+    var missing = contract.IndexedBytes({
+        code: "0x" + zeros(66)
+    }, {fromBlock: block, toBlock: block}).get();
     if (events.length !== 1 ||
         events[0].args.code.toLowerCase() !== PARAMS.indexedCode.toLowerCase()) {
         throw new Error("unexpected indexed bytes33 event: " + JSON.stringify(events));
+    }
+    if (missing.length !== 0) {
+        throw new Error("non-matching indexed bytes33 filter returned events: " +
+            JSON.stringify(missing));
     }
 });
 
@@ -70,12 +84,21 @@ check("generated filters encode indexed addresses and expose dynamic topic hashe
         label: PARAMS.indexedLabel,
         payload: PARAMS.indexedPayload
     }, {fromBlock: block, toBlock: block}).get();
+    var missing = contract.IndexedReference({
+        account: PARAMS.address,
+        label: PARAMS.indexedLabel + "-missing",
+        payload: PARAMS.indexedPayload
+    }, {fromBlock: block, toBlock: block}).get();
     if (events.length !== 1 ||
         events[0].args.account !== expectedAddress ||
         !web3.isChecksumAddress(events[0].args.account) ||
         events[0].args.label.toLowerCase() !== PARAMS.indexedLabelTopic.toLowerCase() ||
         events[0].args.payload.toLowerCase() !== PARAMS.indexedPayloadTopic.toLowerCase()) {
         throw new Error("unexpected indexed reference event: " + JSON.stringify(events));
+    }
+    if (missing.length !== 0) {
+        throw new Error("non-matching indexed reference filter returned events: " +
+            JSON.stringify(missing));
     }
 });
 
