@@ -97,36 +97,36 @@ check("receipt APIs expose one VM64 event", function () {
     throw new Error("block receipts omit deployment transaction");
 });
 
-var vm64Amount = "6703903964971298549787012499102923063739682910296196688861780721860882015036773488400937149083451713845015929093243025426876941405973284973216824503046708";
-var vm64Delta = "-3351951982485649274893506249551461531869841455148098344430890360930441007518386744200468574541725856922507964546621512713438470702986642486608412251520982";
-var vm64Tag = patternedHexData(64, 1, 0x80);
-var vm64Payload = patternedHexData(129, 29, 7);
-var vm64Note = "VM64 string crosses the 64-byte ABI word boundary: 0123456789abcdef0123456789abcdef";
+var largeAmount = "6703903964971298549787012499102923063739682910296196688861780721860882015036773488400937149083451713845015929093243025426876941405973284973216824503046708";
+var negativeDelta = "-3351951982485649274893506249551461531869841455148098344430890360930441007518386744200468574541725856922507964546621512713438470702986642486608412251520982";
+var bytes64Tag = patternedHexData(64, 1, 0x80);
+var multiwordPayload = patternedHexData(129, 29, 7);
+var boundaryNote = "VM64 string crosses the 64-byte ABI word boundary: 0123456789abcdef0123456789abcdef";
 
 check("contract echoes VM64 scalar and dynamic values", function () {
     var echoed = contract.echo(
-        vm64Amount,
-        vm64Delta,
-        vm64Tag,
+        largeAmount,
+        negativeDelta,
+        bytes64Tag,
         PARAMS.address,
-        vm64Payload,
-        vm64Note,
+        multiwordPayload,
+        boundaryNote,
         true
     );
     if (!(echoed instanceof Array) || echoed.length !== 7) {
         throw new Error("unexpected echo result: " + JSON.stringify(echoed));
     }
-    if (echoed[0].toString(10) !== vm64Amount || echoed[1].toString(10) !== vm64Delta) {
+    if (echoed[0].toString(10) !== largeAmount || echoed[1].toString(10) !== negativeDelta) {
         throw new Error("integer mismatch");
     }
-    if (echoed[2].toLowerCase() !== vm64Tag) {
+    if (echoed[2].toLowerCase() !== bytes64Tag) {
         throw new Error("fixed-width mismatch");
     }
     var expectedAddress = web3.toChecksumAddress(PARAMS.address);
     if (echoed[3] !== expectedAddress) {
         throw new Error("decoded address is not canonical: " + echoed[3]);
     }
-    if (echoed[4].toLowerCase() !== vm64Payload || echoed[5] !== vm64Note || echoed[6] !== true) {
+    if (echoed[4].toLowerCase() !== multiwordPayload || echoed[5] !== boundaryNote || echoed[6] !== true) {
         throw new Error("dynamic-value mismatch");
     }
 });
@@ -136,7 +136,7 @@ check("contract echoes fixed-byte boundaries", function () {
         "0xa5",
         patternedHexData(32, 1, 1),
         patternedHexData(33, 1, 0x40),
-        vm64Tag
+        bytes64Tag
     ];
     var echoed = contract.echoFixed(values[0], values[1], values[2], values[3]);
     if (!(echoed instanceof Array) || echoed.length !== values.length) {
@@ -151,25 +151,25 @@ check("contract echoes fixed-byte boundaries", function () {
 
 check("contract echoes fixed and dynamic arrays", function () {
     var secondTag = patternedHexData(64, 29, 7);
-    var echoed = contract.echoArrays([0, 1, vm64Amount], [vm64Tag, secondTag]);
+    var echoed = contract.echoArrays([0, 1, largeAmount], [bytes64Tag, secondTag]);
     if (!(echoed instanceof Array) || echoed.length !== 2 ||
         echoed[0].length !== 3 || echoed[1].length !== 2) {
         throw new Error("unexpected array result: " + JSON.stringify(echoed));
     }
     if (echoed[0][0].toString(10) !== "0" ||
         echoed[0][1].toString(10) !== "1" ||
-        echoed[0][2].toString(10) !== vm64Amount) {
+        echoed[0][2].toString(10) !== largeAmount) {
         throw new Error("integer array mismatch");
     }
-    if (echoed[1][0].toLowerCase() !== vm64Tag ||
+    if (echoed[1][0].toLowerCase() !== bytes64Tag ||
         echoed[1][1].toLowerCase() !== secondTag) {
         throw new Error("bytes64 array mismatch");
     }
 });
 
 check("contract wrapper dispatches overloaded methods", function () {
-    var integer = contract.overloaded["uint512"](vm64Amount);
-    if (integer.toString(10) !== web3.toBigNumber(vm64Amount).plus(1).toString(10)) {
+    var integer = contract.overloaded["uint512"](largeAmount);
+    if (integer.toString(10) !== web3.toBigNumber(largeAmount).plus(1).toString(10)) {
         throw new Error("unexpected overloaded integer result: " + integer);
     }
 
