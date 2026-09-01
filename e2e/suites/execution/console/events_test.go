@@ -6,12 +6,12 @@ import (
 	"fmt"
 	"math/big"
 
-	endtoendlive "github.com/cyyber/qrl-tests/e2e/internal/live"
+	"github.com/cyyber/qrl-tests/e2e/internal/live"
 	"github.com/theQRL/go-qrl/accounts/abi"
 	"github.com/theQRL/go-qrl/accounts/abi/bind"
 	"github.com/theQRL/go-qrl/common"
 	"github.com/theQRL/go-qrl/common/hexutil"
-	qrvm "github.com/theQRL/go-qrl/core/vm"
+	"github.com/theQRL/go-qrl/core/vm"
 )
 
 const indexedEventABIJSON = `[{
@@ -31,7 +31,7 @@ const indexedEventABIJSON = `[{
 }]`
 
 func (parameters *consoleParameters) buildIndexedEventCase(
-	session *endtoendlive.Node,
+	session *live.Node,
 	deployment preparedDeployment,
 ) error {
 	indexedABI, err := abi.JSON(bytes.NewBufferString(indexedEventABIJSON))
@@ -119,20 +119,20 @@ func indexedEventInitCode(events ...[]common.LogTopic) []byte {
 	var code []byte
 	for _, topics := range events {
 		for index := len(topics) - 1; index >= 0; index-- {
-			code = append(code, byte(qrvm.PUSH64))
+			code = append(code, byte(vm.PUSH64))
 			code = append(code, topics[index][:]...)
 		}
 		code = append(
 			code,
-			byte(qrvm.PUSH1), 0,
-			byte(qrvm.PUSH1), 0,
-			byte(qrvm.LOG0)+byte(len(topics)),
+			byte(vm.PUSH1), 0,
+			byte(vm.PUSH1), 0,
+			byte(vm.LOG0)+byte(len(topics)),
 		)
 	}
 	return append(code,
-		byte(qrvm.PUSH1), 0,
-		byte(qrvm.PUSH1), 0,
-		byte(qrvm.RETURN),
+		byte(vm.PUSH1), 0,
+		byte(vm.PUSH1), 0,
+		byte(vm.RETURN),
 	)
 }
 

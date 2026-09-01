@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	endtoendlive "github.com/cyyber/qrl-tests/e2e/internal/live"
+	"github.com/cyyber/qrl-tests/e2e/internal/live"
 	"github.com/theQRL/go-qrl/accounts/abi"
 	"github.com/theQRL/go-qrl/accounts/abi/bind"
 	"github.com/theQRL/go-qrl/common/hexutil"
@@ -39,7 +39,7 @@ type preparedDeployment struct {
 
 func prepareParameters(
 	ctx context.Context,
-	session *endtoendlive.Node,
+	session *live.Node,
 	abiJSON, bytecode []byte,
 ) ([]byte, error) {
 	deployment, err := prepareDeployment(ctx, session, abiJSON, bytecode)
@@ -56,12 +56,16 @@ func prepareParameters(
 	if err := parameters.buildIndexedEventCase(session, deployment); err != nil {
 		return nil, err
 	}
-	return json.Marshal(parameters)
+	parameterJSON, err := json.Marshal(parameters)
+	if err != nil {
+		return nil, fmt.Errorf("encode console parameters: %w", err)
+	}
+	return parameterJSON, nil
 }
 
 func prepareDeployment(
 	ctx context.Context,
-	session *endtoendlive.Node,
+	session *live.Node,
 	abiJSON, bytecode []byte,
 ) (preparedDeployment, error) {
 	contractABI, err := abi.JSON(bytes.NewReader(abiJSON))
