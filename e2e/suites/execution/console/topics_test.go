@@ -58,20 +58,20 @@ func prepareTopicParameters(ctx context.Context, node *live.Node) ([]byte, error
 		indexedCode[index] = byte(0xa0 + index)
 	}
 	numberEvent := indexedABI.Events["IndexedNumbers"]
-	flagTopic, err := packEventTopic(numberEvent.Inputs[0], true)
+	flagTopic, err := packSingleWordIndexedTopic(numberEvent.Inputs[0], true)
 	if err != nil {
 		return nil, err
 	}
-	deltaTopic, err := packEventTopic(numberEvent.Inputs[1], indexedDelta)
+	deltaTopic, err := packSingleWordIndexedTopic(numberEvent.Inputs[1], indexedDelta)
 	if err != nil {
 		return nil, err
 	}
-	amountTopic, err := packEventTopic(numberEvent.Inputs[2], indexedAmount)
+	amountTopic, err := packSingleWordIndexedTopic(numberEvent.Inputs[2], indexedAmount)
 	if err != nil {
 		return nil, err
 	}
 	bytesEvent := indexedABI.Events["IndexedBytes"]
-	codeTopic, err := packEventTopic(bytesEvent.Inputs[0], indexedCode)
+	codeTopic, err := packSingleWordIndexedTopic(bytesEvent.Inputs[0], indexedCode)
 	if err != nil {
 		return nil, err
 	}
@@ -109,11 +109,13 @@ func prepareTopicParameters(ctx context.Context, node *live.Node) ([]byte, error
 	if err != nil {
 		return nil, fmt.Errorf("encode indexed-event transaction: %w", err)
 	}
-	return encodeParameters(consoleParameters{
-		Address:             auth.From.Hex(),
-		ABI:                 json.RawMessage(indexedEventABIJSON),
-		TxHash:              indexedTx.Hash().Hex(),
-		RawTransaction:      hexutil.Encode(indexedRaw),
+	return encodeParameters(topicParameters{
+		deploymentParameters: deploymentParameters{
+			Sender:         auth.From.Hex(),
+			ABI:            json.RawMessage(indexedEventABIJSON),
+			TxHash:         indexedTx.Hash().Hex(),
+			RawTransaction: hexutil.Encode(indexedRaw),
+		},
 		IndexedDelta:        indexedDelta.String(),
 		IndexedAmount:       indexedAmount.String(),
 		IndexedCode:         hexutil.Encode(indexedCode[:]),
@@ -127,7 +129,7 @@ func prepareTopicParameters(ctx context.Context, node *live.Node) ([]byte, error
 	})
 }
 
-func packEventTopic(argument abi.Argument, value any) (common.LogTopic, error) {
+func packSingleWordIndexedTopic(argument abi.Argument, value any) (common.LogTopic, error) {
 	encoded, err := (abi.Arguments{argument}).Pack(value)
 	if err != nil {
 		return common.LogTopic{}, fmt.Errorf("pack indexed %s topic: %w", argument.Type, err)
@@ -147,6 +149,7 @@ func packEventTopic(argument abi.Argument, value any) (common.LogTopic, error) {
 func indexedEventInitCode(events ...[]common.LogTopic) []byte {
 	var code []byte
 	for _, topics := range events {
+		// LOGn pops topics in declaration order, so push them in reverse.
 		for index := len(topics) - 1; index >= 0; index-- {
 			code = append(code, byte(vm.PUSH64))
 			code = append(code, topics[index][:]...)

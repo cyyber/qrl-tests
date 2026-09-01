@@ -13,21 +13,25 @@ import (
 	"github.com/theQRL/go-qrl/core/types"
 )
 
-type consoleParameters struct {
-	Address             string          `json:"address"`
-	TxHash              string          `json:"txHash"`
-	RawTransaction      string          `json:"rawTransaction"`
-	ABI                 json.RawMessage `json:"abi"`
-	IndexedDelta        string          `json:"indexedDelta"`
-	IndexedAmount       string          `json:"indexedAmount"`
-	IndexedCode         string          `json:"indexedCode"`
-	IndexedLabel        string          `json:"indexedLabel"`
-	IndexedLabelTopic   string          `json:"indexedLabelTopic"`
-	IndexedPayload      string          `json:"indexedPayload"`
-	IndexedPayloadTopic string          `json:"indexedPayloadTopic"`
-	NumberTopics        []string        `json:"numberTopics"`
-	BytesTopics         []string        `json:"bytesTopics"`
-	ReferenceTopics     []string        `json:"referenceTopics"`
+type deploymentParameters struct {
+	Sender         string          `json:"sender"`
+	TxHash         string          `json:"txHash"`
+	RawTransaction string          `json:"rawTransaction"`
+	ABI            json.RawMessage `json:"abi"`
+}
+
+type topicParameters struct {
+	deploymentParameters
+	IndexedDelta        string   `json:"indexedDelta"`
+	IndexedAmount       string   `json:"indexedAmount"`
+	IndexedCode         string   `json:"indexedCode"`
+	IndexedLabel        string   `json:"indexedLabel"`
+	IndexedLabelTopic   string   `json:"indexedLabelTopic"`
+	IndexedPayload      string   `json:"indexedPayload"`
+	IndexedPayloadTopic string   `json:"indexedPayloadTopic"`
+	NumberTopics        []string `json:"numberTopics"`
+	BytesTopics         []string `json:"bytesTopics"`
+	ReferenceTopics     []string `json:"referenceTopics"`
 }
 
 type preparedDeployment struct {
@@ -45,16 +49,15 @@ func prepareContractParameters(
 	if err != nil {
 		return nil, err
 	}
-	parameters := consoleParameters{
-		Address:        deployment.auth.From.Hex(),
+	return encodeParameters(deploymentParameters{
+		Sender:         deployment.auth.From.Hex(),
 		TxHash:         deployment.tx.Hash().Hex(),
 		RawTransaction: hexutil.Encode(deployment.raw),
 		ABI:            abiJSON,
-	}
-	return encodeParameters(parameters)
+	})
 }
 
-func encodeParameters(parameters consoleParameters) ([]byte, error) {
+func encodeParameters(parameters any) ([]byte, error) {
 	parameterJSON, err := json.Marshal(parameters)
 	if err != nil {
 		return nil, fmt.Errorf("encode console parameters: %w", err)

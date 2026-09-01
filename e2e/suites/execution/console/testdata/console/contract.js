@@ -52,7 +52,7 @@ var contract = qrl.contract(PARAMS.abi).at(receipt.contractAddress);
 
 check("transaction and block APIs expose the deployment", function () {
     var tx = qrl.getTransaction(PARAMS.txHash);
-    if (tx === null || tx.hash !== PARAMS.txHash || tx.from !== PARAMS.address || tx.to !== null) {
+    if (tx === null || tx.hash !== PARAMS.txHash || tx.from !== PARAMS.sender || tx.to !== null) {
         throw new Error("unexpected transaction: " + JSON.stringify(tx));
     }
     var blockWithHashes = qrl.getBlock(receipt.blockNumber, false);
@@ -108,7 +108,7 @@ check("contract wrapper round-trips VM64 scalar and dynamic values", function ()
         largeAmount,
         negativeDelta,
         bytes64Tag,
-        PARAMS.address,
+        PARAMS.sender,
         multiwordPayload,
         boundaryNote,
         true
@@ -123,7 +123,7 @@ check("contract wrapper round-trips VM64 scalar and dynamic values", function ()
     if (echoed[2].toLowerCase() !== bytes64Tag) {
         throw new Error("unexpected bytes64 value: " + echoed[2]);
     }
-    var expectedAddress = web3.toChecksumAddress(PARAMS.address);
+    var expectedAddress = web3.toChecksumAddress(PARAMS.sender);
     if (echoed[3] !== expectedAddress) {
         throw new Error("unexpected decoded address: have " + echoed[3] +
             " want " + expectedAddress);

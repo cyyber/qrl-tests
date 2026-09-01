@@ -78,14 +78,14 @@ check("generated filters preserve indexed bytes33 alignment", function () {
 });
 
 check("generated filters encode indexed addresses and expose dynamic topic hashes", function () {
-    var expectedAddress = web3.toChecksumAddress(PARAMS.address);
+    var expectedAddress = web3.toChecksumAddress(PARAMS.sender);
     var events = contract.IndexedReference({
-        account: PARAMS.address,
+        account: PARAMS.sender,
         label: PARAMS.indexedLabel,
         payload: PARAMS.indexedPayload
     }, {fromBlock: block, toBlock: block}).get();
     var missing = contract.IndexedReference({
-        account: PARAMS.address,
+        account: PARAMS.sender,
         label: PARAMS.indexedLabel + "-missing",
         payload: PARAMS.indexedPayload
     }, {fromBlock: block, toBlock: block}).get();
