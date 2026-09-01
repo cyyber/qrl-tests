@@ -91,7 +91,6 @@ check("generated filters encode indexed addresses and expose dynamic topic hashe
     }, {fromBlock: block, toBlock: block}).get();
     if (events.length !== 1 ||
         events[0].args.account !== expectedAddress ||
-        !web3.isChecksumAddress(events[0].args.account) ||
         events[0].args.label.toLowerCase() !== PARAMS.indexedLabelTopic.toLowerCase() ||
         events[0].args.payload.toLowerCase() !== PARAMS.indexedPayloadTopic.toLowerCase()) {
         throw new Error("unexpected indexed reference event: " + JSON.stringify(events));

@@ -62,7 +62,7 @@ check("transaction and block APIs expose the deployment", function () {
     }
     for (var i = 0; i < blockWithTransactions.transactions.length; i++) {
         if (blockWithTransactions.transactions[i].hash === PARAMS.txHash) {
-            return true;
+            return;
         }
     }
     throw new Error("block does not include deployment transaction");
@@ -72,21 +72,26 @@ check("receipt APIs expose one VM64 event", function () {
     if (receipt.logs.length !== 1) {
         throw new Error("expected one receipt log, got " + receipt.logs.length);
     }
-    if (receipt.logs[0].topics[0] !== expectedTopic) {
-        throw new Error("unexpected receipt topic: " + receipt.logs[0].topics[0]);
+    var log = receipt.logs[0];
+    if (log.topics.length !== 1 || log.topics[0] !== expectedTopic) {
+        throw new Error("unexpected receipt topics: " + JSON.stringify(log.topics));
     }
-    var expectedData = "0x" + zeros(125) + "539";
-    if (receipt.logs[0].data !== expectedData) {
-        throw new Error("unexpected event data: " + receipt.logs[0].data);
+    var valueHex = deployedValue.toString(16);
+    var expectedData = "0x" + zeros(128 - valueHex.length) + valueHex;
+    if (log.data !== expectedData) {
+        throw new Error("unexpected event data: " + log.data);
     }
     var receipts = qrl.getBlockReceipts(web3.toHex(receipt.blockNumber));
     for (var i = 0; i < receipts.length; i++) {
         if (receipts[i].transactionHash === PARAMS.txHash) {
-            if (receipts[i].logs.length !== 1 ||
-                receipts[i].logs[0].topics[0] !== expectedTopic) {
+            var blockLogs = receipts[i].logs;
+            if (blockLogs.length !== 1 ||
+                blockLogs[0].topics.length !== 1 ||
+                blockLogs[0].topics[0] !== expectedTopic ||
+                blockLogs[0].data !== expectedData) {
                 throw new Error("unexpected block receipt");
             }
-            return true;
+            return;
         }
     }
     throw new Error("block receipts omit deployment transaction");
@@ -118,7 +123,7 @@ check("contract echoes VM64 scalar and dynamic values", function () {
         throw new Error("fixed-width mismatch");
     }
     var expectedAddress = web3.toChecksumAddress(PARAMS.address);
-    if (echoed[3] !== expectedAddress || !web3.isChecksumAddress(echoed[3])) {
+    if (echoed[3] !== expectedAddress) {
         throw new Error("decoded address is not canonical: " + echoed[3]);
     }
     if (echoed[4].toLowerCase() !== vm64Payload || echoed[5] !== vm64Note || echoed[6] !== true) {
@@ -145,7 +150,7 @@ check("contract echoes fixed-byte boundaries", function () {
 });
 
 check("contract echoes fixed and dynamic arrays", function () {
-    var secondTag = vm64Payload.substr(0, 130);
+    var secondTag = patternedHex(64, 29, 7);
     var echoed = contract.echoArrays([0, 1, vm64Amount], [vm64Tag, secondTag]);
     if (!(echoed instanceof Array) || echoed.length !== 2 ||
         echoed[0].length !== 3 || echoed[1].length !== 2) {
@@ -183,7 +188,7 @@ check("contract wrapper propagates revert errors", function () {
             message.indexOf("console wrapper revert") < 0) {
             throw new Error("unexpected revert error: " + message);
         }
-        return true;
+        return;
     }
     throw new Error("reverting contract call unexpectedly succeeded");
 });
