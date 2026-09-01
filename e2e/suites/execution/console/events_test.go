@@ -2,6 +2,7 @@ package console
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"math/big"
@@ -40,13 +41,14 @@ const indexedEventABIJSON = `[{
   "type":"event"
 }]`
 
-func (parameters *consoleParameters) buildIndexedEventCase(
-	session *live.Node,
-	deployment preparedDeployment,
-) error {
+func prepareTopicParameters(ctx context.Context, node *live.Node) ([]byte, error) {
 	indexedABI, err := abi.JSON(bytes.NewBufferString(indexedEventABIJSON))
 	if err != nil {
-		return fmt.Errorf("parse indexed-event coverage ABI: %w", err)
+		return nil, fmt.Errorf("parse indexed-event coverage ABI: %w", err)
+	}
+	auth, err := newTransactor(ctx, node)
+	if err != nil {
+		return nil, err
 	}
 	indexedDelta := big.NewInt(-1)
 	indexedAmount := new(big.Int).Lsh(big.NewInt(1), 400)
@@ -58,25 +60,25 @@ func (parameters *consoleParameters) buildIndexedEventCase(
 	numberEvent := indexedABI.Events["IndexedNumbers"]
 	flagTopic, err := packEventTopic(numberEvent.Inputs[0], true)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	deltaTopic, err := packEventTopic(numberEvent.Inputs[1], indexedDelta)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	amountTopic, err := packEventTopic(numberEvent.Inputs[2], indexedAmount)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	bytesEvent := indexedABI.Events["IndexedBytes"]
 	codeTopic, err := packEventTopic(bytesEvent.Inputs[0], indexedCode)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	const indexedLabel = "VM64 indexed dynamic value"
 	indexedPayload := []byte{0xab, 0xcd}
 	referenceEvent := indexedABI.Events["IndexedReference"]
-	accountTopic := common.AddressToLogTopic(deployment.auth.From)
+	accountTopic := common.AddressToLogTopic(auth.From)
 	labelTopic := common.HashToLogTopic(crypto.Keccak256Hash([]byte(indexedLabel)))
 	payloadTopic := common.HashToLogTopic(crypto.Keccak256Hash(indexedPayload))
 	numberTopics := []common.LogTopic{
@@ -93,36 +95,36 @@ func (parameters *consoleParameters) buildIndexedEventCase(
 		payloadTopic,
 	}
 
-	auth := *deployment.auth
-	auth.Nonce = new(big.Int).SetUint64(deployment.tx.Nonce() + 1)
 	auth.GasLimit = 500_000
 	_, indexedTx, _, err := bind.DeployContract(
-		&auth,
+		auth,
 		indexedABI,
 		indexedEventInitCode(numberTopics, bytesTopics, referenceTopics),
-		session.Execution,
+		node.Execution,
 	)
 	if err != nil {
-		return fmt.Errorf("prepare indexed-event transaction: %w", err)
+		return nil, fmt.Errorf("prepare indexed-event transaction: %w", err)
 	}
 	indexedRaw, err := indexedTx.MarshalBinary()
 	if err != nil {
-		return fmt.Errorf("encode indexed-event transaction: %w", err)
+		return nil, fmt.Errorf("encode indexed-event transaction: %w", err)
 	}
-	parameters.IndexedABI = json.RawMessage(indexedEventABIJSON)
-	parameters.IndexedTxHash = indexedTx.Hash().Hex()
-	parameters.IndexedRaw = hexutil.Encode(indexedRaw)
-	parameters.IndexedDelta = indexedDelta.String()
-	parameters.IndexedAmount = indexedAmount.String()
-	parameters.IndexedCode = hexutil.Encode(indexedCode[:])
-	parameters.IndexedLabel = indexedLabel
-	parameters.IndexedLabelTopic = labelTopic.Hex()
-	parameters.IndexedPayload = hexutil.Encode(indexedPayload)
-	parameters.IndexedPayloadTopic = payloadTopic.Hex()
-	parameters.NumberTopics = topicStrings(numberTopics)
-	parameters.BytesTopics = topicStrings(bytesTopics)
-	parameters.ReferenceTopics = topicStrings(referenceTopics)
-	return nil
+	return encodeParameters(consoleParameters{
+		Address:             auth.From.Hex(),
+		IndexedABI:          json.RawMessage(indexedEventABIJSON),
+		IndexedTxHash:       indexedTx.Hash().Hex(),
+		IndexedRaw:          hexutil.Encode(indexedRaw),
+		IndexedDelta:        indexedDelta.String(),
+		IndexedAmount:       indexedAmount.String(),
+		IndexedCode:         hexutil.Encode(indexedCode[:]),
+		IndexedLabel:        indexedLabel,
+		IndexedLabelTopic:   labelTopic.Hex(),
+		IndexedPayload:      hexutil.Encode(indexedPayload),
+		IndexedPayloadTopic: payloadTopic.Hex(),
+		NumberTopics:        topicStrings(numberTopics),
+		BytesTopics:         topicStrings(bytesTopics),
+		ReferenceTopics:     topicStrings(referenceTopics),
+	})
 }
 
 func packEventTopic(argument abi.Argument, value any) (common.LogTopic, error) {

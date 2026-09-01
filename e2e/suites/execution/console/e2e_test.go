@@ -23,29 +23,19 @@ var _ = ginkgo.Describe(
 	ginkgo.ContinueOnFailure,
 	ginkgo.Label("e2e", "console"),
 	func() {
-		var (
-			node           *live.Node
-			fixtureArchive []byte
-		)
+		var node *live.Node
 
 		ginkgo.BeforeAll(func(ctx ginkgo.SpecContext) {
 			var err error
-			runtime := testsuite.LoadRuntime()
-			node, err = runtime.PrimaryNode(ctx)
+			node, err = testsuite.LoadRuntime().PrimaryNode(ctx)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 			gomega.Expect(node.ExecutionImage).NotTo(gomega.BeEmpty())
-
-			ginkgo.By("preparing the console fixtures and transactions")
-			bytecode, err := contracts.ConsoleProbeBytecode()
-			gomega.Expect(err).NotTo(gomega.HaveOccurred())
-			parameters, err := prepareParameters(ctx, node, contracts.ConsoleProbeABI, bytecode)
-			gomega.Expect(err).NotTo(gomega.HaveOccurred())
-			fixtureArchive, err = consoleFixtureArchive(parameters)
-			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 		})
 
 		ginkgo.It("validates console and RPC APIs against the live network", func(ctx ginkgo.SpecContext) {
+			fixtureArchive, err := consoleFixtureArchive(nil)
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 			gomega.Expect(
 				runScenario(ctx, consoleContainerConfig{
 					image:       node.ExecutionImage,
@@ -56,6 +46,13 @@ var _ = ginkgo.Describe(
 		})
 
 		ginkgo.It("deploys a contract and validates VM64 ABI, receipts, events, and filters", func(ctx ginkgo.SpecContext) {
+			ginkgo.By("preparing the contract fixture")
+			bytecode, err := contracts.ConsoleProbeBytecode()
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+			parameters, err := prepareContractParameters(ctx, node, contracts.ConsoleProbeABI, bytecode)
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+			fixtureArchive, err := consoleFixtureArchive(parameters)
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 			gomega.Expect(
 				runScenario(ctx, consoleContainerConfig{
 					image:       node.ExecutionImage,
@@ -66,6 +63,11 @@ var _ = ginkgo.Describe(
 		})
 
 		ginkgo.It("encodes and decodes indexed VM64 topics", func(ctx ginkgo.SpecContext) {
+			ginkgo.By("preparing the indexed topic fixture")
+			parameters, err := prepareTopicParameters(ctx, node)
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+			fixtureArchive, err := consoleFixtureArchive(parameters)
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 			gomega.Expect(
 				runScenario(ctx, consoleContainerConfig{
 					image:       node.ExecutionImage,

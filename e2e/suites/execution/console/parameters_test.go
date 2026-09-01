@@ -42,12 +42,12 @@ type preparedDeployment struct {
 	raw  []byte
 }
 
-func prepareParameters(
+func prepareContractParameters(
 	ctx context.Context,
-	session *live.Node,
+	node *live.Node,
 	abiJSON, bytecode []byte,
 ) ([]byte, error) {
-	deployment, err := prepareDeployment(ctx, session, abiJSON, bytecode)
+	deployment, err := prepareDeployment(ctx, node, abiJSON, bytecode)
 	if err != nil {
 		return nil, err
 	}
@@ -58,9 +58,10 @@ func prepareParameters(
 		StoreValue:     storeValueDecimal,
 		ABI:            abiJSON,
 	}
-	if err := parameters.buildIndexedEventCase(session, deployment); err != nil {
-		return nil, err
-	}
+	return encodeParameters(parameters)
+}
+
+func encodeParameters(parameters consoleParameters) ([]byte, error) {
 	parameterJSON, err := json.Marshal(parameters)
 	if err != nil {
 		return nil, fmt.Errorf("encode console parameters: %w", err)
@@ -70,21 +71,19 @@ func prepareParameters(
 
 func prepareDeployment(
 	ctx context.Context,
-	session *live.Node,
+	node *live.Node,
 	abiJSON, bytecode []byte,
 ) (preparedDeployment, error) {
 	contractABI, err := abi.JSON(bytes.NewReader(abiJSON))
 	if err != nil {
 		return preparedDeployment{}, fmt.Errorf("parse contract ABI: %w", err)
 	}
-	auth, err := bind.NewKeyedTransactorWithChainID(session.Wallet, session.ChainID)
+	auth, err := newTransactor(ctx, node)
 	if err != nil {
-		return preparedDeployment{}, fmt.Errorf("create deployment transactor: %w", err)
+		return preparedDeployment{}, err
 	}
-	auth.Context = ctx
-	auth.NoSend = true
 
-	_, tx, _, err := bind.DeployContract(auth, contractABI, bytecode, session.Execution)
+	_, tx, _, err := bind.DeployContract(auth, contractABI, bytecode, node.Execution)
 	if err != nil {
 		return preparedDeployment{}, fmt.Errorf("prepare deployment transaction: %w", err)
 	}
@@ -93,4 +92,14 @@ func prepareDeployment(
 		return preparedDeployment{}, fmt.Errorf("encode deployment transaction: %w", err)
 	}
 	return preparedDeployment{auth: auth, tx: tx, raw: raw}, nil
+}
+
+func newTransactor(ctx context.Context, node *live.Node) (*bind.TransactOpts, error) {
+	auth, err := bind.NewKeyedTransactorWithChainID(node.Wallet, node.ChainID)
+	if err != nil {
+		return nil, fmt.Errorf("create console transactor: %w", err)
+	}
+	auth.Context = ctx
+	auth.NoSend = true
+	return auth, nil
 }
