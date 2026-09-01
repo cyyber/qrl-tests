@@ -26,16 +26,12 @@ var _ = ginkgo.Describe(
 		var node *live.Node
 
 		ginkgo.BeforeAll(func(ctx ginkgo.SpecContext) {
-			var err error
-			node, err = testsuite.LoadRuntime().PrimaryNode(ctx)
-			gomega.Expect(err).NotTo(gomega.HaveOccurred())
-
+			node = testsuite.MustSucceed(testsuite.LoadRuntime().PrimaryNode(ctx))
 			gomega.Expect(node.ExecutionImage).NotTo(gomega.BeEmpty())
 		})
 
 		ginkgo.It("validates console and RPC APIs against the live network", func(ctx ginkgo.SpecContext) {
-			fixtureArchive, err := consoleFixtureArchive(nil)
-			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+			fixtureArchive := testsuite.MustSucceed(consoleFixtureArchive(nil))
 			gomega.Expect(
 				runScenario(ctx, consoleContainerConfig{
 					image:       node.ExecutionImage,
@@ -47,12 +43,11 @@ var _ = ginkgo.Describe(
 
 		ginkgo.It("deploys a contract and validates VM64 ABI, receipts, events, and filters", func(ctx ginkgo.SpecContext) {
 			ginkgo.By("preparing the contract fixture")
-			bytecode, err := contracts.ConsoleProbeBytecode()
-			gomega.Expect(err).NotTo(gomega.HaveOccurred())
-			parameters, err := prepareContractParameters(ctx, node, contracts.ConsoleProbeABI, bytecode)
-			gomega.Expect(err).NotTo(gomega.HaveOccurred())
-			fixtureArchive, err := consoleFixtureArchive(parameters)
-			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+			bytecode := testsuite.MustSucceed(contracts.ConsoleProbeBytecode())
+			parameters := testsuite.MustSucceed(
+				prepareContractParameters(ctx, node, contracts.ConsoleProbeABI, bytecode),
+			)
+			fixtureArchive := testsuite.MustSucceed(consoleFixtureArchive(parameters))
 			gomega.Expect(
 				runScenario(ctx, consoleContainerConfig{
 					image:       node.ExecutionImage,
@@ -64,10 +59,8 @@ var _ = ginkgo.Describe(
 
 		ginkgo.It("encodes and decodes indexed VM64 topics", func(ctx ginkgo.SpecContext) {
 			ginkgo.By("preparing the indexed topic fixture")
-			parameters, err := prepareTopicParameters(ctx, node)
-			gomega.Expect(err).NotTo(gomega.HaveOccurred())
-			fixtureArchive, err := consoleFixtureArchive(parameters)
-			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+			parameters := testsuite.MustSucceed(prepareTopicParameters(ctx, node))
+			fixtureArchive := testsuite.MustSucceed(consoleFixtureArchive(parameters))
 			gomega.Expect(
 				runScenario(ctx, consoleContainerConfig{
 					image:       node.ExecutionImage,
