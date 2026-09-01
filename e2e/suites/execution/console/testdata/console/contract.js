@@ -12,7 +12,7 @@ function patternedHexData(byteLength, multiplier, addend) {
     return out;
 }
 
-function expectTopicError(topic, blockNumber, address) {
+function expectTopicLengthError(topic, blockNumber, address) {
     try {
         qrl.getLogs({
             fromBlock: web3.toHex(blockNumber),
@@ -47,7 +47,7 @@ check("deployment transaction is accepted and mined", function () {
 
 var signatureHash = web3.sha3(eventSignature);
 var expectedTopic = signatureHash + zeros(64);
-var otherTopic = "0x" + new Array(65).join("ab");
+var nonMatchingTopic = patternedHexData(64, 0, 0xab);
 var contract = qrl.contract(PARAMS.abi).at(receipt.contractAddress);
 
 check("transaction and block APIs expose the deployment", function () {
@@ -216,9 +216,9 @@ check("raw log filters support exact, wildcard, OR, and non-matching topics", fu
     var exact = qrl.getLogs(options);
     options.topics = [null];
     var wildcard = qrl.getLogs(options);
-    options.topics = [[otherTopic, expectedTopic]];
+    options.topics = [[nonMatchingTopic, expectedTopic]];
     var alternatives = qrl.getLogs(options);
-    options.topics = [otherTopic];
+    options.topics = [nonMatchingTopic];
     var missing = qrl.getLogs(options);
     if (exact.length !== 1 || wildcard.length !== 1 || alternatives.length !== 1) {
         throw new Error("unexpected filtered logs");
@@ -232,7 +232,7 @@ check("raw log filters support exact, wildcard, OR, and non-matching topics", fu
 });
 
 check("raw log filters reject 32-byte topics", function () {
-    expectTopicError(signatureHash, receipt.blockNumber, receipt.contractAddress);
+    expectTopicLengthError(signatureHash, receipt.blockNumber, receipt.contractAddress);
 });
 
 suite.finish();
