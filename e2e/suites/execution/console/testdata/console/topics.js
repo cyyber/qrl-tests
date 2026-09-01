@@ -63,16 +63,18 @@ check("generated filters preserve indexed bytes33 alignment", function () {
     }
 });
 
-check("generated filters encode and decode indexed addresses and strings", function () {
+check("generated filters encode and decode indexed addresses and dynamic values", function () {
     var expectedAddress = web3.toChecksumAddress(PARAMS.address);
     var events = contract.IndexedReference({
         account: PARAMS.address,
-        label: PARAMS.indexedLabel
+        label: PARAMS.indexedLabel,
+        payload: PARAMS.indexedPayload
     }, {fromBlock: block, toBlock: block}).get();
     if (events.length !== 1 ||
         events[0].args.account !== expectedAddress ||
         !web3.isChecksumAddress(events[0].args.account) ||
-        events[0].args.label.toLowerCase() !== PARAMS.indexedLabelTopic.toLowerCase()) {
+        events[0].args.label.toLowerCase() !== PARAMS.indexedLabelTopic.toLowerCase() ||
+        events[0].args.payload.toLowerCase() !== PARAMS.indexedPayloadTopic.toLowerCase()) {
         throw new Error("unexpected indexed reference event: " + JSON.stringify(events));
     }
 });

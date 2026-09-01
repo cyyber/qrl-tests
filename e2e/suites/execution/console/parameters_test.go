@@ -16,22 +16,24 @@ import (
 const storeValueDecimal = "6703903964971298549787012499102923063739682910296196688861780721860882015036773488400937149083451713845015929093243025426876941405973284973216824503046708"
 
 type consoleParameters struct {
-	Address           string          `json:"address"`
-	TxHash            string          `json:"txHash"`
-	RawTransaction    string          `json:"rawTransaction"`
-	StoreValue        string          `json:"storeValue"`
-	ABI               json.RawMessage `json:"abi"`
-	IndexedABI        json.RawMessage `json:"indexedABI"`
-	IndexedTxHash     string          `json:"indexedTxHash"`
-	IndexedRaw        string          `json:"indexedRawTransaction"`
-	IndexedDelta      string          `json:"indexedDelta"`
-	IndexedAmount     string          `json:"indexedAmount"`
-	IndexedCode       string          `json:"indexedCode"`
-	IndexedLabel      string          `json:"indexedLabel"`
-	IndexedLabelTopic string          `json:"indexedLabelTopic"`
-	NumberTopics      []string        `json:"numberTopics"`
-	BytesTopics       []string        `json:"bytesTopics"`
-	ReferenceTopics   []string        `json:"referenceTopics"`
+	Address             string          `json:"address"`
+	TxHash              string          `json:"txHash"`
+	RawTransaction      string          `json:"rawTransaction"`
+	StoreValue          string          `json:"storeValue"`
+	ABI                 json.RawMessage `json:"abi"`
+	IndexedABI          json.RawMessage `json:"indexedABI"`
+	IndexedTxHash       string          `json:"indexedTxHash"`
+	IndexedRaw          string          `json:"indexedRawTransaction"`
+	IndexedDelta        string          `json:"indexedDelta"`
+	IndexedAmount       string          `json:"indexedAmount"`
+	IndexedCode         string          `json:"indexedCode"`
+	IndexedLabel        string          `json:"indexedLabel"`
+	IndexedLabelTopic   string          `json:"indexedLabelTopic"`
+	IndexedPayload      string          `json:"indexedPayload"`
+	IndexedPayloadTopic string          `json:"indexedPayloadTopic"`
+	NumberTopics        []string        `json:"numberTopics"`
+	BytesTopics         []string        `json:"bytesTopics"`
+	ReferenceTopics     []string        `json:"referenceTopics"`
 }
 
 type preparedDeployment struct {

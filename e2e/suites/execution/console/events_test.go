@@ -33,7 +33,8 @@ const indexedEventABIJSON = `[{
   "anonymous":false,
   "inputs":[
     {"indexed":true,"name":"account","type":"address"},
-    {"indexed":true,"name":"label","type":"string"}
+    {"indexed":true,"name":"label","type":"string"},
+    {"indexed":true,"name":"payload","type":"bytes"}
   ],
   "name":"IndexedReference",
   "type":"event"
@@ -73,9 +74,11 @@ func (parameters *consoleParameters) buildIndexedEventCase(
 		return err
 	}
 	const indexedLabel = "VM64 indexed dynamic value"
+	indexedPayload := []byte{0xab, 0xcd}
 	referenceEvent := indexedABI.Events["IndexedReference"]
 	accountTopic := common.AddressToLogTopic(deployment.auth.From)
 	labelTopic := common.HashToLogTopic(crypto.Keccak256Hash([]byte(indexedLabel)))
+	payloadTopic := common.HashToLogTopic(crypto.Keccak256Hash(indexedPayload))
 	numberTopics := []common.LogTopic{
 		common.HashToLogTopic(numberEvent.ID),
 		flagTopic,
@@ -87,6 +90,7 @@ func (parameters *consoleParameters) buildIndexedEventCase(
 		common.HashToLogTopic(referenceEvent.ID),
 		accountTopic,
 		labelTopic,
+		payloadTopic,
 	}
 
 	auth := *deployment.auth
@@ -113,6 +117,8 @@ func (parameters *consoleParameters) buildIndexedEventCase(
 	parameters.IndexedCode = hexutil.Encode(indexedCode[:])
 	parameters.IndexedLabel = indexedLabel
 	parameters.IndexedLabelTopic = labelTopic.Hex()
+	parameters.IndexedPayload = hexutil.Encode(indexedPayload)
+	parameters.IndexedPayloadTopic = payloadTopic.Hex()
 	parameters.NumberTopics = topicStrings(numberTopics)
 	parameters.BytesTopics = topicStrings(bytesTopics)
 	parameters.ReferenceTopics = topicStrings(referenceTopics)
