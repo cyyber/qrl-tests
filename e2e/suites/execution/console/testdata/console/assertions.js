@@ -30,7 +30,3 @@ function requireNonNegativeInteger(name, value) {
         throw new Error(name + " is not a nonnegative integer: " + value);
     }
 }
-
-function zeros(length) {
-    return new Array(length + 1).join("0");
-}

@@ -25,3 +25,7 @@ function waitForReceipt(transactionHash) {
     }
     throw new Error("transaction not mined within timeout: " + transactionHash);
 }
+
+function zeros(length) {
+    return new Array(length + 1).join("0");
+}
