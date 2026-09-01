@@ -103,7 +103,7 @@ var bytes64Tag = patternedHexData(64, 1, 0x80);
 var multiwordPayload = patternedHexData(129, 29, 7);
 var boundaryNote = "VM64 string crosses the 64-byte ABI word boundary: 0123456789abcdef0123456789abcdef";
 
-check("contract echoes VM64 scalar and dynamic values", function () {
+check("contract wrapper round-trips VM64 scalar and dynamic values", function () {
     var echoed = contract.echo(
         largeAmount,
         negativeDelta,
@@ -117,17 +117,25 @@ check("contract echoes VM64 scalar and dynamic values", function () {
         throw new Error("unexpected echo result: " + JSON.stringify(echoed));
     }
     if (echoed[0].toString(10) !== largeAmount || echoed[1].toString(10) !== negativeDelta) {
-        throw new Error("integer mismatch");
+        throw new Error("unexpected integer values: amount=" + echoed[0].toString(10) +
+            " delta=" + echoed[1].toString(10));
     }
     if (echoed[2].toLowerCase() !== bytes64Tag) {
-        throw new Error("fixed-width mismatch");
+        throw new Error("unexpected bytes64 value: " + echoed[2]);
     }
     var expectedAddress = web3.toChecksumAddress(PARAMS.address);
     if (echoed[3] !== expectedAddress) {
-        throw new Error("decoded address is not canonical: " + echoed[3]);
+        throw new Error("unexpected decoded address: have " + echoed[3] +
+            " want " + expectedAddress);
     }
-    if (echoed[4].toLowerCase() !== multiwordPayload || echoed[5] !== boundaryNote || echoed[6] !== true) {
-        throw new Error("dynamic-value mismatch");
+    if (echoed[4].toLowerCase() !== multiwordPayload) {
+        throw new Error("unexpected dynamic bytes value: " + echoed[4]);
+    }
+    if (echoed[5] !== boundaryNote) {
+        throw new Error("unexpected string value: " + echoed[5]);
+    }
+    if (echoed[6] !== true) {
+        throw new Error("unexpected boolean value: " + echoed[6]);
     }
 });
 
