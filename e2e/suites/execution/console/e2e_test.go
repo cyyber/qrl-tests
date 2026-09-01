@@ -39,7 +39,7 @@ var _ = ginkgo.Describe(
 			ginkgo.By("preparing the console scripts and deployment transaction")
 			bytecode, err := contracts.ConsoleProbeBytecode()
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
-			parameters, err := deploymentParameters(ctx, node, contracts.ConsoleProbeABI, bytecode)
+			parameters, err := prepareParameters(ctx, node, contracts.ConsoleProbeABI, bytecode)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 			fixtureArchive, err = consoleFixtureArchive(parameters)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())

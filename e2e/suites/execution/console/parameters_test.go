@@ -37,12 +37,12 @@ type preparedDeployment struct {
 	raw  []byte
 }
 
-func deploymentParameters(
+func prepareParameters(
 	ctx context.Context,
 	session *endtoendlive.Node,
 	abiJSON, bytecode []byte,
 ) ([]byte, error) {
-	deployment, err := buildDeployment(ctx, session, abiJSON, bytecode)
+	deployment, err := prepareDeployment(ctx, session, abiJSON, bytecode)
 	if err != nil {
 		return nil, err
 	}
@@ -59,7 +59,7 @@ func deploymentParameters(
 	return json.Marshal(parameters)
 }
 
-func buildDeployment(
+func prepareDeployment(
 	ctx context.Context,
 	session *endtoendlive.Node,
 	abiJSON, bytecode []byte,
