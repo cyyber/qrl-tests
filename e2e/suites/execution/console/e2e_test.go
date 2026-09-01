@@ -65,7 +65,7 @@ var _ = ginkgo.Describe(
 			).To(gomega.Succeed())
 		})
 
-		ginkgo.It("encodes and decodes indexed VM64 scalar topics", func(ctx ginkgo.SpecContext) {
+		ginkgo.It("encodes and decodes indexed VM64 topics", func(ctx ginkgo.SpecContext) {
 			gomega.Expect(
 				runScenario(ctx, consoleContainerConfig{
 					image:       node.ExecutionImage,

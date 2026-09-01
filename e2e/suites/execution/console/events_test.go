@@ -12,6 +12,7 @@ import (
 	"github.com/theQRL/go-qrl/common"
 	"github.com/theQRL/go-qrl/common/hexutil"
 	"github.com/theQRL/go-qrl/core/vm"
+	"github.com/theQRL/go-qrl/crypto"
 )
 
 const indexedEventABIJSON = `[{
@@ -27,6 +28,14 @@ const indexedEventABIJSON = `[{
   "anonymous":false,
   "inputs":[{"indexed":true,"name":"code","type":"bytes33"}],
   "name":"IndexedBytes",
+  "type":"event"
+},{
+  "anonymous":false,
+  "inputs":[
+    {"indexed":true,"name":"account","type":"address"},
+    {"indexed":true,"name":"label","type":"string"}
+  ],
+  "name":"IndexedReference",
   "type":"event"
 }]`
 
@@ -63,6 +72,10 @@ func (parameters *consoleParameters) buildIndexedEventCase(
 	if err != nil {
 		return err
 	}
+	const indexedLabel = "VM64 indexed dynamic value"
+	referenceEvent := indexedABI.Events["IndexedReference"]
+	accountTopic := common.AddressToLogTopic(deployment.auth.From)
+	labelTopic := common.HashToLogTopic(crypto.Keccak256Hash([]byte(indexedLabel)))
 	numberTopics := []common.LogTopic{
 		common.HashToLogTopic(numberEvent.ID),
 		flagTopic,
@@ -70,6 +83,11 @@ func (parameters *consoleParameters) buildIndexedEventCase(
 		amountTopic,
 	}
 	bytesTopics := []common.LogTopic{common.HashToLogTopic(bytesEvent.ID), codeTopic}
+	referenceTopics := []common.LogTopic{
+		common.HashToLogTopic(referenceEvent.ID),
+		accountTopic,
+		labelTopic,
+	}
 
 	auth := *deployment.auth
 	auth.Nonce = new(big.Int).SetUint64(deployment.tx.Nonce() + 1)
@@ -77,7 +95,7 @@ func (parameters *consoleParameters) buildIndexedEventCase(
 	_, indexedTx, _, err := bind.DeployContract(
 		&auth,
 		indexedABI,
-		indexedEventInitCode(numberTopics, bytesTopics),
+		indexedEventInitCode(numberTopics, bytesTopics, referenceTopics),
 		session.Execution,
 	)
 	if err != nil {
@@ -93,8 +111,11 @@ func (parameters *consoleParameters) buildIndexedEventCase(
 	parameters.IndexedDelta = indexedDelta.String()
 	parameters.IndexedAmount = indexedAmount.String()
 	parameters.IndexedCode = hexutil.Encode(indexedCode[:])
+	parameters.IndexedLabel = indexedLabel
+	parameters.IndexedLabelTopic = labelTopic.Hex()
 	parameters.NumberTopics = topicStrings(numberTopics)
 	parameters.BytesTopics = topicStrings(bytesTopics)
+	parameters.ReferenceTopics = topicStrings(referenceTopics)
 	return nil
 }
 

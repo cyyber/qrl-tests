@@ -27,10 +27,11 @@ check("indexed event transaction is accepted and mined", function () {
     }
 });
 
-check("receipt preserves indexed VM64 scalar topics", function () {
-    if (receipt.logs.length !== 2 ||
+check("receipt preserves indexed VM64 topics", function () {
+    if (receipt.logs.length !== 3 ||
         !sameTopics(receipt.logs[0].topics, PARAMS.numberTopics) ||
-        !sameTopics(receipt.logs[1].topics, PARAMS.bytesTopics)) {
+        !sameTopics(receipt.logs[1].topics, PARAMS.bytesTopics) ||
+        !sameTopics(receipt.logs[2].topics, PARAMS.referenceTopics)) {
         throw new Error("unexpected indexed topics: " + JSON.stringify(receipt.logs));
     }
 });
@@ -59,6 +60,20 @@ check("generated filters preserve indexed bytes33 alignment", function () {
     if (events.length !== 1 ||
         events[0].args.code.toLowerCase() !== PARAMS.indexedCode.toLowerCase()) {
         throw new Error("unexpected indexed bytes33 event: " + JSON.stringify(events));
+    }
+});
+
+check("generated filters encode and decode indexed addresses and strings", function () {
+    var expectedAddress = web3.toChecksumAddress(PARAMS.address);
+    var events = contract.IndexedReference({
+        account: PARAMS.address,
+        label: PARAMS.indexedLabel
+    }, {fromBlock: block, toBlock: block}).get();
+    if (events.length !== 1 ||
+        events[0].args.account !== expectedAddress ||
+        !web3.isChecksumAddress(events[0].args.account) ||
+        events[0].args.label.toLowerCase() !== PARAMS.indexedLabelTopic.toLowerCase()) {
+        throw new Error("unexpected indexed reference event: " + JSON.stringify(events));
     }
 });
 
