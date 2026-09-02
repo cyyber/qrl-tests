@@ -24,8 +24,9 @@ import (
 )
 
 const (
-	executionLaneName = "execution"
-	executionABISuite = "execution-abi"
+	executionLaneName     = "execution"
+	executionABISuite     = "execution-abi"
+	executionConsoleSuite = "execution-console"
 )
 
 type recordingNetworks struct {
@@ -40,6 +41,15 @@ type recordingNetworks struct {
 	collectErr                error
 	observeStopContext        func(context.Context)
 	observeDiagnosticsContext func(context.Context)
+}
+
+func newTestRunner(t *testing.T, configuration Config, stdout, stderr io.Writer) *Runner {
+	t.Helper()
+	runner := New(configuration, stdout, stderr)
+	runner.resolveExecutionImage = func(context.Context, devnet.Environment) (string, error) {
+		return "sha256:" + strings.Repeat("ab", 32), nil
+	}
+	return runner
 }
 
 func (networks *recordingNetworks) Start(_ context.Context, options devnet.StartOptions) (devnet.Environment, error) {
@@ -132,6 +142,80 @@ func TestRunBuildsCommandAndCleansUp(t *testing.T) {
 	require.NotContains(t, string(payload), `"custom_parameters":`)
 }
 
+func TestRunRecordsResolvedImage(t *testing.T) {
+	reports := t.TempDir()
+	actualImage := "sha256:" + strings.Repeat("ab", 32)
+	runner := New(Config{
+		ReportDir:  reports,
+		Images:     devnet.Images{Execution: "registry.example/go-qrl:configured"},
+		Parameters: []byte("custom: true"),
+		Suites:     []string{executionConsoleSuite},
+	}, io.Discard, io.Discard)
+	runner.networks = new(recordingNetworks)
+	runner.resolveExecutionImage = func(ctx context.Context, _ devnet.Environment) (string, error) {
+		deadline, ok := ctx.Deadline()
+		require.True(t, ok)
+		require.WithinDuration(t, time.Now().Add(executionImageResolutionTimeout), deadline, time.Second)
+		return actualImage, nil
+	}
+
+	runner.runCommand = func(context.Context, commandSpec) error {
+		writeGinkgoReport(t, filepath.Join(reports, "lanes", executionLaneName), types.SpecStatePassed)
+		return nil
+	}
+
+	require.NoError(t, runner.Run(t.Context(), executionLaneName))
+	configured, err := manifest.Read(filepath.Join(reports, "lanes", executionLaneName, manifest.FileName))
+	require.NoError(t, err)
+	require.Equal(t, actualImage, configured.ExecutionImage)
+}
+
+func TestRunImageResolutionError(t *testing.T) {
+	reports := t.TempDir()
+	networks := new(recordingNetworks)
+	runner := New(Config{
+		ReportDir: reports,
+		Suites:    []string{executionConsoleSuite},
+	}, io.Discard, io.Discard)
+	runner.networks = networks
+	runner.resolveExecutionImage = func(context.Context, devnet.Environment) (string, error) {
+		return "", errors.New("inspect failed")
+	}
+	commandRan := false
+	runner.runCommand = func(context.Context, commandSpec) error {
+		commandRan = true
+		return nil
+	}
+
+	err := runner.Run(t.Context(), executionLaneName)
+	require.ErrorContains(t, err, "resolve execution image: inspect failed")
+	require.False(t, commandRan)
+	require.Equal(t, []string{"collect:go-qrl-devnet", "stop:go-qrl-devnet"}, networks.events)
+}
+
+func TestRunImageResolutionCanceled(t *testing.T) {
+	reports := t.TempDir()
+	networks := new(recordingNetworks)
+	runner := New(Config{
+		ReportDir: reports,
+		Suites:    []string{executionConsoleSuite},
+	}, io.Discard, io.Discard)
+	runner.networks = networks
+	ctx, cancel := context.WithCancel(t.Context())
+	runner.resolveExecutionImage = func(resolveCtx context.Context, _ devnet.Environment) (string, error) {
+		cancel()
+		<-resolveCtx.Done()
+		return "", resolveCtx.Err()
+	}
+
+	err := runner.Run(ctx, executionLaneName)
+	require.ErrorIs(t, err, context.Canceled)
+	require.Equal(t, []string{"collect:go-qrl-devnet", "stop:go-qrl-devnet"}, networks.events)
+
+	summary := testutil.ReadJSON[results.Summary](t, filepath.Join(reports, results.SummaryFileName))
+	require.Equal(t, results.VerdictCanceled, summary.Lanes[0].Verdict)
+}
+
 func writeGinkgoReport(t *testing.T, laneDir string, state types.SpecState) {
 	t.Helper()
 	report := types.Report{SuiteSucceeded: state == types.SpecStatePassed, SpecReports: []types.SpecReport{{
@@ -157,7 +241,7 @@ func outcomeErrors(outcomes []results.Outcome) []error {
 func TestRunWritesRunManifestAndSummary(t *testing.T) {
 	reports := t.TempDir()
 	laneDir := filepath.Join(reports, "lanes", executionLaneName)
-	testRunner := New(Config{
+	testRunner := newTestRunner(t, Config{
 		BaseName:     "qrl-tests",
 		ReportDir:    reports,
 		Backend:      devnet.BackendDocker,
@@ -194,7 +278,7 @@ func TestRunWritesRunManifestAndSummary(t *testing.T) {
 func TestRunFailsOnUnexpectedSkips(t *testing.T) {
 	reports := t.TempDir()
 	laneDir := filepath.Join(reports, "lanes", executionLaneName)
-	testRunner := New(Config{
+	testRunner := newTestRunner(t, Config{
 		BaseName:     "qrl-tests",
 		ReportDir:    reports,
 		Backend:      devnet.BackendDocker,
@@ -240,7 +324,7 @@ func TestRunPreservesCancellation(t *testing.T) {
 			stopContexts++
 		},
 	}
-	testRunner := New(Config{ReportDir: reports}, io.Discard, io.Discard)
+	testRunner := newTestRunner(t, Config{ReportDir: reports}, io.Discard, io.Discard)
 	testRunner.networks = networks
 	testRunner.runCommand = func(commandCtx context.Context, _ commandSpec) error {
 		writeGinkgoReport(t, laneDir, types.SpecStateInterrupted)
@@ -265,7 +349,7 @@ func TestRunPreservesCancellation(t *testing.T) {
 func TestRunFailsWithoutAUsableReport(t *testing.T) {
 	reports := t.TempDir()
 	networks := new(recordingNetworks)
-	testRunner := New(Config{
+	testRunner := newTestRunner(t, Config{
 		BaseName:     "qrl-tests",
 		ReportDir:    reports,
 		Backend:      devnet.BackendDocker,
@@ -314,7 +398,7 @@ func TestRunManifestSurvivesBootstrapFailure(t *testing.T) {
 func TestRunCollectsDiagnosticsOnFailureBeforeCleanup(t *testing.T) {
 	reports := t.TempDir()
 	networks := new(recordingNetworks)
-	testRunner := New(Config{
+	testRunner := newTestRunner(t, Config{
 		BaseName:     "qrl-tests",
 		ReportDir:    reports,
 		Backend:      devnet.BackendDocker,
@@ -331,10 +415,10 @@ func TestRunCollectsDiagnosticsOnFailureBeforeCleanup(t *testing.T) {
 	require.Equal(t, diagnosticsDir, networks.started.FailureDiagnosticsDir)
 }
 
-func TestRunReportsDiagnosticsFailureAlongsideLaneFailure(t *testing.T) {
+func TestRunJoinsDiagnosticError(t *testing.T) {
 	networks := &recordingNetworks{collectErr: errors.New("logs unavailable")}
 	reports := t.TempDir()
-	testRunner := New(Config{
+	testRunner := newTestRunner(t, Config{
 		BaseName:     "qrl-tests",
 		ReportDir:    reports,
 		Backend:      devnet.BackendDocker,
@@ -383,7 +467,7 @@ func TestRunAllProvisionsPerLane(t *testing.T) {
 	networks := new(recordingNetworks)
 	var command commandSpec
 	reports := t.TempDir()
-	runner := New(Config{
+	runner := newTestRunner(t, Config{
 		BaseName:     "qrl-tests",
 		ReportDir:    reports,
 		Backend:      devnet.BackendDocker,
@@ -408,7 +492,7 @@ func TestRunAllProvisionsPerLane(t *testing.T) {
 func TestRunReturnsCleanupFailure(t *testing.T) {
 	networks := &recordingNetworks{stopErr: context.DeadlineExceeded}
 	reports := t.TempDir()
-	runner := New(Config{
+	runner := newTestRunner(t, Config{
 		BaseName:     "qrl-tests",
 		ReportDir:    reports,
 		Backend:      devnet.BackendDocker,
@@ -435,7 +519,7 @@ func TestRunReturnsCleanupFailure(t *testing.T) {
 func TestRunMarksManifestFailedWhenSummaryWritingFails(t *testing.T) {
 	reports := t.TempDir()
 
-	runner := New(Config{ReportDir: reports}, io.Discard, io.Discard)
+	runner := newTestRunner(t, Config{ReportDir: reports}, io.Discard, io.Discard)
 	runner.networks = new(recordingNetworks)
 	runner.runCommand = func(context.Context, commandSpec) error {
 		writeGinkgoReport(t, filepath.Join(reports, "lanes", executionLaneName), types.SpecStatePassed)
@@ -482,6 +566,7 @@ func TestAttachBuildsCommandWithoutProvisioning(t *testing.T) {
 		BaseName:  "qrl-tests",
 		ReportDir: reports,
 		Backend:   devnet.BackendDocker,
+		Suites:    []string{executionABISuite},
 	}, io.Discard, io.Discard)
 	runner.networks = networks
 	runner.runCommand = func(_ context.Context, specification commandSpec) error {
@@ -495,6 +580,10 @@ func TestAttachBuildsCommandWithoutProvisioning(t *testing.T) {
 	require.Empty(t, networks.started.EnclaveName, "attaching must not provision")
 	require.Empty(t, networks.stopped, "attaching must not stop the network")
 	require.Contains(t, command.Args, "./e2e/suites/execution/abi")
+	written, err := manifest.Read(filepath.Join(reports, "lanes", executionLaneName, manifest.FileName))
+	require.NoError(t, err)
+	require.Equal(t, devnet.BackendDocker, written.Environment.Backend)
+	require.Empty(t, written.ExecutionImage)
 }
 
 func TestAttachRejectsCustomParameters(t *testing.T) {
@@ -522,7 +611,7 @@ func testLaneRuns(t *testing.T, reports string, count int) runPlan {
 
 func TestRunLanesRunsConcurrently(t *testing.T) {
 	networks := new(recordingNetworks)
-	runner := New(Config{MaxParallel: 2}, io.Discard, io.Discard)
+	runner := newTestRunner(t, Config{MaxParallel: 2}, io.Discard, io.Discard)
 	runner.networks = networks
 	runner.runCommand = func(context.Context, commandSpec) error { return nil }
 
@@ -533,7 +622,7 @@ func TestRunLanesRunsConcurrently(t *testing.T) {
 
 func TestRunLanesHonorsCancellation(t *testing.T) {
 	networks := new(recordingNetworks)
-	runner := New(Config{MaxParallel: 2}, io.Discard, io.Discard)
+	runner := newTestRunner(t, Config{MaxParallel: 2}, io.Discard, io.Discard)
 	runner.networks = networks
 	entered := make(chan struct{}, 3)
 	runner.runCommand = func(ctx context.Context, _ commandSpec) error {
