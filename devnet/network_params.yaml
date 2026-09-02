@@ -11,6 +11,7 @@ participants:
     use_remote_signer: true
     remote_signer_type: clef
     remote_signer_image: local/go-qrl-clef:devnet
+    remote_signer_auto_approve: true
     validator_count: 64
 network_params:
   network_id: "1337"
