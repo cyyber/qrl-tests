@@ -69,5 +69,50 @@ var _ = ginkgo.Describe(
 				}, fixtureArchive),
 			).To(gomega.Succeed())
 		})
+
+		ginkgo.It("transfers value through the node-managed console account", func(ctx ginkgo.SpecContext) {
+			fixtureArchive := testsuite.MustSucceed(consoleFixtureArchive(nil))
+			gomega.Expect(
+				runScenario(ctx, consoleContainerConfig{
+					image:       node.ExecutionImage,
+					endpointURL: node.ExecutionRPCURL,
+					scenario:    "transactions",
+				}, fixtureArchive),
+			).To(gomega.Succeed())
+		})
+
+		ginkgo.It("deploys a contract through the embedded web3 contract factory", func(ctx ginkgo.SpecContext) {
+			ginkgo.By("preparing the constructor fixture")
+			bytecode := testsuite.MustSucceed(contracts.ConsoleProbeBytecode())
+			parameters := testsuite.MustSucceed(
+				prepareConstructorParameters(ctx, node, contracts.ConsoleProbeABI, bytecode),
+			)
+			fixtureArchive := testsuite.MustSucceed(consoleFixtureArchive(parameters))
+			gomega.Expect(
+				runScenario(ctx, consoleContainerConfig{
+					image:       node.ExecutionImage,
+					endpointURL: node.ExecutionWebSocketURL,
+					scenario:    "constructor",
+					interactive: true,
+				}, fixtureArchive),
+			).To(gomega.Succeed())
+		})
+
+		ginkgo.It("submits a contract transaction and watches indexed events over WebSocket", func(ctx ginkgo.SpecContext) {
+			ginkgo.By("preparing the event fixture")
+			bytecode := testsuite.MustSucceed(contracts.ConsoleProbeBytecode())
+			parameters := testsuite.MustSucceed(
+				prepareEventParameters(ctx, node, contracts.ConsoleProbeABI, bytecode),
+			)
+			fixtureArchive := testsuite.MustSucceed(consoleFixtureArchive(parameters))
+			gomega.Expect(
+				runScenario(ctx, consoleContainerConfig{
+					image:       node.ExecutionImage,
+					endpointURL: node.ExecutionWebSocketURL,
+					scenario:    "events",
+					interactive: true,
+				}, fixtureArchive),
+			).To(gomega.Succeed())
+		})
 	},
 )
