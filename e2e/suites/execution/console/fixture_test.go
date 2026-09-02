@@ -42,7 +42,7 @@ func (arguments constructorArguments) abiValues() []any {
 	return []any{arguments.amount, arguments.recipient, arguments.tag, arguments.payload}
 }
 
-func newNoSendTransactor(ctx context.Context, node *live.Node) (*bind.TransactOpts, error) {
+func newDeploymentTransactor(ctx context.Context, node *live.Node) (*bind.TransactOpts, error) {
 	auth, err := bind.NewKeyedTransactorWithChainID(node.Wallet, node.ChainID)
 	if err != nil {
 		return nil, fmt.Errorf("create console transactor: %w", err)
@@ -90,7 +90,7 @@ func prepareConsoleProbeDeployment(
 	if err != nil {
 		return deploymentParameters{}, abi.ABI{}, fmt.Errorf("parse contract ABI: %w", err)
 	}
-	auth, err := newNoSendTransactor(ctx, node)
+	auth, err := newDeploymentTransactor(ctx, node)
 	if err != nil {
 		return deploymentParameters{}, abi.ABI{}, err
 	}

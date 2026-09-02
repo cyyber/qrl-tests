@@ -59,7 +59,7 @@ func prepareTopicParameters(ctx context.Context, node *live.Node) ([]byte, error
 	if err != nil {
 		return nil, fmt.Errorf("parse indexed-event coverage ABI: %w", err)
 	}
-	auth, err := newNoSendTransactor(ctx, node)
+	auth, err := newDeploymentTransactor(ctx, node)
 	if err != nil {
 		return nil, err
 	}
