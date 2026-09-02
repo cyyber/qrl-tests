@@ -1,4 +1,4 @@
-package abifixture
+package contracts
 
 import (
 	"encoding/json"
@@ -14,7 +14,7 @@ import (
 // describe the same contract. abigen re-marshals internalType without spaces,
 // so that documentation-only field is normalized before comparing.
 func TestGeneratedBindingMatchesABI(t *testing.T) {
-	artifact, err := os.ReadFile("testdata/EventEmitter.abi")
+	artifact, err := os.ReadFile("EventEmitter.abi")
 	require.NoError(t, err)
 	require.Equal(t, normalizedABI(t, string(artifact)), normalizedABI(t, EventEmitterMetaData.ABI))
 }

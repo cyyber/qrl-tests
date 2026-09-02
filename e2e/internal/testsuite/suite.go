@@ -14,11 +14,17 @@ func Run(t *testing.T, name string) {
 	ginkgo.RunSpecs(t, name)
 }
 
+// MustSucceed asserts that err is nil and returns value.
+func MustSucceed[T any](value T, err error) T {
+	ginkgo.GinkgoHelper()
+	gomega.Expect(err).NotTo(gomega.HaveOccurred())
+	return value
+}
+
 func LoadRuntime() *live.Runtime {
 	ginkgo.GinkgoHelper()
 
-	runtime, err := live.Load()
-	gomega.Expect(err).NotTo(gomega.HaveOccurred())
+	runtime := MustSucceed(live.Load())
 	ginkgo.DeferCleanup(runtime.Close)
 	return runtime
 }
