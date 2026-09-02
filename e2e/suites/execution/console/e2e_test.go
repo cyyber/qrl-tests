@@ -73,8 +73,7 @@ var _ = ginkgo.Describe(
 		ginkgo.It("transfers value through the node-managed console account", func(ctx ginkgo.SpecContext) {
 			ginkgo.By("funding the node-managed console account")
 			gomega.Expect(fundManagedAccount(ctx, node)).To(gomega.Succeed())
-			parameters := testsuite.MustSucceed(prepareTransactionParameters())
-			fixtureArchive := testsuite.MustSucceed(consoleFixtureArchive(parameters))
+			fixtureArchive := testsuite.MustSucceed(consoleFixtureArchive(nil))
 			gomega.Expect(
 				runScenario(ctx, consoleContainerConfig{
 					image:       node.ExecutionImage,

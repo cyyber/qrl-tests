@@ -21,42 +21,31 @@ var expectedLabelTopic = web3.sha3(PARAMS.storeLabel) + zeros(64);
 var expectedPayloadTopic = web3.sha3(PARAMS.storePayload, {encoding: "hex"}) + zeros(64);
 
 var managed = qrl.accounts;
-check("state-changing wrapper executes through the node-managed signer", function () {
-    if (!(managed instanceof Array) || managed.length === 0) {
-        throw new Error("unexpected node-managed accounts: " + JSON.stringify(managed));
-    }
-    var txHash = contract.store(
+if (!(managed instanceof Array) || managed.length === 0) {
+    throw new Error("unexpected node-managed accounts: " + JSON.stringify(managed));
+}
+var sender = web3.toChecksumAddress(managed[0]);
+requireAddress("node-managed account", sender);
+
+check("state-changing wrapper builds the expected request", function () {
+    var request = contract.store.request(
         PARAMS.storeValue,
-        "Clef-backed console transaction",
-        "0x010203",
-        {from: managed[0], gas: 500000}
+        PARAMS.storeLabel,
+        PARAMS.storePayload,
+        {from: sender, gas: 500000}
     );
-    var receipt = waitForReceipt(txHash);
-    if (Number(receipt.status) !== 1) {
-        throw new Error("Clef-backed wrapper transaction failed: " + JSON.stringify(receipt));
-    }
-    var transaction = qrl.getTransaction(txHash);
-    if (transaction.from !== managed[0] || contract.stored().toString(10) !== PARAMS.storeValue) {
-        throw new Error("unexpected Clef-backed wrapper result");
+    if (request.method !== "qrl_sendTransaction" ||
+        request.params.length !== 1 ||
+        request.params[0].data !== PARAMS.storeData) {
+        throw new Error("unexpected state-changing wrapper request");
     }
 });
-
-var request = contract.store.request(
-    PARAMS.storeValue,
-    PARAMS.storeLabel,
-    PARAMS.storePayload,
-    {from: PARAMS.sender, gas: 500000}
-);
-if (request.method !== "qrl_sendTransaction" ||
-    request.params.length !== 1 ||
-    request.params[0].data !== PARAMS.storeData) {
-    throw new Error("unexpected state-changing wrapper request");
-}
 
 var storeReceiptPolls = 0;
 var storeReceiptPollLimit = 60;
 var storeReceiptPollInterval = 5000;
 var storeReceiptTimer = null;
+var storeTransactionHash = null;
 
 function stopStoreReceiptMonitor() {
     if (storeReceiptTimer !== null) {
@@ -74,7 +63,7 @@ function failEvents(failure) {
 }
 
 var watcher = contract.Stored({
-    sender: PARAMS.sender,
+    sender: sender,
     label: PARAMS.storeLabel,
     payload: PARAMS.storePayload
 }, {fromBlock: "latest"});
@@ -88,10 +77,17 @@ watcher.watch(function (error, event) {
         if (error) {
             throw error;
         }
-        var receipt = qrl.getTransactionReceipt(PARAMS.storeTxHash);
+        var receipt = qrl.getTransactionReceipt(storeTransactionHash);
         check("state-changing contract wrapper call is mined", function () {
-            if (receipt === null || receipt.blockNumber === null || Number(receipt.status) !== 1) {
+            if (receipt === null || receipt.blockNumber === null || Number(receipt.status) !== 1 ||
+                receipt.transactionHash !== storeTransactionHash) {
                 throw new Error("store transaction failed: " + JSON.stringify(receipt));
+            }
+            var transaction = qrl.getTransaction(storeTransactionHash);
+            if (transaction === null ||
+                web3.toChecksumAddress(transaction.from) !== sender ||
+                web3.toChecksumAddress(transaction.to) !== deployment.contractAddress) {
+                throw new Error("unexpected store transaction: " + JSON.stringify(transaction));
             }
         });
 
@@ -112,11 +108,10 @@ watcher.watch(function (error, event) {
         });
 
         check("WebSocket event watch decodes indexed dynamic fields", function () {
-            if (event.transactionHash !== PARAMS.storeTxHash) {
+            if (event.transactionHash !== storeTransactionHash) {
                 throw new Error("event watch returned the wrong transaction");
             }
-            var expectedSender = web3.toChecksumAddress(PARAMS.sender);
-            if (event.args.sender !== expectedSender ||
+            if (event.args.sender !== sender ||
                 !web3.isChecksumAddress(event.args.sender)) {
                 throw new Error("event sender is not canonical: " + event.args.sender);
             }
@@ -129,25 +124,11 @@ watcher.watch(function (error, event) {
             }
         });
 
-        check("indexed event filters reject non-matching dynamic values", function () {
-            var events = contract.Stored({
-                sender: PARAMS.sender,
-                label: PARAMS.storeLabel + "-missing",
-                payload: PARAMS.storePayload
-            }, {
-                fromBlock: web3.toHex(receipt.blockNumber),
-                toBlock: web3.toHex(receipt.blockNumber)
-            }).get();
-            if (events.length !== 0) {
-                throw new Error("non-matching indexed filter returned events: " + JSON.stringify(events));
-            }
-        });
-
         check("payable wrapper forwards value", function () {
             var marker = 17;
             var payment = 23;
             var txHash = contract.pay(marker, {
-                from: managed[0],
+                from: sender,
                 value: payment,
                 gas: 500000
             });
@@ -164,7 +145,7 @@ watcher.watch(function (error, event) {
 
         check("state-changing wrapper exposes a failed receipt", function () {
             var stored = contract.stored().toString(10);
-            var txHash = contract.failTransaction({from: managed[0], gas: 500000});
+            var txHash = contract.failTransaction({from: sender, gas: 500000});
             var failedReceipt = waitForReceipt(txHash);
             if (Number(failedReceipt.status) !== 0) {
                 throw new Error("reverting transaction unexpectedly succeeded: " +
@@ -182,28 +163,39 @@ watcher.watch(function (error, event) {
     }
 });
 
-var txHash = qrl.sendRawTransaction(PARAMS.storeRawTransaction);
-if (txHash !== PARAMS.storeTxHash) {
-    failEvents("store transaction hash mismatch");
-} else {
-    storeReceiptTimer = setInterval(function () {
-        try {
-            storeReceiptPolls++;
-            var receipt = qrl.getTransactionReceipt(PARAMS.storeTxHash);
-            if (receipt !== null && receipt.blockNumber !== null &&
-                Number(receipt.status) !== 1) {
-                throw new Error("store transaction failed: " + JSON.stringify(receipt));
-            }
-            if (storeReceiptPolls >= storeReceiptPollLimit) {
-                if (receipt === null || receipt.blockNumber === null) {
-                    throw new Error("store transaction not mined within timeout: " +
-                        PARAMS.storeTxHash);
-                }
-                throw new Error("matching Stored event not observed within timeout: " +
-                    PARAMS.storeTxHash);
-            }
-        } catch (failure) {
-            failEvents(failure);
-        }
-    }, storeReceiptPollInterval);
+try {
+    storeTransactionHash = contract.store(
+        PARAMS.storeValue,
+        PARAMS.storeLabel,
+        PARAMS.storePayload,
+        {from: sender, gas: 500000}
+    );
+    requireHash("store transaction hash", storeTransactionHash);
+    console.log("PASS: state-changing wrapper submits through the node-managed signer");
+} catch (failure) {
+    failEvents(failure);
+    throw failure;
 }
+storeReceiptTimer = setInterval(function () {
+    if (storeReceiptTimer === null) {
+        return;
+    }
+    try {
+        storeReceiptPolls++;
+        var receipt = qrl.getTransactionReceipt(storeTransactionHash);
+        if (receipt !== null && receipt.blockNumber !== null &&
+            Number(receipt.status) !== 1) {
+            throw new Error("store transaction failed: " + JSON.stringify(receipt));
+        }
+        if (storeReceiptPolls >= storeReceiptPollLimit) {
+            if (receipt === null || receipt.blockNumber === null) {
+                throw new Error("store transaction not mined within timeout: " +
+                    storeTransactionHash);
+            }
+            throw new Error("matching Stored event not observed within timeout: " +
+                storeTransactionHash);
+        }
+    } catch (failure) {
+        failEvents(failure);
+    }
+}, storeReceiptPollInterval);

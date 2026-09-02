@@ -43,6 +43,9 @@ qrl.contract(PARAMS.abi).new(
                     throw new Error("unexpected initial constructor callback");
                 }
                 receiptTimer = setInterval(function () {
+                    if (receiptTimer === null) {
+                        return;
+                    }
                     try {
                         receiptPolls++;
                         var receipt = qrl.getTransactionReceipt(contract.transactionHash);

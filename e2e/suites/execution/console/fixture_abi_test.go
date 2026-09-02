@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"math/big"
 
 	"github.com/cyyber/qrl-tests/e2e/internal/live"
 	qrl "github.com/theQRL/go-qrl"
@@ -25,13 +24,6 @@ type constructorParameters struct {
 	ConstructorPayload string          `json:"constructorPayload"`
 }
 
-type constructorArguments struct {
-	amount    *big.Int
-	recipient common.Address
-	tag       [33]byte
-	payload   []byte
-}
-
 func prepareConstructorParameters(
 	ctx context.Context,
 	node *live.Node,
@@ -45,22 +37,31 @@ func prepareConstructorParameters(
 	if err != nil {
 		return nil, err
 	}
-	parameters := constructorParameters{
+	constructorInput, constructorGas, err := buildConstructorOracle(
+		ctx,
+		node,
+		auth.From,
+		abiJSON,
+		bytecode,
+		arguments,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return json.Marshal(constructorParameters{
 		Recipient:          arguments.recipient.Hex(),
 		Bytecode:           hexutil.Encode(bytecode),
 		ConstructorAmount:  arguments.amount.String(),
 		ABI:                abiJSON,
+		ConstructorInput:   constructorInput,
+		ConstructorGas:     constructorGas,
 		ConstructorTag:     hexutil.Encode(arguments.tag[:]),
 		ConstructorPayload: hexutil.Encode(arguments.payload),
-	}
-	if err := parameters.buildConstructorCase(ctx, node, auth.From, abiJSON, bytecode, arguments); err != nil {
-		return nil, err
-	}
-	return json.Marshal(parameters)
+	})
 }
 
 func constructorTestArguments(recipient common.Address) (constructorArguments, error) {
-	amount, err := parseStoreValue()
+	amount, err := parseVM64Value()
 	if err != nil {
 		return constructorArguments{}, err
 	}
@@ -80,25 +81,20 @@ func constructorTestArguments(recipient common.Address) (constructorArguments, e
 	}, nil
 }
 
-func (arguments constructorArguments) values() []any {
-	return []any{arguments.amount, arguments.recipient, arguments.tag, arguments.payload}
-}
-
-func (parameters *constructorParameters) buildConstructorCase(
+func buildConstructorOracle(
 	ctx context.Context,
 	node *live.Node,
 	sender common.Address,
-	abiJSON,
-	bytecode []byte,
+	abiJSON, bytecode []byte,
 	arguments constructorArguments,
-) error {
+) (string, uint64, error) {
 	contractABI, err := abi.JSON(bytes.NewReader(abiJSON))
 	if err != nil {
-		return fmt.Errorf("parse contract ABI: %w", err)
+		return "", 0, fmt.Errorf("parse contract ABI: %w", err)
 	}
 	constructorSuffix, err := contractABI.Constructor.Inputs.Pack(arguments.values()...)
 	if err != nil {
-		return fmt.Errorf("pack constructor data: %w", err)
+		return "", 0, fmt.Errorf("pack constructor data: %w", err)
 	}
 	constructorInput := append(bytes.Clone(bytecode), constructorSuffix...)
 	constructorGas, err := node.Execution.EstimateGas(ctx, qrl.CallMsg{
@@ -106,9 +102,7 @@ func (parameters *constructorParameters) buildConstructorCase(
 		Data: constructorInput,
 	})
 	if err != nil {
-		return fmt.Errorf("estimate constructor coverage gas: %w", err)
+		return "", 0, fmt.Errorf("estimate constructor gas: %w", err)
 	}
-	parameters.ConstructorInput = hexutil.Encode(constructorInput)
-	parameters.ConstructorGas = constructorGas
-	return nil
+	return hexutil.Encode(constructorInput), constructorGas, nil
 }

@@ -1,8 +1,6 @@
 var suite = createConsoleSuite("transactions");
 var check = suite.check;
 
-loadScript(".params.js");
-
 check("node-managed signer transfers value between accounts", function () {
     var managed = qrl.accounts;
     if (!(managed instanceof Array) || managed.length === 0) {
@@ -10,7 +8,8 @@ check("node-managed signer transfers value between accounts", function () {
     }
 
     var sender = web3.toChecksumAddress(managed[0]);
-    var recipient = web3.toChecksumAddress(PARAMS.transferRecipient);
+    var recipient = web3.toChecksumAddress("Q" + new Array(65).join("a5"));
+    requireAddress("transfer recipient", recipient);
     var value = web3.toPlanck("1", "shor");
     var balanceBefore = qrl.getBalance(recipient);
     var txHash = qrl.sendTransaction({
