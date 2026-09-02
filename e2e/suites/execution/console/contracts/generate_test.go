@@ -20,10 +20,23 @@ func TestConsoleProbe(t *testing.T) {
 		"constructorPayloadHash",
 		"constructorRecipient",
 		"constructorTag",
+		"failTransaction",
+		"pay",
+		"store",
 		"stored",
 	} {
 		require.Contains(t, contractABI.Methods, method)
 	}
+	storedEvent, ok := contractABI.Events["Stored"]
+	require.True(t, ok)
+	storedTypes := make([]string, len(storedEvent.Inputs))
+	storedIndexed := make([]bool, len(storedEvent.Inputs))
+	for index, input := range storedEvent.Inputs {
+		storedTypes[index] = input.Type.String()
+		storedIndexed[index] = input.Indexed
+	}
+	require.Equal(t, []string{"address", "string", "bytes", "uint512"}, storedTypes)
+	require.Equal(t, []bool{true, true, true, false}, storedIndexed)
 
 	bytecode, err := ConsoleProbeBytecode()
 	require.NoError(t, err)

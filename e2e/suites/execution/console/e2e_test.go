@@ -71,8 +71,6 @@ var _ = ginkgo.Describe(
 		})
 
 		ginkgo.It("transfers value through the node-managed console account", func(ctx ginkgo.SpecContext) {
-			ginkgo.By("funding the node-managed console account")
-			gomega.Expect(fundManagedAccount(ctx, node)).To(gomega.Succeed())
 			fixtureArchive := testsuite.MustSucceed(consoleFixtureArchive(nil))
 			gomega.Expect(
 				runScenario(ctx, consoleContainerConfig{
@@ -84,8 +82,6 @@ var _ = ginkgo.Describe(
 		})
 
 		ginkgo.It("deploys a contract through the embedded web3 contract factory", func(ctx ginkgo.SpecContext) {
-			ginkgo.By("funding the node-managed console account")
-			gomega.Expect(fundManagedAccount(ctx, node)).To(gomega.Succeed())
 			ginkgo.By("preparing the constructor fixture")
 			bytecode := testsuite.MustSucceed(contracts.ConsoleProbeBytecode())
 			parameters := testsuite.MustSucceed(
@@ -103,8 +99,6 @@ var _ = ginkgo.Describe(
 		})
 
 		ginkgo.It("submits a contract transaction and watches indexed events over WebSocket", func(ctx ginkgo.SpecContext) {
-			ginkgo.By("funding the node-managed console account")
-			gomega.Expect(fundManagedAccount(ctx, node)).To(gomega.Succeed())
 			ginkgo.By("preparing the event fixture")
 			bytecode := testsuite.MustSucceed(contracts.ConsoleProbeBytecode())
 			parameters := testsuite.MustSucceed(
