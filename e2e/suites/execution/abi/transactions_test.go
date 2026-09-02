@@ -8,7 +8,7 @@ import (
 	"math/big"
 	"strings"
 
-	"github.com/cyyber/qrl-tests/e2e/internal/abifixture"
+	"github.com/cyyber/qrl-tests/e2e/suites/execution/abi/contracts"
 	ginkgo "github.com/onsi/ginkgo/v2"
 	gomega "github.com/onsi/gomega"
 	"github.com/theQRL/go-qrl/accounts/abi"
@@ -57,7 +57,7 @@ func (fixture *liveFixture) assertErrors(ctx context.Context) {
 	ginkgo.GinkgoHelper()
 
 	inputs := fixture.inputs
-	record := abifixture.EventEmitterRecord{
+	record := contracts.EventEmitterRecord{
 		Amount:    inputs.amount,
 		Recipient: fixture.from,
 		Tag:       inputs.tag,
@@ -170,13 +170,13 @@ func (fixture *liveFixture) assertPayableEntrypoints(ctx context.Context) {
 	ginkgo.By("deploying with value through the payable constructor")
 	deployAuth := fixture.transactOpts(ctx)
 	deployAuth.Value = big.NewInt(23)
-	address, deployTx, _, err := abifixture.DeployEventEmitter(
+	address, deployTx, _, err := contracts.DeployEventEmitter(
 		deployAuth,
 		fixture.client,
 		big.NewInt(1),
 		"paid deployment",
 		[]byte{0x01},
-		abifixture.EventEmitterRecord{Amount: big.NewInt(1), Recipient: fixture.from, Tag: fixture.inputs.tag},
+		contracts.EventEmitterRecord{Amount: big.NewInt(1), Recipient: fixture.from, Tag: fixture.inputs.tag},
 		[]uint16{1},
 	)
 	gomega.Expect(err).NotTo(gomega.HaveOccurred())
