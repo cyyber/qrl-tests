@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"math/big"
 
@@ -15,10 +14,7 @@ import (
 	"github.com/theQRL/go-qrl/common/hexutil"
 )
 
-const (
-	vm64ValueDecimal = "6703903964971298549787012499102923063739682910296196688861780721860882015036773488400937149083451713845015929093243025426876941405973284973216824503046708"
-	storeLabel       = "indexed dynamic label"
-)
+const storeLabel = "indexed dynamic label"
 
 type deploymentParameters struct {
 	Sender         string          `json:"sender"`
@@ -42,11 +38,11 @@ type constructorArguments struct {
 	payload   []byte
 }
 
-func (arguments constructorArguments) values() []any {
+func (arguments constructorArguments) abiValues() []any {
 	return []any{arguments.amount, arguments.recipient, arguments.tag, arguments.payload}
 }
 
-func newTransactor(ctx context.Context, node *live.Node) (*bind.TransactOpts, error) {
+func newNoSendTransactor(ctx context.Context, node *live.Node) (*bind.TransactOpts, error) {
 	auth, err := bind.NewKeyedTransactorWithChainID(node.Wallet, node.ChainID)
 	if err != nil {
 		return nil, fmt.Errorf("create console transactor: %w", err)
@@ -94,7 +90,7 @@ func prepareConsoleProbeDeployment(
 	if err != nil {
 		return deploymentParameters{}, abi.ABI{}, fmt.Errorf("parse contract ABI: %w", err)
 	}
-	auth, err := newTransactor(ctx, node)
+	auth, err := newNoSendTransactor(ctx, node)
 	if err != nil {
 		return deploymentParameters{}, abi.ABI{}, err
 	}
@@ -110,7 +106,7 @@ func prepareConsoleProbeDeployment(
 		contractABI,
 		abiJSON,
 		bytecode,
-		arguments.values()...,
+		arguments.abiValues()...,
 	)
 	if err != nil {
 		return deploymentParameters{}, abi.ABI{}, err
@@ -139,10 +135,7 @@ func prepareEventParameters(
 	if err != nil {
 		return nil, err
 	}
-	storeValue, err := parseVM64Value()
-	if err != nil {
-		return nil, err
-	}
+	storeValue := fullWidthVM64Value()
 	storePayload := []byte{1, 2, 3, 4, 5, 6, 7, 8, 9}
 	storeData, err := contractABI.Pack("store", storeValue, storeLabel, storePayload)
 	if err != nil {
@@ -151,17 +144,13 @@ func prepareEventParameters(
 	parameters := eventParameters{
 		deploymentParameters: deployment,
 		StoreData:            hexutil.Encode(storeData),
-		StoreValue:           vm64ValueDecimal,
+		StoreValue:           storeValue.String(),
 		StoreLabel:           storeLabel,
 		StorePayload:         hexutil.Encode(storePayload),
 	}
 	return json.Marshal(parameters)
 }
 
-func parseVM64Value() (*big.Int, error) {
-	value, ok := new(big.Int).SetString(vm64ValueDecimal, 10)
-	if !ok {
-		return nil, errors.New("parse VM64 fixture value")
-	}
-	return value, nil
+func fullWidthVM64Value() *big.Int {
+	return new(big.Int).SetBit(big.NewInt(0x1234), 511, 1)
 }

@@ -29,18 +29,12 @@ func prepareConstructorParameters(
 	node *live.Node,
 	abiJSON, bytecode []byte,
 ) ([]byte, error) {
-	auth, err := newTransactor(ctx, node)
-	if err != nil {
-		return nil, err
-	}
-	arguments, err := constructorTestArguments(auth.From)
-	if err != nil {
-		return nil, err
-	}
+	recipient := common.Address(node.Wallet.GetAddress())
+	arguments := constructorFixtureArguments(recipient)
 	constructorInput, constructorGas, err := buildConstructorOracle(
 		ctx,
 		node,
-		auth.From,
+		recipient,
 		abiJSON,
 		bytecode,
 		arguments,
@@ -60,11 +54,7 @@ func prepareConstructorParameters(
 	})
 }
 
-func constructorTestArguments(recipient common.Address) (constructorArguments, error) {
-	amount, err := parseVM64Value()
-	if err != nil {
-		return constructorArguments{}, err
-	}
+func constructorFixtureArguments(recipient common.Address) constructorArguments {
 	tag := [33]byte{}
 	for index := range tag {
 		tag[index] = byte(index + 1)
@@ -74,11 +64,11 @@ func constructorTestArguments(recipient common.Address) (constructorArguments, e
 		payload[index] = byte(0xff - index)
 	}
 	return constructorArguments{
-		amount:    amount,
+		amount:    fullWidthVM64Value(),
 		recipient: recipient,
 		tag:       tag,
 		payload:   payload,
-	}, nil
+	}
 }
 
 func buildConstructorOracle(
@@ -92,7 +82,7 @@ func buildConstructorOracle(
 	if err != nil {
 		return "", 0, fmt.Errorf("parse contract ABI: %w", err)
 	}
-	constructorSuffix, err := contractABI.Constructor.Inputs.Pack(arguments.values()...)
+	constructorSuffix, err := contractABI.Constructor.Inputs.Pack(arguments.abiValues()...)
 	if err != nil {
 		return "", 0, fmt.Errorf("pack constructor data: %w", err)
 	}
