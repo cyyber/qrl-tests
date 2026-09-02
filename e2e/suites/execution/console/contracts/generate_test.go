@@ -8,7 +8,7 @@ import (
 	"github.com/theQRL/go-qrl/accounts/abi"
 )
 
-func TestConsoleProbe(t *testing.T) {
+func TestConsoleProbeArtifacts(t *testing.T) {
 	contractABI, err := abi.JSON(strings.NewReader(string(ConsoleProbeABI)))
 	require.NoError(t, err)
 	constructorTypes := make([]string, len(contractABI.Constructor.Inputs))
@@ -16,26 +16,25 @@ func TestConsoleProbe(t *testing.T) {
 		constructorTypes[index] = input.Type.String()
 	}
 	require.Equal(t, []string{"uint512", "address", "bytes33", "bytes"}, constructorTypes)
-	for _, method := range []string{
-		"constructorPayloadHash",
-		"constructorRecipient",
-		"constructorTag",
-		"failTransaction",
-		"pay",
-		"store",
-		"stored",
+	for name, signature := range map[string]string{
+		"constructorPayloadHash": "constructorPayloadHash()",
+		"constructorRecipient":   "constructorRecipient()",
+		"constructorTag":         "constructorTag()",
+		"failTransaction":        "failTransaction()",
+		"pay":                    "pay(uint512)",
+		"store":                  "store(uint512,string,bytes)",
+		"stored":                 "stored()",
 	} {
-		require.Contains(t, contractABI.Methods, method)
+		require.Equal(t, signature, contractABI.Methods[name].Sig)
 	}
+	require.Equal(t, "payable", contractABI.Methods["pay"].StateMutability)
 	storedEvent, ok := contractABI.Events["Stored"]
 	require.True(t, ok)
-	storedTypes := make([]string, len(storedEvent.Inputs))
+	require.Equal(t, "Stored(address,string,bytes,uint512)", storedEvent.Sig)
 	storedIndexed := make([]bool, len(storedEvent.Inputs))
 	for index, input := range storedEvent.Inputs {
-		storedTypes[index] = input.Type.String()
 		storedIndexed[index] = input.Indexed
 	}
-	require.Equal(t, []string{"address", "string", "bytes", "uint512"}, storedTypes)
 	require.Equal(t, []bool{true, true, true, false}, storedIndexed)
 
 	bytecode, err := ConsoleProbeBytecode()
