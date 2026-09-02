@@ -3,6 +3,7 @@ package devnet
 import (
 	"context"
 	"errors"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -10,9 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const failureDiagnosticsDir = "reports/lanes/execution/diagnostics"
-
-type fakeClient struct {
+type fakeEnclaveClient struct {
 	exists         bool
 	createErr      error
 	runErr         error
@@ -24,25 +23,25 @@ type fakeClient struct {
 	onDestroy      func(context.Context)
 }
 
-func (client *fakeClient) EnclaveExists(context.Context, string) (bool, error) {
+func (client *fakeEnclaveClient) EnclaveExists(context.Context, string) (bool, error) {
 	return client.exists && !client.destroyed, nil
 }
 
-func (client *fakeClient) CreateEnclave(_ context.Context, name string) error {
+func (client *fakeEnclaveClient) CreateEnclave(_ context.Context, name string) error {
 	client.createdName = name
 	return client.createErr
 }
 
-func (client *fakeClient) RunRemotePackage(_ context.Context, _, locator, _ string) error {
+func (client *fakeEnclaveClient) RunRemotePackage(_ context.Context, _, locator, _ string) error {
 	client.packageLocator = locator
 	return client.runErr
 }
 
-func (client *fakeClient) Services(context.Context, string) (map[string]kurtosis.Service, error) {
+func (client *fakeEnclaveClient) Services(context.Context, string) (map[string]kurtosis.Service, error) {
 	return client.services, nil
 }
 
-func (client *fakeClient) DestroyEnclave(ctx context.Context, _ string) error {
+func (client *fakeEnclaveClient) DestroyEnclave(ctx context.Context, _ string) error {
 	if client.onDestroy != nil {
 		client.onDestroy(ctx)
 	}
@@ -53,14 +52,20 @@ func (client *fakeClient) DestroyEnclave(ctx context.Context, _ string) error {
 	return nil
 }
 
-func testManager(client *fakeClient) *Manager {
+func testManager(client *fakeEnclaveClient) *Manager {
 	return &Manager{
-		newClient: func() (kurtosisClient, error) { return client, nil },
-		probe:     func(context.Context, string, string) error { return nil },
-		collectDiagnostics: func(context.Context, string, string) error {
-			panic("unexpected diagnostics collection")
+		newEnclaveClient: func() (enclaveClient, error) { return client, nil },
+		newDiagnosticsClient: func() (diagnosticsClient, error) {
+			panic("unexpected diagnostics client")
 		},
+		probe: func(context.Context, string, string) error { return nil },
 	}
+}
+
+func useDiagnosticsClient(manager *Manager) *fakeDiagnosticsClient {
+	client := new(fakeDiagnosticsClient)
+	manager.newDiagnosticsClient = func() (diagnosticsClient, error) { return client, nil }
+	return client
 }
 
 func startOptions() StartOptions {
@@ -88,20 +93,20 @@ func requireLiveBoundedContext(t *testing.T, ctx context.Context, timeout time.D
 	require.LessOrEqual(t, remaining, timeout)
 }
 
-func TestStartCleansUpEnclaveAfterPostCreateFailure(t *testing.T) {
+func TestStartCleansUpFailedEnclave(t *testing.T) {
 	tests := []struct {
 		name      string
-		client    *fakeClient
+		client    *fakeEnclaveClient
 		wantError string
 	}{
 		{
 			name:      "package run",
-			client:    &fakeClient{runErr: errors.New("package failed")},
+			client:    &fakeEnclaveClient{runErr: errors.New("package failed")},
 			wantError: "run pinned qrl-package: package failed",
 		},
 		{
 			name:      "endpoint resolution",
-			client:    new(fakeClient),
+			client:    new(fakeEnclaveClient),
 			wantError: "resolve network endpoints: no qrl-package participants found",
 		},
 	}
@@ -115,64 +120,82 @@ func TestStartCleansUpEnclaveAfterPostCreateFailure(t *testing.T) {
 	}
 }
 
-func TestStartCollectsDiagnosticsBeforeCleanup(t *testing.T) {
-	client := &fakeClient{runErr: errors.New("package failed")}
+func TestStartDiagnosticsBeforeCleanup(t *testing.T) {
+	client := &fakeEnclaveClient{runErr: errors.New("package failed")}
 	manager := testManager(client)
+	diagnostics := useDiagnosticsClient(manager)
 	diagnosticsCalls := 0
-	manager.collectDiagnostics = func(_ context.Context, enclave, outputDir string) error {
+	diagnostics.onInspect = func(_ context.Context, enclave string) {
 		require.False(t, client.destroyed, "diagnostics must run before the enclave is destroyed")
 		require.Equal(t, "failed-start", enclave)
-		require.Equal(t, failureDiagnosticsDir, outputDir)
 		diagnosticsCalls++
-		return nil
 	}
 
+	diagnosticsDir := t.TempDir()
 	options := startOptions()
-	options.FailureDiagnosticsDir = failureDiagnosticsDir
+	options.FailureDiagnosticsDir = diagnosticsDir
 	_, err := manager.Start(t.Context(), options)
 	require.ErrorContains(t, err, "package failed")
 	require.Equal(t, 1, diagnosticsCalls)
+	require.True(t, diagnostics.closed)
+	require.FileExists(t, filepath.Join(diagnosticsDir, "diagnostics.json"))
 	require.True(t, client.destroyed)
 }
 
-func TestStartReportsDiagnosticsFailureAlongsideCause(t *testing.T) {
-	client := &fakeClient{runErr: errors.New("package failed")}
+func TestStartJoinsDiagnosticsError(t *testing.T) {
+	client := &fakeEnclaveClient{runErr: errors.New("package failed")}
 	manager := testManager(client)
-	manager.collectDiagnostics = func(context.Context, string, string) error {
-		return errors.New("logs unavailable")
-	}
+	diagnosticsErr := errors.New("logs unavailable")
+	diagnostics := useDiagnosticsClient(manager)
+	diagnostics.inspectErr = diagnosticsErr
 
 	options := startOptions()
-	options.FailureDiagnosticsDir = failureDiagnosticsDir
+	options.FailureDiagnosticsDir = t.TempDir()
 	_, err := manager.Start(t.Context(), options)
+	require.ErrorIs(t, err, diagnosticsErr)
 	require.ErrorContains(t, err, "package failed")
-	require.ErrorContains(t, err, "collect start diagnostics: logs unavailable")
+	require.ErrorContains(t, err, "collect start diagnostics: inspect Kurtosis enclave failed-start: logs unavailable")
 	require.True(t, client.destroyed, "a diagnostics failure must not leak the enclave")
 }
 
-func TestStartRecoveryUsesLiveBoundedContextsAfterCancellation(t *testing.T) {
+func TestStartJoinsDiagnosticsClientError(t *testing.T) {
+	client := &fakeEnclaveClient{runErr: errors.New("package failed")}
+	manager := testManager(client)
+	manager.newDiagnosticsClient = func() (diagnosticsClient, error) {
+		return nil, errors.New("engine unavailable")
+	}
+
+	options := startOptions()
+	options.FailureDiagnosticsDir = t.TempDir()
+	_, err := manager.Start(t.Context(), options)
+	require.ErrorContains(t, err, "package failed")
+	require.ErrorContains(t, err, "collect start diagnostics: engine unavailable")
+	require.True(t, client.destroyed, "a diagnostics connection failure must not leak the enclave")
+}
+
+func TestStartRecoveryAfterCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
-	client := &fakeClient{services: singleParticipant()}
+	client := &fakeEnclaveClient{services: singleParticipant()}
 	destroyCalls := 0
 	client.onDestroy = func(ctx context.Context) {
 		requireLiveBoundedContext(t, ctx, startCleanupTimeout)
 		destroyCalls++
 	}
 	manager := testManager(client)
+	diagnostics := useDiagnosticsClient(manager)
 	manager.probe = func(context.Context, string, string) error {
 		cancel()
 		return errors.New("not ready")
 	}
 	diagnosticsCalls := 0
-	manager.collectDiagnostics = func(ctx context.Context, _, _ string) error {
+	diagnostics.onInspect = func(ctx context.Context, _ string) {
 		requireLiveBoundedContext(t, ctx, startDiagnosticsTimeout)
 		diagnosticsCalls++
-		return nil
 	}
 
 	options := startOptions()
-	options.FailureDiagnosticsDir = failureDiagnosticsDir
+	options.FailureDiagnosticsDir = t.TempDir()
 	_, err := manager.Start(ctx, options)
 	require.ErrorContains(t, err, "wait for network readiness: not ready")
 	require.ErrorIs(t, err, context.Canceled)
@@ -182,9 +205,9 @@ func TestStartRecoveryUsesLiveBoundedContextsAfterCancellation(t *testing.T) {
 }
 
 func TestStartCreateFailureSkipsCleanup(t *testing.T) {
-	client := &fakeClient{createErr: errors.New("create failed")}
+	client := &fakeEnclaveClient{createErr: errors.New("create failed")}
 	options := startOptions()
-	options.FailureDiagnosticsDir = failureDiagnosticsDir
+	options.FailureDiagnosticsDir = t.TempDir()
 
 	_, err := testManager(client).Start(t.Context(), options)
 	require.ErrorContains(t, err, "create failed")
@@ -193,20 +216,30 @@ func TestStartCreateFailureSkipsCleanup(t *testing.T) {
 	require.Empty(t, client.packageLocator)
 }
 
-func TestStartReportsCleanupFailure(t *testing.T) {
-	client := &fakeClient{
-		runErr:     errors.New("package failed"),
-		destroyErr: errors.New("destroy failed"),
+func TestStartRecoveryFailures(t *testing.T) {
+	startErr := errors.New("package failed")
+	diagnosticsErr := errors.New("logs unavailable")
+	cleanupErr := errors.New("destroy failed")
+	client := &fakeEnclaveClient{
+		runErr:     startErr,
+		destroyErr: cleanupErr,
 	}
+	manager := testManager(client)
+	diagnostics := useDiagnosticsClient(manager)
+	diagnostics.inspectErr = diagnosticsErr
 
-	_, err := testManager(client).Start(t.Context(), startOptions())
-	require.ErrorContains(t, err, "package failed")
+	options := startOptions()
+	options.FailureDiagnosticsDir = t.TempDir()
+	_, err := manager.Start(t.Context(), options)
+	require.ErrorIs(t, err, startErr)
+	require.ErrorIs(t, err, diagnosticsErr)
+	require.ErrorIs(t, err, cleanupErr)
+	require.ErrorContains(t, err, "collect start diagnostics: inspect Kurtosis enclave failed-start: logs unavailable")
 	require.ErrorContains(t, err, "clean up failed network")
-	require.ErrorContains(t, err, "destroy failed")
 }
 
 func TestStartDefaults(t *testing.T) {
-	client := &fakeClient{services: singleParticipant()}
+	client := &fakeEnclaveClient{services: singleParticipant()}
 	options := startOptions()
 	options.EnclaveName = ""
 	options.Backend = ""
@@ -221,10 +254,10 @@ func TestStartDefaults(t *testing.T) {
 }
 
 func TestInspect(t *testing.T) {
-	_, err := testManager(new(fakeClient)).Inspect(t.Context(), "missing")
+	_, err := testManager(new(fakeEnclaveClient)).Inspect(t.Context(), "missing")
 	require.ErrorContains(t, err, `network "missing" is not running`)
 
-	client := &fakeClient{exists: true, services: singleParticipant()}
+	client := &fakeEnclaveClient{exists: true, services: singleParticipant()}
 	environment, err := testManager(client).Inspect(t.Context(), "running")
 	require.NoError(t, err)
 	require.Equal(t, "running", environment.EnclaveName)
@@ -233,7 +266,7 @@ func TestInspect(t *testing.T) {
 }
 
 func TestStartUsesPinnedPackage(t *testing.T) {
-	client := &fakeClient{services: singleParticipant()}
+	client := &fakeEnclaveClient{services: singleParticipant()}
 
 	_, err := testManager(client).Start(t.Context(), startOptions())
 	require.NoError(t, err)
@@ -242,7 +275,7 @@ func TestStartUsesPinnedPackage(t *testing.T) {
 }
 
 func TestStartRejectsInvalidImages(t *testing.T) {
-	client := new(fakeClient)
+	client := new(fakeEnclaveClient)
 	options := startOptions()
 	options.Images.Consensus = "local/QRYSM-BEACON:devnet"
 
@@ -253,11 +286,11 @@ func TestStartRejectsInvalidImages(t *testing.T) {
 }
 
 func TestStop(t *testing.T) {
-	missing := new(fakeClient)
+	missing := new(fakeEnclaveClient)
 	require.NoError(t, testManager(missing).Stop(t.Context(), "missing"))
 	require.False(t, missing.destroyed, "stopping an absent network must be a no-op")
 
-	running := &fakeClient{exists: true}
+	running := &fakeEnclaveClient{exists: true}
 	require.NoError(t, testManager(running).Stop(t.Context(), "running"))
 	require.True(t, running.destroyed)
 }

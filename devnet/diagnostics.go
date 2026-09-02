@@ -1,18 +1,33 @@
 package devnet
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
-	"strings"
 
+	"github.com/cyyber/qrl-tests/devnet/internal/kurtosis"
 	"github.com/cyyber/qrl-tests/internal/jsonfile"
 )
 
-type diagnosticsCommand func(ctx context.Context, output io.Writer, name string, arguments ...string) error
+// diagnosticsAPI is the direct engine API surface needed to capture failure
+// artifacts. Connection ownership belongs to diagnosticsClient.
+type diagnosticsAPI interface {
+	Inspect(ctx context.Context, enclaveName string) (kurtosis.EnclaveInspection, error)
+	ServiceLogs(
+		ctx context.Context,
+		enclaveName string,
+		serviceUUIDs []string,
+		consume kurtosis.ServiceLogConsumer,
+	) (map[string]bool, error)
+}
+
+type diagnosticsClient interface {
+	diagnosticsAPI
+	Close() error
+}
 
 type inspectionDiagnostic struct {
 	File     string `json:"file"`
@@ -34,153 +49,177 @@ type diagnosticsManifest struct {
 }
 
 // CollectDiagnostics captures the enclave inspection and per-service logs.
-// Collection continues after individual failures and returns all encountered errors.
+// Collection continues across independent artifacts and returns their failures.
 func (manager *Manager) CollectDiagnostics(ctx context.Context, enclaveName, outputDir string) error {
-	return manager.collectDiagnostics(ctx, enclaveName, outputDir)
+	client, err := manager.newDiagnosticsClient()
+	if err != nil {
+		return err
+	}
+	defer func() { _ = client.Close() }()
+	return collectDiagnostics(ctx, client, enclaveName, outputDir)
 }
 
-func collectDiagnostics(ctx context.Context, run diagnosticsCommand, enclaveName, outputDir string) error {
+func collectDiagnostics(ctx context.Context, client diagnosticsAPI, enclaveName, outputDir string) error {
 	if err := os.MkdirAll(outputDir, 0o755); err != nil {
 		return fmt.Errorf("create diagnostics directory: %w", err)
 	}
 
-	inspection, inspectionOutput, inspectionErr := collectInspection(ctx, run, enclaveName, outputDir)
-	services, servicesErr := collectServiceLogs(ctx, run, enclaveName, outputDir, inspectionOutput)
+	inspection, discoveredServices, inspectionErr := collectInspection(ctx, client, enclaveName, outputDir)
+	// Partial inspection results remain usable when inspectionErr is non-nil.
+	serviceDiagnostics, serviceLogsErr := collectServiceLogs(ctx, client, enclaveName, outputDir, discoveredServices)
 	manifest := diagnosticsManifest{
 		Enclave:    enclaveName,
 		Inspection: inspection,
-		Services:   services,
+		Services:   serviceDiagnostics,
 	}
 	manifestErr := jsonfile.Write(filepath.Join(outputDir, "diagnostics.json"), manifest, "diagnostics manifest")
 
-	return errors.Join(inspectionErr, servicesErr, manifestErr)
+	return errors.Join(inspectionErr, serviceLogsErr, manifestErr)
 }
 
 func collectInspection(
 	ctx context.Context,
-	run diagnosticsCommand,
+	client diagnosticsAPI,
 	enclaveName,
 	outputDir string,
-) (inspectionDiagnostic, string, error) {
-	inspection := inspectionDiagnostic{File: "inspect.txt"}
+) (inspectionDiagnostic, []kurtosis.ServiceIdentity, error) {
+	const file = "inspection.json"
 
-	var buffer strings.Builder
-	commandErr := run(ctx, &buffer, "kurtosis", "enclave", "inspect", enclaveName)
-	if commandErr != nil {
-		commandErr = fmt.Errorf("kurtosis enclave inspect %s: %w", enclaveName, commandErr)
+	// Inspection may return useful partial metadata alongside an error.
+	enclave, inspectErr := client.Inspect(ctx, enclaveName)
+	if inspectErr != nil {
+		inspectErr = fmt.Errorf("inspect Kurtosis enclave %s: %w", enclaveName, inspectErr)
 	}
-	output := buffer.String()
-	writeErr := writeDiagnostic(filepath.Join(outputDir, inspection.File), output)
-	captureErr := errors.Join(commandErr, writeErr)
+	writeErr := jsonfile.Write(
+		filepath.Join(outputDir, file),
+		enclave,
+		"Kurtosis enclave inspection",
+	)
+	captureErr := errors.Join(inspectErr, writeErr)
 
-	inspection.Captured = captureErr == nil
+	diagnostic := inspectionDiagnostic{
+		File:     file,
+		Captured: captureErr == nil,
+	}
 	if captureErr != nil {
-		inspection.Error = captureErr.Error()
+		diagnostic.Error = captureErr.Error()
 	}
 
-	return inspection, output, captureErr
+	return diagnostic, enclave.Services, captureErr
 }
 
 func collectServiceLogs(
 	ctx context.Context,
-	run diagnosticsCommand,
+	client diagnosticsAPI,
 	enclaveName,
-	outputDir,
-	inspectionOutput string,
+	outputDir string,
+	services []kurtosis.ServiceIdentity,
 ) ([]serviceDiagnostic, error) {
-	serviceNames := serviceNamesFromInspection(inspectionOutput)
-	if len(serviceNames) == 0 {
+	if len(services) == 0 {
 		return nil, nil
 	}
 	if err := os.MkdirAll(filepath.Join(outputDir, "services"), 0o755); err != nil {
 		return nil, fmt.Errorf("create service diagnostics directory: %w", err)
 	}
 
-	serviceDiagnostics := make([]serviceDiagnostic, 0, len(serviceNames))
-	var collectionErrors []error
-	for _, service := range serviceNames {
-		diagnostic, err := collectServiceLog(ctx, run, enclaveName, outputDir, service)
-		serviceDiagnostics = append(serviceDiagnostics, diagnostic)
-		if err != nil {
-			collectionErrors = append(collectionErrors, err)
+	serviceUUIDs := make([]string, 0, len(services))
+	outputsByUUID := make(map[string]*serviceLogOutput, len(services))
+	for _, service := range services {
+		serviceUUIDs = append(serviceUUIDs, service.UUID)
+		outputsByUUID[service.UUID] = openServiceLog(outputDir, service)
+	}
+
+	notFound, streamErr := client.ServiceLogs(ctx, enclaveName, serviceUUIDs, func(uuid string, lines []string) {
+		if output := outputsByUUID[uuid]; output != nil {
+			output.writeLines(lines)
 		}
+	})
+	if streamErr != nil {
+		streamErr = fmt.Errorf("stream Kurtosis service logs for %s: %w", enclaveName, streamErr)
+	}
+
+	serviceDiagnostics := make([]serviceDiagnostic, 0, len(services))
+	collectionErrors := []error{streamErr}
+	for _, uuid := range serviceUUIDs {
+		diagnostic, localErr := outputsByUUID[uuid].finalizeCapture(streamErr, notFound[uuid])
+		serviceDiagnostics = append(serviceDiagnostics, diagnostic)
+		collectionErrors = append(collectionErrors, localErr)
 	}
 	return serviceDiagnostics, errors.Join(collectionErrors...)
 }
 
-func collectServiceLog(
-	ctx context.Context,
-	run diagnosticsCommand,
-	enclaveName,
-	outputDir,
-	service string,
-) (serviceDiagnostic, error) {
-	relativePath := filepath.Join("services", service+".log")
-	diagnostic := serviceDiagnostic{Name: service, File: filepath.ToSlash(relativePath)}
-	path := filepath.Join(outputDir, relativePath)
+type serviceLogOutput struct {
+	diagnostic serviceDiagnostic
+	uuid       string
+	path       string
+	file       *os.File
+	writer     *bufio.Writer
+	outputErr  error
+}
 
-	output, err := os.OpenFile(path, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
+func openServiceLog(outputDir string, service kurtosis.ServiceIdentity) *serviceLogOutput {
+	relativePath := filepath.Join("services", service.Name+".log")
+	output := &serviceLogOutput{
+		diagnostic: serviceDiagnostic{Name: service.Name, File: filepath.ToSlash(relativePath)},
+		uuid:       service.UUID,
+		path:       filepath.Join(outputDir, relativePath),
+	}
+	file, err := os.OpenFile(output.path, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
 	if err != nil {
-		err = fmt.Errorf("write diagnostic %s: %w", path, err)
-		diagnostic.Error = err.Error()
-		return diagnostic, err
+		output.outputErr = fmt.Errorf("write diagnostic %s: %w", output.path, err)
+		return output
 	}
-	commandErr := run(ctx, output, "kurtosis", "service", "logs", "--all", enclaveName, service)
-	if commandErr != nil {
-		commandErr = fmt.Errorf("kurtosis service logs %s %s: %w", enclaveName, service, commandErr)
+	output.file = file
+	output.writer = bufio.NewWriter(file)
+	return output
+}
+
+func (output *serviceLogOutput) writeLines(lines []string) {
+	if output.outputErr != nil {
+		return
 	}
-	closeErr := output.Close()
-	if closeErr != nil {
-		closeErr = fmt.Errorf("write diagnostic %s: %w", path, closeErr)
+	for _, line := range lines {
+		if _, err := output.writer.WriteString(line); err != nil {
+			output.outputErr = fmt.Errorf("write diagnostic %s: %w", output.path, err)
+			return
+		}
+		if err := output.writer.WriteByte('\n'); err != nil {
+			output.outputErr = fmt.Errorf("write diagnostic %s: %w", output.path, err)
+			return
+		}
 	}
-	captureErr := errors.Join(commandErr, closeErr)
-	diagnostic.Captured = captureErr == nil
+}
+
+func (output *serviceLogOutput) finalizeCapture(streamErr error, missing bool) (serviceDiagnostic, error) {
+	var missingErr error
+	if missing {
+		missingErr = fmt.Errorf(
+			"Kurtosis service logs not found for %s (%s)",
+			output.diagnostic.Name,
+			output.uuid,
+		)
+	}
+	localErr := errors.Join(missingErr, output.closeOutput())
+	captureErr := errors.Join(streamErr, localErr)
+	output.diagnostic.Captured = captureErr == nil
 	if captureErr != nil {
-		diagnostic.Error = captureErr.Error()
+		output.diagnostic.Error = captureErr.Error()
 	}
-
-	return diagnostic, captureErr
+	// streamErr affects every manifest entry but belongs in the aggregate once.
+	return output.diagnostic, localErr
 }
 
-func serviceNamesFromInspection(inspection string) []string {
-	var services []string
-	inServices := false
-	for line := range strings.Lines(inspection) {
-		if strings.Contains(line, "User Services") {
-			inServices = true
-			continue
-		}
-		if !inServices {
-			continue
-		}
-		if strings.HasPrefix(strings.TrimSpace(line), "===") {
-			break
-		}
-
-		fields := strings.Fields(line)
-		if len(fields) < 2 || !isHex(fields[0]) {
-			continue
-		}
-		services = append(services, fields[1])
+func (output *serviceLogOutput) closeOutput() error {
+	if output.file == nil {
+		return output.outputErr
 	}
-	return services
-}
-
-func isHex(value string) bool {
-	if value == "" {
-		return false
-	}
-	for _, character := range value {
-		if !strings.ContainsRune("0123456789abcdefABCDEF", character) {
-			return false
+	if output.outputErr == nil {
+		if err := output.writer.Flush(); err != nil {
+			output.outputErr = fmt.Errorf("write diagnostic %s: %w", output.path, err)
 		}
 	}
-	return true
-}
-
-func writeDiagnostic(path, output string) error {
-	if err := os.WriteFile(path, []byte(output), 0o600); err != nil {
-		return fmt.Errorf("write diagnostic %s: %w", path, err)
+	if err := output.file.Close(); err != nil && output.outputErr == nil {
+		output.outputErr = fmt.Errorf("write diagnostic %s: %w", output.path, err)
 	}
-	return nil
+	return output.outputErr
 }

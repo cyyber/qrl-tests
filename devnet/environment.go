@@ -78,7 +78,7 @@ type ValidatorService struct {
 	MetricsURL string `json:"metrics_url"`
 }
 
-func resolveEnvironment(ctx context.Context, client kurtosisClient, name string) (Environment, error) {
+func resolveEnvironment(ctx context.Context, client enclaveClient, name string) (Environment, error) {
 	services, err := client.Services(ctx, name)
 	if err != nil {
 		return Environment{}, err

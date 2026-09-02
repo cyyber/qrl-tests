@@ -7,8 +7,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
-	"os/exec"
 	"time"
 
 	"github.com/cyyber/qrl-tests/devnet/internal/kurtosis"
@@ -28,7 +26,9 @@ const (
 	PackageLocator = "github.com/cyyber/qrl-package@04fd3133a7107229531da425dc750129bb691514"
 )
 
-type kurtosisClient interface {
+// enclaveClient owns normal enclave and package operations through the
+// Kurtosis SDK.
+type enclaveClient interface {
 	EnclaveExists(ctx context.Context, name string) (bool, error)
 	CreateEnclave(ctx context.Context, name string) error
 	RunRemotePackage(ctx context.Context, enclaveName, locator, serializedParams string) error
@@ -49,39 +49,33 @@ type StartOptions struct {
 }
 
 type Manager struct {
-	newClient          func() (kurtosisClient, error)
-	probe              func(ctx context.Context, rpcURL, address string) error
-	collectDiagnostics func(ctx context.Context, enclave, outputDir string) error
+	newEnclaveClient     func() (enclaveClient, error)
+	newDiagnosticsClient func() (diagnosticsClient, error)
+	probe                func(ctx context.Context, rpcURL, address string) error
 }
 
 func NewManager() *Manager {
-	runDiagnostics := func(ctx context.Context, output io.Writer, name string, arguments ...string) error {
-		command := exec.CommandContext(ctx, name, arguments...)
-		command.Stdout = output
-		command.Stderr = output
-		if err := command.Run(); err != nil {
-			return errors.Join(err, ctx.Err())
-		}
-		return nil
-	}
-
 	return &Manager{
-		newClient: func() (kurtosisClient, error) {
-			client, err := kurtosis.NewClient()
+		newEnclaveClient: func() (enclaveClient, error) {
+			client, err := kurtosis.NewEnclaveClient()
 			if err != nil {
 				return nil, fmt.Errorf("connect to Kurtosis engine: %w", err)
 			}
 			return client, nil
 		},
-		probe: probeNetwork,
-		collectDiagnostics: func(ctx context.Context, enclave, outputDir string) error {
-			return collectDiagnostics(ctx, runDiagnostics, enclave, outputDir)
+		newDiagnosticsClient: func() (diagnosticsClient, error) {
+			client, err := kurtosis.NewDiagnosticsClient()
+			if err != nil {
+				return nil, fmt.Errorf("connect to Kurtosis diagnostics API: %w", err)
+			}
+			return client, nil
 		},
+		probe: probeNetwork,
 	}
 }
 
 func (manager *Manager) Inspect(ctx context.Context, name string) (Environment, error) {
-	client, err := manager.newClient()
+	client, err := manager.newEnclaveClient()
 	if err != nil {
 		return Environment{}, err
 	}
@@ -119,7 +113,7 @@ func (manager *Manager) Start(ctx context.Context, options StartOptions) (enviro
 		return Environment{}, fmt.Errorf("prepare qrl-package parameters: %w", err)
 	}
 
-	client, err := manager.newClient()
+	client, err := manager.newEnclaveClient()
 	if err != nil {
 		return Environment{}, err
 	}
@@ -169,27 +163,32 @@ func (manager *Manager) Start(ctx context.Context, options StartOptions) (enviro
 // collects the requested diagnostics and then destroys the partially
 // provisioned network. Diagnostics and cleanup problems are reported alongside
 // the start failure, never instead of it.
-func (manager *Manager) finishFailedStart(client kurtosisClient, options StartOptions, failure error) error {
+func (manager *Manager) finishFailedStart(client enclaveClient, options StartOptions, failure error) error {
 	// Diagnostics and cleanup run on fresh contexts: the start context is
 	// typically already canceled or expired by the time the failure gets here.
+	var diagnosticsErr error
 	if options.FailureDiagnosticsDir != "" {
 		collectCtx, cancel := context.WithTimeout(context.Background(), startDiagnosticsTimeout)
-		if err := manager.collectDiagnostics(collectCtx, options.EnclaveName, options.FailureDiagnosticsDir); err != nil {
-			failure = errors.Join(failure, fmt.Errorf("collect start diagnostics: %w", err))
+		if err := manager.CollectDiagnostics(collectCtx, options.EnclaveName, options.FailureDiagnosticsDir); err != nil {
+			diagnosticsErr = fmt.Errorf("collect start diagnostics: %w", err)
 		}
 		cancel()
 	}
 
 	cleanupCtx, cancel := context.WithTimeout(context.Background(), startCleanupTimeout)
-	defer cancel()
-	if err := manager.destroyAndConfirm(cleanupCtx, client, options.EnclaveName); err != nil {
-		return errors.Join(failure, fmt.Errorf("clean up failed network: %w", err))
+	cleanupErr := manager.destroyAndConfirm(cleanupCtx, client, options.EnclaveName)
+	cancel()
+	if cleanupErr != nil {
+		cleanupErr = fmt.Errorf("clean up failed network: %w", cleanupErr)
 	}
-	return failure
+	if diagnosticsErr == nil && cleanupErr == nil {
+		return failure
+	}
+	return errors.Join(failure, diagnosticsErr, cleanupErr)
 }
 
 func (manager *Manager) Stop(ctx context.Context, name string) error {
-	client, err := manager.newClient()
+	client, err := manager.newEnclaveClient()
 	if err != nil {
 		return err
 	}
@@ -203,7 +202,7 @@ func (manager *Manager) Stop(ctx context.Context, name string) error {
 	return manager.destroyAndConfirm(ctx, client, name)
 }
 
-func (manager *Manager) destroyAndConfirm(ctx context.Context, client kurtosisClient, name string) error {
+func (manager *Manager) destroyAndConfirm(ctx context.Context, client enclaveClient, name string) error {
 	destroyErr := client.DestroyEnclave(ctx, name)
 	// Confirm the deterministic slot is actually free — on a fresh context so
 	// cancellation cannot fake a successful stop — because the next start
