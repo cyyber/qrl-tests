@@ -6,7 +6,7 @@ import (
 	"context"
 	"math/big"
 
-	"github.com/cyyber/qrl-tests/e2e/internal/abifixture"
+	"github.com/cyyber/qrl-tests/e2e/suites/execution/abi/contracts"
 	ginkgo "github.com/onsi/ginkgo/v2"
 	gomega "github.com/onsi/gomega"
 	qrl "github.com/theQRL/go-qrl"
@@ -234,7 +234,7 @@ func (fixture *liveFixture) assertCompositeEvent(ctx context.Context) {
 	// Goal: tuples and nested fixed/dynamic arrays survive event encoding,
 	// generic decoding, and generated parsing without changing their shape.
 	ginkgo.By("round-tripping composite event data through generic and generated decoders")
-	record := abifixture.EventEmitterDynamicRecord{
+	record := contracts.EventEmitterDynamicRecord{
 		Amount:  inputs.amount,
 		Note:    inputs.note,
 		Payload: inputs.payload,
@@ -294,7 +294,7 @@ func (fixture *liveFixture) assertRecordSeenEvent(ctx context.Context) {
 	// Goal: an indexed struct is hashed into its topic as the Keccak-256 of
 	// the canonical VM encoding, like indexed dynamic values.
 	ginkgo.By("hashing an indexed struct into its event topic")
-	record := abifixture.EventEmitterRecord{
+	record := contracts.EventEmitterRecord{
 		Amount:    fixture.inputs.amount,
 		Recipient: fixture.from,
 		Tag:       fixture.inputs.tag,

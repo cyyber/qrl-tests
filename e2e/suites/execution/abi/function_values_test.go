@@ -6,7 +6,7 @@ import (
 	"context"
 	"math/big"
 
-	"github.com/cyyber/qrl-tests/e2e/internal/abifixture"
+	"github.com/cyyber/qrl-tests/e2e/suites/execution/abi/contracts"
 	ginkgo "github.com/onsi/ginkgo/v2"
 	gomega "github.com/onsi/gomega"
 	"github.com/theQRL/go-qrl/accounts/abi/bind"
@@ -47,7 +47,7 @@ func (fixture *liveFixture) assertFunctionValues(ctx context.Context) {
 	secondCallback[len(secondCallback)-1] ^= 0xff
 	fixedCallbacks := [2]functionValue{callback, secondCallback}
 	callbacks := []functionValue{secondCallback, callback}
-	functionRecord := abifixture.EventEmitterFunctionRecord{
+	functionRecord := contracts.EventEmitterFunctionRecord{
 		Callback: callback,
 		Note:     fixture.inputs.note,
 	}
