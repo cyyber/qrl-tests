@@ -3,8 +3,27 @@ pragma hyperion >=0.1.0;
 
 contract ConsoleProbe {
     event Deployed(uint256 value);
+    event Stored(
+        address indexed sender,
+        string indexed label,
+        bytes indexed payload,
+        uint512 value
+    );
+    uint512 public stored;
+    address public constructorRecipient;
+    bytes33 public constructorTag;
+    bytes32 public constructorPayloadHash;
 
-    constructor() {
+    constructor(
+        uint512 amount,
+        address recipient,
+        bytes33 tag,
+        bytes memory payload
+    ) {
+        stored = amount;
+        constructorRecipient = recipient;
+        constructorTag = tag;
+        constructorPayloadHash = keccak256(payload);
         emit Deployed(1337);
     }
 
@@ -54,5 +73,22 @@ contract ConsoleProbe {
 
     function failReason() external pure {
         revert("console wrapper revert");
+    }
+
+    function store(
+        uint512 value,
+        string calldata label,
+        bytes calldata payload
+    ) external {
+        stored = value;
+        emit Stored(msg.sender, label, payload, value);
+    }
+
+    function pay(uint512 marker) external payable {
+        stored = marker + msg.value;
+    }
+
+    function failTransaction() external {
+        revert("console transaction revert");
     }
 }

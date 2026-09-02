@@ -9,7 +9,6 @@ import (
 
 	"github.com/cyyber/qrl-tests/e2e/internal/live"
 	"github.com/theQRL/go-qrl/accounts/abi"
-	"github.com/theQRL/go-qrl/accounts/abi/bind"
 	"github.com/theQRL/go-qrl/common"
 	"github.com/theQRL/go-qrl/common/hexutil"
 	"github.com/theQRL/go-qrl/core/vm"
@@ -60,7 +59,7 @@ func prepareTopicParameters(ctx context.Context, node *live.Node) ([]byte, error
 	if err != nil {
 		return nil, fmt.Errorf("parse indexed-event coverage ABI: %w", err)
 	}
-	auth, err := newTransactor(ctx, node)
+	auth, err := newDeploymentTransactor(ctx, node)
 	if err != nil {
 		return nil, err
 	}
@@ -110,36 +109,28 @@ func prepareTopicParameters(ctx context.Context, node *live.Node) ([]byte, error
 	}
 
 	auth.GasLimit = 500_000
-	_, indexedTx, _, err := bind.DeployContract(
+	deployment, err := prepareRawDeployment(
 		auth,
-		indexedABI,
-		indexedEventInitCode(numberTopics, bytesTopics, referenceTopics),
 		node.Execution,
+		indexedABI,
+		[]byte(indexedEventABIJSON),
+		indexedEventInitCode(numberTopics, bytesTopics, referenceTopics),
 	)
 	if err != nil {
-		return nil, fmt.Errorf("prepare indexed-event transaction: %w", err)
-	}
-	indexedRaw, err := indexedTx.MarshalBinary()
-	if err != nil {
-		return nil, fmt.Errorf("encode indexed-event transaction: %w", err)
+		return nil, err
 	}
 	return json.Marshal(topicParameters{
-		deploymentParameters: deploymentParameters{
-			Sender:         auth.From.Hex(),
-			ABI:            json.RawMessage(indexedEventABIJSON),
-			TxHash:         indexedTx.Hash().Hex(),
-			RawTransaction: hexutil.Encode(indexedRaw),
-		},
-		IndexedDelta:        indexedDelta.String(),
-		IndexedAmount:       indexedAmount.String(),
-		IndexedCode:         hexutil.Encode(indexedCode[:]),
-		IndexedLabel:        indexedLabel,
-		IndexedLabelTopic:   labelTopic.Hex(),
-		IndexedPayload:      hexutil.Encode(indexedPayload),
-		IndexedPayloadTopic: payloadTopic.Hex(),
-		NumberTopics:        topicHexStrings(numberTopics),
-		BytesTopics:         topicHexStrings(bytesTopics),
-		ReferenceTopics:     topicHexStrings(referenceTopics),
+		deploymentParameters: deployment,
+		IndexedDelta:         indexedDelta.String(),
+		IndexedAmount:        indexedAmount.String(),
+		IndexedCode:          hexutil.Encode(indexedCode[:]),
+		IndexedLabel:         indexedLabel,
+		IndexedLabelTopic:    labelTopic.Hex(),
+		IndexedPayload:       hexutil.Encode(indexedPayload),
+		IndexedPayloadTopic:  payloadTopic.Hex(),
+		NumberTopics:         topicHexStrings(numberTopics),
+		BytesTopics:          topicHexStrings(bytesTopics),
+		ReferenceTopics:      topicHexStrings(referenceTopics),
 	})
 }
 
