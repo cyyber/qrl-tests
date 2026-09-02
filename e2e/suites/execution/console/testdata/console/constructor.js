@@ -78,6 +78,7 @@ qrl.contract(PARAMS.abi).new(
                 var transaction = qrl.getTransaction(contract.transactionHash);
                 if (receipt === null || Number(receipt.status) !== 1 ||
                     receipt.contractAddress !== contract.address ||
+                    transaction === null ||
                     transaction.input.toLowerCase() !== PARAMS.constructorInput.toLowerCase()) {
                     throw new Error("unexpected constructor deployment: " +
                         JSON.stringify({receipt: receipt, transaction: transaction}));
@@ -87,16 +88,17 @@ qrl.contract(PARAMS.abi).new(
                 }
                 var expectedRecipient = web3.toChecksumAddress(PARAMS.recipient);
                 var expectedPayloadHash = web3.sha3(PARAMS.constructorPayload, {encoding: "hex"});
-                if (contract.stored().toString(10) !== PARAMS.constructorAmount ||
-                    contract.constructorRecipient() !== expectedRecipient ||
-                    contract.constructorTag().toLowerCase() !== PARAMS.constructorTag.toLowerCase() ||
-                    contract.constructorPayloadHash().toLowerCase() !== expectedPayloadHash.toLowerCase()) {
-                    throw new Error("constructor arguments were not decoded: " + JSON.stringify({
-                        amount: contract.stored().toString(10),
-                        recipient: contract.constructorRecipient(),
-                        tag: contract.constructorTag(),
-                        payloadHash: contract.constructorPayloadHash()
-                    }));
+                var actual = {
+                    amount: contract.stored().toString(10),
+                    recipient: contract.constructorRecipient(),
+                    tag: contract.constructorTag(),
+                    payloadHash: contract.constructorPayloadHash()
+                };
+                if (actual.amount !== PARAMS.constructorAmount ||
+                    actual.recipient !== expectedRecipient ||
+                    actual.tag.toLowerCase() !== PARAMS.constructorTag.toLowerCase() ||
+                    actual.payloadHash.toLowerCase() !== expectedPayloadHash.toLowerCase()) {
+                    throw new Error("constructor arguments were not decoded: " + JSON.stringify(actual));
                 }
             });
             suite.finish();

@@ -3,20 +3,20 @@ var check = suite.check;
 
 loadScript(".params.js");
 
-var deployment = null;
+var deploymentReceipt = null;
 check("raw deployment transaction is accepted and mined", function () {
     var deploymentHash = qrl.sendRawTransaction(PARAMS.rawTransaction);
     if (deploymentHash !== PARAMS.txHash) {
         throw new Error("deployment transaction hash mismatch: expected " +
             PARAMS.txHash + ", got " + deploymentHash);
     }
-    deployment = waitForReceipt(deploymentHash);
-    if (Number(deployment.status) !== 1 || !deployment.contractAddress) {
-        throw new Error("deployment transaction failed: " + JSON.stringify(deployment));
+    deploymentReceipt = waitForReceipt(deploymentHash);
+    if (Number(deploymentReceipt.status) !== 1 || !deploymentReceipt.contractAddress) {
+        throw new Error("deployment transaction failed: " + JSON.stringify(deploymentReceipt));
     }
 });
 
-var contract = qrl.contract(PARAMS.abi).at(deployment.contractAddress);
+var contract = qrl.contract(PARAMS.abi).at(deploymentReceipt.contractAddress);
 var expectedLabelTopic = web3.sha3(PARAMS.storeLabel) + zeros(64);
 var expectedPayloadTopic = web3.sha3(PARAMS.storePayload, {encoding: "hex"}) + zeros(64);
 
@@ -86,7 +86,7 @@ watcher.watch(function (error, event) {
             var transaction = qrl.getTransaction(storeTransactionHash);
             if (transaction === null ||
                 web3.toChecksumAddress(transaction.from) !== sender ||
-                web3.toChecksumAddress(transaction.to) !== deployment.contractAddress) {
+                web3.toChecksumAddress(transaction.to) !== deploymentReceipt.contractAddress) {
                 throw new Error("unexpected store transaction: " + JSON.stringify(transaction));
             }
         });
@@ -96,11 +96,11 @@ watcher.watch(function (error, event) {
             if (expected.length !== 130) {
                 throw new Error("fixture is not a full-width VM64 value: " + expected);
             }
-            var stored = qrl.getStorageAt(deployment.contractAddress, "0x0", "latest");
+            var stored = qrl.getStorageAt(deploymentReceipt.contractAddress, "0x0", "latest");
             if (stored.toLowerCase() !== expected) {
                 throw new Error("unexpected storage value: " + stored);
             }
-            var proof = qrl.getProof(deployment.contractAddress, ["0x0"], "latest");
+            var proof = qrl.getProof(deploymentReceipt.contractAddress, ["0x0"], "latest");
             if (!proof.storageProof || proof.storageProof.length !== 1 ||
                 proof.storageProof[0].value.toLowerCase() !== expected) {
                 throw new Error("unexpected storage proof: " + JSON.stringify(proof));
