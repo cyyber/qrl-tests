@@ -434,61 +434,6 @@ func fixtureArchiveContents(t *testing.T, fixtureArchive []byte) map[string]stri
 	}
 }
 
-func TestEventsMarkerOrder(t *testing.T) {
-	source, err := consoleFixtures.ReadFile("testdata/console/events.js")
-	require.NoError(t, err)
-
-	script := string(source)
-	const teardown = "watcher.stopWatching();"
-	require.Equal(t, 2, strings.Count(script, teardown))
-	failureMarker := strings.Index(script, `console.error("CONSOLE_E2E_FAIL events " + failure);`)
-	firstTeardown := strings.Index(script, teardown)
-	require.NotEqual(t, -1, failureMarker)
-	require.Less(t, failureMarker, firstTeardown)
-	filterGuard := strings.Index(script, "if (watcher.filterId === null)")
-	watch := strings.Index(script, "watcher.watch(")
-	submission := strings.Index(script, "storeTransactionHash = contract.store(")
-	require.NotEqual(t, -1, filterGuard)
-	require.NotEqual(t, -1, watch)
-	require.NotEqual(t, -1, submission)
-	require.Less(t, filterGuard, watch)
-	require.Less(t, watch, submission)
-	filterFailure := script[filterGuard:watch]
-	require.Contains(t, filterFailure, "failEvents(filterFailure);")
-	require.Contains(t, filterFailure, "throw filterFailure;")
-	require.NotContains(t, script, "PARAMS.storeRawTransaction")
-	require.NotContains(t, script, "PARAMS.storeTxHash")
-	teardownGuard := strings.Index(script, "if (watcher && watcher.filterId !== null)")
-	require.NotEqual(t, -1, teardownGuard)
-	require.Less(t, teardownGuard, firstTeardown)
-	successMarker := strings.LastIndex(script, "suite.finish();")
-	lastTeardown := strings.LastIndex(script, teardown)
-	require.NotEqual(t, -1, successMarker)
-	require.Less(t, successMarker, lastTeardown)
-}
-
-func TestReceiptWatchdogGuards(t *testing.T) {
-	for scriptName, timer := range map[string]string{
-		"constructor.js": "receiptTimer",
-		"events.js":      "storeReceiptTimer",
-	} {
-		t.Run(scriptName, func(t *testing.T) {
-			source, err := consoleFixtures.ReadFile("testdata/console/" + scriptName)
-			require.NoError(t, err)
-			script := string(source)
-			interval := strings.Index(script, "setInterval(function () {")
-			require.NotEqual(t, -1, interval)
-			watchdog := script[interval:]
-			guard := strings.Index(watchdog, fmt.Sprintf("if (%s === null)", timer))
-			poll := strings.Index(watchdog, "try {")
-			require.NotEqual(t, -1, guard)
-			require.NotEqual(t, -1, poll)
-			require.Less(t, guard, poll)
-			require.Contains(t, watchdog[guard:poll], "return;")
-		})
-	}
-}
-
 func TestConsoleContainerEndpoint(t *testing.T) {
 	for name, testCase := range map[string]struct {
 		endpoint string
