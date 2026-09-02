@@ -137,7 +137,8 @@ watcher.watch(function (error, event) {
                 throw new Error("payable transaction failed: " + JSON.stringify(paidReceipt));
             }
             var transaction = qrl.getTransaction(txHash);
-            if (transaction.value.toString(10) !== String(payment) ||
+            if (transaction === null ||
+                transaction.value.toString(10) !== String(payment) ||
                 contract.stored().toString(10) !== String(marker + payment)) {
                 throw new Error("payable wrapper did not forward value");
             }
