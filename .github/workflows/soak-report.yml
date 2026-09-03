@@ -192,6 +192,21 @@ jobs:
             -f output[summary]="${summary}"
           [ "${conclusion}" = "success" ]
 
+      - name: Scale work node groups back to zero
+        if: always()
+        env:
+          NODEGROUPS: ${{ vars.EKS_WORK_NODEGROUPS }}
+        run: |
+          IFS=',' read -ra groups <<<"${NODEGROUPS}"
+          for group in "${groups[@]}"; do
+            group=$(echo "$group" | tr -d ' ')
+            [ -n "$group" ] || continue
+            aws eks update-nodegroup-config \
+              --cluster-name "${EKS_CLUSTER_NAME}" \
+              --nodegroup-name "${group}" \
+              --scaling-config minSize=0,maxSize=1,desiredSize=0 || true
+          done
+
       - name: Fail if the soak did not pass
         if: always()
         env:

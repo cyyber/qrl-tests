@@ -47,7 +47,7 @@ jobs:
   submit:
     needs: images
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     permissions:
       contents: read
       id-token: write
@@ -104,6 +104,8 @@ jobs:
         env:
           NODEGROUPS: ${{ vars.EKS_WORK_NODEGROUPS }}
         run: |
+          # minSize=1 so the Cluster Autoscaler cannot dump unused work
+          # nodes while Kurtosis is still placing participant pods.
           IFS=',' read -ra groups <<<"${NODEGROUPS}"
           for group in "${groups[@]}"; do
             group=$(echo "$group" | tr -d ' ')
@@ -111,7 +113,18 @@ jobs:
             aws eks update-nodegroup-config \
               --cluster-name "${EKS_CLUSTER_NAME}" \
               --nodegroup-name "${group}" \
-              --scaling-config minSize=0,maxSize=1,desiredSize=1
+              --scaling-config minSize=1,maxSize=1,desiredSize=1
+          done
+          for group in "${groups[@]}"; do
+            group=$(echo "$group" | tr -d ' ')
+            [ -n "$group" ] || continue
+            if [ "${group}" = "work-shared" ]; then
+              selector="qrl.io/role=shared"
+            else
+              selector="qrl.io/participant=${group#work-}"
+            fi
+            echo "Waiting for Ready node ${selector}"
+            kubectl wait --for=condition=Ready node -l "${selector}" --timeout=600s
           done
 
       - name: Submit the soak Job
