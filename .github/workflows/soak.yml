@@ -133,6 +133,11 @@ jobs:
           SOAK_ENFORCE: ${{ inputs.enforce && 'true' || 'false' }}
           SOAK_LOAD_PERCENT: ${{ inputs.load-percent || '30' }}
           KEEP_NETWORK: ${{ inputs.keep-network && 'true' || (inputs.chaos == 'leak-enclave' && 'true' || 'false') }}
+          SOAK_CHAOS: ${{ inputs.chaos || 'none' }}
+          SOAK_CHAOS_AFTER: "1200"
+          E2E_SOURCE_GO_QRL: ${{ needs.images.outputs.go-qrl-sha }}
+          E2E_SOURCE_QRYSM: ${{ needs.images.outputs.qrysm-sha }}
+          E2E_SOURCE_GENERATOR: ${{ needs.images.outputs.generator-sha }}
           ACTIVE_DEADLINE_SECONDS: "32400"
         run: |
           envsubst < ci/k8s/soak-job.yaml.tmpl | kubectl apply -f -
@@ -140,12 +145,6 @@ jobs:
             qrl.io/check-run-id="${CHECK_RUN_ID}" \
             qrl.io/head-sha="${HEAD_SHA}" \
             qrl.io/github-run="${{ github.run_id }}"
-          if [ "${{ inputs.chaos }}" = "abort-midrun" ]; then
-            (
-              sleep 1200
-              kubectl delete job "${JOB_NAME}" -n "${CI_NAMESPACE}" --wait=false
-            ) &
-          fi
           {
             echo "## Soak submitted"
             echo

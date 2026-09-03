@@ -33,7 +33,15 @@ type Evaluation struct {
 	Gates         []Gate        `json:"gates"`
 	// FirstBreach is the earliest breach across all gates.
 	FirstBreach *time.Time `json:"first_breach,omitempty"`
-	Metrics     Metrics    `json:"metrics"`
+	// ThresholdsDigest is the sha256 of the thresholds file this verdict
+	// used. Week-over-week comparison refuses to run when it changes.
+	ThresholdsDigest string `json:"thresholds_digest,omitempty"`
+	// Provenance for apples-to-apples comparison. The Job image has no
+	// .git; GITHUB_SHA is the fallback for qrl-tests.
+	QRLTests       string            `json:"qrl_tests,omitempty"`
+	PackageLocator string            `json:"qrl_package,omitempty"`
+	Images         map[string]string `json:"images,omitempty"`
+	Metrics        Metrics           `json:"metrics"`
 }
 
 // Metrics are the headline numbers a reader wants without reading gates.
@@ -48,6 +56,8 @@ type Metrics struct {
 	CanaryFailureRate   float64                  `json:"canary_failure_rate"`
 	CanarySent          int                      `json:"canary_sent"`
 	MemorySlopes        map[string]MemoryTrend   `json:"memory_slopes"`
+	ProcessSlopes       map[string]MemoryTrend   `json:"process_slopes,omitempty"`
+	GCPerHour           map[string]float64       `json:"gc_per_hour,omitempty"`
 	WorkingSetSlopes    map[string]MemoryTrend   `json:"working_set_slopes,omitempty"`
 	PeakWorkingSetShare map[string]float64       `json:"peak_working_set_share,omitempty"`
 	Placement           []Placement              `json:"placement,omitempty"`
@@ -84,7 +94,11 @@ type Options struct {
 
 // Evaluate judges the steady-state samples against the thresholds.
 func Evaluate(samples []Sample, thresholds Thresholds, options Options) Evaluation {
-	evaluation := Evaluation{Enforced: options.Enforce, Samples: len(samples)}
+	evaluation := Evaluation{
+		Enforced:         options.Enforce,
+		Samples:          len(samples),
+		ThresholdsDigest: thresholds.Digest,
+	}
 	evaluation.Metrics.Placement = options.Placement
 
 	steady := make([]Sample, 0, len(samples))
@@ -119,6 +133,7 @@ func Evaluate(samples []Sample, thresholds Thresholds, options Options) Evaluati
 	evaluation.Gates = append(evaluation.Gates, evaluator.consensusSplit(&evaluation.Metrics))
 	evaluation.Gates = append(evaluation.Gates, evaluator.canary(&evaluation.Metrics)...)
 	evaluation.Gates = append(evaluation.Gates, evaluator.memory(&evaluation.Metrics)...)
+	evaluation.Gates = append(evaluation.Gates, evaluator.process(&evaluation.Metrics)...)
 	evaluation.Gates = append(evaluation.Gates, evaluator.workingSet(&evaluation.Metrics)...)
 	if options.Placement != nil {
 		evaluation.Gates = append(evaluation.Gates, evaluator.placement())
@@ -479,6 +494,70 @@ func (e evaluator) memory(metrics *Metrics) []Gate {
 	return gates
 }
 
+func (e evaluator) process(metrics *Metrics) []Gate {
+	metrics.ProcessSlopes = make(map[string]MemoryTrend)
+	metrics.GCPerHour = make(map[string]float64)
+	var gates []Gate
+	for _, index := range e.participantIndexes() {
+		for _, client := range []Client{ClientExecution, ClientConsensus, ClientValidator} {
+			var fds, pauses, counts []point
+			for _, sample := range e.steady {
+				participant := e.participantIn(sample, index)
+				stats, scraped := participant.Clients[client]
+				if !scraped || !stats.Scraped {
+					continue
+				}
+				if stats.OpenFDs > 0 {
+					fds = append(fds, point{sample.At, stats.OpenFDs})
+				}
+				if stats.GCPauseSec > 0 {
+					pauses = append(pauses, point{sample.At, stats.GCPauseSec})
+				}
+				if stats.GCCount > 0 {
+					counts = append(counts, point{sample.At, stats.GCCount})
+				}
+			}
+			prefix := fmt.Sprintf("process/participant-%d/%s", index, client)
+			if len(fds) > 0 {
+				gates = append(gates, e.trendGate(prefix+"/fds", fds, e.thresholds.Memory.OpenFDSlopeMaxPerHour, func(v float64) float64 { return v }, "/h", metrics.ProcessSlopes))
+			}
+			if len(pauses) > 0 {
+				gates = append(gates, e.trendGate(prefix+"/gc-pause", pauses, e.thresholds.Memory.GCPauseSlopeMaxMSPerHour, secondsToMS, "ms/h", metrics.ProcessSlopes))
+			}
+			if gate, key, rate, ok := e.gcRateGate(prefix+"/gc-rate", counts); ok {
+				metrics.GCPerHour[key] = rate
+				gates = append(gates, gate)
+			}
+		}
+	}
+	return gates
+}
+
+func (e evaluator) gcRateGate(name string, points []point) (Gate, string, float64, bool) {
+	gate := Gate{Name: name, Threshold: fmt.Sprintf("≤ %.0f GC/h", e.thresholds.Memory.MaxGCPerHour)}
+	if len(points) < e.thresholds.Memory.MinSamples {
+		return Gate{}, "", 0, false
+	}
+	hours := points[len(points)-1].at.Sub(points[0].at).Hours()
+	if hours <= 0 {
+		return Gate{}, "", 0, false
+	}
+	rate := (points[len(points)-1].value - points[0].value) / hours
+	if rate < 0 {
+		rate = 0
+	}
+	gate.Passed = rate <= e.thresholds.Memory.MaxGCPerHour
+	gate.Observed = fmt.Sprintf("%.0f GC/h over %d samples", rate, len(points))
+	if !gate.Passed {
+		at := points[len(points)-1].at
+		gate.FirstBreach = &at
+	}
+	key := strings.TrimPrefix(name, "process/")
+	return gate, key, rate, true
+}
+
+func secondsToMS(seconds float64) float64 { return seconds * 1000 }
+
 func (e evaluator) workingSet(metrics *Metrics) []Gate {
 	series := make(map[string][]point)
 	limits := make(map[string]float64)
@@ -548,7 +627,11 @@ func (e evaluator) trendGate(name string, points []point, limit float64, convert
 		Samples:        len(points),
 	}
 	if into != nil {
-		into[strings.TrimPrefix(strings.TrimPrefix(name, "memory/"), "working-set/")] = trend
+		key := name
+		for _, prefix := range []string{"memory/", "working-set/", "process/"} {
+			key = strings.TrimPrefix(key, prefix)
+		}
+		into[key] = trend
 	}
 	gate.Passed = slope <= limit
 	gate.Observed = fmt.Sprintf("slope %.1f %s (%.0f → %.0f over %d samples)", slope, unit, trend.FirstMB, trend.LastMB, len(points))

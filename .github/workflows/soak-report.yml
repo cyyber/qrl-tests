@@ -1,5 +1,6 @@
-# Collects reports/ from the soak Job volume, publishes the GitHub artifact,
-# and completes the soak check run. Same failure contract as nightly E2E.
+# Collects reports/ from the soak Job volume, compares headline metrics to
+# the previous soak-reports-* artifact, publishes the GitHub artifact, and
+# completes the soak check run. Same failure contract as nightly E2E.
 name: soak-report
 
 on:
@@ -77,6 +78,65 @@ jobs:
           kubectl exec -n "${CI_NAMESPACE}" "${POD_NAME}" -- tar -C /reports -cf - . | tar -C reports -xf -
           kubectl delete pod "${POD_NAME}" -n "${CI_NAMESPACE}" --wait=false
           kubectl delete pvc "${JOB_NAME}-reports" -n "${CI_NAMESPACE}" --wait=false
+
+      - name: Set up Go
+        if: always() && steps.collect.outputs.state != 'missing'
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+        continue-on-error: true
+
+      - name: Compare with the previous soak
+        if: always() && steps.collect.outputs.state != 'missing'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          JOB_NAME: ${{ steps.collect.outputs.job-name }}
+        run: |
+          set -euo pipefail
+          if [ ! -f reports/results.json ]; then
+            echo "No results.json to compare"
+            exit 0
+          fi
+          baseline=""
+          artifact=$(gh api "repos/${{ github.repository }}/actions/artifacts?per_page=100" \
+            | jq -c --arg skip "soak-reports-${JOB_NAME}-" '
+                [.artifacts[]
+                  | select(.expired == false)
+                  | select(.name | startswith("soak-reports-"))
+                  | select(.name | startswith($skip) | not)]
+                | sort_by(.created_at)
+                | reverse
+                | if length == 0 then empty else {id: .[0].id, name: .[0].name} end
+              ')
+          if [ -n "${artifact}" ]; then
+            id=$(jq -r .id <<<"${artifact}")
+            name=$(jq -r .name <<<"${artifact}")
+            echo "Previous soak artifact: ${name} (${id})"
+            gh api "repos/${{ github.repository }}/actions/artifacts/${id}/zip" > /tmp/soak-baseline.zip
+            mkdir -p /tmp/soak-baseline
+            if unzip -qo /tmp/soak-baseline.zip -d /tmp/soak-baseline; then
+              if [ -f /tmp/soak-baseline/results.json ]; then
+                baseline=/tmp/soak-baseline/results.json
+              elif [ -f /tmp/soak-baseline/reports/results.json ]; then
+                baseline=/tmp/soak-baseline/reports/results.json
+              fi
+            fi
+          fi
+          if [ -z "${baseline}" ]; then
+            {
+              echo ""
+              echo "## Versus previous soak"
+              echo ""
+              echo "No previous soak artifact in the last 14 days."
+            } >> reports/summary.md
+            exit 0
+          fi
+          go run ./cmd/qrltest soak-compare \
+            --current reports/results.json \
+            --baseline "${baseline}" \
+            --summary reports/summary.md \
+            --output reports/comparison.json
 
       - name: Publish the job summary
         if: always()

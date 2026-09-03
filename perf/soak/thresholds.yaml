@@ -63,6 +63,11 @@ memory:
   # Fewer samples than this and the memory gates report "insufficient data"
   # instead of a verdict.
   min_samples: 20
+  # File-descriptor and GC pressure: a leak or a heap that cannot keep up
+  # shows here before RSS does. Generous while calibrating.
+  open_fd_slope_max_per_hour: 200
+  gc_pause_slope_max_ms_per_hour: 20
+  max_gc_per_hour: 36000
 
 metrics:
   # Prometheus metric names read from each client's metrics endpoint; the
@@ -70,3 +75,6 @@ metrics:
   rss: [process_resident_memory_bytes, system_memory_used]
   heap: [go_memstats_heap_inuse_bytes, go_memstats_heap_alloc_bytes]
   goroutines: [go_goroutines]
+  open_fds: [process_open_fds]
+  gc_pause: ['go_gc_duration_seconds{quantile="1"}', 'go_gc_duration_seconds{quantile="1.0"}']
+  gc_count: [go_gc_duration_seconds_count]

@@ -36,6 +36,8 @@ type Sampler struct {
 	Log *log.Logger
 	// HTTP overrides the probe client; nil uses a 15 s-timeout default.
 	HTTP *http.Client
+	// Progress publishes live numbers for the heartbeat check run.
+	Progress ProgressReporter
 
 	probe probe
 	pods  []Pod
@@ -71,6 +73,11 @@ func (sampler *Sampler) Run(ctx context.Context, duration time.Duration) ([]Samp
 		samples = append(samples, sample)
 		if err := sampler.emit(sample); err != nil {
 			return samples, err
+		}
+		if sampler.Progress != nil {
+			if err := sampler.Progress.Report(ctx, sample, len(samples)); err != nil {
+				sampler.logf("report progress: %v", err)
+			}
 		}
 		if !warm && time.Since(samples[0].At) > sampler.Thresholds.Warmup.Timeout {
 			return samples, fmt.Errorf("network did not warm up within %s", sampler.Thresholds.Warmup.Timeout)

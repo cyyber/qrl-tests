@@ -87,6 +87,18 @@ spec:
               value: "${SOAK_LOAD_PERCENT}"
             - name: KEEP_NETWORK
               value: "${KEEP_NETWORK}"
+            - name: SOAK_CHAOS
+              value: "${SOAK_CHAOS}"
+            - name: SOAK_CHAOS_AFTER
+              value: "${SOAK_CHAOS_AFTER}"
+            - name: GITHUB_SHA
+              value: "${HEAD_SHA}"
+            - name: E2E_SOURCE_GO_QRL
+              value: "${E2E_SOURCE_GO_QRL}"
+            - name: E2E_SOURCE_QRYSM
+              value: "${E2E_SOURCE_QRYSM}"
+            - name: E2E_SOURCE_GENERATOR
+              value: "${E2E_SOURCE_GENERATOR}"
           volumeMounts:
             - name: reports
               mountPath: /reports

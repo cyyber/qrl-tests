@@ -101,6 +101,23 @@ func TestEnrichSurvivesMissingTools(t *testing.T) {
 	require.Equal(t, runtime.Version(), manifest.Versions.Go)
 }
 
+func TestEnrichFallsBackToGitHubSHA(t *testing.T) {
+	manifest := enrich(t.Context(), ".", Manifest{}, dependencies{
+		getenv: func(key string) string {
+			if key == "GITHUB_SHA" {
+				return "abc123"
+			}
+			return ""
+		},
+		probe: func(context.Context, string, ...string) (string, error) {
+			return "", errors.New("no git")
+		},
+		dockerVersion: func(context.Context) string { return "" },
+		now:           time.Now,
+	})
+	require.Equal(t, "abc123", manifest.Sources.QRLTests)
+}
+
 func TestDockerVersion(t *testing.T) {
 	var unavailable atomic.Bool
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {

@@ -1,6 +1,7 @@
 package soak
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"crypto/x509"
@@ -225,6 +226,42 @@ func (kube *Kube) get(ctx context.Context, path string, result any) error {
 		return fmt.Errorf("HTTP %d: %s", response.StatusCode, strings.TrimSpace(string(body)))
 	}
 	return json.NewDecoder(response.Body).Decode(result)
+}
+
+// PatchJobAnnotations merges annotations onto a batch/v1 Job. The heartbeat
+// workflow reads these; failures must not stop the soak.
+func (kube *Kube) PatchJobAnnotations(ctx context.Context, name string, annotations map[string]string) error {
+	payload, err := json.Marshal(map[string]any{
+		"metadata": map[string]any{"annotations": annotations},
+	})
+	if err != nil {
+		return err
+	}
+	return kube.patch(ctx, "/apis/batch/v1/namespaces/"+kube.Namespace+"/jobs/"+name, payload)
+}
+
+func (kube *Kube) patch(ctx context.Context, path string, body []byte) error {
+	request, err := http.NewRequestWithContext(ctx, http.MethodPatch, kube.BaseURL+path, bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	token, err := kube.token()
+	if err != nil {
+		return fmt.Errorf("read token: %w", err)
+	}
+	request.Header.Set("Authorization", "Bearer "+token)
+	request.Header.Set("Content-Type", "application/merge-patch+json")
+	request.Header.Set("Accept", "application/json")
+	response, err := kube.http.Do(request)
+	if err != nil {
+		return err
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK && response.StatusCode != http.StatusCreated {
+		payload, _ := io.ReadAll(io.LimitReader(response.Body, 4096))
+		return fmt.Errorf("HTTP %d: %s", response.StatusCode, strings.TrimSpace(string(payload)))
+	}
+	return nil
 }
 
 // ParseQuantity converts a Kubernetes resource quantity to a float: bytes for

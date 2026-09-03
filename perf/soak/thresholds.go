@@ -61,12 +61,18 @@ type Thresholds struct {
 		WorkingSetSlopeMaxMBPerHour   float64 `yaml:"working_set_slope_max_mb_per_hour" json:"working_set_slope_max_mb_per_hour"`
 		MaxWorkingSetShareOfLimit     float64 `yaml:"max_working_set_share_of_limit" json:"max_working_set_share_of_limit"`
 		MinSamples                    int     `yaml:"min_samples" json:"min_samples"`
+		OpenFDSlopeMaxPerHour         float64 `yaml:"open_fd_slope_max_per_hour" json:"open_fd_slope_max_per_hour"`
+		GCPauseSlopeMaxMSPerHour      float64 `yaml:"gc_pause_slope_max_ms_per_hour" json:"gc_pause_slope_max_ms_per_hour"`
+		MaxGCPerHour                  float64 `yaml:"max_gc_per_hour" json:"max_gc_per_hour"`
 	} `yaml:"memory" json:"memory"`
 
 	Metrics struct {
 		RSS        []string `yaml:"rss" json:"rss"`
 		Heap       []string `yaml:"heap" json:"heap"`
 		Goroutines []string `yaml:"goroutines" json:"goroutines"`
+		OpenFDs    []string `yaml:"open_fds" json:"open_fds"`
+		GCPause    []string `yaml:"gc_pause" json:"gc_pause"`
+		GCCount    []string `yaml:"gc_count" json:"gc_count"`
 	} `yaml:"metrics" json:"metrics"`
 }
 
@@ -111,6 +117,9 @@ func ParseThresholds(payload []byte) (Thresholds, error) {
 	}
 	if len(thresholds.Metrics.RSS) == 0 || len(thresholds.Metrics.Heap) == 0 || len(thresholds.Metrics.Goroutines) == 0 {
 		return Thresholds{}, fmt.Errorf("metrics.rss, metrics.heap and metrics.goroutines must each name at least one metric")
+	}
+	if len(thresholds.Metrics.OpenFDs) == 0 || len(thresholds.Metrics.GCPause) == 0 || len(thresholds.Metrics.GCCount) == 0 {
+		return Thresholds{}, fmt.Errorf("metrics.open_fds, metrics.gc_pause and metrics.gc_count must each name at least one metric")
 	}
 	sum := sha256.Sum256(payload)
 	thresholds.Digest = "sha256:" + hex.EncodeToString(sum[:])

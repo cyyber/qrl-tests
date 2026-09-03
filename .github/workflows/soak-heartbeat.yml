@@ -4,7 +4,7 @@ name: soak-heartbeat
 
 on:
   schedule:
-    - cron: "45 3,5 * * 0"
+    - cron: "45 3-8 * * 0"
   workflow_dispatch:
     inputs:
       job-name:
@@ -56,10 +56,15 @@ jobs:
           result=$(kubectl get job "${JOB_NAME}" -n "${CI_NAMESPACE}" -o jsonpath='{.metadata.annotations.qrl\.io/result}')
           check_id=$(kubectl get job "${JOB_NAME}" -n "${CI_NAMESPACE}" -o jsonpath='{.metadata.annotations.qrl\.io/check-run-id}')
           head_sha=$(kubectl get job "${JOB_NAME}" -n "${CI_NAMESPACE}" -o jsonpath='{.metadata.annotations.qrl\.io/head-sha}')
+          samples=$(kubectl get job "${JOB_NAME}" -n "${CI_NAMESPACE}" -o jsonpath='{.metadata.annotations.qrl\.io/samples}')
+          finalized=$(kubectl get job "${JOB_NAME}" -n "${CI_NAMESPACE}" -o jsonpath='{.metadata.annotations.qrl\.io/finalized-epoch}')
+          head_slot=$(kubectl get job "${JOB_NAME}" -n "${CI_NAMESPACE}" -o jsonpath='{.metadata.annotations.qrl\.io/head-slot}')
+          tx_per_slot=$(kubectl get job "${JOB_NAME}" -n "${CI_NAMESPACE}" -o jsonpath='{.metadata.annotations.qrl\.io/tx-per-slot}')
+          el_rss=$(kubectl get job "${JOB_NAME}" -n "${CI_NAMESPACE}" -o jsonpath='{.metadata.annotations.qrl\.io/el-rss-mb}')
           succeeded=$(kubectl get job "${JOB_NAME}" -n "${CI_NAMESPACE}" -o jsonpath='{.status.succeeded}')
           failed=$(kubectl get job "${JOB_NAME}" -n "${CI_NAMESPACE}" -o jsonpath='{.status.failed}')
 
-          summary="Job \`${JOB_NAME}\` phase=${phase:-unknown} result=${result:-pending}"
+          summary="Job \`${JOB_NAME}\` phase=${phase:-unknown} samples=${samples:-0} finalized=${finalized:-?} head_slot=${head_slot:-?} tx/slot=${tx_per_slot:-?} el_rss=${el_rss:-?}MB result=${result:-pending}"
           echo "${summary}" >> "$GITHUB_STEP_SUMMARY"
 
           [ -n "${check_id}" ] || exit 0

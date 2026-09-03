@@ -20,6 +20,7 @@ func TestEvaluateChainAndMemory(t *testing.T) {
 
 	evaluation := Evaluate(samples, thresholds, Options{Participants: 2, SlotsPerEpoch: 8, Enforce: true})
 	require.True(t, evaluation.Passed, gatesDetail(evaluation))
+	require.Equal(t, thresholds.Digest, evaluation.ThresholdsDigest)
 	require.InDelta(t, 12.0, evaluation.Metrics.HeadBlocksPerMinute[1], 0.1)
 	require.Contains(t, names(evaluation), "chain-progress/participant-1")
 	require.Contains(t, names(evaluation), "memory/participant-1/execution/rss")
@@ -87,6 +88,34 @@ func TestEvaluatePlacement(t *testing.T) {
 	})
 	require.False(t, evaluation.Passed)
 	require.Contains(t, gate(evaluation, "placement/one-participant-per-node").Detail, "2→ip-2")
+}
+
+func TestEvaluateProcessFDsAndGC(t *testing.T) {
+	thresholds := DefaultThresholds()
+	thresholds.Memory.MinSamples = 2
+	thresholds.Memory.OpenFDSlopeMaxPerHour = 10
+	start := time.Date(2026, 9, 3, 12, 0, 0, 0, time.UTC)
+	first := steady(start, 100, 100, 10, 1<<30)
+	second := steady(start.Add(time.Hour), 820, 820, 10, 1<<30)
+	for _, sample := range []*Sample{&first, &second} {
+		for i := range sample.Participants {
+			stats := sample.Participants[i].Clients[ClientExecution]
+			stats.OpenFDs = 100
+			stats.GCPauseSec = 0.001
+			stats.GCCount = 1000
+			sample.Participants[i].Clients[ClientExecution] = stats
+		}
+	}
+	second.Participants[0].Clients[ClientExecution] = ClientMetrics{
+		RSSBytes: 1 << 30, HeapBytes: 1 << 29, Goroutines: 100, Scraped: true,
+		OpenFDs: 220, GCPauseSec: 0.002, GCCount: 1500,
+	}
+
+	evaluation := Evaluate([]Sample{first, second}, thresholds, Options{Participants: 2, SlotsPerEpoch: 8, Enforce: true})
+	require.False(t, gate(evaluation, "process/participant-1/execution/fds").Passed)
+	require.True(t, gate(evaluation, "process/participant-1/execution/gc-pause").Passed, gatesDetail(evaluation))
+	require.True(t, gate(evaluation, "process/participant-1/execution/gc-rate").Passed, gatesDetail(evaluation))
+	require.InDelta(t, 500, evaluation.Metrics.GCPerHour["participant-1/execution/gc-rate"], 1)
 }
 
 func TestMinPeers(t *testing.T) {

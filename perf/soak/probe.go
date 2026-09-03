@@ -60,6 +60,18 @@ func (p probe) head(ctx context.Context, endpoints Endpoints) ParticipantSample 
 	})
 	sample.call(func() error {
 		var result string
+		if err := p.rpc(ctx, endpoints.ExecutionRPC, "eth_getBlockTransactionCountByNumber", []any{"latest"}, &result); err != nil {
+			return fmt.Errorf("eth_getBlockTransactionCountByNumber: %w", err)
+		}
+		count, err := parseHexUint(result)
+		if err != nil {
+			return fmt.Errorf("eth_getBlockTransactionCountByNumber: %w", err)
+		}
+		sample.TxInHead = count
+		return nil
+	})
+	sample.call(func() error {
+		var result string
 		if err := p.rpc(ctx, endpoints.ExecutionRPC, "net_peerCount", nil, &result); err != nil {
 			return fmt.Errorf("net_peerCount: %w", err)
 		}
@@ -185,6 +197,9 @@ func (p probe) metrics(ctx context.Context, endpoints Endpoints, sample *Partici
 			RSSBytes:   firstMetric(families, names.Metrics.RSS),
 			HeapBytes:  firstMetric(families, names.Metrics.Heap),
 			Goroutines: firstMetric(families, names.Metrics.Goroutines),
+			OpenFDs:    firstMetric(families, names.Metrics.OpenFDs),
+			GCPauseSec: firstMetric(families, names.Metrics.GCPause),
+			GCCount:    firstMetric(families, names.Metrics.GCCount),
 			Scraped:    true,
 		}
 	}
@@ -288,12 +303,14 @@ func parseExposition(reader io.Reader) (map[string]float64, error) {
 			continue
 		}
 		name := line
+		labels := ""
 		if brace := strings.IndexByte(line, '{'); brace >= 0 {
 			name = line[:brace]
 			closing := strings.LastIndexByte(line, '}')
 			if closing < brace {
 				continue
 			}
+			labels = line[brace : closing+1]
 			line = line[closing+1:]
 		} else if space := strings.IndexAny(line, " \t"); space >= 0 {
 			name = line[:space]
@@ -305,11 +322,14 @@ func parseExposition(reader io.Reader) (map[string]float64, error) {
 		if len(fields) == 0 {
 			continue
 		}
-		if _, seen := families[name]; seen {
-			continue
-		}
 		value, err := strconv.ParseFloat(fields[0], 64)
 		if err != nil {
+			continue
+		}
+		if labels != "" {
+			families[name+labels] = value
+		}
+		if _, seen := families[name]; seen {
 			continue
 		}
 		families[name] = value

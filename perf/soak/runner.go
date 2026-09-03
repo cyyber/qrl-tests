@@ -15,6 +15,7 @@ import (
 
 	"github.com/cyyber/qrl-tests/devnet"
 	"github.com/cyyber/qrl-tests/internal/jsonfile"
+	"github.com/cyyber/qrl-tests/internal/runmanifest"
 )
 
 const (
@@ -23,12 +24,13 @@ const (
 	DefaultInterval     = 30 * time.Second
 	DefaultStartTimeout = 20 * time.Minute
 
-	SamplesFile  = "samples.jsonl"
-	ResultsFile  = "results.json"
-	VerdictFile  = "verdict.json"
-	SummaryFile  = "summary.md"
-	ManifestFile = "manifest.json"
-	OutputLog    = "output.log"
+	SamplesFile    = "samples.jsonl"
+	ResultsFile    = "results.json"
+	VerdictFile    = "verdict.json"
+	SummaryFile    = "summary.md"
+	ComparisonFile = "comparison.json"
+	ManifestFile   = "manifest.json"
+	OutputLog      = "output.log"
 
 	diagnosticsDirectory = "diagnostics"
 	cleanupTimeout       = 2 * time.Minute
@@ -77,6 +79,7 @@ type Runner struct {
 	configuration Config
 	networks      networkManager
 	sample        sampleFunc
+	progress      ProgressReporter
 	stdout        io.Writer
 	stderr        io.Writer
 }
@@ -115,6 +118,20 @@ func (runner *Runner) Run(ctx context.Context) (err error) {
 	defer logFile.Close()
 	stdout := io.MultiWriter(runner.stdout, logFile)
 
+	if runner.progress == nil {
+		if progress := jobProgress(); progress != nil {
+			runner.progress = progress
+		}
+	}
+	if err := reportPhase(ctx, runner.progress, "provisioning"); err != nil {
+		fmt.Fprintf(runner.stderr, "report progress: %v\n", err)
+	}
+
+	record := runner.initialRunManifest(ctx)
+	if err := record.Write(filepath.Join(reportDir, runmanifest.FileName)); err != nil {
+		return err
+	}
+
 	environment, release, err := runner.acquire(ctx)
 	if err != nil {
 		return err
@@ -152,7 +169,12 @@ func (runner *Runner) Run(ctx context.Context) (err error) {
 	if err != nil {
 		return err
 	}
+	runner.attachProvenance(&evaluation, record)
 	if err = runner.writeReports(reportDir, evaluation); err != nil {
+		return err
+	}
+	record.Finish(map[string]bool{"soak": evaluation.Passed}, time.Now())
+	if err := record.Write(filepath.Join(reportDir, runmanifest.FileName)); err != nil {
 		return err
 	}
 	if _, err = io.WriteString(stdout, RenderSummary(evaluation)); err != nil {
@@ -290,6 +312,7 @@ func (runner *Runner) sampleNetwork(ctx context.Context, environment devnet.Envi
 		SlotsPerEpoch: defaultSlots,
 		Out:           samplesFile,
 		Log:           log.New(runner.stderr, "soak: ", 0),
+		Progress:      runner.progress,
 	}
 	samples, err := sampler.Run(ctx, runner.configuration.Duration)
 	if err != nil {
@@ -323,4 +346,62 @@ func (runner *Runner) writeReports(reportDir string, evaluation Evaluation) erro
 		return fmt.Errorf("write soak summary: %w", err)
 	}
 	return nil
+}
+
+func (runner *Runner) initialRunManifest(ctx context.Context) runmanifest.Manifest {
+	images := runner.configuration.Images
+	if resolved, err := images.Resolved(); err == nil {
+		images = resolved
+	}
+	testsDir := cmp.Or(os.Getenv("QRL_TESTS_SOURCE_DIR"), ".")
+	return runmanifest.Enrich(ctx, testsDir, runmanifest.Manifest{
+		Images:         &images,
+		PackageLocator: devnet.PackageLocator,
+		Backend:        runner.configuration.Backend,
+		Lanes: []runmanifest.Lane{{
+			Name:    "soak",
+			Enclave: runner.configuration.EnclaveName,
+			Profile: devnet.ProfileSoak,
+		}},
+	})
+}
+
+func (runner *Runner) attachProvenance(evaluation *Evaluation, record runmanifest.Manifest) {
+	evaluation.QRLTests = record.Sources.QRLTests
+	evaluation.PackageLocator = record.PackageLocator
+	if record.Images != nil {
+		evaluation.Images = imageMap(*record.Images)
+	}
+}
+
+func imageMap(images devnet.Images) map[string]string {
+	return map[string]string{
+		"execution":        images.Execution,
+		"clef":             images.Clef,
+		"consensus":        images.Consensus,
+		"validator":        images.Validator,
+		"genesis":          images.Genesis,
+		"tx_spammer":       images.TxSpammer,
+		"metrics_exporter": images.MetricsExporter,
+	}
+}
+
+func jobProgress() *JobProgress {
+	name, namespace := os.Getenv("JOB_NAME"), os.Getenv("JOB_NAMESPACE")
+	if name == "" || namespace == "" {
+		return nil
+	}
+	kube, err := InClusterKube(namespace)
+	if err != nil {
+		return nil
+	}
+	return &JobProgress{Kube: kube, Name: name}
+}
+
+func reportPhase(ctx context.Context, progress ProgressReporter, phase string) error {
+	job, ok := progress.(*JobProgress)
+	if !ok {
+		return nil
+	}
+	return job.reportPhase(ctx, phase)
 }

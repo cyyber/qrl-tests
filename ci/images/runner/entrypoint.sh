@@ -97,7 +97,18 @@ EOF
 	done
 }
 
+entrypoint_pid=$$
 trap 'finish $?' EXIT
+trap 'exit 143' TERM
+
+if [ "${SOAK_CHAOS:-}" = "abort-midrun" ]; then
+	(
+		sleep "${SOAK_CHAOS_AFTER:-1200}"
+		echo "chaos: abort-midrun after ${SOAK_CHAOS_AFTER:-1200}s" >&2
+		kill -TERM "${entrypoint_pid}" 2>/dev/null || true
+	) &
+fi
+
 annotate qrl.io/phase=starting
 
 if [ -f "${service_account_dir}/token" ]; then
