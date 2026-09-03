@@ -109,8 +109,11 @@ func (client *EnclaveClient) Services(ctx context.Context, enclaveName string) (
 	var last error
 	for attempt := 0; attempt < 30; attempt++ {
 		result, err := client.servicesOnce(ctx, enclaveName)
-		if err == nil {
+		if err == nil && len(result) > 0 {
 			return result, nil
+		}
+		if err == nil {
+			err = errors.New("enclave listed no services")
 		}
 		last = err
 		if ctx.Err() != nil {
@@ -163,7 +166,8 @@ func transientKurtosisError(err error) bool {
 	return strings.Contains(message, "Unavailable") ||
 		strings.Contains(message, "EOF") ||
 		strings.Contains(message, "connection refused") ||
-		strings.Contains(message, "error reading from server")
+		strings.Contains(message, "error reading from server") ||
+		strings.Contains(message, "enclave listed no services")
 }
 
 func (client *EnclaveClient) DestroyEnclave(ctx context.Context, name string) error {

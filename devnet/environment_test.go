@@ -56,6 +56,23 @@ func TestParticipantsFromServices(t *testing.T) {
 	}, participants)
 }
 
+func TestParticipantsFromUnlabeledKubernetesServices(t *testing.T) {
+	execution := service("el-1-gqrl-qrysm", "execution", map[string]uint16{"rpc": 3201, "ws": 3301})
+	execution.Labels = nil
+	consensus := service("cl-1-qrysm-gqrl", "beacon", map[string]uint16{"http": 4201})
+	consensus.Labels = nil
+
+	participants, err := endpointResolver{mode: EndpointModePublic}.participantsFromServices(map[string]kurtosis.Service{
+		"el-1-gqrl-qrysm": execution,
+		"cl-1-qrysm-gqrl": consensus,
+		"python-jobs":     {},
+	})
+	require.NoError(t, err)
+	require.Len(t, participants, 1)
+	require.Equal(t, "http://127.0.0.1:3201", participants[0].Execution.RPCURL)
+	require.Equal(t, "http://127.0.0.1:4201", participants[0].Consensus.URL)
+}
+
 func TestClusterEndpoints(t *testing.T) {
 	execution := service("el-1-gqrl-qrysm", "execution", map[string]uint16{"rpc": 3201, "ws": 3301, "metrics": 3501})
 	execution.PrivatePorts = map[string]uint16{"rpc": 8545, "ws": 8546, "metrics": 9001}
