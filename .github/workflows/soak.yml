@@ -26,6 +26,9 @@ on:
       chaos:
         description: optional failure-path probe (none, abort-midrun, leak-enclave)
         default: none
+      participants:
+        description: labelled work nodes to launch (1-4). 1 fits the 16 vCPU On-Demand cap; 4 needs ~40 vCPU
+        default: "1"
 
 concurrency:
   group: qrl-soak
@@ -102,15 +105,18 @@ jobs:
 
       - name: Pre-scale work node groups
         env:
-          NODEGROUPS: ${{ vars.EKS_WORK_NODEGROUPS }}
+          SOAK_PARTICIPANTS: ${{ inputs.participants || '1' }}
         run: |
           # minSize=1 so the Cluster Autoscaler cannot dump unused work
           # nodes while Kurtosis is still placing participant pods.
-          IFS=',' read -ra groups <<<"${NODEGROUPS}"
+          # Scale only the nodes this soak will pin: shared + work-1..N.
+          participants="${SOAK_PARTICIPANTS:-1}"
+          groups=(work-shared)
+          for n in $(seq 1 "${participants}"); do
+            groups+=("work-${n}")
+          done
           declare -A updates
           for group in "${groups[@]}"; do
-            group=$(echo "$group" | tr -d ' ')
-            [ -n "$group" ] || continue
             update_id=$(aws eks update-nodegroup-config \
               --cluster-name "${EKS_CLUSTER_NAME}" \
               --nodegroup-name "${group}" \
@@ -142,6 +148,18 @@ jobs:
               fi
               sleep 15
             done
+            issues=$(aws eks describe-nodegroup \
+              --cluster-name "${EKS_CLUSTER_NAME}" \
+              --nodegroup-name "${group}" \
+              --query 'length(nodegroup.health.issues)' --output text)
+            if [ "${issues}" != "0" ]; then
+              aws eks describe-nodegroup \
+                --cluster-name "${EKS_CLUSTER_NAME}" \
+                --nodegroup-name "${group}" \
+                --query 'nodegroup.health.issues' --output json >&2
+              echo "Nodegroup ${group} is unhealthy after scale (often vCPU quota)." >&2
+              exit 1
+            fi
           done
 
       - name: Submit the soak Job
@@ -163,6 +181,7 @@ jobs:
           SOAK_DURATION: ${{ inputs.duration || '4h' }}
           SOAK_ENFORCE: ${{ inputs.enforce && 'true' || 'false' }}
           SOAK_LOAD_PERCENT: ${{ inputs.load-percent || '30' }}
+          SOAK_PARTICIPANTS: ${{ inputs.participants || '1' }}
           KEEP_NETWORK: ${{ inputs.keep-network && 'true' || (inputs.chaos == 'leak-enclave' && 'true' || 'false') }}
           SOAK_CHAOS: ${{ inputs.chaos || 'none' }}
           SOAK_CHAOS_AFTER: "1200"

@@ -105,6 +105,19 @@ func TestSoakParametersKubernetes(t *testing.T) {
 	require.Equal(t, float64(soakGenesisDelaySeconds), network["genesis_delay"])
 }
 
+func TestSoakParametersParticipantCount(t *testing.T) {
+	payload, err := resolveParameters(devwallet.Address, StartOptions{
+		Images:           soakImages(),
+		Profile:          ProfileSoak,
+		Backend:          BackendKubernetes,
+		ParticipantCount: 1,
+	})
+	require.NoError(t, err)
+	var parameters map[string]any
+	require.NoError(t, json.Unmarshal([]byte(payload), &parameters))
+	require.Len(t, parameters["participants"].([]any), 1)
+}
+
 func TestSoakParametersDockerAndIdle(t *testing.T) {
 	payload, err := resolveParameters(devwallet.Address, StartOptions{
 		Images:      soakImages(),

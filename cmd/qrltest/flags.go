@@ -123,3 +123,11 @@ func loadPercentFlag() *cli.IntFlag {
 		EnvVars: []string{"SOAK_LOAD_PERCENT"},
 	}
 }
+
+func participantCountFlag() *cli.IntFlag {
+	return &cli.IntFlag{
+		Name:    "participants",
+		Usage:   "soak participants to provision (1-4); 0 uses the profile default of 4",
+		EnvVars: []string{"SOAK_PARTICIPANTS"},
+	}
+}

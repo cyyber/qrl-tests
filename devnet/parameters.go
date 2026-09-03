@@ -138,10 +138,17 @@ func profileParameters(address string, options StartOptions) (string, error) {
 	}
 	spec := profileSpecs[options.Profile]
 	pinned := spec.pinnedPlacement && options.Backend == BackendKubernetes
+	wanted := spec.participants
+	if options.ParticipantCount > 0 {
+		if options.ParticipantCount > len(wanted) {
+			return "", fmt.Errorf("participant count %d exceeds profile %s (%d)", options.ParticipantCount, options.Profile, len(wanted))
+		}
+		wanted = wanted[:options.ParticipantCount]
+	}
 
-	participants := make([]participant, len(spec.participants))
+	participants := make([]participant, len(wanted))
 	for index := range participants {
-		configuration := spec.participants[index]
+		configuration := wanted[index]
 		labels := map[string]string{
 			participantLabel: strconv.Itoa(index + 1),
 			// Alternate halves for the network-partition lanes.

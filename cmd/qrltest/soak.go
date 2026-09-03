@@ -39,6 +39,7 @@ func soakFlags() []cli.Flag {
 		backendFlag(),
 		endpointModeFlag(),
 		loadPercentFlag(),
+		participantCountFlag(),
 		&cli.DurationFlag{
 			Name:    "start-timeout",
 			Usage:   "network start budget",
@@ -109,7 +110,8 @@ func soakConfig(command *cli.Context) (soak.Config, error) {
 		ReportDir:      command.String("report-dir"),
 		Backend:        backend,
 		EndpointMode:   endpointMode,
-		LoadPercent:    command.Int("load-percent"),
+		LoadPercent:      command.Int("load-percent"),
+		ParticipantCount: command.Int("participants"),
 		StartTimeout:   command.Duration("start-timeout"),
 		Duration:       duration,
 		Interval:       command.Duration("interval"),

@@ -45,8 +45,9 @@ type Config struct {
 	Images         devnet.Images
 	Parameters     []byte
 	EndpointMode   devnet.EndpointMode
-	LoadPercent    int
-	StartTimeout   time.Duration
+	LoadPercent      int
+	ParticipantCount int
+	StartTimeout     time.Duration
 	Duration       time.Duration
 	Interval       time.Duration
 	Enforce        bool
@@ -224,6 +225,7 @@ func (runner *Runner) acquire(ctx context.Context) (devnet.Environment, func() e
 		Profile:               devnet.ProfileSoak,
 		EndpointMode:          runner.configuration.EndpointMode,
 		LoadPercent:           runner.configuration.LoadPercent,
+		ParticipantCount:      runner.configuration.ParticipantCount,
 		FailureDiagnosticsDir: filepath.Join(runner.configuration.ReportDir, diagnosticsDirectory),
 	})
 	cancel()

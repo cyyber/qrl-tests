@@ -51,6 +51,11 @@ type StartOptions struct {
 	// targets in profiles that run one; zero disables it.
 	LoadPercent int
 
+	// ParticipantCount, when set, provisions that many soak participants
+	// instead of the profile default. Used when the account cannot launch
+	// every labelled work node (vCPU quota).
+	ParticipantCount int
+
 	// FailureDiagnosticsDir, when set, receives the enclave's diagnostics
 	// before cleanup of a failed start is attempted.
 	FailureDiagnosticsDir string
