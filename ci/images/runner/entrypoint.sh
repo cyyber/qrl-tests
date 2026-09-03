@@ -87,6 +87,13 @@ EOF
 		return 1
 	fi
 
+	# Leftover engines from a failed soak answer the kube API but not the
+	# server. Drop them so `engine start` creates a fresh one.
+	kubectl get ns -o name 2>/dev/null | grep -E 'kurtosis-engine-|kt-qrl-soak-' | while read -r ns; do
+		echo "removing leftover ${ns}"
+		kubectl delete "${ns}" --wait=false || true
+	done
+
 	# `engine start` is idempotent when the existing engine answers. After a
 	# failed soak the pod can be up while the server is not; restart then.
 	annotate qrl.io/phase=engine
