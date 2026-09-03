@@ -1,6 +1,6 @@
 // Package soak samples a long-running network, evaluates the samples against
 // versioned gates, and writes the verdict in the shape the reports contract
-// expects. It knows nothing about Ginkgo; the soak suite drives it.
+// expects. It knows nothing about the CLI; qrltest soak drives it.
 package soak
 
 import (

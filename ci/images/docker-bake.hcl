@@ -67,7 +67,7 @@ target "qrl-genesis-generator" {
   cache-to   = ["${buildcache("qrl-genesis-generator")},mode=max"]
 }
 
-# Load generator for the soak lane. Its Dockerfile stamps the version from
+# Load generator for the soak. Its Dockerfile stamps the version from
 # git, so the git directory is kept in the remote build context.
 target "qrl-tx-spammer" {
   context = "${TX_SPAMMER_GIT_REPO}#${TX_SPAMMER_GIT_COMMIT}"

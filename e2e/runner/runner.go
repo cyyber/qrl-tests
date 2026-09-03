@@ -33,13 +33,6 @@ type Config struct {
 	Suites       []string
 	StartTimeout time.Duration
 	MaxParallel  int
-	// EndpointMode and LoadPercent are forwarded to network start.
-	EndpointMode devnet.EndpointMode
-	LoadPercent  int
-	// SoakDuration and SoakEnforce are forwarded to the soak suite via env.
-	SoakDuration time.Duration
-	SoakEnforce  bool
-	KeepNetwork  bool
 	// Seed fixes ginkgo's spec ordering for every lane; zero draws a fresh
 	// seed per lane, and the run manifest records whichever was used.
 	Seed int64
@@ -51,7 +44,6 @@ func (configuration Config) withDefaults() Config {
 	configuration.ReportDir = cmp.Or(configuration.ReportDir, DefaultReportDir)
 	configuration.Backend = cmp.Or(configuration.Backend, devnet.BackendDocker)
 	configuration.StartTimeout = cmp.Or(configuration.StartTimeout, devnet.DefaultStartTimeout)
-	configuration.SoakDuration = cmp.Or(configuration.SoakDuration, 4*time.Hour)
 	return configuration
 }
 

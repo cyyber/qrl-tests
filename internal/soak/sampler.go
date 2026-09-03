@@ -13,8 +13,8 @@ import (
 )
 
 // CanarySender submits one deterministic transfer and waits for its receipt.
-// The suite implements it with the dev wallet; the sampler only records the
-// outcome.
+// The soak runner implements it with the dev wallet; the sampler only records
+// the outcome.
 type CanarySender interface {
 	Send(ctx context.Context, timeout time.Duration) Canary
 }

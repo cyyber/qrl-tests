@@ -23,13 +23,11 @@ type SuiteID string
 const (
 	suiteExecutionABI     SuiteID = "execution-abi"
 	suiteExecutionConsole SuiteID = "execution-console"
-	suiteSoakNetwork      SuiteID = "soak-network"
 )
 
 var suitePackages = map[SuiteID]string{
 	suiteExecutionABI:     "./e2e/suites/execution/abi",
 	suiteExecutionConsole: "./e2e/suites/execution/console",
-	suiteSoakNetwork:      "./e2e/suites/perf/soak",
 }
 
 var registry = []Lane{
@@ -38,13 +36,6 @@ var registry = []Lane{
 		Profile: devnet.ProfileSingle,
 		Suites:  []SuiteID{suiteExecutionABI, suiteExecutionConsole},
 		Timeout: 30 * time.Minute,
-	},
-	{
-		Name:    "soak",
-		Profile: devnet.ProfileSoak,
-		Suites:  []SuiteID{suiteSoakNetwork},
-		// Covers an 8 h soak plus warm-up, cool-down and report slack.
-		Timeout: 8*time.Hour + 45*time.Minute,
 	},
 }
 
@@ -98,15 +89,6 @@ func (lane Lane) Packages() []string {
 
 func (lane Lane) NeedsExecutionImage() bool {
 	return slices.Contains(lane.Suites, suiteExecutionConsole)
-}
-
-// StartTimeout is the network start budget for the lane when the caller
-// did not set a longer one. Soak enclaves need time for work-node scale-up.
-func (lane Lane) StartTimeout() time.Duration {
-	if lane.Name == "soak" {
-		return 20 * time.Minute
-	}
-	return 0
 }
 
 func RegisteredSuites() []SuiteID {

@@ -23,11 +23,11 @@ func main() {
 func newApp(network networkController) *cli.App {
 	return &cli.App{
 		Name:            "qrltest",
-		Usage:           "control QRL test networks and execute E2E lanes",
+		Usage:           "control QRL test networks, execute E2E lanes, and run soaks",
 		HideHelpCommand: true,
 		Action:          rootAction,
 		Commands: append(
-			[]*cli.Command{networkCommand(network)},
+			[]*cli.Command{networkCommand(network), soakCommand()},
 			runnerCommands()...,
 		),
 	}

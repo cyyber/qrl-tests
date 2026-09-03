@@ -1,6 +1,6 @@
 # Resolves the client, tooling and harness revisions, builds whichever images
 # are missing from GHCR, and returns immutable digest references. Nightly and
-# the weekly soak both call this so every lane runs the same pins.
+# the weekly soak both call this so every run uses the same pins.
 name: images-reusable
 
 on:

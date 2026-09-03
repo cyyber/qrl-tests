@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
 # Entrypoint of the qrl-tests-runner image when it runs as an in-cluster Job:
 # point Kurtosis at the cluster it is running in, make sure the engine is up,
-# run one lane, and leave the verdict in the report directory. Outside a
-# cluster (no service-account token) it only runs the lane, for local use of
-# the image against a Docker or pre-configured Kurtosis setup.
+# run qrltest, and leave the verdict in the report directory. Outside a
+# cluster (no service-account token) it only runs the command, for local use
+# of the image against a Docker or pre-configured Kurtosis setup.
 set -euo pipefail
 
-lane="${1:-${E2E_LANE:?set E2E_LANE or pass the lane name}}"
+command="${1:-${QRLTEST_COMMAND:?set QRLTEST_COMMAND or pass soak or an E2E lane}}"
 shift $(( $# > 0 ? 1 : 0 ))
 
-report_dir="${E2E_REPORT_DIR:-/reports}"
+report_dir="${SOAK_REPORT_DIR:-${E2E_REPORT_DIR:-/reports}}"
 service_account_dir=/var/run/secrets/kubernetes.io/serviceaccount
 kurtosis_config_source="${KURTOSIS_CONFIG_SOURCE:-/etc/kurtosis/kurtosis-config.yml}"
 kurtosis_cluster="${KURTOSIS_CLUSTER:-}"
@@ -106,4 +106,8 @@ if [ -f "${service_account_dir}/token" ]; then
 fi
 
 annotate qrl.io/phase=running
-qrltest run --report-dir "${report_dir}" "$@" "${lane}"
+if [ "${command}" = soak ]; then
+	qrltest soak --report-dir "${report_dir}" "$@"
+else
+	qrltest run --report-dir "${report_dir}" "$@" "${command}"
+fi

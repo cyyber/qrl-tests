@@ -9,7 +9,6 @@ endpoints; suites do not provision infrastructure.
 | Lane | Profile | Coverage |
 | --- | --- | --- |
 | `execution` | `single` | Execution ABI calls, events, errors, and WebSocket filters |
-| `soak` | `soak` | Multi-hour stability gates on a four-participant Kubernetes network |
 
 Run one lane with a fresh network:
 
@@ -31,7 +30,8 @@ summaries at the report root. Every run records its Ginkgo seed in
 `reports/run-manifest.json`; unexpected skipped or pending specs fail the run.
 Inspect the registered lane and suites with `go run ./cmd/qrltest list`.
 
-The soak lane is documented in [`suites/perf/soak/README.md`](suites/perf/soak/README.md).
+The multi-hour soak is a separate command (`qrltest soak`), documented in
+[`perf/soak/README.md`](../perf/soak/README.md).
 
 Files that register or execute live scenarios use the `e2e` build tag.
 Deterministic fixture, encoding, and helper tests remain untagged so the default

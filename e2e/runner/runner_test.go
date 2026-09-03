@@ -439,7 +439,6 @@ func TestNewResolvesConfigurationDefaults(t *testing.T) {
 	require.Equal(t, DefaultReportDir, runner.configuration.ReportDir)
 	require.Equal(t, devnet.BackendDocker, runner.configuration.Backend)
 	require.Equal(t, devnet.DefaultStartTimeout, runner.configuration.StartTimeout)
-	require.Equal(t, 4*time.Hour, runner.configuration.SoakDuration)
 }
 
 func TestListDescribesLanesAndSuites(t *testing.T) {
@@ -447,7 +446,6 @@ func TestListDescribesLanesAndSuites(t *testing.T) {
 	runner := New(Config{}, &output, &output)
 	require.NoError(t, runner.List())
 	require.Regexp(t, `(?m)^execution\s+profile=single`, output.String())
-	require.Regexp(t, `(?m)^soak\s+profile=soak`, output.String())
 	require.Contains(t, output.String(), executionABISuite)
 	require.Contains(t, output.String(), "profile=single")
 	require.Contains(t, output.String(), "package=./e2e/suites/execution/abi")
@@ -477,21 +475,17 @@ func TestRunAllProvisionsPerLane(t *testing.T) {
 	}, io.Discard, io.Discard)
 	runner.networks = networks
 	runner.runCommand = func(_ context.Context, specification commandSpec) error {
-		lane := executionLaneName
-		if containsPackage(specification.Args, "./e2e/suites/perf/soak") {
-			lane = "soak"
-		}
-		writeGinkgoReport(t, filepath.Join(reports, "lanes", lane), types.SpecStatePassed)
+		writeGinkgoReport(t, filepath.Join(reports, "lanes", executionLaneName), types.SpecStatePassed)
 		command = specification
 		return nil
 	}
 
 	require.NoError(t, runner.RunAll(t.Context()))
-	require.Equal(t, []string{"qrl-tests-execution", "qrl-tests-soak"}, networks.stopped)
-	require.Contains(t, command.Args, "./e2e/suites/perf/soak")
+	require.Equal(t, []string{"qrl-tests-execution"}, networks.stopped)
+	require.Contains(t, command.Args, "./e2e/suites/execution/abi")
 	record := testutil.ReadJSON[runmanifest.Manifest](t, filepath.Join(reports, runmanifest.FileName))
 	require.Equal(t, "qrl-tests-execution", record.Lanes[0].Enclave)
-	require.Equal(t, "qrl-tests-soak", record.Lanes[1].Enclave)
+	require.Len(t, record.Lanes, 1)
 }
 
 func TestRunReturnsCleanupFailure(t *testing.T) {
@@ -681,15 +675,6 @@ func TestExecuteWiresTheCommand(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.Equal(t, gopath, strings.TrimSpace(output.String()))
-}
-
-func containsPackage(args []string, pkg string) bool {
-	for _, arg := range args {
-		if arg == pkg {
-			return true
-		}
-	}
-	return false
 }
 
 func testEnvironment(name string, backend devnet.Backend) devnet.Environment {
