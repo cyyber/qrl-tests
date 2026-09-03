@@ -70,18 +70,21 @@ current-context: ${kurtosis_cluster}
 EOF
 	export KUBECONFIG="${kubeconfig}"
 
-	local config_path config_dir
+	local config_path data_dir selected
 	config_path=$(kurtosis config path)
-	config_dir=$(dirname "${config_path}")
-	mkdir -p "${config_dir}"
-	# Select the k8s cluster before replacing the file. The image default is
-	# docker; `cluster set` looks that name up in the new config and fails
-	# because the ConfigMap only defines the EKS cluster.
-	printf '%s' "${kurtosis_cluster}" >"${config_dir}/cluster-setting"
+	# cluster-setting lives in the XDG data dir (~/.local/share/kurtosis),
+	# not next to kurtosis-config.yml. Writing it avoids `cluster set`, which
+	# tries to tear down the image default (docker) and then looks that name
+	# up in a ConfigMap that only defines the EKS cluster.
+	data_dir="${XDG_DATA_HOME:-${HOME}/.local/share}/kurtosis"
+	mkdir -p "$(dirname "${config_path}")" "${data_dir}"
+	printf '%s' "${kurtosis_cluster}" >"${data_dir}/cluster-setting"
 	cp "${kurtosis_config_source}" "${config_path}"
 	kurtosis analytics disable >/dev/null 2>&1 || true
-	if [ "$(kurtosis cluster get 2>/dev/null | awk 'NF{line=$0} END{print line}')" != "${kurtosis_cluster}" ]; then
-		kurtosis cluster set "${kurtosis_cluster}"
+	selected=$(kurtosis cluster get 2>/dev/null | awk 'NF{line=$0} END{print line}')
+	if [ "${selected}" != "${kurtosis_cluster}" ]; then
+		echo "Kurtosis cluster is '${selected:-unset}', expected ${kurtosis_cluster}" >&2
+		return 1
 	fi
 
 	# `engine start` is idempotent: a running engine of the same version is
