@@ -29,7 +29,7 @@ annotate() {
 
 finish() {
 	local status=$1
-	printf '{"exit_code":%d,"finished_at":"%s"}\n' "${status}" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >"${report_dir}/job-status.json"
+	printf '{"exit_code":%d,"finished_at":"%s"}\n' "${status}" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >"${report_dir}/job-status.json" || true
 	if [ "${status}" -eq 0 ]; then
 		annotate qrl.io/phase=finished qrl.io/result=passed
 	else
@@ -52,7 +52,7 @@ configure_cluster() {
 apiVersion: v1
 kind: Config
 clusters:
-  - name: in-cluster
+  - name: ${kurtosis_cluster}
     cluster:
       server: https://kubernetes.default.svc
       certificate-authority: ${service_account_dir}/ca.crt
@@ -61,21 +61,28 @@ users:
     user:
       tokenFile: ${service_account_dir}/token
 contexts:
-  - name: in-cluster
+  - name: ${kurtosis_cluster}
     context:
-      cluster: in-cluster
+      cluster: ${kurtosis_cluster}
       user: job
       namespace: $(cat "${service_account_dir}/namespace")
-current-context: in-cluster
+current-context: ${kurtosis_cluster}
 EOF
 	export KUBECONFIG="${kubeconfig}"
 
-	local config_path
+	local config_path config_dir
 	config_path=$(kurtosis config path)
-	mkdir -p "$(dirname "${config_path}")"
+	config_dir=$(dirname "${config_path}")
+	mkdir -p "${config_dir}"
+	# Select the k8s cluster before replacing the file. The image default is
+	# docker; `cluster set` looks that name up in the new config and fails
+	# because the ConfigMap only defines the EKS cluster.
+	printf '%s' "${kurtosis_cluster}" >"${config_dir}/cluster-setting"
 	cp "${kurtosis_config_source}" "${config_path}"
 	kurtosis analytics disable >/dev/null 2>&1 || true
-	kurtosis cluster set "${kurtosis_cluster}"
+	if [ "$(kurtosis cluster get 2>/dev/null | awk 'NF{line=$0} END{print line}')" != "${kurtosis_cluster}" ]; then
+		kurtosis cluster set "${kurtosis_cluster}"
+	fi
 
 	# `engine start` is idempotent: a running engine of the same version is
 	# left alone, so consecutive Jobs share it.

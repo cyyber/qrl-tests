@@ -37,6 +37,9 @@ spec:
     spec:
       serviceAccountName: qrl-job
       restartPolicy: Never
+      securityContext:
+        fsGroup: 10001
+        fsGroupChangePolicy: OnRootMismatch
       nodeSelector:
         qrl.io/pool: core
       containers:
