@@ -1,0 +1,87 @@
+# Short poll of the in-cluster soak Job. Refreshes the check-run text from
+# Job annotations and fails the check early if the Job already died.
+name: soak-heartbeat
+
+on:
+  schedule:
+    - cron: "45 3,5 * * 0"
+  workflow_dispatch:
+    inputs:
+      job-name:
+        description: Job name to inspect (empty = newest qrl-soak-* Job)
+
+concurrency:
+  group: qrl-soak-heartbeat
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  id-token: write
+  checks: write
+
+jobs:
+  heartbeat:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      EKS_CLUSTER_NAME: ${{ vars.EKS_CLUSTER_NAME }}
+      CI_NAMESPACE: ${{ vars.CI_NAMESPACE || 'qrl-ci' }}
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_CI_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Update kubeconfig
+        run: aws eks update-kubeconfig --name "${EKS_CLUSTER_NAME}" --region "${AWS_REGION}"
+
+      - name: Refresh the soak check
+        env:
+          GH_TOKEN: ${{ github.token }}
+          JOB_NAME: ${{ inputs.job-name }}
+        run: |
+          if [ -z "${JOB_NAME}" ]; then
+            JOB_NAME=$(kubectl get jobs -n "${CI_NAMESPACE}" -l qrl.io/lane=soak \
+              --sort-by=.metadata.creationTimestamp \
+              -o jsonpath='{.items[-1:].metadata.name}')
+          fi
+          if [ -z "${JOB_NAME}" ]; then
+            echo "No soak Job found" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          phase=$(kubectl get job "${JOB_NAME}" -n "${CI_NAMESPACE}" -o jsonpath='{.metadata.annotations.qrl\.io/phase}')
+          result=$(kubectl get job "${JOB_NAME}" -n "${CI_NAMESPACE}" -o jsonpath='{.metadata.annotations.qrl\.io/result}')
+          check_id=$(kubectl get job "${JOB_NAME}" -n "${CI_NAMESPACE}" -o jsonpath='{.metadata.annotations.qrl\.io/check-run-id}')
+          head_sha=$(kubectl get job "${JOB_NAME}" -n "${CI_NAMESPACE}" -o jsonpath='{.metadata.annotations.qrl\.io/head-sha}')
+          succeeded=$(kubectl get job "${JOB_NAME}" -n "${CI_NAMESPACE}" -o jsonpath='{.status.succeeded}')
+          failed=$(kubectl get job "${JOB_NAME}" -n "${CI_NAMESPACE}" -o jsonpath='{.status.failed}')
+
+          summary="Job \`${JOB_NAME}\` phase=${phase:-unknown} result=${result:-pending}"
+          echo "${summary}" >> "$GITHUB_STEP_SUMMARY"
+
+          [ -n "${check_id}" ] || exit 0
+
+          if [ "${failed}" = "1" ] || [ "${result}" = "failed" ]; then
+            gh api -X PATCH "repos/${{ github.repository }}/check-runs/${check_id}" \
+              -f status=completed \
+              -f conclusion=failure \
+              -f completed_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+              -f output[title]="Soak ${JOB_NAME} failed" \
+              -f output[summary]="${summary}"
+            exit 1
+          fi
+          if [ "${succeeded}" = "1" ] || [ "${result}" = "passed" ]; then
+            gh api -X PATCH "repos/${{ github.repository }}/check-runs/${check_id}" \
+              -f status=in_progress \
+              -f output[title]="Soak ${JOB_NAME} finished, awaiting report" \
+              -f output[summary]="${summary}"
+            exit 0
+          fi
+          gh api -X PATCH "repos/${{ github.repository }}/check-runs/${check_id}" \
+            -f status=in_progress \
+            -f output[title]="Soak ${JOB_NAME} ${phase:-running}" \
+            -f output[summary]="${summary}"
+          echo "head_sha=${head_sha}" >> "$GITHUB_OUTPUT"

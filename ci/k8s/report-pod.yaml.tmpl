@@ -1,0 +1,26 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ${POD_NAME}
+  namespace: ${CI_NAMESPACE}
+  labels:
+    qrl.io/lane: soak
+    qrl.io/role: report
+    qrl.io/run: "${RUN_ID}"
+spec:
+  serviceAccountName: qrl-ci-job
+  restartPolicy: Never
+  nodeSelector:
+    qrl.io/pool: core
+  containers:
+    - name: collect
+      image: public.ecr.aws/docker/library/busybox:1.37
+      command: ["sleep", "600"]
+      volumeMounts:
+        - name: reports
+          mountPath: /reports
+          readOnly: true
+  volumes:
+    - name: reports
+      persistentVolumeClaim:
+        claimName: ${JOB_NAME}-reports

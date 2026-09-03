@@ -1,0 +1,175 @@
+# Submits the weekly soak Job and opens an in-progress check run. The Job
+# holds the network; this workflow exits after submit. soak-heartbeat.yml
+# refreshes the check, soak-report.yml collects the artifact.
+name: soak
+
+on:
+  schedule:
+    - cron: "0 3 * * 0"
+  workflow_dispatch:
+    inputs:
+      duration:
+        description: steady-state window (Go duration)
+        default: 4h
+      load-percent:
+        description: share of block gas capacity the spammer targets; 0 is idle
+        default: "30"
+      enforce:
+        description: fail the check when a gate is breached
+        type: boolean
+        default: false
+      keep-network:
+        description: leave the enclave running after the Job finishes
+        type: boolean
+        default: false
+      chaos:
+        description: optional failure-path probe (none, abort-midrun, leak-enclave)
+        default: none
+      seed:
+        description: ginkgo spec-order seed (empty draws a fresh one)
+
+concurrency:
+  group: qrl-soak
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  KURTOSIS_VERSION: 1.20.0
+
+jobs:
+  images:
+    uses: ./.github/workflows/images-reusable.yml
+    permissions:
+      contents: read
+      packages: write
+
+  submit:
+    needs: images
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
+      checks: write
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      EKS_CLUSTER_NAME: ${{ vars.EKS_CLUSTER_NAME }}
+      CI_NAMESPACE: ${{ vars.CI_NAMESPACE || 'qrl-ci' }}
+    outputs:
+      run-id: ${{ steps.ids.outputs.run-id }}
+      job-name: ${{ steps.ids.outputs.job-name }}
+      check-run-id: ${{ steps.check.outputs.id }}
+    steps:
+      - name: Check out qrl-tests
+        uses: actions/checkout@v7
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_CI_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Update kubeconfig
+        run: aws eks update-kubeconfig --name "${EKS_CLUSTER_NAME}" --region "${AWS_REGION}"
+
+      - name: Assign run identifiers
+        id: ids
+        run: |
+          run_id="${{ github.run_id }}-${{ github.run_attempt }}"
+          {
+            echo "run-id=${run_id}"
+            echo "job-name=qrl-soak-${run_id}"
+            echo "enclave-name=qrl-soak-${run_id}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Create the soak check run
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ steps.ids.outputs.run-id }}
+          DURATION: ${{ inputs.duration || '4h' }}
+        run: |
+          response=$(gh api "repos/${{ github.repository }}/check-runs" \
+            -f name=soak \
+            -f head_sha="${{ github.sha }}" \
+            -f status=in_progress \
+            -f started_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            -f details_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+            -f output[title]="Soak ${RUN_ID} running" \
+            -f output[summary]="Submitted. Duration ${DURATION}. Report workflow collects the artifact.")
+          echo "id=$(jq -r .id <<<"$response")" >> "$GITHUB_OUTPUT"
+
+      - name: Pre-scale work node groups
+        env:
+          NODEGROUPS: ${{ vars.EKS_WORK_NODEGROUPS }}
+        run: |
+          IFS=',' read -ra groups <<<"${NODEGROUPS}"
+          for group in "${groups[@]}"; do
+            group=$(echo "$group" | tr -d ' ')
+            [ -n "$group" ] || continue
+            aws eks update-nodegroup-config \
+              --cluster-name "${EKS_CLUSTER_NAME}" \
+              --nodegroup-name "${group}" \
+              --scaling-config minSize=0,maxSize=1,desiredSize=1
+          done
+
+      - name: Submit the soak Job
+        env:
+          # envsubst reads these; keep names identical to the template.
+          JOB_NAME: ${{ steps.ids.outputs.job-name }}
+          RUN_ID: ${{ steps.ids.outputs.run-id }}
+          ENCLAVE_NAME: ${{ steps.ids.outputs.enclave-name }}
+          HEAD_SHA: ${{ github.sha }}
+          CHECK_RUN_ID: ${{ steps.check.outputs.id }}
+          RUNNER_IMAGE: ${{ needs.images.outputs.runner-image }}
+          EXECUTION_IMAGE: ${{ needs.images.outputs.execution-image }}
+          CLEF_IMAGE: ${{ needs.images.outputs.clef-image }}
+          CONSENSUS_IMAGE: ${{ needs.images.outputs.consensus-image }}
+          VALIDATOR_IMAGE: ${{ needs.images.outputs.validator-image }}
+          GENESIS_IMAGE: ${{ needs.images.outputs.genesis-image }}
+          TX_SPAMMER_IMAGE: ${{ needs.images.outputs.tx-spammer-image }}
+          METRICS_EXPORTER_IMAGE: ${{ needs.images.outputs.metrics-exporter-image }}
+          SOAK_DURATION: ${{ inputs.duration || '4h' }}
+          SOAK_ENFORCE: ${{ inputs.enforce && 'true' || 'false' }}
+          SOAK_LOAD_PERCENT: ${{ inputs.load-percent || '30' }}
+          KEEP_NETWORK: ${{ inputs.keep-network && 'true' || (inputs.chaos == 'leak-enclave' && 'true' || 'false') }}
+          E2E_SEED: ${{ inputs.seed }}
+          ACTIVE_DEADLINE_SECONDS: "32400"
+        run: |
+          envsubst < ci/k8s/soak-job.yaml.tmpl | kubectl apply -f -
+          kubectl annotate job "${JOB_NAME}" -n "${CI_NAMESPACE}" --overwrite \
+            qrl.io/check-run-id="${CHECK_RUN_ID}" \
+            qrl.io/head-sha="${HEAD_SHA}" \
+            qrl.io/github-run="${{ github.run_id }}"
+          if [ "${{ inputs.chaos }}" = "abort-midrun" ]; then
+            (
+              sleep 1200
+              kubectl delete job "${JOB_NAME}" -n "${CI_NAMESPACE}" --wait=false
+            ) &
+          fi
+          {
+            echo "## Soak submitted"
+            echo
+            echo "- Job: \`${JOB_NAME}\`"
+            echo "- Enclave: \`${ENCLAVE_NAME}\`"
+            echo "- Duration: \`${SOAK_DURATION}\`"
+            echo "- Check run: ${CHECK_RUN_ID}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  image-failure-summary:
+    needs: images
+    if: ${{ always() && needs.images.result != 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Publish the result
+        env:
+          IMAGE_RESULT: ${{ needs.images.result }}
+        run: |
+          {
+            echo "## Soak: not submitted"
+            echo
+            echo "Image preparation ${IMAGE_RESULT}."
+          } >> "$GITHUB_STEP_SUMMARY"

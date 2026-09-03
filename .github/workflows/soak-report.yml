@@ -1,0 +1,148 @@
+# Collects reports/ from the soak Job volume, publishes the GitHub artifact,
+# and completes the soak check run. Same failure contract as nightly E2E.
+name: soak-report
+
+on:
+  schedule:
+    - cron: "0 9 * * 0"
+  workflow_dispatch:
+    inputs:
+      job-name:
+        description: Job name to collect (empty = newest qrl-soak-* Job)
+
+concurrency:
+  group: qrl-soak-report
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write
+  checks: write
+  actions: read
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      EKS_CLUSTER_NAME: ${{ vars.EKS_CLUSTER_NAME }}
+      CI_NAMESPACE: ${{ vars.CI_NAMESPACE || 'qrl-ci' }}
+    steps:
+      - name: Check out qrl-tests
+        uses: actions/checkout@v7
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_CI_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Update kubeconfig
+        run: aws eks update-kubeconfig --name "${EKS_CLUSTER_NAME}" --region "${AWS_REGION}"
+
+      - name: Collect the reports volume
+        id: collect
+        env:
+          JOB_NAME: ${{ inputs.job-name }}
+        run: |
+          if [ -z "${JOB_NAME}" ]; then
+            JOB_NAME=$(kubectl get jobs -n "${CI_NAMESPACE}" -l qrl.io/lane=soak \
+              --sort-by=.metadata.creationTimestamp \
+              -o jsonpath='{.items[-1:].metadata.name}')
+          fi
+          if [ -z "${JOB_NAME}" ]; then
+            echo "No soak Job found" >&2
+            echo "state=missing" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "job-name=${JOB_NAME}" >> "$GITHUB_OUTPUT"
+
+          succeeded=$(kubectl get job "${JOB_NAME}" -n "${CI_NAMESPACE}" -o jsonpath='{.status.succeeded}')
+          failed=$(kubectl get job "${JOB_NAME}" -n "${CI_NAMESPACE}" -o jsonpath='{.status.failed}')
+          check_id=$(kubectl get job "${JOB_NAME}" -n "${CI_NAMESPACE}" -o jsonpath='{.metadata.annotations.qrl\.io/check-run-id}')
+          echo "check-run-id=${check_id}" >> "$GITHUB_OUTPUT"
+          if [ "${succeeded}" = "1" ]; then
+            echo "state=succeeded" >> "$GITHUB_OUTPUT"
+          elif [ "${failed}" = "1" ]; then
+            echo "state=failed" >> "$GITHUB_OUTPUT"
+          else
+            echo "state=running" >> "$GITHUB_OUTPUT"
+          fi
+
+          export JOB_NAME POD_NAME="qrl-soak-collect-${{ github.run_id }}" RUN_ID="${JOB_NAME#qrl-soak-}"
+          envsubst < ci/k8s/report-pod.yaml.tmpl | kubectl apply -f -
+          kubectl wait --for=condition=Ready "pod/${POD_NAME}" -n "${CI_NAMESPACE}" --timeout=180s
+          mkdir -p reports
+          kubectl exec -n "${CI_NAMESPACE}" "${POD_NAME}" -- tar -C /reports -cf - . | tar -C reports -xf -
+          kubectl delete pod "${POD_NAME}" -n "${CI_NAMESPACE}" --wait=false
+          kubectl delete pvc "${JOB_NAME}-reports" -n "${CI_NAMESPACE}" --wait=false
+
+      - name: Publish the job summary
+        if: always()
+        run: |
+          if [ -f reports/summary.md ]; then
+            cat reports/summary.md >> "$GITHUB_STEP_SUMMARY"
+          elif [ -f reports/lanes/soak/results.json ]; then
+            echo "## Soak results" >> "$GITHUB_STEP_SUMMARY"
+            echo '```json' >> "$GITHUB_STEP_SUMMARY"
+            cat reports/lanes/soak/results.json >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "## Soak: no summary produced (${{ steps.collect.outputs.state }})" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload the reports
+        if: always() && steps.collect.outputs.state != 'missing'
+        uses: actions/upload-artifact@v7
+        with:
+          name: soak-reports-${{ steps.collect.outputs.job-name }}-${{ github.run_attempt }}
+          path: reports/
+          retention-days: 14
+
+      - name: Complete the soak check run
+        if: always() && steps.collect.outputs.check-run-id != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CHECK_RUN_ID: ${{ steps.collect.outputs.check-run-id }}
+          STATE: ${{ steps.collect.outputs.state }}
+        run: |
+          conclusion=failure
+          title="Soak ${STATE}"
+          verdict=reports/verdict.json
+          [ -f reports/lanes/soak/verdict.json ] && verdict=reports/lanes/soak/verdict.json
+          if [ "${STATE}" = "succeeded" ] && [ -f "${verdict}" ]; then
+            passed=$(jq -r '.passed // empty' "${verdict}" 2>/dev/null || true)
+            [ "${passed}" = "true" ] && conclusion=success
+          elif [ "${STATE}" = "succeeded" ] && [ -f reports/summary.json ]; then
+            result=$(jq -r '.result // empty' reports/summary.json 2>/dev/null || true)
+            [ "${result}" = "passed" ] && conclusion=success
+          elif [ "${STATE}" = "running" ]; then
+            title="Soak still running"
+          elif [ "${STATE}" = "missing" ]; then
+            title="Soak Job not found"
+          fi
+          summary="see this run for the artifact"
+          [ -f reports/summary.md ] && summary=$(cat reports/summary.md)
+          gh api -X PATCH "repos/${{ github.repository }}/check-runs/${CHECK_RUN_ID}" \
+            -f status=completed \
+            -f conclusion="${conclusion}" \
+            -f completed_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            -f details_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+            -f output[title]="${title}" \
+            -f output[summary]="${summary}"
+          [ "${conclusion}" = "success" ]
+
+      - name: Fail if the soak did not pass
+        if: always()
+        env:
+          STATE: ${{ steps.collect.outputs.state }}
+        run: |
+          [ "${STATE}" = "succeeded" ] || exit 1
+          verdict=reports/verdict.json
+          [ -f reports/lanes/soak/verdict.json ] && verdict=reports/lanes/soak/verdict.json
+          if [ -f "${verdict}" ]; then
+            [ "$(jq -r .passed "${verdict}")" = "true" ]
+          elif [ -f reports/summary.json ]; then
+            [ "$(jq -r .result reports/summary.json)" = "passed" ]
+          fi
