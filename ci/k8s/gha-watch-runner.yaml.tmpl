@@ -1,0 +1,63 @@
+# Ephemeral self-hosted runner that exists only while a soak is in flight.
+# soak.yml's watch job pins to this pod via the qrl-watch-${RUN_ID} label so
+# the Actions run stays in progress without a GitHub-hosted runner.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: qrl-watch-${RUN_ID}
+  namespace: ${CI_NAMESPACE}
+  labels:
+    qrl.io/lane: soak
+    qrl.io/component: gha-watch
+    qrl.io/run: "${RUN_ID}"
+spec:
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 3600
+  activeDeadlineSeconds: 36000
+  template:
+    metadata:
+      labels:
+        qrl.io/lane: soak
+        qrl.io/component: gha-watch
+        qrl.io/run: "${RUN_ID}"
+    spec:
+      serviceAccountName: qrl-job
+      restartPolicy: Never
+      nodeSelector:
+        qrl.io/pool: core
+        kubernetes.io/arch: arm64
+      securityContext:
+        fsGroup: 1001
+      containers:
+        - name: runner
+          image: ghcr.io/actions/actions-runner:latest
+          imagePullPolicy: Always
+          env:
+            - name: RUNNER_ALLOW_RUNASROOT
+              value: "0"
+            - name: GH_URL
+              value: https://github.com/${GITHUB_REPOSITORY}
+            - name: RUNNER_NAME
+              value: qrl-watch-${RUN_ID}
+            - name: RUNNER_LABELS
+              value: qrl-watch-${RUN_ID}
+            - name: RUNNER_TOKEN
+              value: ${RUNNER_TOKEN}
+          command: ["/bin/bash", "-lc"]
+          args:
+            - |
+              set -euo pipefail
+              cd /home/runner
+              ./config.sh --unattended --ephemeral --disableupdate \
+                --url "${GH_URL}" \
+                --token "${RUNNER_TOKEN}" \
+                --name "${RUNNER_NAME}" \
+                --labels "${RUNNER_LABELS}" \
+                --replace
+              exec ./run.sh
+          resources:
+            requests:
+              cpu: "100m"
+              memory: 256Mi
+            limits:
+              memory: 512Mi

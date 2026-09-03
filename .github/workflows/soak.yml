@@ -1,6 +1,7 @@
-# Submits the weekly soak Job and opens an in-progress check run. The Job
-# holds the network; this workflow exits after submit. soak-heartbeat.yml
-# refreshes the check, soak-report.yml collects the artifact.
+# Submits the soak Job, then holds this Actions run in progress on an
+# ephemeral self-hosted runner in the cluster (core pool). That runner is
+# not GitHub-hosted, so the yellow status costs no Actions minutes.
+# soak-report.yml still collects the artifact after the Job finishes.
 name: soak
 
 on:
@@ -95,8 +96,8 @@ jobs:
             -f status=in_progress \
             -f started_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
             -f details_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
-            -f output[title]="Soak ${RUN_ID} running" \
-            -f output[summary]="Submitted. Duration ${DURATION}. Report workflow collects the artifact.")
+            -f output[title]="Soak ${RUN_ID} in progress on the cluster" \
+            -f output[summary]="Watch this Actions run. The watch job is held by an in-cluster runner, not a GitHub-hosted minute. Duration ${DURATION}.")
           echo "id=$(jq -r .id <<<"$response")" >> "$GITHUB_OUTPUT"
 
       - name: Pre-scale work node groups
@@ -151,8 +152,139 @@ jobs:
             echo "- Job: \`${JOB_NAME}\`"
             echo "- Enclave: \`${ENCLAVE_NAME}\`"
             echo "- Duration: \`${SOAK_DURATION}\`"
-            echo "- Check run: ${CHECK_RUN_ID}"
+            echo "- The watch job keeps this run in progress on the cluster runner."
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Start the in-cluster watch runner
+        env:
+          GH_TOKEN: ${{ secrets.ACTIONS_RUNNER_PAT }}
+          RUN_ID: ${{ steps.ids.outputs.run-id }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          if [ -z "${GH_TOKEN}" ]; then
+            echo "Set repo secret ACTIONS_RUNNER_PAT (fine-grained: Administration read/write) so submit can register the in-cluster runner." >&2
+            exit 1
+          fi
+          token=$(gh api -X POST "repos/${GITHUB_REPOSITORY}/actions/runners/registration-token" --jq .token)
+          RUNNER_TOKEN="${token}" envsubst < ci/k8s/gha-watch-runner.yaml.tmpl | kubectl apply -f -
+
+          label="qrl-watch-${RUN_ID}"
+          for _ in $(seq 1 36); do
+            status=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runners" \
+              | jq -r --arg label "${label}" \
+                '[.runners[] | select(.labels[].name == $label) | .status] | first // empty')
+            if [ "${status}" = "online" ]; then
+              echo "Watch runner ${label} is online"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "Watch runner ${label} did not come online" >&2
+          kubectl logs -n "${CI_NAMESPACE}" -l "qrl.io/component=gha-watch,qrl.io/run=${RUN_ID}" --tail=80 >&2 || true
+          exit 1
+
+  watch:
+    needs: submit
+    runs-on: [self-hosted, qrl-watch-${{ needs.submit.outputs.run-id }}]
+    timeout-minutes: 600
+    permissions:
+      contents: read
+      checks: write
+      actions: write
+    env:
+      CI_NAMESPACE: ${{ vars.CI_NAMESPACE || 'qrl' }}
+      JOB_NAME: ${{ needs.submit.outputs.job-name }}
+      CHECK_RUN_ID: ${{ needs.submit.outputs.check-run-id }}
+    steps:
+      - name: Follow the soak Job
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          DETAILS_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          mkdir -p "${HOME}/.kube" "${HOME}/bin"
+          if [ -f /var/run/secrets/kubernetes.io/serviceaccount/token ]; then
+            cat > "${HOME}/.kube/config" <<EOF
+          apiVersion: v1
+          kind: Config
+          clusters:
+          - name: in-cluster
+            cluster:
+              server: https://kubernetes.default.svc
+              certificate-authority: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+          users:
+          - name: sa
+            user:
+              tokenFile: /var/run/secrets/kubernetes.io/serviceaccount/token
+          contexts:
+          - name: in-cluster
+            context:
+              cluster: in-cluster
+              user: sa
+              namespace: $(cat /var/run/secrets/kubernetes.io/serviceaccount/namespace)
+          current-context: in-cluster
+          EOF
+          fi
+          if ! command -v kubectl >/dev/null 2>&1; then
+            arch=$(uname -m)
+            case "${arch}" in
+              aarch64|arm64) karch=arm64 ;;
+              *) karch=amd64 ;;
+            esac
+            curl -fsSL -o "${HOME}/bin/kubectl" "https://dl.k8s.io/release/$(curl -fsSL https://dl.k8s.io/release/stable.txt)/bin/linux/${karch}/kubectl"
+            chmod +x "${HOME}/bin/kubectl"
+            export PATH="${HOME}/bin:${PATH}"
+          fi
+
+          echo "Following Job ${JOB_NAME} in ${CI_NAMESPACE}"
+          while true; do
+            phase=$(kubectl get job "${JOB_NAME}" -n "${CI_NAMESPACE}" -o jsonpath='{.metadata.annotations.qrl\.io/phase}')
+            samples=$(kubectl get job "${JOB_NAME}" -n "${CI_NAMESPACE}" -o jsonpath='{.metadata.annotations.qrl\.io/samples}')
+            finalized=$(kubectl get job "${JOB_NAME}" -n "${CI_NAMESPACE}" -o jsonpath='{.metadata.annotations.qrl\.io/finalized-epoch}')
+            head_slot=$(kubectl get job "${JOB_NAME}" -n "${CI_NAMESPACE}" -o jsonpath='{.metadata.annotations.qrl\.io/head-slot}')
+            tx_per_slot=$(kubectl get job "${JOB_NAME}" -n "${CI_NAMESPACE}" -o jsonpath='{.metadata.annotations.qrl\.io/tx-per-slot}')
+            el_rss=$(kubectl get job "${JOB_NAME}" -n "${CI_NAMESPACE}" -o jsonpath='{.metadata.annotations.qrl\.io/el-rss-mb}')
+            result=$(kubectl get job "${JOB_NAME}" -n "${CI_NAMESPACE}" -o jsonpath='{.metadata.annotations.qrl\.io/result}')
+            succeeded=$(kubectl get job "${JOB_NAME}" -n "${CI_NAMESPACE}" -o jsonpath='{.status.succeeded}')
+            failed=$(kubectl get job "${JOB_NAME}" -n "${CI_NAMESPACE}" -o jsonpath='{.status.failed}')
+            line="$(date -u +%H:%M:%SZ) phase=${phase:-?} samples=${samples:-0} finalized=${finalized:-?} head_slot=${head_slot:-?} tx/slot=${tx_per_slot:-?} el_rss=${el_rss:-?}MB result=${result:-pending}"
+            echo "${line}"
+
+            if [ -n "${CHECK_RUN_ID}" ]; then
+              TITLE="Soak ${JOB_NAME} ${phase:-running}" SUMMARY="${line}" \
+                python3 -c 'import json,os,urllib.request
+body=json.dumps({"status":"in_progress","details_url":os.environ["DETAILS_URL"],"output":{"title":os.environ["TITLE"],"summary":os.environ["SUMMARY"]}}).encode()
+req=urllib.request.Request("https://api.github.com/repos/%s/check-runs/%s"%(os.environ["GH_REPO"],os.environ["CHECK_RUN_ID"]),data=body,method="PATCH",headers={"Authorization":"Bearer "+os.environ["GH_TOKEN"],"Accept":"application/vnd.github+json","Content-Type":"application/json"})
+urllib.request.urlopen(req).read()' \
+                || echo "check update skipped"
+            fi
+
+            if [ "${failed}" = "1" ] || [ "${result}" = "failed" ]; then
+              echo "Soak Job failed" >&2
+              exit 1
+            fi
+            if [ "${succeeded}" = "1" ] || [ "${result}" = "passed" ]; then
+              echo "Soak Job finished"
+              exit 0
+            fi
+            sleep 30
+          done
+
+      - name: Collect the report
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          curl -fsS -X POST \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            -H "Content-Type: application/json" \
+            --data "{\"ref\":\"${REF_NAME}\",\"inputs\":{\"job-name\":\"${JOB_NAME}\"}}" \
+            "https://api.github.com/repos/${GH_REPO}/actions/workflows/soak-report.yml/dispatches"
+          echo "Dispatched soak-report for ${JOB_NAME}" >> "$GITHUB_STEP_SUMMARY"
 
   image-failure-summary:
     needs: images
