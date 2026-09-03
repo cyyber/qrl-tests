@@ -33,7 +33,9 @@ RUN set -eu; \
 
 # Unprivileged runtime user; Kurtosis and kubectl keep their state under HOME.
 RUN useradd --create-home --uid 10001 --shell /bin/bash runner \
-	&& mkdir -p /src /reports \
+	&& mkdir -p /src /reports /var/lib/dbus \
+	&& printf '%s\n' "$(printf qrl-tests-runner | sha256sum | cut -c1-32)" >/etc/machine-id \
+	&& cp /etc/machine-id /var/lib/dbus/machine-id \
 	&& chown runner:runner /src /reports
 
 USER runner
