@@ -12,7 +12,6 @@ import (
 
 	"github.com/cyyber/qrl-tests/devnet"
 	"github.com/cyyber/qrl-tests/internal/testutil"
-	"github.com/cyyber/qrl-tests/perf/internal/soak"
 	"github.com/stretchr/testify/require"
 )
 
@@ -65,24 +64,24 @@ func testEnvironment(name string, backend devnet.Backend) devnet.Environment {
 	}
 }
 
-func passingEvaluation() soak.Evaluation {
-	return soak.Evaluation{
+func passingEvaluation() Evaluation {
+	return Evaluation{
 		Passed:        true,
 		Enforced:      false,
 		Samples:       3,
 		SteadySamples: 2,
-		Gates: []soak.Gate{{
+		Gates: []Gate{{
 			Name: "chain-progress/head", Passed: true,
 			Observed: "12.00 blocks/min", Threshold: "≥ 10.00 blocks/min",
 		}},
 	}
 }
 
-func newTestRunner(t *testing.T, configuration Config, networks *recordingNetworks, evaluation soak.Evaluation, sampleErr error) *Runner {
+func newTestRunner(t *testing.T, configuration Config, networks *recordingNetworks, evaluation Evaluation, sampleErr error) *Runner {
 	t.Helper()
 	runner := New(configuration, io.Discard, io.Discard)
 	runner.networks = networks
-	runner.sample = func(context.Context, devnet.Environment, string) (soak.Evaluation, error) {
+	runner.sample = func(context.Context, devnet.Environment, string) (Evaluation, error) {
 		return evaluation, sampleErr
 	}
 	return runner
@@ -156,10 +155,10 @@ func TestRunKeepNetwork(t *testing.T) {
 func TestRunFailedGatesCollectsDiagnostics(t *testing.T) {
 	reports := t.TempDir()
 	networks := new(recordingNetworks)
-	evaluation := soak.Evaluation{
+	evaluation := Evaluation{
 		Passed:   false,
 		Enforced: true,
-		Gates: []soak.Gate{{
+		Gates: []Gate{{
 			Name: "chain-progress/head", Passed: false,
 			Observed: "0.00 blocks/min", Threshold: "≥ 10.00 blocks/min",
 		}},
@@ -202,27 +201,27 @@ func TestRunRejectsExistingWithParameters(t *testing.T) {
 
 func TestVerdictClass(t *testing.T) {
 	require.Equal(t, "passed", VerdictClass(passingEvaluation()))
-	require.Equal(t, "infrastructure", VerdictClass(soak.Evaluation{
+	require.Equal(t, "infrastructure", VerdictClass(Evaluation{
 		Passed: true,
-		Gates: []soak.Gate{
+		Gates: []Gate{
 			{Name: "placement/pinned", Passed: false},
 			{Name: "chain-progress/head", Passed: true},
 		},
 	}))
-	require.Equal(t, "product", VerdictClass(soak.Evaluation{
-		Gates: []soak.Gate{{Name: "chain-progress/head", Passed: false}},
+	require.Equal(t, "product", VerdictClass(Evaluation{
+		Gates: []Gate{{Name: "chain-progress/head", Passed: false}},
 	}))
 }
 
 func TestRenderSummary(t *testing.T) {
-	markdown := RenderSummary(soak.Evaluation{
+	markdown := RenderSummary(Evaluation{
 		Passed:        false,
 		Enforced:      true,
 		Samples:       10,
 		SteadySamples: 8,
 		WarmupWindow:  time.Minute,
 		SteadyWindow:  time.Hour,
-		Gates: []soak.Gate{{
+		Gates: []Gate{{
 			Name: "chain-progress/head", Passed: false,
 			Observed: "1.00 blocks/min", Threshold: "≥ 10.00 blocks/min",
 		}},
@@ -249,7 +248,7 @@ func TestRunWritesSampleError(t *testing.T) {
 		EnclaveName: "qrl-soak",
 		ReportDir:   reports,
 		Duration:    time.Minute,
-	}, networks, soak.Evaluation{}, errors.New("dial rpc"))
+	}, networks, Evaluation{}, errors.New("dial rpc"))
 
 	require.ErrorContains(t, runner.Run(t.Context()), "dial rpc")
 	require.Equal(t, []string{filepath.Join(reports, diagnosticsDirectory)}, networks.collected)
@@ -265,7 +264,7 @@ func TestRunPrintsCalibrationNote(t *testing.T) {
 		Duration:    time.Minute,
 	}, &output, io.Discard)
 	runner.networks = networks
-	runner.sample = func(context.Context, devnet.Environment, string) (soak.Evaluation, error) {
+	runner.sample = func(context.Context, devnet.Environment, string) (Evaluation, error) {
 		return passingEvaluation(), nil
 	}
 

@@ -1,5 +1,5 @@
-// Package soak provisions a soak-profile network, samples it, and writes a
-// verdict. It is a first-class qrltest command, not an E2E lane.
+// Package soak provisions a soak-profile network, samples it, evaluates
+// versioned gates, and writes a verdict. qrltest soak is the command.
 package soak
 
 import (
@@ -15,7 +15,6 @@ import (
 
 	"github.com/cyyber/qrl-tests/devnet"
 	"github.com/cyyber/qrl-tests/internal/jsonfile"
-	"github.com/cyyber/qrl-tests/perf/internal/soak"
 )
 
 const (
@@ -72,7 +71,7 @@ type networkManager interface {
 	CollectDiagnostics(ctx context.Context, enclaveName, outputDir string) error
 }
 
-type sampleFunc func(ctx context.Context, environment devnet.Environment, reportDir string) (soak.Evaluation, error)
+type sampleFunc func(ctx context.Context, environment devnet.Environment, reportDir string) (Evaluation, error)
 
 type Runner struct {
 	configuration Config
@@ -232,57 +231,57 @@ func (runner *Runner) collectDiagnostics(enclaveName, reportDir string) {
 	}
 }
 
-func (runner *Runner) sampleNetwork(ctx context.Context, environment devnet.Environment, reportDir string) (soak.Evaluation, error) {
-	thresholds, err := soak.LoadThresholds(runner.configuration.ThresholdsPath)
+func (runner *Runner) sampleNetwork(ctx context.Context, environment devnet.Environment, reportDir string) (Evaluation, error) {
+	thresholds, err := LoadThresholds(runner.configuration.ThresholdsPath)
 	if err != nil {
-		return soak.Evaluation{}, err
+		return Evaluation{}, err
 	}
 
-	var kube *soak.Kube
+	var kube *Kube
 	if environment.Backend == devnet.BackendKubernetes {
-		kube, err = soak.InClusterKube(environment.Namespace())
+		kube, err = InClusterKube(environment.Namespace())
 		if err != nil {
 			fmt.Fprintf(runner.stderr, "in-cluster kube unavailable: %v\n", err)
 			kube = nil
 		}
 	}
 
-	var placement []soak.Placement
+	var placement []Placement
 	if kube != nil {
-		placement, err = soak.VerifyPlacement(ctx, kube, devnet.ParticipantNodeLabel, len(environment.Participants))
+		placement, err = VerifyPlacement(ctx, kube, devnet.ParticipantNodeLabel, len(environment.Participants))
 		if err != nil {
-			return soak.Evaluation{}, fmt.Errorf("placement: %w", err)
+			return Evaluation{}, fmt.Errorf("placement: %w", err)
 		}
 	}
 
 	samplesPath := filepath.Join(reportDir, SamplesFile)
 	samplesFile, err := os.OpenFile(samplesPath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
 	if err != nil {
-		return soak.Evaluation{}, fmt.Errorf("create samples file: %w", err)
+		return Evaluation{}, fmt.Errorf("create samples file: %w", err)
 	}
 	defer samplesFile.Close()
 
 	canary, err := newCanary(ctx, environment)
 	if err != nil {
-		return soak.Evaluation{}, fmt.Errorf("open canary: %w", err)
+		return Evaluation{}, fmt.Errorf("open canary: %w", err)
 	}
 	defer canary.Close()
 
-	participants := make([]soak.Endpoints, 0, len(environment.Participants))
+	participants := make([]Endpoints, 0, len(environment.Participants))
 	for _, participant := range environment.Participants {
-		participants = append(participants, soak.Endpoints{
+		participants = append(participants, Endpoints{
 			Index:        participant.Index,
 			ExecutionRPC: participant.Execution.RPCURL,
 			ConsensusAPI: participant.Consensus.URL,
-			Metrics: map[soak.Client]string{
-				soak.ClientExecution: participant.Execution.MetricsURL,
-				soak.ClientConsensus: participant.Consensus.MetricsURL,
-				soak.ClientValidator: participant.Validator.MetricsURL,
+			Metrics: map[Client]string{
+				ClientExecution: participant.Execution.MetricsURL,
+				ClientConsensus: participant.Consensus.MetricsURL,
+				ClientValidator: participant.Validator.MetricsURL,
 			},
 		})
 	}
 
-	sampler := &soak.Sampler{
+	sampler := &Sampler{
 		Participants:  participants,
 		Thresholds:    thresholds,
 		Interval:      runner.configuration.Interval,
@@ -294,13 +293,13 @@ func (runner *Runner) sampleNetwork(ctx context.Context, environment devnet.Envi
 	}
 	samples, err := sampler.Run(ctx, runner.configuration.Duration)
 	if err != nil {
-		return soak.Evaluation{}, fmt.Errorf("sample the soak window: %w", err)
+		return Evaluation{}, fmt.Errorf("sample the soak window: %w", err)
 	}
 	if len(samples) == 0 {
-		return soak.Evaluation{}, errors.New("the sampler produced no samples")
+		return Evaluation{}, errors.New("the sampler produced no samples")
 	}
 
-	return soak.Evaluate(samples, thresholds, soak.Options{
+	return Evaluate(samples, thresholds, Options{
 		Participants:  len(participants),
 		SlotsPerEpoch: defaultSlots,
 		Enforce:       runner.configuration.Enforce,
@@ -309,7 +308,7 @@ func (runner *Runner) sampleNetwork(ctx context.Context, environment devnet.Envi
 	}), nil
 }
 
-func (runner *Runner) writeReports(reportDir string, evaluation soak.Evaluation) error {
+func (runner *Runner) writeReports(reportDir string, evaluation Evaluation) error {
 	if err := jsonfile.Write(filepath.Join(reportDir, ResultsFile), evaluation, "soak results"); err != nil {
 		return err
 	}

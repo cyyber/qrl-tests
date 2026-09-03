@@ -3,14 +3,12 @@ package soak
 import (
 	"fmt"
 	"strings"
-
-	"github.com/cyyber/qrl-tests/perf/internal/soak"
 )
 
 // VerdictClass is passed, infrastructure, or product. Placement breaches
 // count as infrastructure even when SOAK_ENFORCE is off and the run itself
 // still passes.
-func VerdictClass(evaluation soak.Evaluation) string {
+func VerdictClass(evaluation Evaluation) string {
 	failed := FailedGates(evaluation)
 	if len(failed) == 0 {
 		return "passed"
@@ -23,8 +21,8 @@ func VerdictClass(evaluation soak.Evaluation) string {
 	return "product"
 }
 
-func FailedGates(evaluation soak.Evaluation) []soak.Gate {
-	var failed []soak.Gate
+func FailedGates(evaluation Evaluation) []Gate {
+	var failed []Gate
 	for _, gate := range evaluation.Gates {
 		if !gate.Passed {
 			failed = append(failed, gate)
@@ -35,7 +33,7 @@ func FailedGates(evaluation soak.Evaluation) []soak.Gate {
 
 // RenderSummary is the Markdown the report workflow pastes into the check
 // run and the GitHub step summary.
-func RenderSummary(evaluation soak.Evaluation) string {
+func RenderSummary(evaluation Evaluation) string {
 	var body strings.Builder
 	status := "passed"
 	if !evaluation.Passed {

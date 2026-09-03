@@ -7,7 +7,6 @@ import (
 
 	"github.com/cyyber/qrl-tests/devnet"
 	"github.com/cyyber/qrl-tests/internal/devwallet"
-	"github.com/cyyber/qrl-tests/perf/internal/soak"
 	"github.com/theQRL/go-qrl/accounts/abi/bind"
 	"github.com/theQRL/go-qrl/common"
 	"github.com/theQRL/go-qrl/core/types"
@@ -54,8 +53,8 @@ func (probe *canary) Close() {
 	}
 }
 
-func (probe *canary) Send(ctx context.Context, timeout time.Duration) soak.Canary {
-	result := soak.Canary{SentAt: time.Now().UTC()}
+func (probe *canary) Send(ctx context.Context, timeout time.Duration) Canary {
+	result := Canary{SentAt: time.Now().UTC()}
 	wait, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
