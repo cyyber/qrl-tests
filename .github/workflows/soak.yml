@@ -197,6 +197,7 @@ jobs:
           E2E_SOURCE_GENERATOR: ${{ needs.images.outputs.generator-sha }}
           ACTIVE_DEADLINE_SECONDS: "32400"
         run: |
+          kubectl delete job,pvc -n "${CI_NAMESPACE}" -l qrl.io/lane=soak --wait=false || true
           envsubst < ci/k8s/soak-job.yaml.tmpl | kubectl apply -f -
           kubectl annotate job "${JOB_NAME}" -n "${CI_NAMESPACE}" --overwrite \
             qrl.io/check-run-id="${CHECK_RUN_ID}" \

@@ -127,7 +127,8 @@ func loadPercentFlag() *cli.IntFlag {
 func participantCountFlag() *cli.IntFlag {
 	return &cli.IntFlag{
 		Name:    "participants",
-		Usage:   "soak participants to provision (1-4); 0 uses the profile default of 4",
+		Usage:   "soak participants to provision (1-4); default 1 until the 16 vCPU On-Demand cap is raised",
+		Value:   1,
 		EnvVars: []string{"SOAK_PARTICIPANTS"},
 	}
 }

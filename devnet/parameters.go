@@ -203,8 +203,8 @@ func profileParameters(address string, options StartOptions) (string, error) {
 	}
 	if spec.metricsExporter && options.Backend != BackendKubernetes {
 		// qrl-package copies the participant node selector onto the
-		// exporter but not the work-pool taint toleration, so the pod
-		// cannot schedule on Kubernetes. Native EL/CL /metrics are enough
+		// exporter but not the work-pool taint, so the pod cannot
+		// schedule on Kubernetes. Native EL/CL /metrics are enough
 		// for soak gates.
 		parameters.QRLMetricsExporterEnabled = true
 	}
@@ -221,6 +221,12 @@ func profileParameters(address string, options StartOptions) (string, error) {
 			Value:    WorkPool,
 			Effect:   kubernetesTaintEffect,
 		}}
+		// kurtosis-tech/prometheus-package applies global_node_selectors
+		// and leaves tolerations empty, so prometheus/grafana cannot
+		// land on NoSchedule work nodes. Drop them on Kubernetes;
+		// native EL/CL /metrics still feed the soak gates.
+		parameters.AdditionalServices = withoutService(parameters.AdditionalServices, "prometheus_grafana")
+		parameters.PrometheusParams = nil
 	}
 	if spec.loadGenerator {
 		throughput := SoakThroughput(options.LoadPercent)
