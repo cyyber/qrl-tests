@@ -16,7 +16,7 @@ type Sample struct {
 	Participants []ParticipantSample `json:"participants"`
 	// Reference is the block every participant was asked to describe for the
 	// consensus-split check: min(head) - 2 at the time of the sample.
-	Reference uint64 `json:"reference_block,omitempty"`
+	Reference uint64  `json:"reference_block,omitempty"`
 	Canary    *Canary `json:"canary,omitempty"`
 	// Containers holds cgroup usage from metrics.k8s.io; Kubernetes only.
 	Containers []ContainerSample `json:"containers,omitempty"`

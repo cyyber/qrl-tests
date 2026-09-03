@@ -7,7 +7,7 @@ import (
 
 	"github.com/cyyber/qrl-tests/devnet"
 	"github.com/cyyber/qrl-tests/internal/devwallet"
-	"github.com/cyyber/qrl-tests/internal/soak"
+	"github.com/cyyber/qrl-tests/perf/internal/soak"
 	"github.com/theQRL/go-qrl/accounts/abi/bind"
 	"github.com/theQRL/go-qrl/common"
 	"github.com/theQRL/go-qrl/core/types"

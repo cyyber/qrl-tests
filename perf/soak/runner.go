@@ -15,7 +15,7 @@ import (
 
 	"github.com/cyyber/qrl-tests/devnet"
 	"github.com/cyyber/qrl-tests/internal/jsonfile"
-	"github.com/cyyber/qrl-tests/internal/soak"
+	"github.com/cyyber/qrl-tests/perf/internal/soak"
 )
 
 const (

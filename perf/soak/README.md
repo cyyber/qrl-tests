@@ -3,7 +3,7 @@
 `qrltest soak` provisions the `soak` profile (four participants, one per
 labelled work node) and samples the network for `SOAK_DURATION`. It is not
 an E2E lane. Gates live in
-[`internal/soak/thresholds.yaml`](../../internal/soak/thresholds.yaml).
+[`perf/internal/soak/thresholds.yaml`](../internal/soak/thresholds.yaml).
 
 ```bash
 DEVNET_BACKEND=kubernetes \

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/cyyber/qrl-tests/internal/soak"
+	"github.com/cyyber/qrl-tests/perf/internal/soak"
 )
 
 // VerdictClass is passed, infrastructure, or product. Placement breaches

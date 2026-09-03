@@ -11,8 +11,8 @@ import (
 	"time"
 
 	"github.com/cyyber/qrl-tests/devnet"
-	"github.com/cyyber/qrl-tests/internal/soak"
 	"github.com/cyyber/qrl-tests/internal/testutil"
+	"github.com/cyyber/qrl-tests/perf/internal/soak"
 	"github.com/stretchr/testify/require"
 )
 
