@@ -148,18 +148,25 @@ jobs:
               fi
               sleep 15
             done
-            issues=$(aws eks describe-nodegroup \
-              --cluster-name "${EKS_CLUSTER_NAME}" \
-              --nodegroup-name "${group}" \
-              --query 'length(nodegroup.health.issues)' --output text)
-            if [ "${issues}" != "0" ]; then
-              aws eks describe-nodegroup \
+            while true; do
+              issues=$(aws eks describe-nodegroup \
                 --cluster-name "${EKS_CLUSTER_NAME}" \
                 --nodegroup-name "${group}" \
-                --query 'nodegroup.health.issues' --output json >&2
-              echo "Nodegroup ${group} is unhealthy after scale (often vCPU quota)." >&2
-              exit 1
-            fi
+                --query 'length(nodegroup.health.issues)' --output text)
+              if [ "${issues}" = "0" ]; then
+                break
+              fi
+              if [ "${SECONDS}" -ge "${deadline}" ]; then
+                aws eks describe-nodegroup \
+                  --cluster-name "${EKS_CLUSTER_NAME}" \
+                  --nodegroup-name "${group}" \
+                  --query 'nodegroup.health.issues' --output json >&2
+                echo "Nodegroup ${group} is still unhealthy (often vCPU quota)." >&2
+                exit 1
+              fi
+              echo "${group}: waiting for launch after ${issues} health issue(s)"
+              sleep 15
+            done
           done
 
       - name: Submit the soak Job
