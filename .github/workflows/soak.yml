@@ -119,12 +119,29 @@ jobs:
             updates["${group}"]="${update_id}"
             echo "Scaling ${group} (${update_id})"
           done
+          deadline=$((SECONDS + 900))
           for group in "${!updates[@]}"; do
             echo "Waiting for nodegroup ${group} update ${updates[$group]}"
-            aws eks wait nodegroup-update-complete \
-              --cluster-name "${EKS_CLUSTER_NAME}" \
-              --nodegroup-name "${group}" \
-              --id "${updates[$group]}"
+            while true; do
+              status=$(aws eks describe-update \
+                --name "${EKS_CLUSTER_NAME}" \
+                --nodegroup-name "${group}" \
+                --update-id "${updates[$group]}" \
+                --query 'update.status' --output text)
+              echo "${group}: ${status}"
+              case "${status}" in
+                Successful) break ;;
+                Failed|Cancelled)
+                  echo "Nodegroup ${group} update ${status}" >&2
+                  exit 1
+                  ;;
+              esac
+              if [ "${SECONDS}" -ge "${deadline}" ]; then
+                echo "Timed out waiting for nodegroup ${group}" >&2
+                exit 1
+              fi
+              sleep 15
+            done
           done
 
       - name: Submit the soak Job
