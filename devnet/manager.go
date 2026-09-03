@@ -43,12 +43,24 @@ type StartOptions struct {
 	Parameters  []byte
 	Profile     Profile
 
+	// EndpointMode selects public or in-network endpoints for the resolved
+	// environment; empty defaults to the manager's mode.
+	EndpointMode EndpointMode
+
+	// LoadPercent is the share of block gas capacity the load generator
+	// targets in profiles that run one; zero disables it.
+	LoadPercent int
+
 	// FailureDiagnosticsDir, when set, receives the enclave's diagnostics
 	// before cleanup of a failed start is attempted.
 	FailureDiagnosticsDir string
 }
 
 type Manager struct {
+	// EndpointMode applies to inspected networks and to starts that do not
+	// set their own.
+	EndpointMode EndpointMode
+
 	newEnclaveClient     func() (enclaveClient, error)
 	newDiagnosticsClient func() (diagnosticsClient, error)
 	probe                func(ctx context.Context, rpcURL, address string) error
@@ -56,6 +68,7 @@ type Manager struct {
 
 func NewManager() *Manager {
 	return &Manager{
+		EndpointMode: EndpointModePublic,
 		newEnclaveClient: func() (enclaveClient, error) {
 			client, err := kurtosis.NewEnclaveClient()
 			if err != nil {
@@ -87,7 +100,7 @@ func (manager *Manager) Inspect(ctx context.Context, name string) (Environment, 
 		return Environment{}, fmt.Errorf("network %q is not running", name)
 	}
 
-	environment, err := resolveEnvironment(ctx, client, name)
+	environment, err := resolveEnvironment(ctx, client, name, manager.EndpointMode)
 	if err != nil {
 		return Environment{}, err
 	}
@@ -107,6 +120,7 @@ func (manager *Manager) Start(ctx context.Context, options StartOptions) (enviro
 	options.EnclaveName = cmp.Or(options.EnclaveName, DefaultEnclaveName)
 	options.Backend = cmp.Or(options.Backend, BackendDocker)
 	options.Profile = cmp.Or(options.Profile, ProfileSingle)
+	options.EndpointMode = cmp.Or(options.EndpointMode, manager.EndpointMode, EndpointModePublic)
 
 	parameters, err := resolveParameters(devwallet.Address, options)
 	if err != nil {
@@ -140,7 +154,7 @@ func (manager *Manager) Start(ctx context.Context, options StartOptions) (enviro
 
 	// Endpoints are fixed once the package run completes; only the probe has to
 	// wait for the chain to come up.
-	environment, err = resolveEnvironment(ctx, client, options.EnclaveName)
+	environment, err = resolveEnvironment(ctx, client, options.EnclaveName, options.EndpointMode)
 	if err != nil {
 		return Environment{}, fmt.Errorf("resolve network endpoints: %w", err)
 	}

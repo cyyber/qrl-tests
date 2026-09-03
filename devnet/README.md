@@ -50,9 +50,16 @@ cluster. The commands use the currently selected Kurtosis context.
 | `DEVNET_CONSENSUS_IMAGE` | `local/qrysm-beacon:devnet` | Consensus client image reference |
 | `DEVNET_VALIDATOR_IMAGE` | `local/qrysm-validator:devnet` | Validator client image reference |
 | `DEVNET_GENESIS_IMAGE` | `local/qrl-genesis-generator:devnet` | Genesis generator image reference |
+| `DEVNET_TX_SPAMMER_IMAGE` | `local/qrl-tx-spammer:devnet` | Transaction spammer image (soak profile) |
+| `DEVNET_METRICS_EXPORTER_IMAGE` | `local/qrl-metrics-exporter:devnet` | Metrics exporter image (soak profile) |
 | `DEVNET_PROFILE` | `single` | Built-in profile used by `network-start` |
+| `DEVNET_ENDPOINT_MODE` | `public` | `public` (gateway/published ports) or `cluster` (in-network) |
 | `DEVNET_START_TIMEOUT` | `5m` | Network startup budget |
 | `DEVNET_PARAMS_FILE` | unset | Complete qrl-package YAML parameters |
+| `SOAK_DURATION` | `4h` | Steady-state window of the soak lane |
+| `SOAK_LOAD_PERCENT` | `30` | Share of block gas the soak spammer targets; `0` is idle |
+| `SOAK_ENFORCE` | unset | Fail the soak lane when a gate is breached |
+| `KEEP_NETWORK` | unset | Leave the provisioned network running after the lane |
 
 `e2e-run` derives its network profile from `E2E_LANE` and does not use
 `DEVNET_PROFILE`.

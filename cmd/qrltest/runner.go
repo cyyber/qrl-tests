@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/cyyber/qrl-tests/devnet"
 	"github.com/cyyber/qrl-tests/e2e/runner"
@@ -107,11 +108,29 @@ func runnerFlags() []cli.Flag {
 			EnvVars: []string{"E2E_MAX_PARALLEL"},
 		},
 		backendFlag(),
+		endpointModeFlag(),
+		loadPercentFlag(),
 		&cli.DurationFlag{
 			Name:    "start-timeout",
 			Usage:   "network start budget",
 			Value:   devnet.DefaultStartTimeout,
 			EnvVars: []string{"DEVNET_START_TIMEOUT"},
+		},
+		&cli.DurationFlag{
+			Name:    "soak-duration",
+			Usage:   "steady-state window of the soak lane",
+			Value:   4 * time.Hour,
+			EnvVars: []string{"SOAK_DURATION"},
+		},
+		&cli.BoolFlag{
+			Name:    "soak-enforce",
+			Usage:   "fail the soak lane when a gate is breached (off while calibrating)",
+			EnvVars: []string{"SOAK_ENFORCE"},
+		},
+		&cli.BoolFlag{
+			Name:    "keep-network",
+			Usage:   "leave the provisioned network running after the lane finishes",
+			EnvVars: []string{"KEEP_NETWORK"},
 		},
 		&cli.Int64Flag{
 			Name:    "seed",
@@ -139,16 +158,26 @@ func runnerConfig(command *cli.Context) (runner.Config, error) {
 		return runner.Config{}, err
 	}
 
+	endpointMode, err := devnet.ParseEndpointMode(command.String("endpoint-mode"))
+	if err != nil {
+		return runner.Config{}, err
+	}
+
 	return runner.Config{
-		TestsDir:     command.String("tests-dir"),
-		BaseName:     command.String("enclave-name"),
-		ReportDir:    command.String("report-dir"),
-		Backend:      backend,
-		Parameters:   parameters,
-		Suites:       command.StringSlice("suite"),
-		StartTimeout: command.Duration("start-timeout"),
-		MaxParallel:  maxParallel,
-		Images:       imagesFromFlags(command),
-		Seed:         command.Int64("seed"),
+		TestsDir:      command.String("tests-dir"),
+		BaseName:      command.String("enclave-name"),
+		ReportDir:     command.String("report-dir"),
+		Backend:       backend,
+		EndpointMode:  endpointMode,
+		LoadPercent:   command.Int("load-percent"),
+		SoakDuration:  command.Duration("soak-duration"),
+		SoakEnforce:   command.Bool("soak-enforce"),
+		KeepNetwork:   command.Bool("keep-network"),
+		Parameters:    parameters,
+		Suites:        command.StringSlice("suite"),
+		StartTimeout:  command.Duration("start-timeout"),
+		MaxParallel:   maxParallel,
+		Images:        imagesFromFlags(command),
+		Seed:          command.Int64("seed"),
 	}, nil
 }

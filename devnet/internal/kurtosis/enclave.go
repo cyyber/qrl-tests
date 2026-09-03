@@ -18,11 +18,12 @@ import (
 )
 
 type Service struct {
-	UUID        string
-	PrivateIP   string
-	PublicIP    string
-	PublicPorts map[string]uint16
-	Labels      map[string]string
+	UUID         string
+	PrivateIP    string
+	PublicIP     string
+	PublicPorts  map[string]uint16
+	PrivatePorts map[string]uint16
+	Labels       map[string]string
 }
 
 func (service Service) PublicEndpoint(portID, scheme string) (string, error) {
@@ -34,6 +35,19 @@ func (service Service) PublicEndpoint(portID, scheme string) (string, error) {
 		return "", errors.New("no public IP address")
 	}
 	return scheme + "://" + net.JoinHostPort(service.PublicIP, strconv.Itoa(int(port))), nil
+}
+
+// PrivateEndpoint addresses the service inside the enclave network: the
+// container address on Docker, the Kubernetes Service address on Kubernetes.
+func (service Service) PrivateEndpoint(portID, scheme string) (string, error) {
+	port := service.PrivatePorts[portID]
+	if port == 0 {
+		return "", fmt.Errorf("no private %q port", portID)
+	}
+	if service.PrivateIP == "" {
+		return "", errors.New("no private IP address")
+	}
+	return scheme + "://" + net.JoinHostPort(service.PrivateIP, strconv.Itoa(int(port))), nil
 }
 
 // EnclaveClient manages enclaves and packages through the Kurtosis SDK.
@@ -123,21 +137,27 @@ type serviceContext interface {
 	GetPrivateIPAddress() string
 	GetMaybePublicIPAddress() string
 	GetPublicPorts() map[string]*services.PortSpec
+	GetPrivatePorts() map[string]*services.PortSpec
 	GetLabels() map[string]string
 }
 
 func newService(source serviceContext) Service {
-	publicPorts := make(map[string]uint16, len(source.GetPublicPorts()))
-	for id, port := range source.GetPublicPorts() {
-		publicPorts[id] = port.GetNumber()
-	}
 	return Service{
-		UUID:        string(source.GetServiceUUID()),
-		PrivateIP:   source.GetPrivateIPAddress(),
-		PublicIP:    source.GetMaybePublicIPAddress(),
-		PublicPorts: publicPorts,
-		Labels:      maps.Clone(source.GetLabels()),
+		UUID:         string(source.GetServiceUUID()),
+		PrivateIP:    source.GetPrivateIPAddress(),
+		PublicIP:     source.GetMaybePublicIPAddress(),
+		PublicPorts:  portNumbers(source.GetPublicPorts()),
+		PrivatePorts: portNumbers(source.GetPrivatePorts()),
+		Labels:       maps.Clone(source.GetLabels()),
 	}
+}
+
+func portNumbers(specs map[string]*services.PortSpec) map[string]uint16 {
+	numbers := make(map[string]uint16, len(specs))
+	for id, port := range specs {
+		numbers[id] = port.GetNumber()
+	}
+	return numbers
 }
 
 func consumeStarlarkCompletion(stream <-chan *kurtosis_core_rpc_api_bindings.StarlarkRunResponseLine) error {

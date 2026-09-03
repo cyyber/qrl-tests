@@ -55,26 +55,33 @@ func (runner *Runner) acquireLane(ctx context.Context, plan runPlan, lane laneRu
 		Images:                runner.configuration.Images,
 		Parameters:            runner.configuration.Parameters,
 		Profile:               lane.definition.Profile,
+		EndpointMode:          runner.configuration.EndpointMode,
+		LoadPercent:           runner.configuration.LoadPercent,
 		FailureDiagnosticsDir: filepath.Join(lane.reportDir, diagnosticsDirectory),
 	}
 
-	startCtx, cancelStart := context.WithTimeout(ctx, runner.configuration.StartTimeout)
+	startTimeout := runner.configuration.StartTimeout
+	if laneTimeout := lane.definition.StartTimeout(); laneTimeout > startTimeout {
+		startTimeout = laneTimeout
+	}
+	startCtx, cancelStart := context.WithTimeout(ctx, startTimeout)
 	environment, err := runner.networks.Start(startCtx, options)
 	cancelStart()
 	if err != nil {
 		return laneLease{}, fmt.Errorf("start network: %w", err)
 	}
-	return laneLease{
-		environment: environment,
-		release: func() error {
+	lease := laneLease{environment: environment}
+	if !runner.configuration.KeepNetwork {
+		lease.release = func() error {
 			stopCtx, cancel := context.WithTimeout(context.Background(), laneCleanupTimeout)
 			defer cancel()
 			if err := runner.networks.Stop(stopCtx, environment.EnclaveName); err != nil {
 				return fmt.Errorf("stop network: %w", err)
 			}
 			return nil
-		},
-	}, nil
+		}
+	}
+	return lease, nil
 }
 
 func (runner *Runner) runLane(ctx context.Context, plan runPlan, lane laneRun) results.Outcome {
@@ -167,7 +174,12 @@ func (runner *Runner) executeLane(ctx context.Context, plan runPlan, lane laneRu
 	laneCtx, cancelLane := context.WithTimeout(ctx, definition.Timeout+laneReportSlack)
 	defer cancelLane()
 	fmt.Fprintf(stdout, "=== RUN lane=%s profile=%s ===\n", definition.Name, definition.Profile)
-	processEnvironment := append(os.Environ(), manifest.PathEnv+"="+manifestPath)
+	processEnvironment := append(os.Environ(),
+		manifest.PathEnv+"="+manifestPath,
+		fmt.Sprintf("SOAK_DURATION=%s", runner.configuration.SoakDuration),
+		fmt.Sprintf("SOAK_ENFORCE=%t", runner.configuration.SoakEnforce),
+		fmt.Sprintf("SOAK_LOAD_PERCENT=%d", runner.configuration.LoadPercent),
+	)
 	outcome.ExecutionErr = runner.runCommand(laneCtx, commandSpec{
 		Path:   "go",
 		Args:   lane.ginkgoArguments(),
