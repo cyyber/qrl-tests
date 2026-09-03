@@ -1,0 +1,166 @@
+# Resolves the client, tooling and harness revisions, builds whichever images
+# are missing from GHCR, and returns immutable digest references. Nightly and
+# the weekly soak both call this so every run uses the same pins.
+name: images-reusable
+
+on:
+  workflow_call:
+    inputs:
+      runner:
+        description: runner label; its architecture is the architecture of every image built
+        type: string
+        default: ""
+    outputs:
+      go-qrl-sha:
+        value: ${{ jobs.images.outputs.go-qrl-sha }}
+      qrysm-sha:
+        value: ${{ jobs.images.outputs.qrysm-sha }}
+      generator-sha:
+        value: ${{ jobs.images.outputs.generator-sha }}
+      tx-spammer-sha:
+        value: ${{ jobs.images.outputs.tx-spammer-sha }}
+      metrics-exporter-sha:
+        value: ${{ jobs.images.outputs.metrics-exporter-sha }}
+      execution-image:
+        value: ${{ jobs.images.outputs.execution-image }}
+      clef-image:
+        value: ${{ jobs.images.outputs.clef-image }}
+      consensus-image:
+        value: ${{ jobs.images.outputs.consensus-image }}
+      validator-image:
+        value: ${{ jobs.images.outputs.validator-image }}
+      genesis-image:
+        value: ${{ jobs.images.outputs.genesis-image }}
+      tx-spammer-image:
+        value: ${{ jobs.images.outputs.tx-spammer-image }}
+      metrics-exporter-image:
+        value: ${{ jobs.images.outputs.metrics-exporter-image }}
+      runner-image:
+        value: ${{ jobs.images.outputs.runner-image }}
+
+permissions:
+  contents: read
+
+env:
+  KURTOSIS_VERSION: 1.20.0
+
+jobs:
+  # Image and lane runners must use the same architecture.
+  images:
+    runs-on: ${{ inputs.runner || vars.E2E_RUNNER || 'ubuntu-24.04-arm' }}
+    timeout-minutes: 60
+    env:
+      GO_QRL_REPOSITORY: ${{ vars.E2E_GO_QRL_REPOSITORY || 'cyyber/go-qrl' }}
+      QRYSM_REPOSITORY: ${{ vars.E2E_QRYSM_REPOSITORY || 'cyyber/qrysm' }}
+      GENERATOR_REPOSITORY: ${{ vars.E2E_GENERATOR_REPOSITORY || 'cyyber/qrl-genesis-generator' }}
+      TX_SPAMMER_REPOSITORY: ${{ vars.E2E_TX_SPAMMER_REPOSITORY || 'cyyber/qrl-tx-spammer' }}
+      METRICS_EXPORTER_REPOSITORY: ${{ vars.E2E_METRICS_EXPORTER_REPOSITORY || 'rgeraldes24/qrl-metrics-exporter' }}
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      go-qrl-sha: ${{ steps.refs.outputs.go-qrl-sha }}
+      qrysm-sha: ${{ steps.refs.outputs.qrysm-sha }}
+      generator-sha: ${{ steps.refs.outputs.generator-sha }}
+      tx-spammer-sha: ${{ steps.refs.outputs.tx-spammer-sha }}
+      metrics-exporter-sha: ${{ steps.refs.outputs.metrics-exporter-sha }}
+      execution-image: ${{ steps.pin.outputs.execution-image }}
+      clef-image: ${{ steps.pin.outputs.clef-image }}
+      consensus-image: ${{ steps.pin.outputs.consensus-image }}
+      validator-image: ${{ steps.pin.outputs.validator-image }}
+      genesis-image: ${{ steps.pin.outputs.genesis-image }}
+      tx-spammer-image: ${{ steps.pin.outputs.tx-spammer-image }}
+      metrics-exporter-image: ${{ steps.pin.outputs.metrics-exporter-image }}
+      runner-image: ${{ steps.pin.outputs.runner-image }}
+    steps:
+      - name: Check out qrl-tests
+        uses: actions/checkout@v7
+
+      - name: Resolve the source revisions
+        id: refs
+        run: |
+          resolve() {
+            local sha
+            sha=$(git ls-remote "https://github.com/$1" refs/heads/main | cut -f1)
+            test -n "$sha" || { echo "cannot resolve $1@main" >&2; exit 1; }
+            echo "$sha"
+          }
+          {
+            echo "go-qrl-sha=$(resolve "${GO_QRL_REPOSITORY}")"
+            echo "qrysm-sha=$(resolve "${QRYSM_REPOSITORY}")"
+            echo "generator-sha=$(resolve "${GENERATOR_REPOSITORY}")"
+            echo "tx-spammer-sha=$(resolve "${TX_SPAMMER_REPOSITORY}")"
+            echo "metrics-exporter-sha=$(resolve "${METRICS_EXPORTER_REPOSITORY}")"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Plan the image builds
+        id: plan
+        env:
+          REGISTRY_NAMESPACE: ghcr.io/${{ github.repository_owner }}
+          GO_QRL_GIT_REPO: https://github.com/${{ env.GO_QRL_REPOSITORY }}.git
+          GO_QRL_GIT_COMMIT: ${{ steps.refs.outputs.go-qrl-sha }}
+          QRYSM_GIT_REPO: https://github.com/${{ env.QRYSM_REPOSITORY }}.git
+          QRYSM_GIT_COMMIT: ${{ steps.refs.outputs.qrysm-sha }}
+          GENERATOR_GIT_REPO: https://github.com/${{ env.GENERATOR_REPOSITORY }}.git
+          GENERATOR_GIT_COMMIT: ${{ steps.refs.outputs.generator-sha }}
+          TX_SPAMMER_GIT_REPO: https://github.com/${{ env.TX_SPAMMER_REPOSITORY }}.git
+          TX_SPAMMER_GIT_COMMIT: ${{ steps.refs.outputs.tx-spammer-sha }}
+          METRICS_EXPORTER_GIT_REPO: https://github.com/${{ env.METRICS_EXPORTER_REPOSITORY }}.git
+          METRICS_EXPORTER_GIT_COMMIT: ${{ steps.refs.outputs.metrics-exporter-sha }}
+          QRL_TESTS_GIT_COMMIT: ${{ github.sha }}
+        run: ci/images/build.sh plan
+
+      - name: Set up buildx
+        if: steps.plan.outputs.bake-targets != ''
+        uses: docker/setup-buildx-action@v4
+
+      - name: Check out Qrysm
+        if: steps.plan.outputs.qrysm-targets != ''
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ env.QRYSM_REPOSITORY }}
+          ref: ${{ steps.refs.outputs.qrysm-sha }}
+          path: .build/qrysm
+          fetch-depth: 0
+
+      - name: Set up Bazel cache
+        if: steps.plan.outputs.qrysm-targets != ''
+        uses: bazel-contrib/setup-bazel@0.19.0
+        with:
+          module-root: .build/qrysm
+          bazelisk-cache: true
+          disk-cache: nightly-qrysm-${{ runner.arch }}
+          repository-cache: true
+
+      - name: Build the missing Qrysm images
+        if: steps.plan.outputs.qrysm-targets != ''
+        env:
+          QRYSM_TARGETS: ${{ steps.plan.outputs.qrysm-targets }}
+        run: ci/images/build.sh build-qrysm
+
+      - name: Build the missing Bake images
+        id: bake
+        if: steps.plan.outputs.bake-targets != ''
+        uses: docker/bake-action@v7
+        env:
+          DOCKER_BUILD_SUMMARY: false
+          DOCKER_BUILD_RECORD_UPLOAD: false
+        with:
+          source: .
+          files: ./ci/images/docker-bake.hcl
+          targets: ${{ steps.plan.outputs.bake-targets }}
+          push: true
+          provenance: false
+
+      - name: Pin the image digests
+        id: pin
+        env:
+          BAKE_METADATA: ${{ steps.bake.outputs.metadata }}
+        run: ci/images/build.sh pin

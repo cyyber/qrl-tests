@@ -22,17 +22,41 @@ const (
 	metricsPortID       = "metrics"
 	graphQLPath         = "/graphql"
 
+	// executionMetricsPath is where go-qrl serves Prometheus metrics.
+	executionMetricsPath = "/debug/metrics/prometheus"
+
+	// prometheusServiceName and prometheusPortID come from the Kurtosis
+	// prometheus package qrl-package launches for the prometheus_grafana
+	// additional service.
+	prometheusServiceName = "prometheus"
+	prometheusPortID      = "http"
+
 	// clientTypeLabel is stamped by qrl-package itself; the qrl-tests labels
 	// are stamped by the built-in parameter renderer and read back here.
 	clientTypeLabel  = "qrl-package.client-type"
 	participantLabel = "qrl-tests.participant"
 	partitionLabel   = "qrl-tests.partition"
+
+	// kubernetesNamespacePrefix is how Kurtosis names an enclave's namespace.
+	kubernetesNamespacePrefix = "kt-"
 )
 
 type Environment struct {
 	EnclaveName  string        `json:"enclave_name"`
 	Backend      Backend       `json:"backend,omitempty"`
+	EndpointMode EndpointMode  `json:"endpoint_mode,omitempty"`
 	Participants []Participant `json:"participants"`
+	// PrometheusURL is set when the network runs the prometheus_grafana
+	// additional service.
+	PrometheusURL string `json:"prometheus_url,omitempty"`
+}
+
+// Namespace is the Kubernetes namespace holding the enclave; empty on Docker.
+func (environment Environment) Namespace() string {
+	if environment.Backend != BackendKubernetes {
+		return ""
+	}
+	return kubernetesNamespacePrefix + environment.EnclaveName
 }
 
 // Primary returns the lowest-indexed participant. Readiness probes and
@@ -64,6 +88,7 @@ type ExecutionService struct {
 	GraphQLURL   string `json:"graphql_url"`
 	WebSocketURL string `json:"websocket_url"`
 	EngineURL    string `json:"engine_url"`
+	MetricsURL   string `json:"metrics_url,omitempty"`
 }
 
 type ConsensusService struct {
@@ -78,24 +103,48 @@ type ValidatorService struct {
 	MetricsURL string `json:"metrics_url"`
 }
 
-func resolveEnvironment(ctx context.Context, client enclaveClient, name string) (Environment, error) {
+func resolveEnvironment(ctx context.Context, client enclaveClient, name string, mode EndpointMode) (Environment, error) {
 	services, err := client.Services(ctx, name)
 	if err != nil {
 		return Environment{}, err
 	}
 
-	participants, err := participantsFromServices(services)
+	resolver := endpointResolver{mode: cmp.Or(mode, EndpointModePublic)}
+	participants, err := resolver.participantsFromServices(services)
 	if err != nil {
 		return Environment{}, err
 	}
 
-	return Environment{
+	environment := Environment{
 		EnclaveName:  name,
+		EndpointMode: resolver.mode,
 		Participants: participants,
-	}, nil
+	}
+	if prometheus, found := services[prometheusServiceName]; found {
+		environment.PrometheusURL = resolver.optionalEndpoint(prometheus, prometheusPortID, "http")
+	}
+	return environment, nil
 }
 
-func participantsFromServices(services map[string]kurtosis.Service) ([]Participant, error) {
+type endpointResolver struct {
+	mode EndpointMode
+}
+
+func (resolver endpointResolver) endpoint(service kurtosis.Service, portID, scheme string) (string, error) {
+	if resolver.mode == EndpointModeCluster {
+		return service.PrivateEndpoint(portID, scheme)
+	}
+	return service.PublicEndpoint(portID, scheme)
+}
+
+// optionalEndpoint resolves a port a service may legitimately not expose;
+// absence is reported as an empty endpoint, not an error.
+func (resolver endpointResolver) optionalEndpoint(service kurtosis.Service, portID, scheme string) string {
+	endpoint, _ := resolver.endpoint(service, portID, scheme)
+	return endpoint
+}
+
+func (resolver endpointResolver) participantsFromServices(services map[string]kurtosis.Service) ([]Participant, error) {
 	byIndex := make(map[int]*Participant)
 	for name, service := range services {
 		clientType := service.Labels[clientTypeLabel]
@@ -117,27 +166,30 @@ func participantsFromServices(services map[string]kurtosis.Service) ([]Participa
 		switch clientType {
 		case "execution":
 			participant.Execution.ServiceInfo = info
-			participant.Execution.RPCURL, err = service.PublicEndpoint(rpcPortID, "http")
+			participant.Execution.RPCURL, err = resolver.endpoint(service, rpcPortID, "http")
 			if err != nil {
 				return nil, fmt.Errorf("execution service %q: %w", name, err)
 			}
 			participant.Execution.GraphQLURL = participant.Execution.RPCURL + graphQLPath
-			participant.Execution.WebSocketURL, err = service.PublicEndpoint(webSocketPortID, "ws")
+			participant.Execution.WebSocketURL, err = resolver.endpoint(service, webSocketPortID, "ws")
 			if err != nil {
 				return nil, fmt.Errorf("execution service %q: %w", name, err)
 			}
-			participant.Execution.EngineURL = optionalPublicEndpoint(service, engineRPCPortID, "http")
+			participant.Execution.EngineURL = resolver.optionalEndpoint(service, engineRPCPortID, "http")
+			if metrics := resolver.optionalEndpoint(service, metricsPortID, "http"); metrics != "" {
+				participant.Execution.MetricsURL = metrics + executionMetricsPath
+			}
 		case "beacon":
 			participant.Consensus.ServiceInfo = info
-			participant.Consensus.URL, err = service.PublicEndpoint(consensusHTTPPortID, "http")
+			participant.Consensus.URL, err = resolver.endpoint(service, consensusHTTPPortID, "http")
 			if err != nil {
 				return nil, fmt.Errorf("consensus service %q: %w", name, err)
 			}
-			participant.Consensus.MetricsURL = optionalPublicEndpoint(service, metricsPortID, "http")
+			participant.Consensus.MetricsURL = resolver.optionalEndpoint(service, metricsPortID, "http")
 		case "validator":
 			participant.Validator.ServiceInfo = info
-			participant.Validator.URL = optionalPublicEndpoint(service, validatorHTTPPortID, "http")
-			participant.Validator.MetricsURL = optionalPublicEndpoint(service, metricsPortID, "http")
+			participant.Validator.URL = resolver.optionalEndpoint(service, validatorHTTPPortID, "http")
+			participant.Validator.MetricsURL = resolver.optionalEndpoint(service, metricsPortID, "http")
 		}
 	}
 	if len(byIndex) == 0 {
@@ -179,11 +231,4 @@ func serviceIndex(name string) (int, error) {
 		return 0, fmt.Errorf("qrl-package service %q has invalid participant index", name)
 	}
 	return index, nil
-}
-
-// optionalPublicEndpoint resolves a port a service may legitimately not
-// expose; absence is reported as an empty endpoint, not an error.
-func optionalPublicEndpoint(service kurtosis.Service, portID, scheme string) string {
-	endpoint, _ := service.PublicEndpoint(portID, scheme)
-	return endpoint
 }

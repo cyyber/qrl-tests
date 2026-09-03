@@ -36,11 +36,11 @@ jobs:
         run: make lint
 
       - name: Run ShellCheck
-        run: shellcheck ci/images/*.sh
+        run: shellcheck ci/images/*.sh ci/images/runner/*.sh
 
       - name: Validate the Bake definition
         run: |
           docker buildx bake \
             -f ci/images/docker-bake.hcl \
             --print \
-            go-qrl go-qrl-clef qrl-genesis-generator
+            go-qrl go-qrl-clef qrl-genesis-generator qrl-tx-spammer qrl-metrics-exporter qrl-tests-runner

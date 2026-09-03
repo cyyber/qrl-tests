@@ -167,7 +167,9 @@ func (runner *Runner) executeLane(ctx context.Context, plan runPlan, lane laneRu
 	laneCtx, cancelLane := context.WithTimeout(ctx, definition.Timeout+laneReportSlack)
 	defer cancelLane()
 	fmt.Fprintf(stdout, "=== RUN lane=%s profile=%s ===\n", definition.Name, definition.Profile)
-	processEnvironment := append(os.Environ(), manifest.PathEnv+"="+manifestPath)
+	processEnvironment := append(os.Environ(),
+		manifest.PathEnv+"="+manifestPath,
+	)
 	outcome.ExecutionErr = runner.runCommand(laneCtx, commandSpec{
 		Path:   "go",
 		Args:   lane.ginkgoArguments(),

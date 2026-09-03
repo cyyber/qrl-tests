@@ -9,6 +9,9 @@ image_inventory=(
 	'qrysm-beacon|QRYSM_BEACON_IMAGE_TAG|consensus-image|qrysm'
 	'qrysm-validator|QRYSM_VALIDATOR_IMAGE_TAG|validator-image|qrysm'
 	'qrl-genesis-generator|GENESIS_IMAGE_TAG|genesis-image|bake'
+	'qrl-tx-spammer|TX_SPAMMER_IMAGE_TAG|tx-spammer-image|bake'
+	'qrl-metrics-exporter|METRICS_EXPORTER_IMAGE_TAG|metrics-exporter-image|bake'
+	'qrl-tests-runner|RUNNER_IMAGE_TAG|runner-image|bake'
 )
 
 require_build_inputs() {
@@ -19,6 +22,12 @@ require_build_inputs() {
 	: "${QRYSM_GIT_COMMIT:?set QRYSM_GIT_COMMIT to the qrysm revision}"
 	: "${GENERATOR_GIT_REPO:?set GENERATOR_GIT_REPO to the generator clone URL}"
 	: "${GENERATOR_GIT_COMMIT:?set GENERATOR_GIT_COMMIT to the generator revision}"
+	: "${TX_SPAMMER_GIT_REPO:?set TX_SPAMMER_GIT_REPO to the qrl-tx-spammer clone URL}"
+	: "${TX_SPAMMER_GIT_COMMIT:?set TX_SPAMMER_GIT_COMMIT to the qrl-tx-spammer revision}"
+	: "${METRICS_EXPORTER_GIT_REPO:?set METRICS_EXPORTER_GIT_REPO to the qrl-metrics-exporter clone URL}"
+	: "${METRICS_EXPORTER_GIT_COMMIT:?set METRICS_EXPORTER_GIT_COMMIT to the qrl-metrics-exporter revision}"
+	: "${QRL_TESTS_GIT_COMMIT:?set QRL_TESTS_GIT_COMMIT to the qrl-tests revision being built}"
+	: "${KURTOSIS_VERSION:?set KURTOSIS_VERSION to the Kurtosis CLI version the runner image ships}"
 }
 
 architecture() {
@@ -42,16 +51,22 @@ plan() {
 	: "${GITHUB_ENV:?set GITHUB_ENV to the environment file}"
 	: "${GITHUB_OUTPUT:?set GITHUB_OUTPUT to the outputs file}"
 
-	local arch qrysm_recipe_revision bake_recipe_revision
+	local arch qrysm_recipe_revision bake_recipe_revision runner_recipe_revision
 	arch=$(architecture)
 	qrysm_recipe_revision=$(recipe_revision "${script_dir}/build-qrysm.sh")
 	bake_recipe_revision=$(recipe_revision "${script_dir}/docker-bake.hcl")
+	# The runner image is this checkout, so its tag carries the qrl-tests
+	# revision; the Dockerfile and entrypoint are part of that revision.
+	runner_recipe_revision=$(recipe_revision "${script_dir}/runner/Dockerfile")
 
 	GO_QRL_IMAGE_TAG="${REGISTRY_NAMESPACE}/go-qrl:src-${GO_QRL_GIT_COMMIT:0:12}-r${bake_recipe_revision}-${arch}"
 	GO_QRL_CLEF_IMAGE_TAG="${REGISTRY_NAMESPACE}/go-qrl-clef:src-${GO_QRL_GIT_COMMIT:0:12}-r${bake_recipe_revision}-${arch}"
 	QRYSM_BEACON_IMAGE_TAG="${REGISTRY_NAMESPACE}/qrysm-beacon:src-${QRYSM_GIT_COMMIT:0:12}-r${qrysm_recipe_revision}-${arch}"
 	QRYSM_VALIDATOR_IMAGE_TAG="${REGISTRY_NAMESPACE}/qrysm-validator:src-${QRYSM_GIT_COMMIT:0:12}-r${qrysm_recipe_revision}-${arch}"
 	GENESIS_IMAGE_TAG="${REGISTRY_NAMESPACE}/qrl-genesis-generator:src-${GENERATOR_GIT_COMMIT:0:12}-q${QRYSM_GIT_COMMIT:0:12}-r${bake_recipe_revision}-${arch}"
+	TX_SPAMMER_IMAGE_TAG="${REGISTRY_NAMESPACE}/qrl-tx-spammer:src-${TX_SPAMMER_GIT_COMMIT:0:12}-r${bake_recipe_revision}-${arch}"
+	METRICS_EXPORTER_IMAGE_TAG="${REGISTRY_NAMESPACE}/qrl-metrics-exporter:src-${METRICS_EXPORTER_GIT_COMMIT:0:12}-r${bake_recipe_revision}-${arch}"
+	RUNNER_IMAGE_TAG="${REGISTRY_NAMESPACE}/qrl-tests-runner:src-${QRL_TESTS_GIT_COMMIT:0:12}-k${KURTOSIS_VERSION}-r${runner_recipe_revision}-${arch}"
 
 	{
 		printf 'ARCHITECTURE=%s\n' "${arch}"
@@ -63,11 +78,19 @@ plan() {
 			QRYSM_GIT_COMMIT "${QRYSM_GIT_COMMIT}" \
 			GENERATOR_GIT_REPO "${GENERATOR_GIT_REPO}" \
 			GENERATOR_GIT_COMMIT "${GENERATOR_GIT_COMMIT}" \
+			TX_SPAMMER_GIT_REPO "${TX_SPAMMER_GIT_REPO}" \
+			TX_SPAMMER_GIT_COMMIT "${TX_SPAMMER_GIT_COMMIT}" \
+			METRICS_EXPORTER_GIT_REPO "${METRICS_EXPORTER_GIT_REPO}" \
+			METRICS_EXPORTER_GIT_COMMIT "${METRICS_EXPORTER_GIT_COMMIT}" \
+			KURTOSIS_VERSION "${KURTOSIS_VERSION}" \
 			GO_QRL_IMAGE_TAG "${GO_QRL_IMAGE_TAG}" \
 			GO_QRL_CLEF_IMAGE_TAG "${GO_QRL_CLEF_IMAGE_TAG}" \
 			QRYSM_BEACON_IMAGE_TAG "${QRYSM_BEACON_IMAGE_TAG}" \
 			QRYSM_VALIDATOR_IMAGE_TAG "${QRYSM_VALIDATOR_IMAGE_TAG}" \
-			GENESIS_IMAGE_TAG "${GENESIS_IMAGE_TAG}"
+			GENESIS_IMAGE_TAG "${GENESIS_IMAGE_TAG}" \
+			TX_SPAMMER_IMAGE_TAG "${TX_SPAMMER_IMAGE_TAG}" \
+			METRICS_EXPORTER_IMAGE_TAG "${METRICS_EXPORTER_IMAGE_TAG}" \
+			RUNNER_IMAGE_TAG "${RUNNER_IMAGE_TAG}"
 	} >>"${GITHUB_ENV}"
 
 	local -a missing_bake_targets=() missing_qrysm_targets=()

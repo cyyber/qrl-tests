@@ -30,6 +30,9 @@ summaries at the report root. Every run records its Ginkgo seed in
 `reports/run-manifest.json`; unexpected skipped or pending specs fail the run.
 Inspect the registered lane and suites with `go run ./cmd/qrltest list`.
 
+The multi-hour soak is a separate command (`qrltest soak`), documented in
+[`perf/soak/README.md`](../perf/soak/README.md).
+
 Files that register or execute live scenarios use the `e2e` build tag.
 Deterministic fixture, encoding, and helper tests remain untagged so the default
 `go test ./...` run continues to validate them without a network.
