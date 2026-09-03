@@ -47,7 +47,7 @@ jobs:
   submit:
     needs: images
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 35
     permissions:
       contents: read
       id-token: write
@@ -107,21 +107,24 @@ jobs:
           # minSize=1 so the Cluster Autoscaler cannot dump unused work
           # nodes while Kurtosis is still placing participant pods.
           IFS=',' read -ra groups <<<"${NODEGROUPS}"
+          declare -A updates
           for group in "${groups[@]}"; do
             group=$(echo "$group" | tr -d ' ')
             [ -n "$group" ] || continue
-            aws eks update-nodegroup-config \
+            update_id=$(aws eks update-nodegroup-config \
               --cluster-name "${EKS_CLUSTER_NAME}" \
               --nodegroup-name "${group}" \
-              --scaling-config minSize=1,maxSize=1,desiredSize=1
+              --scaling-config minSize=1,maxSize=1,desiredSize=1 \
+              --query 'update.id' --output text)
+            updates["${group}"]="${update_id}"
+            echo "Scaling ${group} (${update_id})"
           done
-          for group in "${groups[@]}"; do
-            group=$(echo "$group" | tr -d ' ')
-            [ -n "${group}" ] || continue
-            echo "Waiting for nodegroup ${group} to become active"
-            aws eks wait nodegroup-active \
+          for group in "${!updates[@]}"; do
+            echo "Waiting for nodegroup ${group} update ${updates[$group]}"
+            aws eks wait nodegroup-update-complete \
               --cluster-name "${EKS_CLUSTER_NAME}" \
-              --nodegroup-name "${group}"
+              --nodegroup-name "${group}" \
+              --id "${updates[$group]}"
           done
 
       - name: Submit the soak Job

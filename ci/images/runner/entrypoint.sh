@@ -87,10 +87,13 @@ EOF
 		return 1
 	fi
 
-	# `engine start` is idempotent: a running engine of the same version is
-	# left alone, so consecutive Jobs share it.
+	# `engine start` is idempotent when the existing engine answers. After a
+	# failed soak the pod can be up while the server is not; restart then.
 	annotate qrl.io/phase=engine
-	kurtosis engine start --version "${KURTOSIS_VERSION}" --log-retention-period "${engine_log_retention}"
+	if ! kurtosis engine start --version "${KURTOSIS_VERSION}" --log-retention-period "${engine_log_retention}"; then
+		echo "engine start failed; restarting the leftover engine" >&2
+		kurtosis engine restart --version "${KURTOSIS_VERSION}" --log-retention-period "${engine_log_retention}"
+	fi
 
 	# The SDK talks to the engine through the gateway's local port-forward;
 	# the network itself is reached in-cluster (DEVNET_ENDPOINT_MODE=cluster).
