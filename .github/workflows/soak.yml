@@ -185,7 +185,9 @@ jobs:
 
   watch:
     needs: submit
-    runs-on: [self-hosted, qrl-watch-${{ needs.submit.outputs.run-id }}]
+    runs-on:
+      - self-hosted
+      - qrl-watch-${{ needs.submit.outputs.run-id }}
     timeout-minutes: 600
     permissions:
       contents: read
@@ -253,10 +255,7 @@ jobs:
 
             if [ -n "${CHECK_RUN_ID}" ]; then
               TITLE="Soak ${JOB_NAME} ${phase:-running}" SUMMARY="${line}" \
-                python3 -c 'import json,os,urllib.request
-body=json.dumps({"status":"in_progress","details_url":os.environ["DETAILS_URL"],"output":{"title":os.environ["TITLE"],"summary":os.environ["SUMMARY"]}}).encode()
-req=urllib.request.Request("https://api.github.com/repos/%s/check-runs/%s"%(os.environ["GH_REPO"],os.environ["CHECK_RUN_ID"]),data=body,method="PATCH",headers={"Authorization":"Bearer "+os.environ["GH_TOKEN"],"Accept":"application/vnd.github+json","Content-Type":"application/json"})
-urllib.request.urlopen(req).read()' \
+                python3 -c 'import json,os,urllib.request; body=json.dumps({"status":"in_progress","details_url":os.environ["DETAILS_URL"],"output":{"title":os.environ["TITLE"],"summary":os.environ["SUMMARY"]}}).encode(); req=urllib.request.Request("https://api.github.com/repos/%s/check-runs/%s"%(os.environ["GH_REPO"],os.environ["CHECK_RUN_ID"]),data=body,method="PATCH",headers={"Authorization":"Bearer "+os.environ["GH_TOKEN"],"Accept":"application/vnd.github+json","Content-Type":"application/json"}); urllib.request.urlopen(req).read()' \
                 || echo "check update skipped"
             fi
 
