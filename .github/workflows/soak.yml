@@ -25,8 +25,6 @@ on:
       chaos:
         description: optional failure-path probe (none, abort-midrun, leak-enclave)
         default: none
-      seed:
-        description: ginkgo spec-order seed (empty draws a fresh one)
 
 concurrency:
   group: qrl-soak
@@ -135,7 +133,6 @@ jobs:
           SOAK_ENFORCE: ${{ inputs.enforce && 'true' || 'false' }}
           SOAK_LOAD_PERCENT: ${{ inputs.load-percent || '30' }}
           KEEP_NETWORK: ${{ inputs.keep-network && 'true' || (inputs.chaos == 'leak-enclave' && 'true' || 'false') }}
-          E2E_SEED: ${{ inputs.seed }}
           ACTIVE_DEADLINE_SECONDS: "32400"
         run: |
           envsubst < ci/k8s/soak-job.yaml.tmpl | kubectl apply -f -

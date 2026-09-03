@@ -77,12 +77,8 @@ spec:
               value: ${TX_SPAMMER_IMAGE}
             - name: DEVNET_METRICS_EXPORTER_IMAGE
               value: ${METRICS_EXPORTER_IMAGE}
-            - name: E2E_LANE
-              value: soak
-            - name: E2E_REPORT_DIR
+            - name: SOAK_REPORT_DIR
               value: /reports
-            - name: E2E_SEED
-              value: "${E2E_SEED}"
             - name: SOAK_DURATION
               value: ${SOAK_DURATION}
             - name: SOAK_ENFORCE

@@ -83,10 +83,10 @@ jobs:
         run: |
           if [ -f reports/summary.md ]; then
             cat reports/summary.md >> "$GITHUB_STEP_SUMMARY"
-          elif [ -f reports/lanes/soak/results.json ]; then
+          elif [ -f reports/results.json ]; then
             echo "## Soak results" >> "$GITHUB_STEP_SUMMARY"
             echo '```json' >> "$GITHUB_STEP_SUMMARY"
-            cat reports/lanes/soak/results.json >> "$GITHUB_STEP_SUMMARY"
+            cat reports/results.json >> "$GITHUB_STEP_SUMMARY"
             echo '```' >> "$GITHUB_STEP_SUMMARY"
           else
             echo "## Soak: no summary produced (${{ steps.collect.outputs.state }})" >> "$GITHUB_STEP_SUMMARY"
@@ -110,7 +110,6 @@ jobs:
           conclusion=failure
           title="Soak ${STATE}"
           verdict=reports/verdict.json
-          [ -f reports/lanes/soak/verdict.json ] && verdict=reports/lanes/soak/verdict.json
           if [ "${STATE}" = "succeeded" ] && [ -f "${verdict}" ]; then
             passed=$(jq -r '.passed // empty' "${verdict}" 2>/dev/null || true)
             [ "${passed}" = "true" ] && conclusion=success
@@ -140,7 +139,6 @@ jobs:
         run: |
           [ "${STATE}" = "succeeded" ] || exit 1
           verdict=reports/verdict.json
-          [ -f reports/lanes/soak/verdict.json ] && verdict=reports/lanes/soak/verdict.json
           if [ -f "${verdict}" ]; then
             [ "$(jq -r .passed "${verdict}")" = "true" ]
           elif [ -f reports/summary.json ]; then
