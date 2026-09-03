@@ -54,7 +54,7 @@ jobs:
     env:
       AWS_REGION: ${{ vars.AWS_REGION }}
       EKS_CLUSTER_NAME: ${{ vars.EKS_CLUSTER_NAME }}
-      CI_NAMESPACE: ${{ vars.CI_NAMESPACE || 'qrl-ci' }}
+      CI_NAMESPACE: ${{ vars.CI_NAMESPACE || 'qrl' }}
     outputs:
       run-id: ${{ steps.ids.outputs.run-id }}
       job-name: ${{ steps.ids.outputs.job-name }}

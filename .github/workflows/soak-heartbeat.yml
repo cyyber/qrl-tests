@@ -26,7 +26,7 @@ jobs:
     env:
       AWS_REGION: ${{ vars.AWS_REGION }}
       EKS_CLUSTER_NAME: ${{ vars.EKS_CLUSTER_NAME }}
-      CI_NAMESPACE: ${{ vars.CI_NAMESPACE || 'qrl-ci' }}
+      CI_NAMESPACE: ${{ vars.CI_NAMESPACE || 'qrl' }}
     steps:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
