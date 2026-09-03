@@ -1,6 +1,8 @@
 # Ephemeral self-hosted runner that exists only while a soak is in flight.
 # soak.yml's watch job pins to this pod via the qrl-watch-${RUN_ID} label so
 # the Actions run stays in progress without a GitHub-hosted runner.
+# envsubst must only expand RUN_ID, CI_NAMESPACE, GITHUB_REPOSITORY, and
+# RUNNER_TOKEN. ${GH_URL} / ${RUNNER_NAME} / ${RUNNER_LABELS} are pod env.
 apiVersion: batch/v1
 kind: Job
 metadata:

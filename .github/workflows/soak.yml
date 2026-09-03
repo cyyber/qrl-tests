@@ -166,7 +166,11 @@ jobs:
             exit 1
           fi
           token=$(gh api -X POST "repos/${GITHUB_REPOSITORY}/actions/runners/registration-token" --jq .token)
-          RUNNER_TOKEN="${token}" envsubst < ci/k8s/gha-watch-runner.yaml.tmpl | kubectl apply -f -
+          # Only expand the apply-time vars. Leaving GH_URL / RUNNER_NAME /
+          # RUNNER_LABELS for the pod so envsubst does not blank --url.
+          RUNNER_TOKEN="${token}" envsubst \
+            '${RUN_ID} ${CI_NAMESPACE} ${GITHUB_REPOSITORY} ${RUNNER_TOKEN}' \
+            < ci/k8s/gha-watch-runner.yaml.tmpl | kubectl apply -f -
 
           label="qrl-watch-${RUN_ID}"
           for _ in $(seq 1 36); do
