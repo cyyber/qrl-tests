@@ -321,6 +321,7 @@ jobs:
 
             if [ "${failed}" = "1" ] || [ "${result}" = "failed" ]; then
               echo "Soak Job failed" >&2
+              kubectl logs -n "${CI_NAMESPACE}" -l "job-name=${JOB_NAME}" --tail=120 >&2 || true
               exit 1
             fi
             if [ "${succeeded}" = "1" ] || [ "${result}" = "passed" ]; then
