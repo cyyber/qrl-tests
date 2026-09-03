@@ -264,6 +264,5 @@
     "storage_tsdb_retention_time": "2d",
     "storage_tsdb_retention_size": "4GB"
   },
-  "qrl_metrics_exporter_enabled": true,
   "global_log_level": "info"
 }

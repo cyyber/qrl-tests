@@ -201,7 +201,11 @@ func profileParameters(address string, options StartOptions) (string, error) {
 		parameters.PrometheusParams = &prometheusParams{RetentionTime: "2d", RetentionSize: "4GB"}
 		parameters.GlobalLogLevel = "info"
 	}
-	if spec.metricsExporter {
+	if spec.metricsExporter && options.Backend != BackendKubernetes {
+		// qrl-package copies the participant node selector onto the
+		// exporter but not the work-pool taint toleration, so the pod
+		// cannot schedule on Kubernetes. Native EL/CL /metrics are enough
+		// for soak gates.
 		parameters.QRLMetricsExporterEnabled = true
 	}
 	if pinned {

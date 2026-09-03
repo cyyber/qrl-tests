@@ -96,7 +96,7 @@ func TestSoakParametersKubernetes(t *testing.T) {
 		require.Equal(t, participant["cl_min_mem"], participant["cl_max_mem"])
 	}
 	require.Equal(t, []any{"prometheus_grafana", "tx_spammer"}, parameters["additional_services"])
-	require.Equal(t, true, parameters["qrl_metrics_exporter_enabled"])
+	require.NotContains(t, parameters, "qrl_metrics_exporter_enabled")
 	spammer := parameters["tx_spammer_params"].(map[string]any)
 	require.Equal(t, soakImages().TxSpammer, spammer["image"])
 	require.Equal(t, float64(SoakThroughput(DefaultLoadPercent)), spammer["throughput"])
