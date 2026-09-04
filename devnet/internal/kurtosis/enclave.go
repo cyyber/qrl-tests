@@ -9,7 +9,10 @@ import (
 	"fmt"
 	"maps"
 	"net"
+	"os"
 	"strconv"
+	"strings"
+	"time"
 
 	"github.com/kurtosis-tech/kurtosis/api/golang/core/kurtosis_core_rpc_api_bindings"
 	"github.com/kurtosis-tech/kurtosis/api/golang/core/lib/services"
@@ -18,11 +21,12 @@ import (
 )
 
 type Service struct {
-	UUID        string
-	PrivateIP   string
-	PublicIP    string
-	PublicPorts map[string]uint16
-	Labels      map[string]string
+	UUID         string
+	PrivateIP    string
+	PublicIP     string
+	PublicPorts  map[string]uint16
+	PrivatePorts map[string]uint16
+	Labels       map[string]string
 }
 
 func (service Service) PublicEndpoint(portID, scheme string) (string, error) {
@@ -34,6 +38,19 @@ func (service Service) PublicEndpoint(portID, scheme string) (string, error) {
 		return "", errors.New("no public IP address")
 	}
 	return scheme + "://" + net.JoinHostPort(service.PublicIP, strconv.Itoa(int(port))), nil
+}
+
+// PrivateEndpoint addresses the service inside the enclave network: the
+// container address on Docker, the Kubernetes Service address on Kubernetes.
+func (service Service) PrivateEndpoint(portID, scheme string) (string, error) {
+	port := service.PrivatePorts[portID]
+	if port == 0 {
+		return "", fmt.Errorf("no private %q port", portID)
+	}
+	if service.PrivateIP == "" {
+		return "", errors.New("no private IP address")
+	}
+	return scheme + "://" + net.JoinHostPort(service.PrivateIP, strconv.Itoa(int(port))), nil
 }
 
 // EnclaveClient manages enclaves and packages through the Kurtosis SDK.
@@ -89,6 +106,33 @@ func (client *EnclaveClient) RunRemotePackage(
 }
 
 func (client *EnclaveClient) Services(ctx context.Context, enclaveName string) (map[string]Service, error) {
+	var last error
+	for attempt := 0; attempt < 30; attempt++ {
+		result, err := client.servicesOnce(ctx, enclaveName)
+		if err == nil && len(result) > 0 {
+			return result, nil
+		}
+		if err == nil {
+			err = errors.New("enclave listed no services")
+		}
+		last = err
+		if ctx.Err() != nil {
+			return nil, errors.Join(last, ctx.Err())
+		}
+		if !transientKurtosisError(err) {
+			return nil, err
+		}
+		fmt.Fprintf(os.Stderr, "kurtosis: retrying service listing (%s)\n", err)
+		select {
+		case <-ctx.Done():
+			return nil, errors.Join(last, ctx.Err())
+		case <-time.After(2 * time.Second):
+		}
+	}
+	return nil, last
+}
+
+func (client *EnclaveClient) servicesOnce(ctx context.Context, enclaveName string) (map[string]Service, error) {
 	enclave, err := client.engine.GetEnclaveContext(ctx, enclaveName)
 	if err != nil {
 		return nil, err
@@ -114,6 +158,18 @@ func (client *EnclaveClient) Services(ctx context.Context, enclaveName string) (
 	return result, nil
 }
 
+func transientKurtosisError(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := err.Error()
+	return strings.Contains(message, "Unavailable") ||
+		strings.Contains(message, "EOF") ||
+		strings.Contains(message, "connection refused") ||
+		strings.Contains(message, "error reading from server") ||
+		strings.Contains(message, "enclave listed no services")
+}
+
 func (client *EnclaveClient) DestroyEnclave(ctx context.Context, name string) error {
 	return client.engine.DestroyEnclave(ctx, name)
 }
@@ -123,26 +179,38 @@ type serviceContext interface {
 	GetPrivateIPAddress() string
 	GetMaybePublicIPAddress() string
 	GetPublicPorts() map[string]*services.PortSpec
+	GetPrivatePorts() map[string]*services.PortSpec
 	GetLabels() map[string]string
 }
 
 func newService(source serviceContext) Service {
-	publicPorts := make(map[string]uint16, len(source.GetPublicPorts()))
-	for id, port := range source.GetPublicPorts() {
-		publicPorts[id] = port.GetNumber()
-	}
 	return Service{
-		UUID:        string(source.GetServiceUUID()),
-		PrivateIP:   source.GetPrivateIPAddress(),
-		PublicIP:    source.GetMaybePublicIPAddress(),
-		PublicPorts: publicPorts,
-		Labels:      maps.Clone(source.GetLabels()),
+		UUID:         string(source.GetServiceUUID()),
+		PrivateIP:    source.GetPrivateIPAddress(),
+		PublicIP:     source.GetMaybePublicIPAddress(),
+		PublicPorts:  portNumbers(source.GetPublicPorts()),
+		PrivatePorts: portNumbers(source.GetPrivatePorts()),
+		Labels:       maps.Clone(source.GetLabels()),
 	}
+}
+
+func portNumbers(specs map[string]*services.PortSpec) map[string]uint16 {
+	numbers := make(map[string]uint16, len(specs))
+	for id, port := range specs {
+		numbers[id] = port.GetNumber()
+	}
+	return numbers
 }
 
 func consumeStarlarkCompletion(stream <-chan *kurtosis_core_rpc_api_bindings.StarlarkRunResponseLine) error {
 	var runErr error
 	for line := range stream {
+		if progress := line.GetProgressInfo(); progress != nil {
+			steps := progress.GetCurrentStepInfo()
+			if n := len(steps); n > 0 && steps[n-1] != "" {
+				fmt.Fprintf(os.Stderr, "kurtosis: %s\n", steps[n-1])
+			}
+		}
 		if responseErr := line.GetError(); responseErr != nil {
 			runErr = errors.Join(runErr, starlarkError(responseErr))
 		}

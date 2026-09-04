@@ -25,6 +25,9 @@ jobs:
           - qrysm-beacon
           - qrysm-validator
           - qrl-genesis-generator
+          - qrl-tx-spammer
+          - qrl-metrics-exporter
+          - qrl-tests-runner
     steps:
       - name: Keep only the newest window
         uses: actions/delete-package-versions@v5

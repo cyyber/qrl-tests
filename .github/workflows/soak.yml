@@ -1,0 +1,370 @@
+# Submits the soak Job, then holds this Actions run in progress on an
+# ephemeral self-hosted runner in the cluster (core pool). That runner is
+# not GitHub-hosted, so the yellow status costs no Actions minutes.
+# soak-report.yml still collects the artifact after the Job finishes.
+name: soak
+
+on:
+  # Sunday 03:00 UTC. Schedule cannot pass inputs, so the Job env
+  # fallbacks below are the weekly contract: 4h idle, 1 participant.
+  # Load stays 0 until tx_spammer can tolerate the work taint (same
+  # class as Prometheus). Participants stay 1 until the On-Demand
+  # vCPU quota covers four work nodes.
+  schedule:
+    - cron: "0 3 * * 0"
+  workflow_dispatch:
+    inputs:
+      duration:
+        description: steady-state window (Go duration)
+        default: 4h
+      load-percent:
+        description: share of block gas capacity the spammer targets; 0 is idle. Kubernetes currently ignores load (tx_spammer cannot schedule).
+        default: "0"
+      enforce:
+        description: fail the check when a gate is breached. Leave off until idle RSS is trusted after a ≥1h window.
+        type: boolean
+        default: false
+      keep-network:
+        description: leave the enclave running after the Job finishes
+        type: boolean
+        default: false
+      chaos:
+        description: optional failure-path probe (none, abort-midrun, leak-enclave)
+        default: none
+      participants:
+        description: labelled work nodes to launch (1-4). 1 fits the 16 vCPU On-Demand cap; 4 needs ~40 vCPU
+        default: "1"
+
+concurrency:
+  group: qrl-soak
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  KURTOSIS_VERSION: 1.20.0
+
+jobs:
+  images:
+    uses: ./.github/workflows/images-reusable.yml
+    permissions:
+      contents: read
+      packages: write
+
+  submit:
+    needs: images
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    permissions:
+      contents: read
+      id-token: write
+      checks: write
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      EKS_CLUSTER_NAME: ${{ vars.EKS_CLUSTER_NAME }}
+      CI_NAMESPACE: ${{ vars.CI_NAMESPACE || 'qrl' }}
+    outputs:
+      run-id: ${{ steps.ids.outputs.run-id }}
+      job-name: ${{ steps.ids.outputs.job-name }}
+      check-run-id: ${{ steps.check.outputs.id }}
+    steps:
+      - name: Check out qrl-tests
+        uses: actions/checkout@v7
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_CI_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Update kubeconfig
+        run: aws eks update-kubeconfig --name "${EKS_CLUSTER_NAME}" --region "${AWS_REGION}"
+
+      - name: Assign run identifiers
+        id: ids
+        run: |
+          run_id="${{ github.run_id }}-${{ github.run_attempt }}"
+          {
+            echo "run-id=${run_id}"
+            echo "job-name=qrl-soak-${run_id}"
+            echo "enclave-name=qrl-soak-${run_id}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Create the soak-cluster check run
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ steps.ids.outputs.run-id }}
+          DURATION: ${{ inputs.duration || '4h' }}
+        run: |
+          response=$(gh api "repos/${{ github.repository }}/check-runs" \
+            -f name=soak-cluster \
+            -f head_sha="${{ github.sha }}" \
+            -f status=in_progress \
+            -f started_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            -f details_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+            -f output[title]="Soak ${RUN_ID} in progress on the cluster" \
+            -f output[summary]="Watch this Actions run. The watch job is held by an in-cluster runner, not a GitHub-hosted minute. Duration ${DURATION}.")
+          echo "id=$(jq -r .id <<<"$response")" >> "$GITHUB_OUTPUT"
+
+      - name: Pre-scale work node groups
+        env:
+          SOAK_PARTICIPANTS: ${{ inputs.participants || '1' }}
+        run: |
+          # minSize=1 so the Cluster Autoscaler cannot dump unused work
+          # nodes while Kurtosis is still placing participant pods.
+          # Scale only the nodes this soak will pin: shared + work-1..N.
+          participants="${SOAK_PARTICIPANTS:-1}"
+          groups=(work-shared)
+          for n in $(seq 1 "${participants}"); do
+            groups+=("work-${n}")
+          done
+          declare -A updates
+          for group in "${groups[@]}"; do
+            update_id=$(aws eks update-nodegroup-config \
+              --cluster-name "${EKS_CLUSTER_NAME}" \
+              --nodegroup-name "${group}" \
+              --scaling-config minSize=1,maxSize=1,desiredSize=1 \
+              --query 'update.id' --output text)
+            updates["${group}"]="${update_id}"
+            echo "Scaling ${group} (${update_id})"
+          done
+          deadline=$((SECONDS + 900))
+          for group in "${!updates[@]}"; do
+            echo "Waiting for nodegroup ${group} update ${updates[$group]}"
+            while true; do
+              status=$(aws eks describe-update \
+                --name "${EKS_CLUSTER_NAME}" \
+                --nodegroup-name "${group}" \
+                --update-id "${updates[$group]}" \
+                --query 'update.status' --output text)
+              echo "${group}: ${status}"
+              case "${status}" in
+                Successful) break ;;
+                Failed|Cancelled)
+                  echo "Nodegroup ${group} update ${status}" >&2
+                  exit 1
+                  ;;
+              esac
+              if [ "${SECONDS}" -ge "${deadline}" ]; then
+                echo "Timed out waiting for nodegroup ${group}" >&2
+                exit 1
+              fi
+              sleep 15
+            done
+            while true; do
+              issues=$(aws eks describe-nodegroup \
+                --cluster-name "${EKS_CLUSTER_NAME}" \
+                --nodegroup-name "${group}" \
+                --query 'length(nodegroup.health.issues)' --output text)
+              if [ "${issues}" = "0" ]; then
+                break
+              fi
+              if [ "${SECONDS}" -ge "${deadline}" ]; then
+                aws eks describe-nodegroup \
+                  --cluster-name "${EKS_CLUSTER_NAME}" \
+                  --nodegroup-name "${group}" \
+                  --query 'nodegroup.health.issues' --output json >&2
+                echo "Nodegroup ${group} is still unhealthy (often vCPU quota)." >&2
+                exit 1
+              fi
+              echo "${group}: waiting for launch after ${issues} health issue(s)"
+              sleep 15
+            done
+          done
+
+      - name: Submit the soak Job
+        env:
+          # envsubst reads these; keep names identical to the template.
+          JOB_NAME: ${{ steps.ids.outputs.job-name }}
+          RUN_ID: ${{ steps.ids.outputs.run-id }}
+          ENCLAVE_NAME: ${{ steps.ids.outputs.enclave-name }}
+          HEAD_SHA: ${{ github.sha }}
+          CHECK_RUN_ID: ${{ steps.check.outputs.id }}
+          RUNNER_IMAGE: ${{ needs.images.outputs.runner-image }}
+          EXECUTION_IMAGE: ${{ needs.images.outputs.execution-image }}
+          CLEF_IMAGE: ${{ needs.images.outputs.clef-image }}
+          CONSENSUS_IMAGE: ${{ needs.images.outputs.consensus-image }}
+          VALIDATOR_IMAGE: ${{ needs.images.outputs.validator-image }}
+          GENESIS_IMAGE: ${{ needs.images.outputs.genesis-image }}
+          TX_SPAMMER_IMAGE: ${{ needs.images.outputs.tx-spammer-image }}
+          METRICS_EXPORTER_IMAGE: ${{ needs.images.outputs.metrics-exporter-image }}
+          SOAK_DURATION: ${{ inputs.duration || '4h' }}
+          # Stay off until a ≥1h idle baseline trusts the RSS threshold.
+          SOAK_ENFORCE: ${{ inputs.enforce && 'true' || 'false' }}
+          SOAK_LOAD_PERCENT: ${{ github.event_name == 'schedule' && '0' || (inputs.load-percent || '0') }}
+          SOAK_PARTICIPANTS: ${{ inputs.participants || '1' }}
+          KEEP_NETWORK: ${{ inputs.keep-network && 'true' || (inputs.chaos == 'leak-enclave' && 'true' || 'false') }}
+          SOAK_CHAOS: ${{ inputs.chaos || 'none' }}
+          SOAK_CHAOS_AFTER: "1200"
+          E2E_SOURCE_GO_QRL: ${{ needs.images.outputs.go-qrl-sha }}
+          E2E_SOURCE_QRYSM: ${{ needs.images.outputs.qrysm-sha }}
+          E2E_SOURCE_GENERATOR: ${{ needs.images.outputs.generator-sha }}
+          ACTIVE_DEADLINE_SECONDS: "32400"
+        run: |
+          kubectl delete job,pvc -n "${CI_NAMESPACE}" -l qrl.io/lane=soak --wait=false || true
+          envsubst < ci/k8s/soak-job.yaml.tmpl | kubectl apply -f -
+          kubectl annotate job "${JOB_NAME}" -n "${CI_NAMESPACE}" --overwrite \
+            qrl.io/check-run-id="${CHECK_RUN_ID}" \
+            qrl.io/head-sha="${HEAD_SHA}" \
+            qrl.io/github-run="${{ github.run_id }}"
+          {
+            echo "## Soak submitted"
+            echo
+            echo "- Job: \`${JOB_NAME}\`"
+            echo "- Enclave: \`${ENCLAVE_NAME}\`"
+            echo "- Duration: \`${SOAK_DURATION}\`"
+            echo "- The watch job keeps this run in progress on the cluster runner."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Start the in-cluster watch runner
+        env:
+          GH_TOKEN: ${{ secrets.ACTIONS_RUNNER_PAT }}
+          RUN_ID: ${{ steps.ids.outputs.run-id }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          if [ -z "${GH_TOKEN}" ]; then
+            echo "Set repo secret ACTIONS_RUNNER_PAT (fine-grained: Administration read/write) so submit can register the in-cluster runner." >&2
+            exit 1
+          fi
+          token=$(gh api -X POST "repos/${GITHUB_REPOSITORY}/actions/runners/registration-token" --jq .token)
+          # Only expand the apply-time vars. Leaving GH_URL / RUNNER_NAME /
+          # RUNNER_LABELS for the pod so envsubst does not blank --url.
+          RUNNER_TOKEN="${token}" envsubst \
+            '${RUN_ID} ${CI_NAMESPACE} ${GITHUB_REPOSITORY} ${RUNNER_TOKEN}' \
+            < ci/k8s/gha-watch-runner.yaml.tmpl | kubectl apply -f -
+
+          label="qrl-watch-${RUN_ID}"
+          for _ in $(seq 1 36); do
+            status=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runners" \
+              | jq -r --arg label "${label}" \
+                '[.runners[] | select(.labels[].name == $label) | .status] | first // empty')
+            if [ "${status}" = "online" ]; then
+              echo "Watch runner ${label} is online"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "Watch runner ${label} did not come online" >&2
+          kubectl logs -n "${CI_NAMESPACE}" -l "qrl.io/component=gha-watch,qrl.io/run=${RUN_ID}" --tail=80 >&2 || true
+          exit 1
+
+  watch:
+    needs: submit
+    runs-on:
+      - self-hosted
+      - qrl-watch-${{ needs.submit.outputs.run-id }}
+    timeout-minutes: 600
+    permissions:
+      contents: read
+      checks: write
+      actions: write
+    env:
+      CI_NAMESPACE: ${{ vars.CI_NAMESPACE || 'qrl' }}
+      JOB_NAME: ${{ needs.submit.outputs.job-name }}
+      CHECK_RUN_ID: ${{ needs.submit.outputs.check-run-id }}
+    steps:
+      - name: Follow the soak Job
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          DETAILS_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          mkdir -p "${HOME}/.kube" "${HOME}/bin"
+          if [ -f /var/run/secrets/kubernetes.io/serviceaccount/token ]; then
+            cat > "${HOME}/.kube/config" <<EOF
+          apiVersion: v1
+          kind: Config
+          clusters:
+          - name: in-cluster
+            cluster:
+              server: https://kubernetes.default.svc
+              certificate-authority: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+          users:
+          - name: sa
+            user:
+              tokenFile: /var/run/secrets/kubernetes.io/serviceaccount/token
+          contexts:
+          - name: in-cluster
+            context:
+              cluster: in-cluster
+              user: sa
+              namespace: $(cat /var/run/secrets/kubernetes.io/serviceaccount/namespace)
+          current-context: in-cluster
+          EOF
+          fi
+          if ! command -v kubectl >/dev/null 2>&1; then
+            arch=$(uname -m)
+            case "${arch}" in
+              aarch64|arm64) karch=arm64 ;;
+              *) karch=amd64 ;;
+            esac
+            curl -fsSL -o "${HOME}/bin/kubectl" "https://dl.k8s.io/release/$(curl -fsSL https://dl.k8s.io/release/stable.txt)/bin/linux/${karch}/kubectl"
+            chmod +x "${HOME}/bin/kubectl"
+            export PATH="${HOME}/bin:${PATH}"
+          fi
+
+          echo "Following Job ${JOB_NAME} in ${CI_NAMESPACE}"
+          while true; do
+            phase=$(kubectl get job "${JOB_NAME}" -n "${CI_NAMESPACE}" -o jsonpath='{.metadata.annotations.qrl\.io/phase}')
+            samples=$(kubectl get job "${JOB_NAME}" -n "${CI_NAMESPACE}" -o jsonpath='{.metadata.annotations.qrl\.io/samples}')
+            finalized=$(kubectl get job "${JOB_NAME}" -n "${CI_NAMESPACE}" -o jsonpath='{.metadata.annotations.qrl\.io/finalized-epoch}')
+            head_slot=$(kubectl get job "${JOB_NAME}" -n "${CI_NAMESPACE}" -o jsonpath='{.metadata.annotations.qrl\.io/head-slot}')
+            tx_per_slot=$(kubectl get job "${JOB_NAME}" -n "${CI_NAMESPACE}" -o jsonpath='{.metadata.annotations.qrl\.io/tx-per-slot}')
+            el_rss=$(kubectl get job "${JOB_NAME}" -n "${CI_NAMESPACE}" -o jsonpath='{.metadata.annotations.qrl\.io/el-rss-mb}')
+            result=$(kubectl get job "${JOB_NAME}" -n "${CI_NAMESPACE}" -o jsonpath='{.metadata.annotations.qrl\.io/result}')
+            succeeded=$(kubectl get job "${JOB_NAME}" -n "${CI_NAMESPACE}" -o jsonpath='{.status.succeeded}')
+            failed=$(kubectl get job "${JOB_NAME}" -n "${CI_NAMESPACE}" -o jsonpath='{.status.failed}')
+            line="$(date -u +%H:%M:%SZ) phase=${phase:-?} samples=${samples:-0} finalized=${finalized:-?} head_slot=${head_slot:-?} tx/slot=${tx_per_slot:-?} el_rss=${el_rss:-?}MB result=${result:-pending}"
+            echo "${line}"
+
+            if [ -n "${CHECK_RUN_ID}" ]; then
+              TITLE="Soak ${JOB_NAME} ${phase:-running}" SUMMARY="${line}" \
+                python3 -c 'import json,os,urllib.request; body=json.dumps({"status":"in_progress","details_url":os.environ["DETAILS_URL"],"output":{"title":os.environ["TITLE"],"summary":os.environ["SUMMARY"]}}).encode(); req=urllib.request.Request("https://api.github.com/repos/%s/check-runs/%s"%(os.environ["GH_REPO"],os.environ["CHECK_RUN_ID"]),data=body,method="PATCH",headers={"Authorization":"Bearer "+os.environ["GH_TOKEN"],"Accept":"application/vnd.github+json","Content-Type":"application/json"}); urllib.request.urlopen(req).read()' \
+                || echo "check update skipped"
+            fi
+
+            if [ "${failed}" = "1" ] || [ "${result}" = "failed" ]; then
+              echo "Soak Job failed" >&2
+              kubectl logs -n "${CI_NAMESPACE}" -l "job-name=${JOB_NAME}" --tail=120 >&2 || true
+              exit 1
+            fi
+            if [ "${succeeded}" = "1" ] || [ "${result}" = "passed" ]; then
+              echo "Soak Job finished"
+              exit 0
+            fi
+            sleep 30
+          done
+
+      - name: Collect the report
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          curl -fsS -X POST \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            -H "Content-Type: application/json" \
+            --data "{\"ref\":\"${REF_NAME}\",\"inputs\":{\"job-name\":\"${JOB_NAME}\"}}" \
+            "https://api.github.com/repos/${GH_REPO}/actions/workflows/soak-report.yml/dispatches"
+          echo "Dispatched soak-report for ${JOB_NAME}" >> "$GITHUB_STEP_SUMMARY"
+
+  image-failure-summary:
+    needs: images
+    if: ${{ always() && needs.images.result != 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Publish the result
+        env:
+          IMAGE_RESULT: ${{ needs.images.result }}
+        run: |
+          {
+            echo "## Soak: not submitted"
+            echo
+            echo "Image preparation ${IMAGE_RESULT}."
+          } >> "$GITHUB_STEP_SUMMARY"

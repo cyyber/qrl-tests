@@ -1,0 +1,125 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ${JOB_NAME}-reports
+  namespace: ${CI_NAMESPACE}
+  labels:
+    qrl.io/lane: soak
+    qrl.io/run: "${RUN_ID}"
+spec:
+  accessModes: ["ReadWriteOnce"]
+  storageClassName: gp3
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: ${JOB_NAME}
+  namespace: ${CI_NAMESPACE}
+  labels:
+    qrl.io/lane: soak
+    qrl.io/run: "${RUN_ID}"
+  annotations:
+    qrl.io/head-sha: "${HEAD_SHA}"
+    qrl.io/check-run-id: "${CHECK_RUN_ID}"
+    qrl.io/phase: submitted
+spec:
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 86400
+  activeDeadlineSeconds: ${ACTIVE_DEADLINE_SECONDS}
+  template:
+    metadata:
+      labels:
+        qrl.io/lane: soak
+        qrl.io/run: "${RUN_ID}"
+    spec:
+      serviceAccountName: qrl-job
+      restartPolicy: Never
+      securityContext:
+        fsGroup: 10001
+        fsGroupChangePolicy: OnRootMismatch
+      nodeSelector:
+        qrl.io/pool: core
+      containers:
+        - name: soak
+          image: ${RUNNER_IMAGE}
+          imagePullPolicy: IfNotPresent
+          args: ["soak"]
+          env:
+            - name: JOB_NAME
+              value: ${JOB_NAME}
+            - name: JOB_NAMESPACE
+              value: ${CI_NAMESPACE}
+            - name: KURTOSIS_CLUSTER
+              value: ${EKS_CLUSTER_NAME}
+            - name: KURTOSIS_CONFIG_SOURCE
+              value: /etc/kurtosis/kurtosis-config.yml
+            - name: KURTOSIS_VERSION
+              value: "1.20.0"
+            - name: DEVNET_BACKEND
+              value: kubernetes
+            - name: DEVNET_ENDPOINT_MODE
+              value: cluster
+            - name: DEVNET_ENCLAVE_NAME
+              value: ${ENCLAVE_NAME}
+            - name: DEVNET_START_TIMEOUT
+              value: 20m
+            - name: DEVNET_EXECUTION_IMAGE
+              value: ${EXECUTION_IMAGE}
+            - name: DEVNET_CLEF_IMAGE
+              value: ${CLEF_IMAGE}
+            - name: DEVNET_CONSENSUS_IMAGE
+              value: ${CONSENSUS_IMAGE}
+            - name: DEVNET_VALIDATOR_IMAGE
+              value: ${VALIDATOR_IMAGE}
+            - name: DEVNET_GENESIS_IMAGE
+              value: ${GENESIS_IMAGE}
+            - name: DEVNET_TX_SPAMMER_IMAGE
+              value: ${TX_SPAMMER_IMAGE}
+            - name: DEVNET_METRICS_EXPORTER_IMAGE
+              value: ${METRICS_EXPORTER_IMAGE}
+            - name: SOAK_REPORT_DIR
+              value: /reports
+            - name: SOAK_DURATION
+              value: ${SOAK_DURATION}
+            - name: SOAK_ENFORCE
+              value: "${SOAK_ENFORCE}"
+            - name: SOAK_LOAD_PERCENT
+              value: "${SOAK_LOAD_PERCENT}"
+            - name: SOAK_PARTICIPANTS
+              value: "${SOAK_PARTICIPANTS}"
+            - name: KEEP_NETWORK
+              value: "${KEEP_NETWORK}"
+            - name: SOAK_CHAOS
+              value: "${SOAK_CHAOS}"
+            - name: SOAK_CHAOS_AFTER
+              value: "${SOAK_CHAOS_AFTER}"
+            - name: GITHUB_SHA
+              value: "${HEAD_SHA}"
+            - name: E2E_SOURCE_GO_QRL
+              value: "${E2E_SOURCE_GO_QRL}"
+            - name: E2E_SOURCE_QRYSM
+              value: "${E2E_SOURCE_QRYSM}"
+            - name: E2E_SOURCE_GENERATOR
+              value: "${E2E_SOURCE_GENERATOR}"
+          volumeMounts:
+            - name: reports
+              mountPath: /reports
+            - name: kurtosis-config
+              mountPath: /etc/kurtosis
+              readOnly: true
+          resources:
+            requests:
+              cpu: "500m"
+              memory: 1Gi
+            limits:
+              memory: 2Gi
+      volumes:
+        - name: reports
+          persistentVolumeClaim:
+            claimName: ${JOB_NAME}-reports
+        - name: kurtosis-config
+          configMap:
+            name: kurtosis-config

@@ -1,4 +1,4 @@
-.PHONY: lint network-preflight network-start network-stop e2e e2e-run
+.PHONY: lint network-preflight network-start network-stop e2e e2e-run soak soak-run
 
 GOLANGCI_LINT_VERSION ?= v2.12.2
 DEVNET_BACKEND ?= docker
@@ -31,3 +31,9 @@ e2e:
 
 e2e-run: network-preflight
 	go run ./cmd/qrltest run $(E2E_SUITE_ARGS) "$(E2E_LANE)"
+
+soak:
+	go run ./cmd/qrltest soak --existing
+
+soak-run: network-preflight
+	go run ./cmd/qrltest soak

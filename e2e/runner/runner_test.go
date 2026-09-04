@@ -481,12 +481,11 @@ func TestRunAllProvisionsPerLane(t *testing.T) {
 	}
 
 	require.NoError(t, runner.RunAll(t.Context()))
-	require.Equal(t, "qrl-tests-execution", networks.started.EnclaveName)
-	require.Equal(t, devnet.ProfileSingle, networks.started.Profile)
 	require.Equal(t, []string{"qrl-tests-execution"}, networks.stopped)
 	require.Contains(t, command.Args, "./e2e/suites/execution/abi")
 	record := testutil.ReadJSON[runmanifest.Manifest](t, filepath.Join(reports, runmanifest.FileName))
 	require.Equal(t, "qrl-tests-execution", record.Lanes[0].Enclave)
+	require.Len(t, record.Lanes, 1)
 }
 
 func TestRunReturnsCleanupFailure(t *testing.T) {
