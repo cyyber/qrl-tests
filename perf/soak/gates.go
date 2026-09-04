@@ -605,12 +605,26 @@ func (e evaluator) workingSet(metrics *Metrics) []Gate {
 	return gates
 }
 
+func (e evaluator) memoryWindowTooShort(name string, points []point) (time.Duration, bool) {
+	if e.thresholds.Memory.MinWindow <= 0 || !strings.HasPrefix(name, "memory/") || len(points) < 2 {
+		return 0, false
+	}
+	window := points[len(points)-1].at.Sub(points[0].at)
+	return window, window < e.thresholds.Memory.MinWindow
+}
+
 func (e evaluator) trendGate(name string, points []point, limit float64, convert func(float64) float64, unit string, into map[string]MemoryTrend) Gate {
 	gate := Gate{Name: name, Threshold: fmt.Sprintf("slope ≤ %.0f %s", limit, unit)}
 	if len(points) < e.thresholds.Memory.MinSamples {
 		gate.Passed, gate.Insufficient = true, true
 		gate.Observed = fmt.Sprintf("%d samples", len(points))
 		gate.Detail = fmt.Sprintf("need %d samples for a trend", e.thresholds.Memory.MinSamples)
+		return gate
+	}
+	if window, short := e.memoryWindowTooShort(name, points); short {
+		gate.Passed, gate.Insufficient = true, true
+		gate.Observed = fmt.Sprintf("window %s over %d samples", window.Round(time.Second), len(points))
+		gate.Detail = fmt.Sprintf("need %s of steady samples before judging a memory slope", e.thresholds.Memory.MinWindow)
 		return gate
 	}
 	slope, ok := slopePerHour(points)

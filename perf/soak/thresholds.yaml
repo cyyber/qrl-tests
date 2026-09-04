@@ -5,7 +5,7 @@
 # Sizing assumptions: 5 s slots, 8 slots per epoch, four participants, a
 # 30 M gas block, sampling every 30 s. Rates are expressed per sample window
 # unless a unit says otherwise.
-version: 1
+version: 2
 
 warmup:
   # Gates start counting once every participant has finalized this many
@@ -63,6 +63,10 @@ memory:
   # Fewer samples than this and the memory gates report "insufficient data"
   # instead of a verdict.
   min_samples: 20
+  # Memory slopes over a short window are noise (a 15 m idle run read
+  # 541 MB/h RSS against 96). Do not judge them until the steady series
+  # spans this long.
+  min_window: 1h
   # File-descriptor and GC pressure: a leak or a heap that cannot keep up
   # shows here before RSS does. Generous while calibrating.
   open_fd_slope_max_per_hour: 200
@@ -73,8 +77,9 @@ metrics:
   # Prometheus metric names read from each client's metrics endpoint; the
   # first present name wins so go-qrl and Qrysm naming can drift separately.
   rss: [process_resident_memory_bytes, system_memory_used]
-  heap: [go_memstats_heap_inuse_bytes, go_memstats_heap_alloc_bytes]
-  goroutines: [go_goroutines]
+  # go-qrl exports go-metrics names, not the default Go collector.
+  heap: [go_memstats_heap_inuse_bytes, go_memstats_heap_alloc_bytes, system_memory_used]
+  goroutines: [go_goroutines, system_cpu_goroutines]
   open_fds: [process_open_fds]
   gc_pause: ['go_gc_duration_seconds{quantile="1"}', 'go_gc_duration_seconds{quantile="1.0"}']
   gc_count: [go_gc_duration_seconds_count]

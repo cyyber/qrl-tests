@@ -90,6 +90,42 @@ func TestEvaluatePlacement(t *testing.T) {
 	require.Contains(t, gate(evaluation, "placement/one-participant-per-node").Detail, "2→ip-2")
 }
 
+func TestEvaluateRSSInsufficientBelowMinWindow(t *testing.T) {
+	thresholds := DefaultThresholds()
+	thresholds.Memory.MinSamples = 2
+	start := time.Date(2026, 9, 3, 12, 0, 0, 0, time.UTC)
+	// 15 minutes of a 541 MB/h-class climb: enough samples, too short to judge.
+	samples := []Sample{
+		steady(start, 100, 100, 10, 1<<30),
+		steady(start.Add(15*time.Minute), 280, 280, 10, 1<<30+135<<20),
+	}
+
+	evaluation := Evaluate(samples, thresholds, Options{Participants: 2, SlotsPerEpoch: 8, Enforce: true})
+	require.True(t, evaluation.Passed, gatesDetail(evaluation))
+	rss := gate(evaluation, "memory/participant-1/consensus/rss")
+	require.True(t, rss.Insufficient)
+	require.True(t, rss.Passed)
+	require.Contains(t, rss.Detail, "1h0m0s")
+	require.True(t, gate(evaluation, "memory/participant-1/consensus/heap").Insufficient)
+	require.NotContains(t, evaluation.Metrics.MemorySlopes, "participant-1/consensus/rss")
+}
+
+func TestEvaluateRSSJudgedAfterMinWindow(t *testing.T) {
+	thresholds := DefaultThresholds()
+	thresholds.Memory.MinSamples = 2
+	start := time.Date(2026, 9, 3, 12, 0, 0, 0, time.UTC)
+	samples := []Sample{
+		steady(start, 100, 100, 10, 1<<30),
+		steady(start.Add(time.Hour), 820, 820, 10, 1<<30+600<<20),
+	}
+
+	evaluation := Evaluate(samples, thresholds, Options{Participants: 2, SlotsPerEpoch: 8, Enforce: true})
+	require.False(t, evaluation.Passed)
+	rss := gate(evaluation, "memory/participant-1/consensus/rss")
+	require.False(t, rss.Insufficient)
+	require.False(t, rss.Passed)
+}
+
 func TestEvaluateProcessFDsAndGC(t *testing.T) {
 	thresholds := DefaultThresholds()
 	thresholds.Memory.MinSamples = 2

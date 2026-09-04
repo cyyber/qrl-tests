@@ -12,12 +12,12 @@ import (
 // Kubernetes placement contract shared with qrl-infra: the work pool taint
 // and the per-participant node label.
 const (
-	PoolLabel            = "qrl.io/pool"
-	WorkPool             = "work"
-	RoleLabel            = "qrl.io/role"
-	SharedRole           = "shared"
-	ParticipantNodeLabel = "qrl.io/participant"
-	DefaultLoadPercent   = 30
+	PoolLabel             = "qrl.io/pool"
+	WorkPool              = "work"
+	RoleLabel             = "qrl.io/role"
+	SharedRole            = "shared"
+	ParticipantNodeLabel  = "qrl.io/participant"
+	DefaultLoadPercent    = 30
 	kubernetesTaintEffect = "NoSchedule"
 )
 
@@ -242,6 +242,14 @@ func profileParameters(address string, options StartOptions) (string, error) {
 				MaxWallets: min(500, max(50, throughput*4)),
 			}
 		}
+	}
+	if pinned {
+		// tx_spammer inherits global_node_selectors (work-shared) and
+		// gets empty tolerations, the same unschedulable class as
+		// Prometheus. Drop it on Kubernetes until the package applies
+		// global_tolerations or the work taint is PreferNoSchedule.
+		parameters.AdditionalServices = withoutService(parameters.AdditionalServices, "tx_spammer")
+		parameters.TxSpammerParams = nil
 	}
 
 	payload, err := json.Marshal(parameters)

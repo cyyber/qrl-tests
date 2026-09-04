@@ -103,7 +103,6 @@ func TestReferenceUsesQRLGetBlockByNumber(t *testing.T) {
 	require.Equal(t, "0xdef", sample.ReferenceState)
 }
 
-
 func TestParseExpositionKeepsQuantileLabels(t *testing.T) {
 	families, err := parseExposition(strings.NewReader(`
 # HELP go_gc_duration_seconds A summary of the pause duration of garbage collection cycles.
@@ -119,4 +118,28 @@ process_open_fds 17
 	require.InDelta(t, 40, families["go_gc_duration_seconds_count"], 1e-12)
 	require.InDelta(t, 17, firstMetric(families, DefaultThresholds().Metrics.OpenFDs), 1e-12)
 	require.InDelta(t, 0.002, firstMetric(families, DefaultThresholds().Metrics.GCPause), 1e-12)
+}
+
+func TestFirstMetricReadsGoQRLNames(t *testing.T) {
+	families, err := parseExposition(strings.NewReader(`
+process_resident_memory_bytes 999
+system_memory_used 123456
+system_cpu_goroutines 42
+go_memstats_heap_inuse_bytes 111
+go_goroutines 7
+`))
+	require.NoError(t, err)
+	names := DefaultThresholds().Metrics
+	require.InDelta(t, 999, firstMetric(families, names.RSS), 1e-12)
+	require.InDelta(t, 111, firstMetric(families, names.Heap), 1e-12)
+	require.InDelta(t, 7, firstMetric(families, names.Goroutines), 1e-12)
+
+	goqrl, err := parseExposition(strings.NewReader(`
+system_memory_used 123456
+system_cpu_goroutines 42
+`))
+	require.NoError(t, err)
+	require.InDelta(t, 123456, firstMetric(goqrl, names.RSS), 1e-12)
+	require.InDelta(t, 123456, firstMetric(goqrl, names.Heap), 1e-12)
+	require.InDelta(t, 42, firstMetric(goqrl, names.Goroutines), 1e-12)
 }

@@ -34,7 +34,7 @@ While the Job is running it annotates itself with phase (`provisioning`,
 block, and EL RSS. An ephemeral self-hosted runner on the core pool holds
 the `watch` job so the soak Actions run stays in progress without GitHub-
 hosted minutes. `watch` copies those annotations into the job log and the
-`soak` check. `ACTIONS_RUNNER_PAT` (repo Administration: read/write) is
+`soak-cluster` check. `ACTIONS_RUNNER_PAT` (repo Administration: read/write) is
 required so submit can register that runner.
 
 `soak-report` downloads the previous `soak-reports-*` artifact (14-day

@@ -1,6 +1,6 @@
 # Collects reports/ from the soak Job volume, compares headline metrics to
 # the previous soak-reports-* artifact, publishes the GitHub artifact, and
-# completes the soak check run. Same failure contract as nightly E2E.
+# completes the soak-cluster check run. Same failure contract as nightly E2E.
 name: soak-report
 
 on:
@@ -160,7 +160,7 @@ jobs:
           path: reports/
           retention-days: 14
 
-      - name: Complete the soak check run
+      - name: Complete the soak-cluster check run
         if: always() && steps.collect.outputs.check-run-id != ''
         env:
           GH_TOKEN: ${{ github.token }}

@@ -5,6 +5,11 @@
 name: soak
 
 on:
+  # Sunday 03:00 UTC. Schedule cannot pass inputs, so the Job env
+  # fallbacks below are the weekly contract: 4h idle, 1 participant.
+  # Load stays 0 until tx_spammer can tolerate the work taint (same
+  # class as Prometheus). Participants stay 1 until the On-Demand
+  # vCPU quota covers four work nodes.
   schedule:
     - cron: "0 3 * * 0"
   workflow_dispatch:
@@ -13,10 +18,10 @@ on:
         description: steady-state window (Go duration)
         default: 4h
       load-percent:
-        description: share of block gas capacity the spammer targets; 0 is idle
-        default: "30"
+        description: share of block gas capacity the spammer targets; 0 is idle. Kubernetes currently ignores load (tx_spammer cannot schedule).
+        default: "0"
       enforce:
-        description: fail the check when a gate is breached
+        description: fail the check when a gate is breached. Leave off until idle RSS is trusted after a ≥1h window.
         type: boolean
         default: false
       keep-network:
@@ -86,7 +91,7 @@ jobs:
             echo "enclave-name=qrl-soak-${run_id}"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Create the soak check run
+      - name: Create the soak-cluster check run
         id: check
         env:
           GH_TOKEN: ${{ github.token }}
@@ -94,7 +99,7 @@ jobs:
           DURATION: ${{ inputs.duration || '4h' }}
         run: |
           response=$(gh api "repos/${{ github.repository }}/check-runs" \
-            -f name=soak \
+            -f name=soak-cluster \
             -f head_sha="${{ github.sha }}" \
             -f status=in_progress \
             -f started_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
@@ -186,8 +191,9 @@ jobs:
           TX_SPAMMER_IMAGE: ${{ needs.images.outputs.tx-spammer-image }}
           METRICS_EXPORTER_IMAGE: ${{ needs.images.outputs.metrics-exporter-image }}
           SOAK_DURATION: ${{ inputs.duration || '4h' }}
+          # Stay off until a ≥1h idle baseline trusts the RSS threshold.
           SOAK_ENFORCE: ${{ inputs.enforce && 'true' || 'false' }}
-          SOAK_LOAD_PERCENT: ${{ inputs.load-percent || '30' }}
+          SOAK_LOAD_PERCENT: ${{ github.event_name == 'schedule' && '0' || (inputs.load-percent || '0') }}
           SOAK_PARTICIPANTS: ${{ inputs.participants || '1' }}
           KEEP_NETWORK: ${{ inputs.keep-network && 'true' || (inputs.chaos == 'leak-enclave' && 'true' || 'false') }}
           SOAK_CHAOS: ${{ inputs.chaos || 'none' }}

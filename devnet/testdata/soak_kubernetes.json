@@ -237,9 +237,6 @@
   "qrl_genesis_generator_params": {
     "image": "ghcr.io/example/qrl-genesis-generator@sha256:0af50af50af50af50af50af50af50af50af50af50af50af50af50af50af50af5"
   },
-  "additional_services": [
-    "tx_spammer"
-  ],
   "global_node_selectors": {
     "qrl.io/pool": "work",
     "qrl.io/role": "shared"
@@ -252,12 +249,5 @@
       "effect": "NoSchedule"
     }
   ],
-  "tx_spammer_params": {
-    "image": "ghcr.io/example/qrl-tx-spammer@sha256:0af60af60af60af60af60af60af60af60af60af60af60af60af60af60af60af6",
-    "scenario": "eoatx",
-    "throughput": 85,
-    "max_pending": 850,
-    "max_wallets": 340
-  },
   "global_log_level": "info"
 }
