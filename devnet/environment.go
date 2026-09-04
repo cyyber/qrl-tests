@@ -24,6 +24,8 @@ const (
 
 	// executionMetricsPath is where go-qrl serves Prometheus metrics.
 	executionMetricsPath = "/debug/metrics/prometheus"
+	// consensusMetricsPath is Qrysm's Prometheus path on the metrics port.
+	consensusMetricsPath = "/metrics"
 
 	// prometheusServiceName and prometheusPortID come from the Kurtosis
 	// prometheus package qrl-package launches for the prometheus_grafana
@@ -185,11 +187,15 @@ func (resolver endpointResolver) participantsFromServices(services map[string]ku
 			if err != nil {
 				return nil, fmt.Errorf("consensus service %q: %w", name, err)
 			}
-			participant.Consensus.MetricsURL = resolver.optionalEndpoint(service, metricsPortID, "http")
+			if metrics := resolver.optionalEndpoint(service, metricsPortID, "http"); metrics != "" {
+				participant.Consensus.MetricsURL = metrics + consensusMetricsPath
+			}
 		case "validator":
 			participant.Validator.ServiceInfo = info
 			participant.Validator.URL = resolver.optionalEndpoint(service, validatorHTTPPortID, "http")
-			participant.Validator.MetricsURL = resolver.optionalEndpoint(service, metricsPortID, "http")
+			if metrics := resolver.optionalEndpoint(service, metricsPortID, "http"); metrics != "" {
+				participant.Validator.MetricsURL = metrics + consensusMetricsPath
+			}
 		}
 	}
 	if len(byIndex) == 0 {

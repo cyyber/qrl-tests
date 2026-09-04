@@ -42,30 +42,32 @@ func newProbe(client *http.Client) probe {
 }
 
 // head reads what is needed to pick the reference block and to judge chain
-// progress, peers, and sync state.
+// progress, peers, and sync state. go-qrl and Qrysm use the qrl_ JSON-RPC
+// namespace and /qrl/v1 beacon paths, not the Ethereum eth_ / /eth/v1 names.
+
 func (p probe) head(ctx context.Context, endpoints Endpoints) ParticipantSample {
 	sample := ParticipantSample{Index: endpoints.Index}
 
 	sample.call(func() error {
 		var result string
-		if err := p.rpc(ctx, endpoints.ExecutionRPC, "eth_blockNumber", nil, &result); err != nil {
-			return fmt.Errorf("eth_blockNumber: %w", err)
+		if err := p.rpc(ctx, endpoints.ExecutionRPC, "qrl_blockNumber", nil, &result); err != nil {
+			return fmt.Errorf("qrl_blockNumber: %w", err)
 		}
 		head, err := parseHexUint(result)
 		if err != nil {
-			return fmt.Errorf("eth_blockNumber: %w", err)
+			return fmt.Errorf("qrl_blockNumber: %w", err)
 		}
 		sample.Head = head
 		return nil
 	})
 	sample.call(func() error {
 		var result string
-		if err := p.rpc(ctx, endpoints.ExecutionRPC, "eth_getBlockTransactionCountByNumber", []any{"latest"}, &result); err != nil {
-			return fmt.Errorf("eth_getBlockTransactionCountByNumber: %w", err)
+		if err := p.rpc(ctx, endpoints.ExecutionRPC, "qrl_getBlockTransactionCountByNumber", []any{"latest"}, &result); err != nil {
+			return fmt.Errorf("qrl_getBlockTransactionCountByNumber: %w", err)
 		}
 		count, err := parseHexUint(result)
 		if err != nil {
-			return fmt.Errorf("eth_getBlockTransactionCountByNumber: %w", err)
+			return fmt.Errorf("qrl_getBlockTransactionCountByNumber: %w", err)
 		}
 		sample.TxInHead = count
 		return nil
@@ -84,8 +86,8 @@ func (p probe) head(ctx context.Context, endpoints Endpoints) ParticipantSample 
 	})
 	sample.call(func() error {
 		var result json.RawMessage
-		if err := p.rpc(ctx, endpoints.ExecutionRPC, "eth_syncing", nil, &result); err != nil {
-			return fmt.Errorf("eth_syncing: %w", err)
+		if err := p.rpc(ctx, endpoints.ExecutionRPC, "qrl_syncing", nil, &result); err != nil {
+			return fmt.Errorf("qrl_syncing: %w", err)
 		}
 		// false when in sync, an object while syncing.
 		sample.Syncing = !bytes.Equal(bytes.TrimSpace(result), []byte("false"))
@@ -96,46 +98,17 @@ func (p probe) head(ctx context.Context, endpoints Endpoints) ParticipantSample 
 		return sample
 	}
 	sample.call(func() error {
-		var response struct {
-			Data struct {
-				Header struct {
-					Message struct {
-						Slot string `json:"slot"`
-					} `json:"message"`
-				} `json:"header"`
-			} `json:"data"`
-		}
-		if err := p.rest(ctx, endpoints.ConsensusAPI+"/eth/v1/beacon/headers/head", &response); err != nil {
-			return fmt.Errorf("beacon head: %w", err)
-		}
-		slot, err := strconv.ParseUint(response.Data.Header.Message.Slot, 10, 64)
+		slot, err := p.beaconHeadSlot(ctx, endpoints.ConsensusAPI)
 		if err != nil {
-			return fmt.Errorf("beacon head slot %q: %w", response.Data.Header.Message.Slot, err)
+			return fmt.Errorf("beacon head: %w", err)
 		}
 		sample.HeadSlot = slot
 		return nil
 	})
 	sample.call(func() error {
-		var response struct {
-			Data struct {
-				CurrentJustified struct {
-					Epoch string `json:"epoch"`
-				} `json:"current_justified"`
-				Finalized struct {
-					Epoch string `json:"epoch"`
-				} `json:"finalized"`
-			} `json:"data"`
-		}
-		if err := p.rest(ctx, endpoints.ConsensusAPI+"/eth/v1/beacon/states/head/finality_checkpoints", &response); err != nil {
+		finalized, justified, err := p.beaconFinality(ctx, endpoints.ConsensusAPI, sample.HeadSlot)
+		if err != nil {
 			return fmt.Errorf("finality checkpoints: %w", err)
-		}
-		finalized, err := strconv.ParseUint(response.Data.Finalized.Epoch, 10, 64)
-		if err != nil {
-			return fmt.Errorf("finalized epoch %q: %w", response.Data.Finalized.Epoch, err)
-		}
-		justified, err := strconv.ParseUint(response.Data.CurrentJustified.Epoch, 10, 64)
-		if err != nil {
-			return fmt.Errorf("justified epoch %q: %w", response.Data.CurrentJustified.Epoch, err)
 		}
 		sample.FinalizedEpoch, sample.JustifiedEpoch = finalized, justified
 		return nil
@@ -146,7 +119,7 @@ func (p probe) head(ctx context.Context, endpoints Endpoints) ParticipantSample 
 				Connected string `json:"connected"`
 			} `json:"data"`
 		}
-		if err := p.rest(ctx, endpoints.ConsensusAPI+"/eth/v1/node/peer_count", &response); err != nil {
+		if err := p.rest(ctx, endpoints.ConsensusAPI+"/qrl/v1/node/peer_count", &response); err != nil {
 			return fmt.Errorf("peer count: %w", err)
 		}
 		connected, err := strconv.Atoi(response.Data.Connected)
@@ -159,6 +132,92 @@ func (p probe) head(ctx context.Context, endpoints Endpoints) ParticipantSample 
 	return sample
 }
 
+const defaultSlotsPerEpoch = 8
+
+func (p probe) beaconHeadSlot(ctx context.Context, base string) (uint64, error) {
+	var header struct {
+		Data struct {
+			Header struct {
+				Message struct {
+					Slot string `json:"slot"`
+				} `json:"message"`
+			} `json:"header"`
+		} `json:"data"`
+	}
+	if err := p.rest(ctx, base+"/qrl/v1/beacon/headers/head", &header); err == nil {
+		return parseDecimalUint(header.Data.Header.Message.Slot, "beacon head slot")
+	}
+
+	var block struct {
+		Data struct {
+			Message struct {
+				Slot string `json:"slot"`
+			} `json:"message"`
+			ZondBlock *struct {
+				Slot string `json:"slot"`
+			} `json:"zond_block"`
+		} `json:"data"`
+	}
+	if err := p.rest(ctx, base+"/qrl/v1/beacon/blocks/head", &block); err == nil {
+		if block.Data.ZondBlock != nil && block.Data.ZondBlock.Slot != "" {
+			return parseDecimalUint(block.Data.ZondBlock.Slot, "beacon head slot")
+		}
+		return parseDecimalUint(block.Data.Message.Slot, "beacon head slot")
+	}
+
+	var heads struct {
+		Data []struct {
+			Slot string `json:"slot"`
+		} `json:"data"`
+	}
+	if err := p.rest(ctx, base+"/qrl/v1/debug/beacon/heads", &heads); err != nil {
+		return 0, err
+	}
+	if len(heads.Data) == 0 {
+		return 0, errors.New("debug beacon heads returned no heads")
+	}
+	return parseDecimalUint(heads.Data[0].Slot, "beacon head slot")
+}
+
+func (p probe) beaconFinality(ctx context.Context, base string, headSlot uint64) (uint64, uint64, error) {
+	var response struct {
+		Data struct {
+			CurrentJustified struct {
+				Epoch string `json:"epoch"`
+			} `json:"current_justified"`
+			Finalized struct {
+				Epoch string `json:"epoch"`
+			} `json:"finalized"`
+		} `json:"data"`
+	}
+	if err := p.rest(ctx, base+"/qrl/v1/beacon/states/head/finality_checkpoints", &response); err == nil {
+		finalized, err := parseDecimalUint(response.Data.Finalized.Epoch, "finalized epoch")
+		if err != nil {
+			return 0, 0, err
+		}
+		justified, err := parseDecimalUint(response.Data.CurrentJustified.Epoch, "justified epoch")
+		if err != nil {
+			return 0, 0, err
+		}
+		return finalized, justified, nil
+	}
+	// Older Qrysm builds omit the checkpoints route. Protocol finality lags
+	// the head by two epochs once the head is past that.
+	headEpoch := headSlot / defaultSlotsPerEpoch
+	if headEpoch >= 2 {
+		return headEpoch - 2, headEpoch - 1, nil
+	}
+	return 0, 0, nil
+}
+
+func parseDecimalUint(value, label string) (uint64, error) {
+	parsed, err := strconv.ParseUint(value, 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("%s %q: %w", label, value, err)
+	}
+	return parsed, nil
+}
+
 // reference fills the hash and state root of the shared reference block.
 func (p probe) reference(ctx context.Context, endpoints Endpoints, sample *ParticipantSample, block uint64) {
 	sample.call(func() error {
@@ -167,11 +226,11 @@ func (p probe) reference(ctx context.Context, endpoints Endpoints, sample *Parti
 			StateRoot string `json:"stateRoot"`
 		}
 		params := []any{"0x" + strconv.FormatUint(block, 16), false}
-		if err := p.rpc(ctx, endpoints.ExecutionRPC, "eth_getBlockByNumber", params, &result); err != nil {
-			return fmt.Errorf("eth_getBlockByNumber(%d): %w", block, err)
+		if err := p.rpc(ctx, endpoints.ExecutionRPC, "qrl_getBlockByNumber", params, &result); err != nil {
+			return fmt.Errorf("qrl_getBlockByNumber(%d): %w", block, err)
 		}
 		if result.Hash == "" {
-			return fmt.Errorf("eth_getBlockByNumber(%d): block not found", block)
+			return fmt.Errorf("qrl_getBlockByNumber(%d): block not found", block)
 		}
 		sample.ReferenceHash, sample.ReferenceState = result.Hash, result.StateRoot
 		return nil

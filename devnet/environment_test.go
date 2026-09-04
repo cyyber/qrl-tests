@@ -30,11 +30,11 @@ func TestParticipantsFromServices(t *testing.T) {
 			},
 			Consensus: ConsensusService{
 				ServiceInfo: ServiceInfo{Name: "cl-1-qrysm-gqrl", ID: "cl-1-qrysm-gqrl-id", PrivateIP: "10.0.0.1"},
-				URL:         "http://127.0.0.1:4201", MetricsURL: "http://127.0.0.1:4301",
+				URL:         "http://127.0.0.1:4201", MetricsURL: "http://127.0.0.1:4301/metrics",
 			},
 			Validator: ValidatorService{
 				ServiceInfo: ServiceInfo{Name: "vc-1-gqrl-qrysm", ID: "vc-1-gqrl-qrysm-id", PrivateIP: "10.0.0.1"},
-				URL:         "http://127.0.0.1:5201", MetricsURL: "http://127.0.0.1:5301",
+				URL:         "http://127.0.0.1:5201", MetricsURL: "http://127.0.0.1:5301/metrics",
 			},
 		},
 		{
@@ -46,11 +46,11 @@ func TestParticipantsFromServices(t *testing.T) {
 			},
 			Consensus: ConsensusService{
 				ServiceInfo: ServiceInfo{Name: "cl-2-qrysm-gqrl", ID: "cl-2-qrysm-gqrl-id", PrivateIP: "10.0.0.2"},
-				URL:         "http://127.0.0.1:4202", MetricsURL: "http://127.0.0.1:4302",
+				URL:         "http://127.0.0.1:4202", MetricsURL: "http://127.0.0.1:4302/metrics",
 			},
 			Validator: ValidatorService{
 				ServiceInfo: ServiceInfo{Name: "vc-2-gqrl-qrysm", ID: "vc-2-gqrl-qrysm-id", PrivateIP: "10.0.0.2"},
-				URL:         "http://127.0.0.1:5202", MetricsURL: "http://127.0.0.1:5302",
+				URL:         "http://127.0.0.1:5202", MetricsURL: "http://127.0.0.1:5302/metrics",
 			},
 		},
 	}, participants)
@@ -91,7 +91,7 @@ func TestClusterEndpoints(t *testing.T) {
 	require.Equal(t, "http://10.0.0.1:9001/debug/metrics/prometheus", participants[0].Execution.MetricsURL)
 	require.Empty(t, participants[0].Execution.EngineURL)
 	require.Equal(t, "http://10.0.0.1:3500", participants[0].Consensus.URL)
-	require.Equal(t, "http://10.0.0.1:8080", participants[0].Consensus.MetricsURL)
+	require.Equal(t, "http://10.0.0.1:8080/metrics", participants[0].Consensus.MetricsURL)
 
 	// Public mode of the same services resolves the published ports.
 	participants, err = endpointResolver{mode: EndpointModePublic}.participantsFromServices(services)
