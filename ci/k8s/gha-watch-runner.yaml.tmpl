@@ -1,8 +1,15 @@
 # Ephemeral self-hosted runner that exists only while a soak is in flight.
 # soak.yml's watch job pins to this pod via the qrl-watch-${RUN_ID} label so
 # the Actions run stays in progress without a GitHub-hosted runner.
-# envsubst must only expand RUN_ID, CI_NAMESPACE, GITHUB_REPOSITORY, and
-# RUNNER_TOKEN. ${GH_URL} / ${RUNNER_NAME} / ${RUNNER_LABELS} are pod env.
+# envsubst must only expand RUN_ID, CI_NAMESPACE and GITHUB_REPOSITORY.
+# ${GH_URL} / ${RUNNER_NAME} / ${RUNNER_LABELS} are pod env.
+#
+# The runner is registered to a public repository, so it is treated as
+# hostile: it runs as the read-only qrl-watch service account (never
+# qrl-job), carries only its run-specific label (--no-default-labels, so a
+# fork PR's runs-on: self-hosted cannot land here), runs a digest-pinned
+# image, and reads its registration token from a Secret that soak.yml
+# creates for this run and deletes afterwards.
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -23,7 +30,8 @@ spec:
         qrl.io/component: gha-watch
         qrl.io/run: "${RUN_ID}"
     spec:
-      serviceAccountName: qrl-job
+      serviceAccountName: qrl-watch
+      automountServiceAccountToken: false
       restartPolicy: Never
       nodeSelector:
         qrl.io/pool: core
@@ -32,8 +40,9 @@ spec:
         fsGroup: 1001
       containers:
         - name: runner
-          image: ghcr.io/actions/actions-runner:latest
-          imagePullPolicy: Always
+          # actions-runner:latest as of 2026-09-07 (Ubuntu 24.04 base).
+          image: ghcr.io/actions/actions-runner@sha256:f5a0d9a3d857315f2aed7075a02a29f46927ad198221c3b1c66585ae9fe36c0d
+          imagePullPolicy: IfNotPresent
           env:
             - name: RUNNER_ALLOW_RUNASROOT
               value: "0"
@@ -44,7 +53,10 @@ spec:
             - name: RUNNER_LABELS
               value: qrl-watch-${RUN_ID}
             - name: RUNNER_TOKEN
-              value: ${RUNNER_TOKEN}
+              valueFrom:
+                secretKeyRef:
+                  name: qrl-watch-${RUN_ID}
+                  key: token
           command: ["/bin/bash", "-lc"]
           args:
             - |
@@ -55,6 +67,7 @@ spec:
                 --token "${RUNNER_TOKEN}" \
                 --name "${RUNNER_NAME}" \
                 --labels "${RUNNER_LABELS}" \
+                --no-default-labels \
                 --replace
               exec ./run.sh
           resources:
