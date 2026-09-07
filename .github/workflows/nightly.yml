@@ -95,12 +95,35 @@ jobs:
           bazelisk-cache: true
           disk-cache: nightly-qrysm-${{ runner.arch }}
           repository-cache: true
+          cache-save: false
 
       - name: Build the missing Qrysm images
         if: steps.plan.outputs.qrysm-targets != ''
         env:
           QRYSM_TARGETS: ${{ steps.plan.outputs.qrysm-targets }}
         run: ci/images/build.sh build-qrysm
+
+      # Keys use setup-bazel's restore prefixes so the next nightly can prefix-match.
+      - name: Stop Bazel
+        if: always() && steps.plan.outputs.qrysm-targets != ''
+        working-directory: .build/qrysm
+        run: bazel shutdown || true
+
+      - name: Save Bazel disk cache
+        if: always() && steps.plan.outputs.qrysm-targets != ''
+        continue-on-error: true
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.cache/bazel-disk
+          key: setup-bazel-1-linux-${{ runner.arch == 'X64' && 'x64' || 'arm64' }}-disk-nightly-qrysm-${{ runner.arch }}-${{ github.run_id }}
+
+      - name: Save Bazel repository cache
+        if: always() && steps.plan.outputs.qrysm-targets != ''
+        continue-on-error: true
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.cache/bazel-repo
+          key: setup-bazel-1-linux-${{ runner.arch == 'X64' && 'x64' || 'arm64' }}-repository-${{ github.run_id }}
 
       - name: Build the missing Bake images
         id: bake
