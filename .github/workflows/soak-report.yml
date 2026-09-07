@@ -193,7 +193,10 @@ jobs:
           [ "${conclusion}" = "success" ]
 
       - name: Scale work node groups back to zero
-        if: always()
+        # Never under a soak that is still running: the scheduled report can
+        # fire while a long dispatch is mid-run, and desired 0 terminates its
+        # nodes.
+        if: always() && steps.collect.outputs.state != 'running'
         env:
           NODEGROUPS: ${{ vars.EKS_WORK_NODEGROUPS }}
         run: |

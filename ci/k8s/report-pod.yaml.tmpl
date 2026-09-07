@@ -8,7 +8,10 @@ metadata:
     qrl.io/role: report
     qrl.io/run: "${RUN_ID}"
 spec:
-  serviceAccountName: qrl-job
+  # Mounts the report volume and is exec'ed into; needs no identity, and
+  # the admission policy would refuse busybox as qrl-job anyway.
+  serviceAccountName: default
+  automountServiceAccountToken: false
   restartPolicy: Never
   nodeSelector:
     qrl.io/pool: core
