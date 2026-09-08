@@ -243,13 +243,10 @@ func profileParameters(address string, options StartOptions) (string, error) {
 			}
 		}
 	}
-	if pinned {
-		// tx_spammer inherits global_node_selectors (work-shared) and
-		// gets empty tolerations, the same unschedulable class as
-		// Prometheus. Drop it on Kubernetes until the package applies
-		// global_tolerations or the work taint is PreferNoSchedule.
-		parameters.AdditionalServices = withoutService(parameters.AdditionalServices, "tx_spammer")
-		parameters.TxSpammerParams = nil
+	if spec.loadGenerator {
+		if err := CheckLoad(options.Backend, options.LoadPercent); err != nil {
+			return "", err
+		}
 	}
 
 	payload, err := json.Marshal(parameters)
@@ -258,6 +255,21 @@ func profileParameters(address string, options StartOptions) (string, error) {
 	}
 
 	return string(payload), nil
+}
+
+// CheckLoad rejects a load generator the backend cannot schedule. On
+// Kubernetes qrl-package hands tx_spammer global_node_selectors (the
+// work-shared node) but no tolerations, and Kurtosis applies its
+// cluster-level tolerations only to its own engine and logs pods, never to
+// user services; the spammer would sit Pending against the work-pool
+// NoSchedule taint and the soak would run idle while claiming load.
+// Refusing up front keeps the run honest until the package passes
+// global_tolerations to additional services.
+func CheckLoad(backend Backend, loadPercent int) error {
+	if backend != BackendKubernetes || SoakThroughput(loadPercent) == 0 {
+		return nil
+	}
+	return fmt.Errorf("load %d%% is not supported on the kubernetes backend: tx_spammer cannot tolerate the %s=%s taint (qrl-package passes it node selectors but no tolerations); run idle with load 0 or use the docker backend", loadPercent, PoolLabel, WorkPool)
 }
 
 // pin places the participant on its own node and requests guaranteed

@@ -7,8 +7,12 @@ name: soak
 on:
   # Sunday 03:00 UTC. Schedule cannot pass inputs, so the Job env
   # fallbacks below are the weekly contract: 4h idle, 1 participant.
-  # Load stays 0 until tx_spammer can tolerate the work taint (same
-  # class as Prometheus). Participants stay 1 until the On-Demand
+  # Load must stay 0 on Kubernetes: qrl-package gives tx_spammer node
+  # selectors but no tolerations, and Kurtosis applies its cluster-level
+  # tolerations only to its own engine/logs pods, so the spammer cannot
+  # schedule against the work taint (same class as Prometheus). qrltest
+  # soak refuses load > 0 on the kubernetes backend rather than running
+  # idle under a load label. Participants stay 1 until the On-Demand
   # vCPU quota covers four work nodes.
   schedule:
     - cron: "0 3 * * 0"
@@ -18,7 +22,7 @@ on:
         description: steady-state window (Go duration)
         default: 4h
       load-percent:
-        description: share of block gas capacity the spammer targets; 0 is idle. Kubernetes currently ignores load (tx_spammer cannot schedule).
+        description: share of block gas capacity the spammer targets; 0 is idle. Must be 0 here - the Job fails fast on any other value because tx_spammer cannot schedule on the tainted work pool.
         default: "0"
       enforce:
         description: fail the check when a gate is breached. Leave off until idle RSS is trusted after a ≥1h window.

@@ -14,7 +14,12 @@ make soak-run
 ```
 
 `SOAK_ENFORCE=false` records every gate but always reports success, for
-threshold calibration. `SOAK_LOAD_PERCENT=0` is an idle baseline.
+threshold calibration. `SOAK_LOAD_PERCENT=0` is an idle baseline, and the
+only value the kubernetes backend accepts: qrl-package hands `tx_spammer`
+node selectors but no tolerations, Kurtosis applies its cluster-level
+tolerations only to its own engine and logs pods, so the spammer would sit
+Pending against the work-pool taint. `qrltest soak` refuses load > 0 there
+before any enclave is created rather than running idle under a load label.
 
 Gates whose verdict is a slope or a rate over time (RSS, heap, goroutine,
 working-set and file-descriptor slopes, GC-pause slope, GC rate) report

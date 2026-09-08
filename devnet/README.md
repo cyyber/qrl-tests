@@ -57,7 +57,7 @@ cluster. The commands use the currently selected Kurtosis context.
 | `DEVNET_START_TIMEOUT` | `5m` | Network startup budget |
 | `DEVNET_PARAMS_FILE` | unset | Complete qrl-package YAML parameters |
 | `SOAK_DURATION` | `4h` | Steady-state window of `qrltest soak` |
-| `SOAK_LOAD_PERCENT` | `30` | Share of block gas the soak spammer targets; `0` is idle |
+| `SOAK_LOAD_PERCENT` | `30` | Share of block gas the soak spammer targets; `0` is idle. Kubernetes accepts only `0`: `tx_spammer` gets node selectors but no tolerations from qrl-package, so it cannot schedule on the tainted work pool and the start is refused instead of running idle |
 | `SOAK_ENFORCE` | unset | Fail `qrltest soak` when a gate is breached |
 | `KEEP_NETWORK` | unset | Leave the provisioned soak network running |
 

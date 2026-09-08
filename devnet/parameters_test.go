@@ -67,7 +67,7 @@ func TestSoakParametersKubernetes(t *testing.T) {
 		Images:      soakImages(),
 		Profile:     ProfileSoak,
 		Backend:     BackendKubernetes,
-		LoadPercent: DefaultLoadPercent,
+		LoadPercent: 0,
 	})
 	require.NoError(t, err)
 
@@ -95,7 +95,7 @@ func TestSoakParametersKubernetes(t *testing.T) {
 		require.Equal(t, participant["el_min_mem"], participant["el_max_mem"])
 		require.Equal(t, participant["cl_min_mem"], participant["cl_max_mem"])
 	}
-	require.NotContains(t, parameters, "additional_services", "prometheus and tx_spammer cannot tolerate the work taint")
+	require.NotContains(t, parameters, "additional_services", "prometheus cannot tolerate the work taint and an idle soak runs no spammer")
 	require.NotContains(t, parameters, "tx_spammer_params")
 	require.NotContains(t, parameters, "qrl_metrics_exporter_enabled")
 	require.NotContains(t, parameters, "prometheus_params")
@@ -115,6 +115,21 @@ func TestSoakParametersParticipantCount(t *testing.T) {
 	var parameters map[string]any
 	require.NoError(t, json.Unmarshal([]byte(payload), &parameters))
 	require.Len(t, parameters["participants"].([]any), 1)
+}
+
+func TestSoakParametersKubernetesRejectsLoad(t *testing.T) {
+	_, err := resolveParameters(devwallet.Address, StartOptions{
+		Images:      soakImages(),
+		Profile:     ProfileSoak,
+		Backend:     BackendKubernetes,
+		LoadPercent: DefaultLoadPercent,
+	})
+	require.ErrorContains(t, err, "load 30% is not supported on the kubernetes backend")
+	require.ErrorContains(t, err, "tx_spammer cannot tolerate")
+
+	require.NoError(t, CheckLoad(BackendKubernetes, 0))
+	require.NoError(t, CheckLoad(BackendDocker, DefaultLoadPercent))
+	require.Error(t, CheckLoad(BackendKubernetes, 1))
 }
 
 func TestSoakParametersDockerAndIdle(t *testing.T) {
