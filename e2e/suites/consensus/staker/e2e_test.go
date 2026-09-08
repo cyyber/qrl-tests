@@ -23,10 +23,15 @@ import (
 const (
 	pollInterval = 2 * time.Second
 
-	// Each phase waits on several epochs of the development network: deposit
-	// follow distance and voting, the activation queue, the committee period
-	// before an exit is accepted, and the withdrawability delay.
-	depositTimeout    = 15 * time.Minute
+	// Each phase waits on several epochs of the development network. The
+	// deposit phase is bounded by execution-data voting: Qrysm fixes the
+	// execution block time at 60s, so with the profile's follow distance of 8
+	// blocks the first vote that can see a post-genesis deposit opens 16
+	// minutes after genesis, and the deposit lands in the state shortly after.
+	// Activation then waits for the eligibility epoch to finalize plus the
+	// seed lookahead, and the exit for the committee period, the exit queue
+	// and the withdrawability delay.
+	depositTimeout    = 30 * time.Minute
 	activationTimeout = 15 * time.Minute
 	exitTimeout       = 20 * time.Minute
 
