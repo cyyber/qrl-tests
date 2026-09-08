@@ -177,7 +177,9 @@ var _ = ginkgo.Describe(
 			// must account for at least the staker's amount.
 			balanceAfter := testsuite.MustSucceed(node.Execution.BalanceAt(ctx, node.Address, nil))
 			withdrawnValue := new(big.Int).Mul(new(big.Int).SetUint64(withdrawn.Amount), big.NewInt(params.Shor))
-			gomega.Expect(new(big.Int).Sub(balanceAfter, balanceBefore)).To(gomega.BeNumerically(">=", withdrawnValue))
+			gained := new(big.Int).Sub(balanceAfter, balanceBefore)
+			gomega.Expect(gained.Cmp(withdrawnValue)).To(gomega.BeNumerically(">=", 0),
+				"wallet gained %s planck, expected at least the %s planck withdrawn", gained, withdrawnValue)
 		}, ginkgo.SpecTimeout(exitTimeout))
 	},
 )
