@@ -291,8 +291,32 @@ func (e evaluator) finality(metrics *Metrics) Gate {
 func (e evaluator) peers() []Gate {
 	minExecution := e.thresholds.MinPeers(e.options.Participants, e.thresholds.Peers.MinExecutionPeers)
 	minConsensus := e.thresholds.MinPeers(e.options.Participants, e.thresholds.Peers.MinConsensusPeers)
+	indexes := e.participantIndexes()
+
+	// EL >= 0 and CL >= 0 is satisfied by an isolated node, so there is no
+	// verdict to give: a single participant has nobody to peer with, and
+	// explicit zero minimums ask for nothing.
+	if minExecution == 0 && minConsensus == 0 {
+		observed := "minimum peers resolve to 0; nothing to judge"
+		if e.options.Participants <= 1 || len(indexes) <= 1 {
+			observed = "single participant; nothing to peer with"
+		}
+
+		var gates []Gate
+		for _, index := range indexes {
+			gates = append(gates, Gate{
+				Name:         fmt.Sprintf("peers/participant-%d", index),
+				Passed:       true,
+				Insufficient: true,
+				Observed:     observed,
+				Threshold:    "n/a",
+			})
+		}
+		return gates
+	}
+
 	var gates []Gate
-	for _, index := range e.participantIndexes() {
+	for _, index := range indexes {
 		breaches, judged := 0, 0
 		var first *time.Time
 		lowExec, lowCons := -1, -1

@@ -182,6 +182,52 @@ func TestEvaluateTrendsInsufficientBelowMinWindow(t *testing.T) {
 	require.Contains(t, rendered, "| working-set/participant-1/execution | n/a |")
 }
 
+func TestEvaluatePeersSingleParticipant(t *testing.T) {
+	thresholds := DefaultThresholds()
+	thresholds.Memory.MinSamples = 99
+	start := time.Date(2026, 9, 3, 12, 0, 0, 0, time.UTC)
+	samples := []Sample{
+		steady(start, 100, 100, 0, 1<<30),
+		steady(start.Add(time.Minute), 112, 112, 0, 1<<30),
+	}
+	for i := range samples {
+		samples[i].Participants = samples[i].Participants[:1]
+	}
+
+	evaluation := Evaluate(samples, thresholds, Options{Participants: 1, SlotsPerEpoch: 8, Enforce: true})
+	require.True(t, evaluation.Passed, gatesDetail(evaluation))
+	peers := gate(evaluation, "peers/participant-1")
+	require.True(t, peers.Passed)
+	require.True(t, peers.Insufficient)
+	require.Equal(t, "single participant; nothing to peer with", peers.Observed)
+	require.Equal(t, "n/a", peers.Threshold)
+	require.Contains(t, RenderSummary(evaluation), "| peers/participant-1 | n/a |")
+	require.NotContains(t, names(evaluation), "peers/participant-2")
+}
+
+func TestEvaluatePeersZeroMinimumsAreNotJudged(t *testing.T) {
+	thresholds := DefaultThresholds()
+	thresholds.Memory.MinSamples = 99
+	thresholds.Peers.MinExecutionPeers = 0
+	thresholds.Peers.MinConsensusPeers = 0
+	start := time.Date(2026, 9, 3, 12, 0, 0, 0, time.UTC)
+	samples := []Sample{
+		steady(start, 100, 100, 0, 1<<30),
+		steady(start.Add(time.Minute), 112, 112, 0, 1<<30),
+	}
+
+	evaluation := Evaluate(samples, thresholds, Options{Participants: 2, SlotsPerEpoch: 8, Enforce: true})
+	peers := gate(evaluation, "peers/participant-2")
+	require.True(t, peers.Insufficient)
+	require.Equal(t, "minimum peers resolve to 0; nothing to judge", peers.Observed)
+
+	thresholds.Peers.MinExecutionPeers = -1
+	thresholds.Peers.MinConsensusPeers = -1
+	judged := Evaluate(samples, thresholds, Options{Participants: 2, SlotsPerEpoch: 8, Enforce: true})
+	require.False(t, gate(judged, "peers/participant-2").Insufficient)
+	require.False(t, gate(judged, "peers/participant-2").Passed, "two participants with zero peers are under-peered")
+}
+
 func TestMinPeers(t *testing.T) {
 	require.Equal(t, 3, DefaultThresholds().MinPeers(4, -1))
 	require.Equal(t, 2, DefaultThresholds().MinPeers(4, 2))
