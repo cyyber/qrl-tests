@@ -4,7 +4,8 @@
 # run qrltest, and leave the verdict in the report directory. Outside a
 # cluster (no service-account token) it only runs the command, for local use
 # of the image against a Docker or pre-configured Kurtosis setup.
-set -euo pipefail
+# -E so the ERR trap below also fires inside functions.
+set -Eeuo pipefail
 
 command="${1:-${QRLTEST_COMMAND:?set QRLTEST_COMMAND or pass soak or an E2E lane}}"
 shift $(( $# > 0 ? 1 : 0 ))
@@ -17,6 +18,17 @@ engine_log_retention="${KURTOSIS_ENGINE_LOG_RETENTION:-168h}"
 engine_wait_seconds="${KURTOSIS_ENGINE_WAIT_SECONDS:-300}"
 
 mkdir -p "${report_dir}"
+
+# Everything this script prints also lands in the report volume, so a
+# failure before qrltest starts (cluster selection, engine start) leaves
+# evidence in the collected artifact and not only in the pod log.
+exec > >(tee -a "${report_dir}/entrypoint.log") 2>&1
+
+# Name the failing command under set -e instead of exiting silently.
+trap 'echo "entrypoint: line ${LINENO}: \`${BASH_COMMAND}\` failed with status $?" >&2' ERR
+
+kurtosis_version=$(kurtosis version 2>/dev/null | awk 'NR==1{print $NF}' || true)
+echo "qrl-tests runner: command=${command} cluster=${kurtosis_cluster:-none} enclave=${DEVNET_ENCLAVE_NAME:-default} kurtosis=${kurtosis_version:-${KURTOSIS_VERSION:-unknown}}"
 
 # Job annotations are how the heartbeat workflow reports progress without a
 # runner attached; every annotation failure is non-fatal.
@@ -70,7 +82,7 @@ current-context: ${kurtosis_cluster}
 EOF
 	export KUBECONFIG="${kubeconfig}"
 
-	local config_path data_dir selected
+	local config_path data_dir selected cluster_output
 	config_path=$(kurtosis config path)
 	# cluster-setting lives in the XDG data dir (~/.local/share/kurtosis),
 	# not next to kurtosis-config.yml. Writing it avoids `cluster set`, which
@@ -81,7 +93,14 @@ EOF
 	printf '%s' "${kurtosis_cluster}" >"${data_dir}/cluster-setting"
 	cp "${kurtosis_config_source}" "${config_path}"
 	kurtosis analytics disable >/dev/null 2>&1 || true
-	selected=$(kurtosis cluster get 2>/dev/null | awk 'NF{line=$0} END{print line}')
+	# Capture rather than pipe: under pipefail a failing `cluster get` would
+	# end the script here with nothing in the log to say why.
+	if ! cluster_output=$(kurtosis cluster get 2>&1); then
+		echo "kurtosis cluster get failed:" >&2
+		printf '%s\n' "${cluster_output}" >&2
+		return 1
+	fi
+	selected=$(printf '%s\n' "${cluster_output}" | awk 'NF{line=$0} END{print line}')
 	if [ "${selected}" != "${kurtosis_cluster}" ]; then
 		echo "Kurtosis cluster is '${selected:-unset}', expected ${kurtosis_cluster}" >&2
 		return 1
