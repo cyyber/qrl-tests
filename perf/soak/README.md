@@ -51,3 +51,14 @@ RSS slope, FD/GC, and the other headline numbers) and writes
 `comparison.json`. Comparison is skipped when either run is infrastructure
 or the thresholds digest changed. Deltas are informational; they do not
 fail the run.
+
+Each row carries its own unit (memory and working-set slopes in MB/h,
+file descriptors in /h, GC pause in ms/h, GC rate in GC/h, rates in
+percent, latencies in seconds). A change is a percentage when the
+previous value is above the metric's noise floor (8 MB/h, 10 FDs/h,
+5 ms/h, 600 GC/h, 0.5 percentage points, 1 s, 0.5 blocks/min, one epoch or
+sample); below it the absolute difference is shown instead, so a 0.45 ms/h
+baseline never reads as "+18000%". A row is labelled `worse` only when the
+change exceeds both that floor and 10% in the harmful direction. A gate
+that was `n/a` in either run shows `n/a` instead of a number, and steady
+windows are compared to whole seconds with a tolerance of 30 s or 5%.

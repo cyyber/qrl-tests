@@ -33,12 +33,146 @@ func TestCompareHeadlineDeltas(t *testing.T) {
 	require.True(t, missed.Worse)
 
 	p95 := delta(t, comparison, "canary p95")
-	require.Equal(t, "4s", p95.Current)
+	require.Equal(t, "4.00s", p95.Current)
+	require.Equal(t, "+100.0%", p95.Change)
 	require.True(t, p95.Worse)
 
-	rss := delta(t, comparison, "rss/participant-1/execution/rss")
+	rss := delta(t, comparison, "memory/participant-1/execution/rss")
 	require.Equal(t, "12.00 MB/h", rss.Current)
-	require.False(t, rss.Worse, "20% exactly is not worse")
+	require.Equal(t, "+20.0%", rss.Change)
+	require.False(t, rss.Worse, "2 MB/h is under the MB/h noise floor")
+}
+
+func TestCompareAbsoluteDeltaBelowNoiseFloor(t *testing.T) {
+	current := comparableEvaluation()
+	current.Metrics.ProcessSlopes = map[string]MemoryTrend{
+		"participant-1/validator/gc-pause": {SlopeMBPerHour: 83.3},
+		"participant-1/validator/fds":      {SlopeMBPerHour: 12},
+	}
+	current.Metrics.GCPerHour = map[string]float64{"participant-1/validator/gc-rate": 900}
+	current.Metrics.RPCErrorRate = 0.001
+	baseline := comparableEvaluation()
+	baseline.Metrics.ProcessSlopes = map[string]MemoryTrend{
+		"participant-1/validator/gc-pause": {SlopeMBPerHour: 0.45},
+		"participant-1/validator/fds":      {SlopeMBPerHour: 0},
+	}
+	baseline.Metrics.GCPerHour = map[string]float64{"participant-1/validator/gc-rate": 0}
+	baseline.Metrics.RPCErrorRate = 0
+
+	comparison := Compare(current, baseline)
+	require.True(t, comparison.Comparable)
+
+	pause := delta(t, comparison, "process/participant-1/validator/gc-pause")
+	require.Equal(t, "83.30 ms/h", pause.Current)
+	require.Equal(t, "0.45 ms/h", pause.Baseline)
+	require.Equal(t, "+82.85 ms/h", pause.Change, "a percentage of a 0.45 ms/h baseline is meaningless")
+	require.False(t, pause.Worse)
+
+	fds := delta(t, comparison, "process/participant-1/validator/fds")
+	require.Equal(t, "12.00 /h", fds.Current)
+	require.Equal(t, "+12.00 /h", fds.Change)
+	require.False(t, fds.Worse)
+
+	gc := delta(t, comparison, "process/participant-1/validator/gc-rate")
+	require.Equal(t, "900 GC/h", gc.Current)
+	require.Equal(t, "+900 GC/h", gc.Change)
+	require.False(t, gc.Worse)
+
+	rpc := delta(t, comparison, "rpc error rate")
+	require.Equal(t, "0.10%", rpc.Current)
+	require.Equal(t, "+0.10 pp", rpc.Change)
+	require.False(t, rpc.Worse)
+
+	require.Equal(t, "no change", delta(t, comparison, "consensus split samples").Change)
+}
+
+func TestCompareWorseNeedsBandAndFloor(t *testing.T) {
+	current := comparableEvaluation()
+	current.Metrics.MemorySlopes = map[string]MemoryTrend{
+		"participant-1/execution/rss":  {SlopeMBPerHour: 105},
+		"participant-1/execution/heap": {SlopeMBPerHour: 120},
+	}
+	current.Metrics.MissedSlotRate = 0.0104
+	current.Metrics.HeadBlocksPerMinute = map[int]float64{1: 10}
+	baseline := comparableEvaluation()
+	baseline.Metrics.MemorySlopes = map[string]MemoryTrend{
+		"participant-1/execution/rss":  {SlopeMBPerHour: 100},
+		"participant-1/execution/heap": {SlopeMBPerHour: 100},
+	}
+	baseline.Metrics.MissedSlotRate = 0.01
+	baseline.Metrics.HeadBlocksPerMinute = map[int]float64{1: 12}
+
+	comparison := Compare(current, baseline)
+	rss := delta(t, comparison, "memory/participant-1/execution/rss")
+	require.Equal(t, "+5.0%", rss.Change)
+	require.False(t, rss.Worse, "within the 10% band")
+
+	heap := delta(t, comparison, "memory/participant-1/execution/heap")
+	require.Equal(t, "+20.0%", heap.Change)
+	require.True(t, heap.Worse, "over the band and the 8 MB/h floor")
+
+	missed := delta(t, comparison, "missed-slot rate")
+	require.Equal(t, "+4.0%", missed.Change)
+	require.False(t, missed.Worse)
+
+	head := delta(t, comparison, "head blocks/min participant-1")
+	require.Equal(t, "-16.7%", head.Change)
+	require.True(t, head.Worse, "fewer blocks is the harmful direction")
+}
+
+func TestCompareShowsNotJudgedGates(t *testing.T) {
+	current := comparableEvaluation()
+	current.Gates = append(current.Gates,
+		Gate{Name: "memory/participant-1/execution/rss", Passed: true, Insufficient: true, Observed: "window 17m0s over 35 samples"},
+		Gate{Name: "process/participant-1/validator/gc-rate", Passed: true, Insufficient: true},
+		Gate{Name: "memory/participant-1/execution/goroutines", Passed: true, Insufficient: true},
+	)
+	delete(current.Metrics.MemorySlopes, "participant-1/execution/rss")
+	baseline := comparableEvaluation()
+	baseline.Gates = append(baseline.Gates, Gate{Name: "chain-progress/missed-slots", Passed: true, Insufficient: true, Observed: "no consensus slot data"})
+	baseline.Metrics.GCPerHour = map[string]float64{"participant-1/validator/gc-rate": 1200}
+
+	comparison := Compare(current, baseline)
+	require.True(t, comparison.Comparable)
+
+	rss := delta(t, comparison, "memory/participant-1/execution/rss")
+	require.Equal(t, NotJudged, rss.Current)
+	require.Equal(t, "8.00 MB/h", rss.Baseline)
+	require.Equal(t, NotJudged, rss.Change)
+	require.False(t, rss.Worse)
+
+	gc := delta(t, comparison, "process/participant-1/validator/gc-rate")
+	require.Equal(t, NotJudged, gc.Current)
+	require.Equal(t, "1200 GC/h", gc.Baseline)
+	require.Equal(t, NotJudged, gc.Change)
+
+	missed := delta(t, comparison, "missed-slot rate")
+	require.Equal(t, "1.00%", missed.Current)
+	require.Equal(t, NotJudged, missed.Baseline)
+	require.Equal(t, NotJudged, missed.Change)
+
+	for _, item := range comparison.Deltas {
+		require.NotContains(t, item.Name, "goroutines", "goroutine slopes are gated, not compared")
+	}
+	require.Contains(t, RenderComparison(comparison), "| memory/participant-1/execution/rss | n/a | 8.00 MB/h | n/a |")
+}
+
+func TestCompareWindowNoteIgnoresJitter(t *testing.T) {
+	current := comparableEvaluation()
+	current.SteadyWindow = 17*time.Minute - 10*time.Millisecond
+	baseline := comparableEvaluation()
+	baseline.SteadyWindow = 17*time.Minute + 8*time.Millisecond
+
+	comparison := Compare(current, baseline)
+	require.True(t, comparison.Comparable)
+	require.Empty(t, comparison.Notes)
+
+	current.SteadyWindow = 4 * time.Hour
+	baseline.SteadyWindow = 4*time.Hour - 3*time.Minute
+	require.Empty(t, Compare(current, baseline).Notes, "3 minutes of a 4 hour window is under 5%")
+
+	baseline.SteadyWindow = 3*time.Hour + 400*time.Millisecond
+	require.Equal(t, []string{"steady windows differ (4h0m0s vs 3h0m0s)"}, Compare(current, baseline).Notes)
 }
 
 func TestCompareRefusesThresholdsChange(t *testing.T) {
