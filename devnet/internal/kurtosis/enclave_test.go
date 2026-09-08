@@ -1,6 +1,7 @@
 package kurtosis
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/kurtosis-tech/kurtosis/api/golang/core/kurtosis_core_rpc_api_bindings"
@@ -9,8 +10,9 @@ import (
 )
 
 type fakeServiceContext struct {
-	labels map[string]string
-	ports  map[string]*services.PortSpec
+	labels       map[string]string
+	ports        map[string]*services.PortSpec
+	privatePorts map[string]*services.PortSpec
 }
 
 func (*fakeServiceContext) GetServiceUUID() services.ServiceUUID { return "svc-uuid" }
@@ -21,6 +23,10 @@ func (*fakeServiceContext) GetMaybePublicIPAddress() string { return "127.0.0.1"
 
 func (fake *fakeServiceContext) GetPublicPorts() map[string]*services.PortSpec { return fake.ports }
 
+func (fake *fakeServiceContext) GetPrivatePorts() map[string]*services.PortSpec {
+	return fake.privatePorts
+}
+
 func (fake *fakeServiceContext) GetLabels() map[string]string { return fake.labels }
 
 func TestNewServiceCopiesContext(t *testing.T) {
@@ -30,20 +36,47 @@ func TestNewServiceCopiesContext(t *testing.T) {
 		ports: map[string]*services.PortSpec{
 			"rpc": services.NewPortSpec(3200, services.TransportProtocol_TCP, "http"),
 		},
+		privatePorts: map[string]*services.PortSpec{
+			"rpc": services.NewPortSpec(8545, services.TransportProtocol_TCP, "http"),
+		},
 	}
 
 	converted := newService(source)
 	require.Equal(t, Service{
-		UUID:        "svc-uuid",
-		PrivateIP:   "10.0.0.7",
-		PublicIP:    "127.0.0.1",
-		PublicPorts: map[string]uint16{"rpc": 3200},
-		Labels:      map[string]string{"qrl-package.client-type": "execution"},
+		UUID:         "svc-uuid",
+		PrivateIP:    "10.0.0.7",
+		PublicIP:     "127.0.0.1",
+		PublicPorts:  map[string]uint16{"rpc": 3200},
+		PrivatePorts: map[string]uint16{"rpc": 8545},
+		Labels:       map[string]string{"qrl-package.client-type": "execution"},
 	}, converted)
 
 	// The conversion must copy: SDK-owned maps cannot leak into the result.
 	labels["qrl-package.client-type"] = "mutated"
 	require.Equal(t, "execution", converted.Labels["qrl-package.client-type"])
+}
+
+func TestServiceEndpoints(t *testing.T) {
+	service := Service{
+		PrivateIP:    "10.0.0.7",
+		PublicIP:     "127.0.0.1",
+		PublicPorts:  map[string]uint16{"rpc": 3200},
+		PrivatePorts: map[string]uint16{"rpc": 8545},
+	}
+
+	public, err := service.PublicEndpoint("rpc", "http")
+	require.NoError(t, err)
+	require.Equal(t, "http://127.0.0.1:3200", public)
+
+	private, err := service.PrivateEndpoint("rpc", "http")
+	require.NoError(t, err)
+	require.Equal(t, "http://10.0.0.7:8545", private)
+
+	_, err = service.PrivateEndpoint("ws", "ws")
+	require.ErrorContains(t, err, `no private "ws" port`)
+
+	_, err = Service{PrivatePorts: map[string]uint16{"rpc": 1}}.PrivateEndpoint("rpc", "http")
+	require.ErrorContains(t, err, "no private IP address")
 }
 
 func errorLine(message string) *kurtosis_core_rpc_api_bindings.StarlarkRunResponseLine {
@@ -116,6 +149,12 @@ func TestConsumeStarlarkCompletion(t *testing.T) {
 			require.EqualError(t, err, test.wantErr)
 		})
 	}
+}
+
+func TestTransientKurtosisError(t *testing.T) {
+	require.False(t, transientKurtosisError(nil))
+	require.False(t, transientKurtosisError(errors.New("no qrl-package participants found")))
+	require.True(t, transientKurtosisError(errors.New("rpc error: code = Unavailable desc = error reading from server: EOF")))
 }
 
 func TestStarlarkErrorKinds(t *testing.T) {

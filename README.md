@@ -46,7 +46,13 @@ make e2e
 make network-stop
 ```
 
-List registered lanes and suites with:
+The weekly soak is a separate command, not an E2E lane:
+
+```bash
+make soak-run
+```
+
+List registered E2E lanes and suites with:
 
 ```bash
 go run ./cmd/qrltest list
@@ -55,5 +61,6 @@ go run ./cmd/qrltest list
 Docker and Kubernetes are supported. Kubernetes requires registry-backed images
 and an active Kurtosis gateway.
 
-See [development network configuration](devnet/README.md) and the
-[end-to-end suites](e2e/README.md).
+See [development network configuration](devnet/README.md), the
+[end-to-end suites](e2e/README.md), and the
+[soak](perf/soak/README.md).

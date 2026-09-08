@@ -10,11 +10,13 @@ import (
 )
 
 const (
-	DefaultExecutionImage = "local/go-qrl:devnet"
-	DefaultClefImage      = "local/go-qrl-clef:devnet"
-	DefaultConsensusImage = "local/qrysm-beacon:devnet"
-	DefaultValidatorImage = "local/qrysm-validator:devnet"
-	DefaultGenesisImage   = "local/qrl-genesis-generator:devnet"
+	DefaultExecutionImage       = "local/go-qrl:devnet"
+	DefaultClefImage            = "local/go-qrl-clef:devnet"
+	DefaultConsensusImage       = "local/qrysm-beacon:devnet"
+	DefaultValidatorImage       = "local/qrysm-validator:devnet"
+	DefaultGenesisImage         = "local/qrl-genesis-generator:devnet"
+	DefaultTxSpammerImage       = "local/qrl-tx-spammer:devnet"
+	DefaultMetricsExporterImage = "local/qrl-metrics-exporter:devnet"
 )
 
 type Images struct {
@@ -23,15 +25,21 @@ type Images struct {
 	Consensus string `json:"consensus"`
 	Validator string `json:"validator"`
 	Genesis   string `json:"genesis"`
+	// Load generator and metrics exporter; only profiles that enable those
+	// services reference them.
+	TxSpammer       string `json:"tx_spammer,omitempty"`
+	MetricsExporter string `json:"metrics_exporter,omitempty"`
 }
 
 func DefaultImages() Images {
 	return Images{
-		Execution: DefaultExecutionImage,
-		Clef:      DefaultClefImage,
-		Consensus: DefaultConsensusImage,
-		Validator: DefaultValidatorImage,
-		Genesis:   DefaultGenesisImage,
+		Execution:       DefaultExecutionImage,
+		Clef:            DefaultClefImage,
+		Consensus:       DefaultConsensusImage,
+		Validator:       DefaultValidatorImage,
+		Genesis:         DefaultGenesisImage,
+		TxSpammer:       DefaultTxSpammerImage,
+		MetricsExporter: DefaultMetricsExporterImage,
 	}
 }
 
@@ -47,11 +55,13 @@ func (images Images) Resolved() (Images, error) {
 	}
 
 	resolved := Images{
-		Execution: normalize("execution", images.Execution, DefaultExecutionImage),
-		Clef:      normalize("Clef", images.Clef, DefaultClefImage),
-		Consensus: normalize("consensus", images.Consensus, DefaultConsensusImage),
-		Validator: normalize("validator", images.Validator, DefaultValidatorImage),
-		Genesis:   normalize("genesis", images.Genesis, DefaultGenesisImage),
+		Execution:       normalize("execution", images.Execution, DefaultExecutionImage),
+		Clef:            normalize("Clef", images.Clef, DefaultClefImage),
+		Consensus:       normalize("consensus", images.Consensus, DefaultConsensusImage),
+		Validator:       normalize("validator", images.Validator, DefaultValidatorImage),
+		Genesis:         normalize("genesis", images.Genesis, DefaultGenesisImage),
+		TxSpammer:       normalize("transaction spammer", images.TxSpammer, DefaultTxSpammerImage),
+		MetricsExporter: normalize("metrics exporter", images.MetricsExporter, DefaultMetricsExporterImage),
 	}
 	if err := errors.Join(problems...); err != nil {
 		return Images{}, err
