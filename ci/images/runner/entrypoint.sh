@@ -88,8 +88,9 @@ EOF
 	fi
 
 	# Leftover engines from a failed soak answer the kube API but not the
-	# server. Drop them so `engine start` creates a fresh one.
-	kubectl get ns -o name 2>/dev/null | grep -E 'kurtosis-engine-|kt-qrl-soak-' | while read -r ns; do
+	# server. Drop them so `engine start` creates a fresh one. grep exits 1
+	# when there are none, which pipefail would turn into a silent exit.
+	kubectl get ns -o name 2>/dev/null | { grep -E 'kurtosis-engine-|kt-qrl-soak-' || true; } | while read -r ns; do
 		echo "removing leftover ${ns}"
 		kubectl delete "${ns}" --wait=false || true
 	done
