@@ -49,8 +49,11 @@ hosted minutes. `watch` copies those annotations into the job log and the
 `soak-cluster` check. `ACTIONS_RUNNER_PAT` (repo Administration: read/write) is
 required so submit can register that runner.
 
-`soak-report` downloads the previous `soak-reports-*` artifact (14-day
-retention covers the weekly cadence) and runs `qrltest soak-compare`. That
+The `report` job at the end of the `soak` run (a call of `soak-report.yml`,
+whose Sunday schedule is the fallback for a watch runner that died)
+collects the reports volume, downloads the previous `soak-reports-*`
+artifact (14-day retention covers the weekly cadence) and runs
+`qrltest soak-compare`. That
 rewrites `summary.md` with per-metric deltas (missed-slot rate, canary p95,
 RSS slope, FD/GC, and the other headline numbers) and writes
 `comparison.json`. Comparison is skipped when either run is infrastructure
