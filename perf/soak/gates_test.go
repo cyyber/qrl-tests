@@ -131,27 +131,55 @@ func TestEvaluateProcessFDsAndGC(t *testing.T) {
 	thresholds.Memory.MinSamples = 2
 	thresholds.Memory.OpenFDSlopeMaxPerHour = 10
 	start := time.Date(2026, 9, 3, 12, 0, 0, 0, time.UTC)
-	first := steady(start, 100, 100, 10, 1<<30)
-	second := steady(start.Add(time.Hour), 820, 820, 10, 1<<30)
-	for _, sample := range []*Sample{&first, &second} {
-		for i := range sample.Participants {
-			stats := sample.Participants[i].Clients[ClientExecution]
-			stats.OpenFDs = 100
-			stats.GCPauseSec = 0.001
-			stats.GCCount = 1000
-			sample.Participants[i].Clients[ClientExecution] = stats
-		}
-	}
-	second.Participants[0].Clients[ClientExecution] = ClientMetrics{
-		RSSBytes: 1 << 30, HeapBytes: 1 << 29, Goroutines: 100, Scraped: true,
-		OpenFDs: 220, GCPauseSec: 0.002, GCCount: 1500,
-	}
+	samples := processSamples(start, time.Hour)
 
-	evaluation := Evaluate([]Sample{first, second}, thresholds, Options{Participants: 2, SlotsPerEpoch: 8, Enforce: true})
-	require.False(t, gate(evaluation, "process/participant-1/execution/fds").Passed)
+	evaluation := Evaluate(samples, thresholds, Options{Participants: 2, SlotsPerEpoch: 8, Enforce: true})
+	fds := gate(evaluation, "process/participant-1/execution/fds")
+	require.False(t, fds.Passed)
+	require.False(t, fds.Insufficient)
 	require.True(t, gate(evaluation, "process/participant-1/execution/gc-pause").Passed, gatesDetail(evaluation))
 	require.True(t, gate(evaluation, "process/participant-1/execution/gc-rate").Passed, gatesDetail(evaluation))
 	require.InDelta(t, 500, evaluation.Metrics.GCPerHour["participant-1/execution/gc-rate"], 1)
+	require.Contains(t, evaluation.Metrics.ProcessSlopes, "participant-1/execution/fds")
+	require.Contains(t, evaluation.Metrics.ProcessSlopes, "participant-1/execution/gc-pause")
+	require.Contains(t, evaluation.Metrics.WorkingSetSlopes, "participant-1/execution")
+	require.False(t, gate(evaluation, "working-set/participant-1/execution").Insufficient)
+}
+
+func TestEvaluateTrendsInsufficientBelowMinWindow(t *testing.T) {
+	thresholds := DefaultThresholds()
+	thresholds.Memory.MinSamples = 2
+	thresholds.Memory.OpenFDSlopeMaxPerHour = 10
+	thresholds.Memory.GCPauseSlopeMaxMSPerHour = 1
+	thresholds.Memory.WorkingSetSlopeMaxMBPerHour = 1
+	start := time.Date(2026, 9, 3, 12, 0, 0, 0, time.UTC)
+	// 17 minutes of growth that would breach every slope once extrapolated
+	// to an hour (18 ms of GC pause reads as 63 ms/h) is not a verdict.
+	samples := processSamples(start, 17*time.Minute)
+
+	evaluation := Evaluate(samples, thresholds, Options{Participants: 2, SlotsPerEpoch: 8, Enforce: true})
+	require.True(t, evaluation.Passed, gatesDetail(evaluation))
+	for _, name := range []string{
+		"process/participant-1/execution/fds",
+		"process/participant-1/execution/gc-pause",
+		"process/participant-1/execution/gc-rate",
+		"working-set/participant-1/execution",
+		"memory/participant-1/execution/rss",
+	} {
+		judged := gate(evaluation, name)
+		require.True(t, judged.Passed, name)
+		require.True(t, judged.Insufficient, name)
+		require.Contains(t, judged.Observed, "window 17m0s over 2 samples", name)
+		require.Contains(t, judged.Detail, "1h0m0s", name)
+	}
+	require.Empty(t, evaluation.Metrics.ProcessSlopes)
+	require.Empty(t, evaluation.Metrics.GCPerHour)
+	require.Empty(t, evaluation.Metrics.WorkingSetSlopes)
+	require.False(t, gate(evaluation, "working-set/participant-1/execution/headroom").Insufficient, "headroom is a peak, not a trend")
+
+	rendered := RenderSummary(evaluation)
+	require.Contains(t, rendered, "| process/participant-1/execution/gc-pause | n/a |")
+	require.Contains(t, rendered, "| working-set/participant-1/execution | n/a |")
 }
 
 func TestMinPeers(t *testing.T) {
@@ -215,6 +243,34 @@ func steady(at time.Time, head, slot uint64, peers int, rss float64) Sample {
 		At: at, Phase: PhaseSteady, Reference: head - 2,
 		Participants: []ParticipantSample{participant(1), participant(2)},
 	}
+}
+
+// processSamples is two steady samples span apart with file descriptors,
+// GC pause, GC count and container working set on participant 1 growing
+// by 120 FDs, 18 ms, 500 collections and 10 MB.
+func processSamples(start time.Time, span time.Duration) []Sample {
+	first := steady(start, 100, 100, 10, 1<<30)
+	second := steady(start.Add(span), 100+uint64(span.Minutes()*12), 100+uint64(span.Minutes()*12), 10, 1<<30)
+	for _, sample := range []*Sample{&first, &second} {
+		for i := range sample.Participants {
+			stats := sample.Participants[i].Clients[ClientExecution]
+			stats.OpenFDs = 100
+			stats.GCPauseSec = 0.001
+			stats.GCCount = 1000
+			sample.Participants[i].Clients[ClientExecution] = stats
+		}
+		sample.Containers = []ContainerSample{{
+			Participant: 1, Pod: "el-1", Container: "execution",
+			WorkingSetBytes: 1 << 30, LimitBytes: 4 << 30,
+		}}
+	}
+	second.Participants[0].Clients[ClientExecution] = ClientMetrics{
+		RSSBytes: 1 << 30, HeapBytes: 1 << 29, Goroutines: 100, Scraped: true,
+		OpenFDs: 220, GCPauseSec: 0.019, GCCount: 1500,
+	}
+	second.Containers[0].WorkingSetBytes = 1<<30 + 10<<20
+
+	return []Sample{first, second}
 }
 
 func names(evaluation Evaluation) []string {

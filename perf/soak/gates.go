@@ -525,7 +525,9 @@ func (e evaluator) process(metrics *Metrics) []Gate {
 				gates = append(gates, e.trendGate(prefix+"/gc-pause", pauses, e.thresholds.Memory.GCPauseSlopeMaxMSPerHour, secondsToMS, "ms/h", metrics.ProcessSlopes))
 			}
 			if gate, key, rate, ok := e.gcRateGate(prefix+"/gc-rate", counts); ok {
-				metrics.GCPerHour[key] = rate
+				if key != "" {
+					metrics.GCPerHour[key] = rate
+				}
 				gates = append(gates, gate)
 			}
 		}
@@ -538,6 +540,17 @@ func (e evaluator) gcRateGate(name string, points []point) (Gate, string, float6
 	if len(points) < e.thresholds.Memory.MinSamples {
 		return Gate{}, "", 0, false
 	}
+
+	// The rate is (last - first) / hours: a short window extrapolates a few
+	// minutes of GC activity to an hourly figure, so it is judged like a
+	// slope and reported as n/a until the window is long enough.
+	if window, short := e.windowTooShort(points); short {
+		gate.Passed, gate.Insufficient = true, true
+		gate.Observed = fmt.Sprintf("window %s over %d samples", window.Round(time.Second), len(points))
+		gate.Detail = shortWindowDetail(e.thresholds.Memory.MinWindow)
+		return gate, "", 0, true
+	}
+
 	hours := points[len(points)-1].at.Sub(points[0].at).Hours()
 	if hours <= 0 {
 		return Gate{}, "", 0, false
@@ -605,12 +618,22 @@ func (e evaluator) workingSet(metrics *Metrics) []Gate {
 	return gates
 }
 
-func (e evaluator) memoryWindowTooShort(name string, points []point) (time.Duration, bool) {
-	if e.thresholds.Memory.MinWindow <= 0 || !strings.HasPrefix(name, "memory/") || len(points) < 2 {
+// windowTooShort reports whether the series spans less than
+// memory.min_window. Every gate whose verdict is a slope or a rate over time
+// is subject to it: a few minutes of growth extrapolated to an hour is noise
+// (17 minutes of 18 ms GC-pause growth read as 83 ms/h against a 20 ms/h
+// bound), whatever the metric.
+func (e evaluator) windowTooShort(points []point) (time.Duration, bool) {
+	if e.thresholds.Memory.MinWindow <= 0 || len(points) < 2 {
 		return 0, false
 	}
+
 	window := points[len(points)-1].at.Sub(points[0].at)
 	return window, window < e.thresholds.Memory.MinWindow
+}
+
+func shortWindowDetail(minimum time.Duration) string {
+	return fmt.Sprintf("need %s of steady samples before judging a trend", minimum)
 }
 
 func (e evaluator) trendGate(name string, points []point, limit float64, convert func(float64) float64, unit string, into map[string]MemoryTrend) Gate {
@@ -621,10 +644,10 @@ func (e evaluator) trendGate(name string, points []point, limit float64, convert
 		gate.Detail = fmt.Sprintf("need %d samples for a trend", e.thresholds.Memory.MinSamples)
 		return gate
 	}
-	if window, short := e.memoryWindowTooShort(name, points); short {
+	if window, short := e.windowTooShort(points); short {
 		gate.Passed, gate.Insufficient = true, true
 		gate.Observed = fmt.Sprintf("window %s over %d samples", window.Round(time.Second), len(points))
-		gate.Detail = fmt.Sprintf("need %s of steady samples before judging a memory slope", e.thresholds.Memory.MinWindow)
+		gate.Detail = shortWindowDetail(e.thresholds.Memory.MinWindow)
 		return gate
 	}
 	slope, ok := slopePerHour(points)

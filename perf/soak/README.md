@@ -16,6 +16,13 @@ make soak-run
 `SOAK_ENFORCE=false` records every gate but always reports success, for
 threshold calibration. `SOAK_LOAD_PERCENT=0` is an idle baseline.
 
+Gates whose verdict is a slope or a rate over time (RSS, heap, goroutine,
+working-set and file-descriptor slopes, GC-pause slope, GC rate) report
+`n/a` until the steady window spans `memory.min_window` (1 h): a few
+minutes of growth extrapolated to an hour is noise, not a leak. Short
+calibration runs therefore only judge the chain, peer, RPC, consensus,
+canary and headroom gates.
+
 Against an already-running soak network:
 
 ```bash
