@@ -7,8 +7,10 @@ import (
 	"math/big"
 
 	"github.com/cyyber/qrl-tests/devnet"
+	"github.com/cyyber/qrl-tests/e2e/internal/beacon"
 	"github.com/cyyber/qrl-tests/e2e/internal/manifest"
 	"github.com/cyyber/qrl-tests/internal/devwallet"
+	"github.com/theQRL/go-qrl/common"
 	qrlwallet "github.com/theQRL/go-qrl/crypto/pqcrypto/wallet"
 	"github.com/theQRL/go-qrl/qrlclient"
 )
@@ -16,6 +18,7 @@ import (
 // Runtime owns the network metadata and shared resources for one live suite.
 type Runtime struct {
 	Wallet         qrlwallet.Wallet
+	Address        common.Address
 	ChainID        *big.Int
 	ExecutionImage string
 
@@ -23,14 +26,16 @@ type Runtime struct {
 	nodes       []*Node
 }
 
-// Node is an open handle to one network participant: its execution clients
-// plus the shared suite Runtime.
+// Node is an open handle to one network participant: its execution and
+// consensus clients plus the shared suite Runtime.
 type Node struct {
 	*Runtime
 	ExecutionRPCURL       string
 	ExecutionWebSocketURL string
+	ConsensusURL          string
 	Execution             *qrlclient.Client
 	ExecutionWebSocket    *qrlclient.Client
+	Consensus             *beacon.Client
 }
 
 // Load resolves the configured test environment and restores the disposable
@@ -48,6 +53,7 @@ func Load() (*Runtime, error) {
 
 	runtime := &Runtime{
 		Wallet:         wallet,
+		Address:        common.Address(wallet.GetAddress()),
 		ExecutionImage: suiteManifest.ExecutionImage,
 		environment:    suiteManifest.Environment,
 	}
@@ -84,11 +90,19 @@ func (runtime *Runtime) open(ctx context.Context, participant devnet.Participant
 		}
 	}
 
+	consensus, err := beacon.New(participant.Consensus.URL)
+	if err != nil {
+		client.Close()
+		return nil, fmt.Errorf("open participant %d consensus API: %w", participant.Index, err)
+	}
+
 	node := &Node{
 		Runtime:               runtime,
 		ExecutionRPCURL:       participant.Execution.RPCURL,
 		ExecutionWebSocketURL: participant.Execution.WebSocketURL,
+		ConsensusURL:          participant.Consensus.URL,
 		Execution:             client,
+		Consensus:             consensus,
 	}
 	if withWebSocket {
 		node.ExecutionWebSocket, err = qrlclient.DialContext(ctx, participant.Execution.WebSocketURL)

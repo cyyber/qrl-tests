@@ -25,6 +25,7 @@ import (
 
 const (
 	executionLaneName     = "execution"
+	consensusLaneName     = "consensus"
 	executionABISuite     = "execution-abi"
 	executionConsoleSuite = "execution-console"
 )
@@ -465,7 +466,6 @@ func TestRunAllRejectsOverrides(t *testing.T) {
 
 func TestRunAllProvisionsPerLane(t *testing.T) {
 	networks := new(recordingNetworks)
-	var command commandSpec
 	reports := t.TempDir()
 	runner := newTestRunner(t, Config{
 		BaseName:     "qrl-tests",
@@ -474,19 +474,26 @@ func TestRunAllProvisionsPerLane(t *testing.T) {
 		StartTimeout: time.Minute,
 	}, io.Discard, io.Discard)
 	runner.networks = networks
+	var commands []commandSpec
 	runner.runCommand = func(_ context.Context, specification commandSpec) error {
-		writeGinkgoReport(t, filepath.Join(reports, "lanes", executionLaneName), types.SpecStatePassed)
-		command = specification
+		for _, lane := range []string{executionLaneName, consensusLaneName} {
+			writeGinkgoReport(t, filepath.Join(reports, "lanes", lane), types.SpecStatePassed)
+		}
+		commands = append(commands, specification)
 		return nil
 	}
 
 	require.NoError(t, runner.RunAll(t.Context()))
-	require.Equal(t, "qrl-tests-execution", networks.started.EnclaveName)
+	// Every registered lane provisions its own enclave and runs its own suites.
+	require.Equal(t, "qrl-tests-consensus", networks.started.EnclaveName)
 	require.Equal(t, devnet.ProfileSingle, networks.started.Profile)
-	require.Equal(t, []string{"qrl-tests-execution"}, networks.stopped)
-	require.Contains(t, command.Args, "./e2e/suites/execution/abi")
+	require.Equal(t, []string{"qrl-tests-execution", "qrl-tests-consensus"}, networks.stopped)
+	require.Len(t, commands, 2)
+	require.Contains(t, commands[0].Args, "./e2e/suites/execution/abi")
+	require.Contains(t, commands[1].Args, "./e2e/suites/consensus/staker")
 	record := testutil.ReadJSON[runmanifest.Manifest](t, filepath.Join(reports, runmanifest.FileName))
 	require.Equal(t, "qrl-tests-execution", record.Lanes[0].Enclave)
+	require.Equal(t, "qrl-tests-consensus", record.Lanes[1].Enclave)
 }
 
 func TestRunReturnsCleanupFailure(t *testing.T) {
