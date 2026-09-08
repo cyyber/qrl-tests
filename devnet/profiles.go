@@ -54,7 +54,7 @@ type participantResources struct {
 const (
 	soakParticipants        = 4
 	soakValidatorsPerNode   = 64
-	secondsPerSlot      = 5
+	secondsPerSlot          = 5
 	soakGenesisGasLimit     = 30_000_000
 	soakSimpleTransferGas   = 21_000
 	soakGenesisDelaySeconds = 120

@@ -106,20 +106,20 @@ func soakConfig(command *cli.Context) (soak.Config, error) {
 	}
 
 	return soak.Config{
-		EnclaveName:    command.String("enclave-name"),
-		ReportDir:      command.String("report-dir"),
-		Backend:        backend,
-		EndpointMode:   endpointMode,
+		EnclaveName:      command.String("enclave-name"),
+		ReportDir:        command.String("report-dir"),
+		Backend:          backend,
+		EndpointMode:     endpointMode,
 		LoadPercent:      command.Int("load-percent"),
 		ParticipantCount: command.Int("participants"),
-		StartTimeout:   command.Duration("start-timeout"),
-		Duration:       duration,
-		Interval:       command.Duration("interval"),
-		Enforce:        command.Bool("enforce"),
-		KeepNetwork:    command.Bool("keep-network"),
-		Existing:       command.Bool("existing"),
-		ThresholdsPath: command.String("thresholds"),
-		Parameters:     parameters,
-		Images:         imagesFromFlags(command),
+		StartTimeout:     command.Duration("start-timeout"),
+		Duration:         duration,
+		Interval:         command.Duration("interval"),
+		Enforce:          command.Bool("enforce"),
+		KeepNetwork:      command.Bool("keep-network"),
+		Existing:         command.Bool("existing"),
+		ThresholdsPath:   command.String("thresholds"),
+		Parameters:       parameters,
+		Images:           imagesFromFlags(command),
 	}, nil
 }

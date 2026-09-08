@@ -39,21 +39,21 @@ const (
 )
 
 type Config struct {
-	EnclaveName    string
-	ReportDir      string
-	Backend        devnet.Backend
-	Images         devnet.Images
-	Parameters     []byte
-	EndpointMode   devnet.EndpointMode
+	EnclaveName      string
+	ReportDir        string
+	Backend          devnet.Backend
+	Images           devnet.Images
+	Parameters       []byte
+	EndpointMode     devnet.EndpointMode
 	LoadPercent      int
 	ParticipantCount int
 	StartTimeout     time.Duration
-	Duration       time.Duration
-	Interval       time.Duration
-	Enforce        bool
-	KeepNetwork    bool
-	Existing       bool
-	ThresholdsPath string
+	Duration         time.Duration
+	Interval         time.Duration
+	Enforce          bool
+	KeepNetwork      bool
+	Existing         bool
+	ThresholdsPath   string
 }
 
 func (configuration Config) withDefaults() Config {
