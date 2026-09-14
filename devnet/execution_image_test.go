@@ -70,24 +70,29 @@ func TestResolveExecutionImageErrors(t *testing.T) {
 	}
 }
 
-func TestPrimaryExecutionServiceID(t *testing.T) {
+func TestPrimaryServiceIDs(t *testing.T) {
 	environment := Environment{
 		Backend: BackendDocker,
 		Participants: []Participant{{
 			Index:     1,
 			Execution: ExecutionService{ServiceInfo: ServiceInfo{ID: "primary-execution-service"}},
+			Validator: ValidatorService{ServiceInfo: ServiceInfo{ID: "primary-validator-service"}},
 		}},
 	}
 	serviceID, err := primaryExecutionServiceID(environment)
 	require.NoError(t, err)
 	require.Equal(t, "primary-execution-service", serviceID)
 
+	serviceID, err = primaryValidatorServiceID(environment)
+	require.NoError(t, err)
+	require.Equal(t, "primary-validator-service", serviceID)
+
 	environment.Backend = BackendKubernetes
-	_, err = primaryExecutionServiceID(environment)
+	_, err = primaryValidatorServiceID(environment)
 	require.ErrorContains(t, err, "is not Docker")
 
 	environment.Backend = BackendDocker
-	environment.Participants[0].Execution.ID = ""
-	_, err = primaryExecutionServiceID(environment)
-	require.ErrorContains(t, err, "primary execution service has no ID")
+	environment.Participants[0].Validator.ID = ""
+	_, err = primaryValidatorServiceID(environment)
+	require.ErrorContains(t, err, "primary validator service has no ID")
 }

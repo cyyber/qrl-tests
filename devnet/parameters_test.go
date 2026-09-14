@@ -30,14 +30,13 @@ func TestDefaultParameters(t *testing.T) {
 	require.Equal(t, executionImage, participant["el_image"])
 	require.Equal(t, DefaultConsensusImage, participant["cl_image"])
 	require.Equal(t, DefaultValidatorImage, participant["vc_image"])
-	require.Equal(t, true, participant["use_remote_signer"])
-	require.Equal(t, "clef", participant["remote_signer_type"])
-	require.Equal(t, DefaultClefImage, participant["remote_signer_image"])
-	require.Equal(t, true, participant["remote_signer_auto_approve"])
+	require.Equal(t, false, participant["use_remote_signer"])
+	require.NotContains(t, participant, "remote_signer_type")
+	require.NotContains(t, participant, "remote_signer_image")
+	require.NotContains(t, participant, "vc_extra_params")
 	require.Equal(t, float64(64), participant["validator_count"])
 	require.Equal(t, []any{"--graphql", "--graphql.vhosts=*"}, participant["el_extra_params"])
 	require.Equal(t, []any{"--min-sync-peers=0", "--minimum-peers-per-subnet=0"}, participant["cl_extra_params"])
-	require.Equal(t, []any{}, participant["vc_extra_params"])
 	require.Equal(t, DefaultGenesisImage, parameters["qrl_genesis_generator_params"].(map[string]any)["image"])
 	require.Equal(t, "1337", network["network_id"])
 	require.Equal(t, address, network["withdrawal_address"])
@@ -101,11 +100,11 @@ func TestNetworkParametersTemplate(t *testing.T) {
 
 	view := decodedParametersFile(t, rendered)
 	require.Equal(t, DefaultExecutionImage, view.Participants[0].ExecutionImage)
-	require.Equal(t, DefaultClefImage, view.Participants[0].RemoteSignerImage)
 	require.Equal(t, DefaultConsensusImage, view.Participants[0].ConsensusImage)
 	require.Equal(t, DefaultValidatorImage, view.Participants[0].ValidatorImage)
 	require.Equal(t, DefaultGenesisImage, view.Genesis.Image)
-	require.True(t, view.Participants[0].RemoteSignerAutoApprove)
+	require.False(t, view.Participants[0].UseRemoteSigner)
+	require.Empty(t, view.Participants[0].VCExtraParams)
 	require.Contains(t, view.Network.PrefundedAccounts, devwallet.Address)
 }
 
@@ -125,12 +124,13 @@ func TestFileParametersRejectInvalid(t *testing.T) {
 
 type parametersFileView struct {
 	Participants []struct {
-		ExecutionImage          string `yaml:"el_image"`
-		ConsensusImage          string `yaml:"cl_image"`
-		ValidatorImage          string `yaml:"vc_image"`
-		RemoteSignerImage       string `yaml:"remote_signer_image"`
-		RemoteSignerAutoApprove bool   `yaml:"remote_signer_auto_approve"`
-		Custom                  int64  `yaml:"custom"`
+		ExecutionImage    string   `yaml:"el_image"`
+		ConsensusImage    string   `yaml:"cl_image"`
+		ValidatorImage    string   `yaml:"vc_image"`
+		RemoteSignerImage string   `yaml:"remote_signer_image"`
+		UseRemoteSigner   bool     `yaml:"use_remote_signer"`
+		VCExtraParams     []string `yaml:"vc_extra_params"`
+		Custom            int64    `yaml:"custom"`
 	} `yaml:"participants"`
 	Network struct {
 		PrefundedAccounts map[string]struct {

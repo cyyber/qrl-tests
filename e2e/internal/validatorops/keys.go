@@ -39,6 +39,11 @@ func (key *Key) PublicKey() []byte {
 	return publicKey[:]
 }
 
+func (key *Key) Seed() []byte {
+	seed := key.wallet.GetSeed()
+	return seed[:]
+}
+
 // Address is the wallet address derived from the validator key.
 func (key *Key) Address() common.Address {
 	return common.Address(key.wallet.GetAddress())

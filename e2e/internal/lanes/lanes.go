@@ -99,6 +99,10 @@ func (lane Lane) NeedsExecutionImage() bool {
 	return slices.Contains(lane.Suites, suiteExecutionConsole)
 }
 
+func (lane Lane) NeedsValidatorImage() bool {
+	return slices.Contains(lane.Suites, suiteConsensusStaker)
+}
+
 func RegisteredSuites() []SuiteID {
 	return slices.Sorted(maps.Keys(suitePackages))
 }

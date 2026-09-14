@@ -9,7 +9,7 @@ endpoints; suites do not provision infrastructure.
 | Lane | Profile | Coverage |
 | --- | --- | --- |
 | `execution` | `single` | Execution ABI calls, events, errors, and WebSocket filters |
-| `consensus` | `single` | Staker lifecycle |
+| `consensus` | `single` | Staker lifecycle: deposit, operator validator container, attest, exit, withdraw |
 
 Run one lane with a fresh network:
 

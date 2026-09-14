@@ -128,3 +128,23 @@ func (client *Client) AttesterDuties(ctx context.Context, epoch uint64, indices 
 func (client *Client) SubmitVoluntaryExit(ctx context.Context, exit SignedVoluntaryExit) error {
 	return client.postJSON(ctx, "/qrl/v1/beacon/pool/voluntary_exits", exit, nil)
 }
+
+// AttestationRewards returns the attestation scores for the given validators
+// in a completed epoch. Qrysm serves an epoch only after two later epochs
+// have elapsed so every attestation has a chance of inclusion.
+func (client *Client) AttestationRewards(ctx context.Context, epoch uint64, indices []uint64) ([]AttestationReward, error) {
+	request := make([]string, len(indices))
+	for position, index := range indices {
+		request[position] = strconv.FormatUint(index, 10)
+	}
+	var response struct {
+		Data struct {
+			TotalRewards []AttestationReward `json:"total_rewards"`
+		} `json:"data"`
+	}
+	path := "/qrl/v1/beacon/rewards/attestations/" + strconv.FormatUint(epoch, 10)
+	if err := client.postJSON(ctx, path, request, &response); err != nil {
+		return nil, err
+	}
+	return response.Data.TotalRewards, nil
+}

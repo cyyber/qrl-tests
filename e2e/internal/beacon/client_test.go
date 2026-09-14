@@ -26,6 +26,11 @@ func TestValidatorDecodesQrysmRecord(t *testing.T) {
 			require.NoError(t, json.NewDecoder(request.Body).Decode(&indices))
 			require.Equal(t, []string{"64"}, indices)
 			_, _ = writer.Write([]byte(`{"dependent_root":"0x00","execution_optimistic":false,"data":[{"pubkey":"0xab","validator_index":"64","committee_index":"0","committee_length":"8","committees_at_slot":"1","validator_committee_index":"3","slot":"17"}]}`))
+		case "/qrl/v1/beacon/rewards/attestations/2":
+			var indices []string
+			require.NoError(t, json.NewDecoder(request.Body).Decode(&indices))
+			require.Equal(t, []string{"64"}, indices)
+			_, _ = writer.Write([]byte(`{"data":{"total_rewards":[{"validator_index":"64","head":"12","target":"34","source":"56"}]}}`))
 		default:
 			http.NotFound(writer, request)
 		}
@@ -56,6 +61,10 @@ func TestValidatorDecodesQrysmRecord(t *testing.T) {
 	duties, err := client.AttesterDuties(context.Background(), 2, []uint64{64})
 	require.NoError(t, err)
 	require.Equal(t, []AttesterDuty{{PublicKey: "0xab", ValidatorIndex: 64, Slot: 17}}, duties)
+
+	rewards, err := client.AttestationRewards(context.Background(), 2, []uint64{64})
+	require.NoError(t, err)
+	require.Equal(t, []AttestationReward{{ValidatorIndex: 64, Head: 12, Target: 34, Source: 56}}, rewards)
 
 	_, err = client.Validator(context.Background(), "65")
 	require.True(t, IsNotFound(err), "expected a not-found error, got %v", err)

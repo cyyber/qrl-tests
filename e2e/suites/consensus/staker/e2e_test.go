@@ -13,6 +13,7 @@ import (
 	"github.com/cyyber/qrl-tests/e2e/internal/consensuscontext"
 	"github.com/cyyber/qrl-tests/e2e/internal/live"
 	"github.com/cyyber/qrl-tests/e2e/internal/testsuite"
+	"github.com/cyyber/qrl-tests/e2e/internal/validatorclient"
 	"github.com/cyyber/qrl-tests/e2e/internal/validatorops"
 	ginkgo "github.com/onsi/ginkgo/v2"
 	gomega "github.com/onsi/gomega"
@@ -32,10 +33,12 @@ const (
 	topUpTimeout          = 15 * time.Minute
 
 	// Activation waits for eligibility finalization and the seed lookahead.
+	// Attestation rewards are only served after two later epochs.
 	// Exit waits two committee epochs, the five-epoch exit lookahead, and
 	// two withdrawability epochs: about six minutes on a healthy network.
-	activationTimeout = 8 * time.Minute
-	exitTimeout       = 8 * time.Minute
+	activationTimeout  = 8 * time.Minute
+	attestationTimeout = 4 * time.Minute
+	exitTimeout        = 8 * time.Minute
 
 	// stakerKeyMarker seeds the staker's validator key; it must not collide
 	// with the genesis validators, which derive from the package mnemonic.
@@ -62,10 +65,21 @@ var _ = ginkgo.Describe(
 			validator    beacon.Validator
 			recipient    common.Address
 			recipientHex string
+			dutyEpoch    uint64
 		)
 
 		ginkgo.BeforeAll(func(ctx ginkgo.SpecContext) {
 			node = testsuite.MustSucceed(testsuite.LoadRuntime().PrimaryNode(ctx))
+			gomega.Expect(node.ValidatorImage).NotTo(gomega.BeEmpty(), "validator image is not configured")
+			gomega.Expect(node.BeaconGRPC).NotTo(gomega.BeEmpty(), "beacon gRPC is not published")
+			operator := testsuite.MustSucceed(startOperatorValidator(ctx, operatorValidatorConfig{
+				image:              node.ValidatorImage,
+				beaconHTTPURL:      node.BeaconURL,
+				beaconGRPC:         node.BeaconGRPC,
+				consensusServiceID: node.ConsensusServiceID,
+			}))
+			ginkgo.DeferCleanup(operator.Close)
+			node.Validator = operator.Client
 			chain = testsuite.MustSucceed(consensuscontext.Load(ctx, node.Beacon))
 			depositor = testsuite.MustSucceed(validatorops.NewDepositor(ctx, node, chain))
 			key = testsuite.MustSucceed(validatorops.DeterministicKey(stakerKeyMarker))
@@ -77,7 +91,7 @@ var _ = ginkgo.Describe(
 
 			_, err := node.Beacon.Validator(ctx, publicKey)
 			gomega.Expect(beacon.IsNotFound(err)).To(gomega.BeTrue(), "staker key is already a validator: %v", err)
-		}, ginkgo.NodeTimeout(30*time.Second))
+		}, ginkgo.NodeTimeout(2*time.Minute))
 
 		ginkgo.It("deposits half the maximum balance and tops it up to the maximum", func(ctx ginkgo.SpecContext) {
 			first := maximum / 2
@@ -98,6 +112,12 @@ var _ = ginkgo.Describe(
 				validator = record
 			}).WithContext(ctx).WithTimeout(initialDepositTimeout).WithPolling(pollInterval).Should(gomega.Succeed())
 			initialIndex := validator.Index
+
+			ginkgo.By("importing the staker key into the operator validator client")
+			keystore := testsuite.MustSucceed(key.KeystoreJSON(validatorops.KeystorePassword))
+			gomega.Expect(node.Validator.ImportKeystore(ctx, keystore, validatorops.KeystorePassword)).To(gomega.Succeed())
+			keystores := testsuite.MustSucceed(node.Validator.ListKeystores(ctx))
+			gomega.Expect(containsPublicKey(keystores, publicKey)).To(gomega.BeTrue(), "imported key is not in the validator client")
 
 			ginkgo.By("submitting the top-up deposit")
 			_, err = depositor.Deposit(ctx, key, recipient, second)
@@ -141,7 +161,22 @@ var _ = ginkgo.Describe(
 			gomega.Expect(duties[0].ValidatorIndex).To(gomega.Equal(validator.Index))
 			gomega.Expect(strings.EqualFold(duties[0].PublicKey, publicKey)).To(gomega.BeTrue())
 			gomega.Expect(chain.Epoch(duties[0].Slot)).To(gomega.Equal(epoch), "attester duty belongs to a different epoch")
-		}, ginkgo.SpecTimeout(activationTimeout))
+			dutyEpoch = epoch
+
+			ginkgo.By("waiting for the validator client to attest the assigned epoch")
+			gomega.Eventually(func(g gomega.Gomega) {
+				head, err := node.Beacon.HeadSlot(ctx)
+				g.Expect(err).NotTo(gomega.HaveOccurred())
+				g.Expect(chain.Epoch(head)).To(gomega.BeNumerically(">=", dutyEpoch+2),
+					"attestation rewards need two later epochs")
+				rewards, err := node.Beacon.AttestationRewards(ctx, dutyEpoch, []uint64{validator.Index})
+				g.Expect(err).NotTo(gomega.HaveOccurred())
+				g.Expect(rewards).To(gomega.HaveLen(1))
+				g.Expect(rewards[0].ValidatorIndex).To(gomega.Equal(validator.Index))
+				g.Expect(rewards[0].Head > 0 || rewards[0].Target > 0 || rewards[0].Source > 0).To(gomega.BeTrue(),
+					"validator client produced no attestation reward in epoch %d", dutyEpoch)
+			}).WithContext(ctx).WithTimeout(attestationTimeout).WithPolling(pollInterval).Should(gomega.Succeed())
+		}, ginkgo.SpecTimeout(activationTimeout+attestationTimeout))
 
 		ginkgo.It("exits the validator and withdraws its stake to the staker wallet", func(ctx ginkgo.SpecContext) {
 			gomega.Expect(validator.Status).To(gomega.Equal("active_ongoing"), "the activation spec must pass first")
@@ -158,7 +193,7 @@ var _ = ginkgo.Describe(
 			balanceBefore := testsuite.MustSucceed(node.Execution.BalanceAt(ctx, recipient, nil))
 			gomega.Expect(balanceBefore.Sign()).To(gomega.BeZero(), "the dedicated recipient must be unfunded")
 			headSlot := testsuite.MustSucceed(node.Beacon.HeadSlot(ctx))
-			exit := testsuite.MustSucceed(validatorops.VoluntaryExit(key, validator.Index, chain.Epoch(headSlot), chain))
+			exit := testsuite.MustSucceed(node.Validator.SignVoluntaryExit(ctx, publicKey, chain.Epoch(headSlot)))
 			gomega.Expect(node.Beacon.SubmitVoluntaryExit(ctx, exit)).To(gomega.Succeed())
 
 			ginkgo.By("waiting for the exit to be included and the stake to be withdrawn")
@@ -209,6 +244,16 @@ var _ = ginkgo.Describe(
 type operationScanner struct {
 	client   *beacon.Client
 	lastSlot uint64
+}
+
+func containsPublicKey(keystores []validatorclient.Keystore, publicKey string) bool {
+	wanted := strings.TrimPrefix(strings.ToLower(publicKey), "0x")
+	for _, keystore := range keystores {
+		if strings.TrimPrefix(strings.ToLower(keystore.PublicKey), "0x") == wanted {
+			return true
+		}
+	}
+	return false
 }
 
 func newOperationScanner(client *beacon.Client, lastSlot uint64) *operationScanner {

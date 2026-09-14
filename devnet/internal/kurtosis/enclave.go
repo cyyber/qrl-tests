@@ -25,7 +25,7 @@ type Service struct {
 	Labels      map[string]string
 }
 
-func (service Service) PublicEndpoint(portID, scheme string) (string, error) {
+func (service Service) PublicHostPort(portID string) (string, error) {
 	port := service.PublicPorts[portID]
 	if port == 0 {
 		return "", fmt.Errorf("no public %q port", portID)
@@ -33,7 +33,15 @@ func (service Service) PublicEndpoint(portID, scheme string) (string, error) {
 	if service.PublicIP == "" {
 		return "", errors.New("no public IP address")
 	}
-	return scheme + "://" + net.JoinHostPort(service.PublicIP, strconv.Itoa(int(port))), nil
+	return net.JoinHostPort(service.PublicIP, strconv.Itoa(int(port))), nil
+}
+
+func (service Service) PublicEndpoint(portID, scheme string) (string, error) {
+	hostPort, err := service.PublicHostPort(portID)
+	if err != nil {
+		return "", err
+	}
+	return scheme + "://" + hostPort, nil
 }
 
 // EnclaveClient manages enclaves and packages through the Kurtosis SDK.

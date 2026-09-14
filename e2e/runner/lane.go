@@ -152,6 +152,20 @@ func (runner *Runner) executeLane(ctx context.Context, plan runPlan, lane laneRu
 			return outcome
 		}
 	}
+	validatorImage := ""
+	if definition.NeedsValidatorImage() {
+		resolveCtx, cancelResolve := context.WithTimeout(ctx, executionImageResolutionTimeout)
+		validatorImage, err = runner.resolveValidatorImage(resolveCtx, lease.environment)
+		cancelResolve()
+		if err != nil {
+			outcome.ExecutionErr = ctx.Err()
+			outcome.Err = fmt.Errorf(
+				"test infrastructure failed: resolve validator image: %w",
+				errors.Join(err, outcome.ExecutionErr),
+			)
+			return outcome
+		}
+	}
 
 	manifestPath := lane.manifestPath()
 	if err := manifest.Write(manifestPath, manifest.Manifest{
@@ -159,6 +173,7 @@ func (runner *Runner) executeLane(ctx context.Context, plan runPlan, lane laneRu
 		Profile:        definition.Profile,
 		Environment:    lease.environment,
 		ExecutionImage: executionImage,
+		ValidatorImage: validatorImage,
 	}); err != nil {
 		outcome.Err = fmt.Errorf("test infrastructure failed: %w", err)
 		return outcome

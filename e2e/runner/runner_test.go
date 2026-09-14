@@ -50,6 +50,9 @@ func newTestRunner(t *testing.T, configuration Config, stdout, stderr io.Writer)
 	runner.resolveExecutionImage = func(context.Context, devnet.Environment) (string, error) {
 		return "sha256:" + strings.Repeat("ab", 32), nil
 	}
+	runner.resolveValidatorImage = func(context.Context, devnet.Environment) (string, error) {
+		return "sha256:" + strings.Repeat("cd", 32), nil
+	}
 	return runner
 }
 
@@ -169,6 +172,34 @@ func TestRunRecordsResolvedImage(t *testing.T) {
 	configured, err := manifest.Read(filepath.Join(reports, "lanes", executionLaneName, manifest.FileName))
 	require.NoError(t, err)
 	require.Equal(t, actualImage, configured.ExecutionImage)
+	require.Empty(t, configured.ValidatorImage)
+}
+
+func TestRunRecordsResolvedValidatorImage(t *testing.T) {
+	reports := t.TempDir()
+	actualImage := "sha256:" + strings.Repeat("cd", 32)
+	runner := New(Config{
+		ReportDir: reports,
+		Images:    devnet.Images{Validator: "registry.example/qrysm-validator:configured"},
+	}, io.Discard, io.Discard)
+	runner.networks = new(recordingNetworks)
+	runner.resolveValidatorImage = func(ctx context.Context, _ devnet.Environment) (string, error) {
+		deadline, ok := ctx.Deadline()
+		require.True(t, ok)
+		require.WithinDuration(t, time.Now().Add(executionImageResolutionTimeout), deadline, time.Second)
+		return actualImage, nil
+	}
+
+	runner.runCommand = func(context.Context, commandSpec) error {
+		writeGinkgoReport(t, filepath.Join(reports, "lanes", consensusLaneName), types.SpecStatePassed)
+		return nil
+	}
+
+	require.NoError(t, runner.Run(t.Context(), consensusLaneName))
+	configured, err := manifest.Read(filepath.Join(reports, "lanes", consensusLaneName, manifest.FileName))
+	require.NoError(t, err)
+	require.Equal(t, actualImage, configured.ValidatorImage)
+	require.Empty(t, configured.ExecutionImage)
 }
 
 func TestRunImageResolutionError(t *testing.T) {
@@ -190,6 +221,26 @@ func TestRunImageResolutionError(t *testing.T) {
 
 	err := runner.Run(t.Context(), executionLaneName)
 	require.ErrorContains(t, err, "resolve execution image: inspect failed")
+	require.False(t, commandRan)
+	require.Equal(t, []string{"collect:go-qrl-devnet", "stop:go-qrl-devnet"}, networks.events)
+}
+
+func TestRunValidatorImageResolutionError(t *testing.T) {
+	reports := t.TempDir()
+	networks := new(recordingNetworks)
+	runner := New(Config{ReportDir: reports}, io.Discard, io.Discard)
+	runner.networks = networks
+	runner.resolveValidatorImage = func(context.Context, devnet.Environment) (string, error) {
+		return "", errors.New("inspect failed")
+	}
+	commandRan := false
+	runner.runCommand = func(context.Context, commandSpec) error {
+		commandRan = true
+		return nil
+	}
+
+	err := runner.Run(t.Context(), consensusLaneName)
+	require.ErrorContains(t, err, "resolve validator image: inspect failed")
 	require.False(t, commandRan)
 	require.Equal(t, []string{"collect:go-qrl-devnet", "stop:go-qrl-devnet"}, networks.events)
 }

@@ -67,3 +67,10 @@ type AttesterDuty struct {
 	CommitteeIndex uint64 `json:"committee_index,string"`
 	Slot           uint64 `json:"slot,string"`
 }
+
+type AttestationReward struct {
+	ValidatorIndex uint64 `json:"validator_index,string"`
+	Head           int64  `json:"head,string"`
+	Target         int64  `json:"target,string"`
+	Source         int64  `json:"source,string"`
+}
