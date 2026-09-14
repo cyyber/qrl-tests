@@ -43,7 +43,7 @@ var registry = []Lane{
 		Name:    "consensus",
 		Profile: devnet.ProfileSingle,
 		Suites:  []SuiteID{suiteConsensusStaker},
-		Timeout: 105 * time.Minute,
+		Timeout: 60 * time.Minute,
 	},
 }
 
