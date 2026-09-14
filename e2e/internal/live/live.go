@@ -32,7 +32,6 @@ type Node struct {
 	*Runtime
 	ExecutionRPCURL       string
 	ExecutionWebSocketURL string
-	BeaconURL             string
 	Execution             *qrlclient.Client
 	ExecutionWebSocket    *qrlclient.Client
 	Beacon                *beacon.Client
@@ -100,7 +99,6 @@ func (runtime *Runtime) open(ctx context.Context, participant devnet.Participant
 		Runtime:               runtime,
 		ExecutionRPCURL:       participant.Execution.RPCURL,
 		ExecutionWebSocketURL: participant.Execution.WebSocketURL,
-		BeaconURL:             participant.Consensus.URL,
 		Execution:             client,
 		Beacon:                beaconClient,
 	}
