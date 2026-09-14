@@ -36,26 +36,15 @@ func (client *Client) SpecUint(ctx context.Context, name string) (uint64, error)
 	return parsed, nil
 }
 
-func (client *Client) Head(ctx context.Context) (Head, error) {
-	var response struct {
-		Data struct {
-			Root   string `json:"root"`
-			Header struct {
-				Message struct {
-					Slot uint64 `json:"slot,string"`
-				} `json:"message"`
-			} `json:"header"`
-		} `json:"data"`
-	}
-	if err := client.do(ctx, "GET", "/qrl/v1/beacon/headers/head", nil, &response); err != nil {
-		return Head{}, err
-	}
-	return Head{Slot: response.Data.Header.Message.Slot, Root: response.Data.Root}, nil
-}
-
 func (client *Client) HeadSlot(ctx context.Context) (uint64, error) {
-	head, err := client.Head(ctx)
-	return head.Slot, err
+	head, err := getData[struct {
+		Header struct {
+			Message struct {
+				Slot uint64 `json:"slot,string"`
+			} `json:"message"`
+		} `json:"header"`
+	}](ctx, client, "/qrl/v1/beacon/headers/head")
+	return head.Header.Message.Slot, err
 }
 
 type validatorContainerWire struct {
@@ -137,5 +126,5 @@ func (client *Client) AttesterDuties(ctx context.Context, epoch uint64, indices 
 }
 
 func (client *Client) SubmitVoluntaryExit(ctx context.Context, exit SignedVoluntaryExit) error {
-	return client.Post(ctx, "/qrl/v1/beacon/pool/voluntary_exits", exit)
+	return client.postJSON(ctx, "/qrl/v1/beacon/pool/voluntary_exits", exit, nil)
 }

@@ -476,9 +476,14 @@ func TestRunAllProvisionsPerLane(t *testing.T) {
 	runner.networks = networks
 	var commands []commandSpec
 	runner.runCommand = func(_ context.Context, specification commandSpec) error {
-		for _, lane := range []string{executionLaneName, consensusLaneName} {
-			writeGinkgoReport(t, filepath.Join(reports, "lanes", lane), types.SpecStatePassed)
+		var outputDir string
+		for _, argument := range specification.Args {
+			if value, ok := strings.CutPrefix(argument, "--output-dir="); ok {
+				outputDir = value
+			}
 		}
+		require.NotEmpty(t, outputDir)
+		writeGinkgoReport(t, outputDir, types.SpecStatePassed)
 		commands = append(commands, specification)
 		return nil
 	}

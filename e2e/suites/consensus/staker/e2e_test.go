@@ -77,7 +77,7 @@ var _ = ginkgo.Describe(
 
 			_, err := node.Beacon.Validator(ctx, publicKey)
 			gomega.Expect(beacon.IsNotFound(err)).To(gomega.BeTrue(), "staker key is already a validator: %v", err)
-		})
+		}, ginkgo.NodeTimeout(30*time.Second))
 
 		ginkgo.It("deposits half the maximum balance and tops it up to the maximum", func(ctx ginkgo.SpecContext) {
 			first := maximum / 2
@@ -134,11 +134,13 @@ var _ = ginkgo.Describe(
 			gomega.Expect(validator.Slashed).To(gomega.BeFalse())
 
 			ginkgo.By("checking the validator is assigned attestation duties")
-			head := testsuite.MustSucceed(node.Beacon.Head(ctx))
-			duties := testsuite.MustSucceed(node.Beacon.AttesterDuties(ctx, chain.Epoch(head.Slot), []uint64{validator.Index}))
+			headSlot := testsuite.MustSucceed(node.Beacon.HeadSlot(ctx))
+			epoch := chain.Epoch(headSlot)
+			duties := testsuite.MustSucceed(node.Beacon.AttesterDuties(ctx, epoch, []uint64{validator.Index}))
 			gomega.Expect(duties).To(gomega.HaveLen(1))
 			gomega.Expect(duties[0].ValidatorIndex).To(gomega.Equal(validator.Index))
 			gomega.Expect(strings.EqualFold(duties[0].PublicKey, publicKey)).To(gomega.BeTrue())
+			gomega.Expect(chain.Epoch(duties[0].Slot)).To(gomega.Equal(epoch), "attester duty belongs to a different epoch")
 		}, ginkgo.SpecTimeout(activationTimeout))
 
 		ginkgo.It("exits the validator and withdraws its stake to the staker wallet", func(ctx ginkgo.SpecContext) {
@@ -155,12 +157,12 @@ var _ = ginkgo.Describe(
 			ginkgo.By("submitting the voluntary exit")
 			balanceBefore := testsuite.MustSucceed(node.Execution.BalanceAt(ctx, recipient, nil))
 			gomega.Expect(balanceBefore.Sign()).To(gomega.BeZero(), "the dedicated recipient must be unfunded")
-			head := testsuite.MustSucceed(node.Beacon.Head(ctx))
-			exit := testsuite.MustSucceed(validatorops.VoluntaryExit(key, validator.Index, chain.Epoch(head.Slot), chain))
+			headSlot := testsuite.MustSucceed(node.Beacon.HeadSlot(ctx))
+			exit := testsuite.MustSucceed(validatorops.VoluntaryExit(key, validator.Index, chain.Epoch(headSlot), chain))
 			gomega.Expect(node.Beacon.SubmitVoluntaryExit(ctx, exit)).To(gomega.Succeed())
 
 			ginkgo.By("waiting for the exit to be included and the stake to be withdrawn")
-			scanner := newOperationScanner(node.Beacon, head.Slot)
+			scanner := newOperationScanner(node.Beacon, headSlot)
 			var exitIncluded bool
 			var withdrawn *beacon.Withdrawal
 			gomega.Eventually(func(g gomega.Gomega) {

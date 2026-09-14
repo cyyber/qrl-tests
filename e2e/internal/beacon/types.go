@@ -16,11 +16,6 @@ type Fork struct {
 	Epoch           uint64 `json:"epoch,string"`
 }
 
-type Head struct {
-	Slot uint64
-	Root string
-}
-
 type DepositContract struct {
 	ChainID uint64 `json:"chain_id,string"`
 	Address string `json:"address"`

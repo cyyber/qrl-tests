@@ -11,7 +11,10 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 )
+
+const requestTimeout = 10 * time.Second
 
 type Client struct {
 	baseURL *url.URL
@@ -42,7 +45,7 @@ func New(endpoint string) (*Client, error) {
 	if err != nil {
 		return nil, fmt.Errorf("parse consensus endpoint: %w", err)
 	}
-	return &Client{baseURL: baseURL, http: http.DefaultClient}, nil
+	return &Client{baseURL: baseURL, http: &http.Client{Timeout: requestTimeout}}, nil
 }
 
 type dataResponse[T any] struct {
@@ -60,19 +63,14 @@ func getData[T any](ctx context.Context, client *Client, path string) (T, error)
 
 func postData[T any](ctx context.Context, client *Client, path string, payload any) (T, error) {
 	var response dataResponse[T]
-	if err := client.PostJSON(ctx, path, payload, &response); err != nil {
+	if err := client.postJSON(ctx, path, payload, &response); err != nil {
 		var zero T
 		return zero, err
 	}
 	return response.Data, nil
 }
 
-// Post submits payload as JSON and discards any response body.
-func (client *Client) Post(ctx context.Context, path string, payload any) error {
-	return client.PostJSON(ctx, path, payload, nil)
-}
-
-func (client *Client) PostJSON(ctx context.Context, path string, payload, result any) error {
+func (client *Client) postJSON(ctx context.Context, path string, payload, result any) error {
 	body, err := json.Marshal(payload)
 	if err != nil {
 		return err
