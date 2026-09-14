@@ -24,18 +24,18 @@ import (
 const (
 	pollInterval = 2 * time.Second
 
-	// Each phase waits on several epochs of the development network. The
-	// deposit phase is bounded by execution-data voting: Qrysm fixes the
-	// execution block time at 60s, so with the profile's follow distance of 8
-	// blocks the first vote that can see a post-genesis deposit opens 16
-	// minutes after genesis, and the deposit lands in the state shortly after.
-	// The initial deposit and the subsequent top-up each get their own budget.
-	// Activation then waits for the eligibility epoch to finalize plus the
-	// seed lookahead, and the exit for the committee period, the exit queue
-	// and the withdrawability delay.
-	depositTimeout    = 30 * time.Minute
-	activationTimeout = 15 * time.Minute
-	exitTimeout       = 20 * time.Minute
+	// The single profile has 40-second epochs and 160-second voting periods.
+	// Qrysm's 60-second execution block time and follow distance of 8 impose
+	// a 16-minute genesis voting floor. Later deposits need 8 minutes of
+	// follow distance plus voting-period alignment and a majority of votes.
+	initialDepositTimeout = 20 * time.Minute
+	topUpTimeout          = 15 * time.Minute
+
+	// Activation waits for eligibility finalization and the seed lookahead.
+	// Exit waits two committee epochs, the five-epoch exit lookahead, and
+	// two withdrawability epochs: about six minutes on a healthy network.
+	activationTimeout = 8 * time.Minute
+	exitTimeout       = 8 * time.Minute
 
 	// stakerKeyMarker seeds the staker's validator key; it must not collide
 	// with the genesis validators, which derive from the package mnemonic.
@@ -96,7 +96,7 @@ var _ = ginkgo.Describe(
 				g.Expect(record.Status).To(gomega.Equal("pending_initialized"))
 				g.Expect(record.ActivationEpoch).To(gomega.Equal(beacon.FarFutureEpoch))
 				validator = record
-			}).WithContext(ctx).WithTimeout(depositTimeout).WithPolling(pollInterval).Should(gomega.Succeed())
+			}).WithContext(ctx).WithTimeout(initialDepositTimeout).WithPolling(pollInterval).Should(gomega.Succeed())
 			initialIndex := validator.Index
 
 			ginkgo.By("submitting the top-up deposit")
@@ -111,14 +111,14 @@ var _ = ginkgo.Describe(
 				g.Expect(record.Balance).To(gomega.Equal(maximum))
 				g.Expect(record.EffectiveBalance).To(gomega.Equal(maximum))
 				validator = record
-			}).WithContext(ctx).WithTimeout(depositTimeout).WithPolling(pollInterval).Should(gomega.Succeed())
+			}).WithContext(ctx).WithTimeout(topUpTimeout).WithPolling(pollInterval).Should(gomega.Succeed())
 
 			gomega.Expect(validator.PublicKey).To(gomega.Equal(publicKey))
 			gomega.Expect(strings.EqualFold(validator.WithdrawalRecipient, recipientHex)).To(gomega.BeTrue(),
 				"withdrawal recipient %s is not the staker wallet", validator.WithdrawalRecipient)
 			gomega.Expect(strings.EqualFold(validator.RandaoCommitment, hexutil.Encode(key.RandaoCommitment()))).To(gomega.BeTrue(),
 				"validator record carries a different RANDAO commitment than the deposit")
-		}, ginkgo.SpecTimeout(2*depositTimeout))
+		}, ginkgo.SpecTimeout(initialDepositTimeout+topUpTimeout))
 
 		ginkgo.It("activates the validator and schedules it for attestation duties", func(ctx ginkgo.SpecContext) {
 			ginkgo.By("waiting for the activation queue")
