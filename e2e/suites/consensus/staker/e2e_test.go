@@ -62,13 +62,13 @@ var _ = ginkgo.Describe(
 
 		ginkgo.BeforeAll(func(ctx ginkgo.SpecContext) {
 			node = testsuite.MustSucceed(testsuite.LoadRuntime().PrimaryNode(ctx))
-			chain = testsuite.MustSucceed(consensuscontext.Load(ctx, node.Consensus))
+			chain = testsuite.MustSucceed(consensuscontext.Load(ctx, node.Beacon))
 			depositor = testsuite.MustSucceed(validatorops.NewDepositor(ctx, node, chain))
 			key = testsuite.MustSucceed(validatorops.DeterministicKey(stakerKeyMarker))
 			publicKey = hexutil.Encode(key.PublicKey())
-			maximum = testsuite.MustSucceed(node.Consensus.SpecUint(ctx, "MAX_EFFECTIVE_BALANCE"))
+			maximum = testsuite.MustSucceed(node.Beacon.SpecUint(ctx, "MAX_EFFECTIVE_BALANCE"))
 
-			_, err := node.Consensus.Validator(ctx, publicKey)
+			_, err := node.Beacon.Validator(ctx, publicKey)
 			gomega.Expect(beacon.IsNotFound(err)).To(gomega.BeTrue(), "staker key is already a validator: %v", err)
 		})
 
@@ -86,7 +86,7 @@ var _ = ginkgo.Describe(
 
 			ginkgo.By("waiting for the beacon chain to process both deposits")
 			gomega.Eventually(func(g gomega.Gomega) {
-				record, err := node.Consensus.Validator(ctx, publicKey)
+				record, err := node.Beacon.Validator(ctx, publicKey)
 				g.Expect(err).NotTo(gomega.HaveOccurred())
 				g.Expect(record.Balance).To(gomega.BeNumerically(">=", maximum))
 				g.Expect(record.EffectiveBalance).To(gomega.Equal(maximum))
@@ -103,7 +103,7 @@ var _ = ginkgo.Describe(
 		ginkgo.It("activates the validator and schedules it for attestation duties", func(ctx ginkgo.SpecContext) {
 			ginkgo.By("waiting for the activation queue")
 			gomega.Eventually(func(g gomega.Gomega) {
-				record, err := node.Consensus.Validator(ctx, publicKey)
+				record, err := node.Beacon.Validator(ctx, publicKey)
 				g.Expect(err).NotTo(gomega.HaveOccurred())
 				g.Expect(record.Status).To(gomega.Equal("active_ongoing"))
 				validator = record
@@ -114,8 +114,8 @@ var _ = ginkgo.Describe(
 			gomega.Expect(validator.Slashed).To(gomega.BeFalse())
 
 			ginkgo.By("checking the validator is assigned attestation duties")
-			head := testsuite.MustSucceed(node.Consensus.Head(ctx))
-			duties := testsuite.MustSucceed(node.Consensus.AttesterDuties(ctx, chain.Epoch(head.Slot), []uint64{validator.Index}))
+			head := testsuite.MustSucceed(node.Beacon.Head(ctx))
+			duties := testsuite.MustSucceed(node.Beacon.AttesterDuties(ctx, chain.Epoch(head.Slot), []uint64{validator.Index}))
 			gomega.Expect(duties).To(gomega.HaveLen(1))
 			gomega.Expect(duties[0].ValidatorIndex).To(gomega.Equal(validator.Index))
 			gomega.Expect(strings.EqualFold(duties[0].PublicKey, publicKey)).To(gomega.BeTrue())
@@ -123,23 +123,23 @@ var _ = ginkgo.Describe(
 
 		ginkgo.It("exits the validator and withdraws its stake to the execution wallet", func(ctx ginkgo.SpecContext) {
 			gomega.Expect(validator.Status).To(gomega.Equal("active_ongoing"), "the activation spec must pass first")
-			committeePeriod := testsuite.MustSucceed(node.Consensus.SpecUint(ctx, "SHARD_COMMITTEE_PERIOD"))
+			committeePeriod := testsuite.MustSucceed(node.Beacon.SpecUint(ctx, "SHARD_COMMITTEE_PERIOD"))
 
 			ginkgo.By("waiting until the validator has been active for the committee period")
 			gomega.Eventually(func(g gomega.Gomega) {
-				head, err := node.Consensus.HeadSlot(ctx)
+				head, err := node.Beacon.HeadSlot(ctx)
 				g.Expect(err).NotTo(gomega.HaveOccurred())
 				g.Expect(chain.Epoch(head)).To(gomega.BeNumerically(">=", validator.ActivationEpoch+committeePeriod))
 			}).WithContext(ctx).WithTimeout(exitTimeout).WithPolling(pollInterval).Should(gomega.Succeed())
 
 			ginkgo.By("submitting the voluntary exit")
-			head := testsuite.MustSucceed(node.Consensus.Head(ctx))
+			head := testsuite.MustSucceed(node.Beacon.Head(ctx))
 			exit := testsuite.MustSucceed(validatorops.VoluntaryExit(key, validator.Index, chain.Epoch(head.Slot), chain))
-			gomega.Expect(node.Consensus.SubmitVoluntaryExit(ctx, exit)).To(gomega.Succeed())
+			gomega.Expect(node.Beacon.SubmitVoluntaryExit(ctx, exit)).To(gomega.Succeed())
 			balanceBefore := testsuite.MustSucceed(node.Execution.BalanceAt(ctx, node.Address, nil))
 
 			ginkgo.By("waiting for the exit to be included and the stake to be withdrawn")
-			scanner := newOperationScanner(node.Consensus, head.Slot)
+			scanner := newOperationScanner(node.Beacon, head.Slot)
 			var exitIncluded bool
 			var withdrawn *beacon.Withdrawal
 			gomega.Eventually(func(g gomega.Gomega) {
@@ -163,7 +163,7 @@ var _ = ginkgo.Describe(
 
 			ginkgo.By("checking the validator record and the execution balance")
 			gomega.Eventually(func(g gomega.Gomega) {
-				record, err := node.Consensus.Validator(ctx, publicKey)
+				record, err := node.Beacon.Validator(ctx, publicKey)
 				g.Expect(err).NotTo(gomega.HaveOccurred())
 				g.Expect(record.Status).To(gomega.Equal("withdrawal_done"))
 				g.Expect(record.Balance).To(gomega.BeZero())

@@ -27,15 +27,15 @@ type Runtime struct {
 }
 
 // Node is an open handle to one network participant: its execution and
-// consensus clients plus the shared suite Runtime.
+// beacon clients plus the shared suite Runtime.
 type Node struct {
 	*Runtime
 	ExecutionRPCURL       string
 	ExecutionWebSocketURL string
-	ConsensusURL          string
+	BeaconURL             string
 	Execution             *qrlclient.Client
 	ExecutionWebSocket    *qrlclient.Client
-	Consensus             *beacon.Client
+	Beacon                *beacon.Client
 }
 
 // Load resolves the configured test environment and restores the disposable
@@ -90,19 +90,19 @@ func (runtime *Runtime) open(ctx context.Context, participant devnet.Participant
 		}
 	}
 
-	consensus, err := beacon.New(participant.Consensus.URL)
+	beaconClient, err := beacon.New(participant.Consensus.URL)
 	if err != nil {
 		client.Close()
-		return nil, fmt.Errorf("open participant %d consensus API: %w", participant.Index, err)
+		return nil, fmt.Errorf("open participant %d beacon API: %w", participant.Index, err)
 	}
 
 	node := &Node{
 		Runtime:               runtime,
 		ExecutionRPCURL:       participant.Execution.RPCURL,
 		ExecutionWebSocketURL: participant.Execution.WebSocketURL,
-		ConsensusURL:          participant.Consensus.URL,
+		BeaconURL:             participant.Consensus.URL,
 		Execution:             client,
-		Consensus:             consensus,
+		Beacon:                beaconClient,
 	}
 	if withWebSocket {
 		node.ExecutionWebSocket, err = qrlclient.DialContext(ctx, participant.Execution.WebSocketURL)

@@ -45,7 +45,7 @@ type Depositor struct {
 }
 
 func NewDepositor(ctx context.Context, node *live.Node, chain consensuscontext.Context) (*Depositor, error) {
-	config, err := node.Consensus.DepositContract(ctx)
+	config, err := node.Beacon.DepositContract(ctx)
 	if err != nil {
 		return nil, err
 	}
