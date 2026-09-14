@@ -4,6 +4,7 @@ package validatorops
 
 import (
 	"github.com/cyyber/qrl-tests/e2e/internal/consensuscrypto"
+	"github.com/theQRL/go-qrl/common"
 	walletcommon "github.com/theQRL/go-qrllib/wallet/common"
 	walletmldsa "github.com/theQRL/go-qrllib/wallet/ml_dsa_87"
 )
@@ -36,6 +37,11 @@ func DeterministicKey(marker byte) (*Key, error) {
 func (key *Key) PublicKey() []byte {
 	publicKey := key.wallet.GetPK()
 	return publicKey[:]
+}
+
+// Address is the wallet address derived from the validator key.
+func (key *Key) Address() common.Address {
+	return common.Address(key.wallet.GetAddress())
 }
 
 // RandaoCommitment is the top layer of the key's hash onion, committed to in

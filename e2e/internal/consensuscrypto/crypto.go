@@ -18,12 +18,6 @@ var (
 	DomainVoluntaryExit = [4]byte{0x04, 0x00, 0x00, 0x00}
 )
 
-// HashRoot is implemented by SSZ containers that can compute their hash tree
-// root.
-type HashRoot interface {
-	HashTreeRoot() ([RootLength]byte, error)
-}
-
 // ComputeDomain mirrors compute_domain: the domain type followed by the first
 // 28 bytes of the fork data root.
 func ComputeDomain(domainType [4]byte, forkVersion [4]byte, genesisValidatorsRoot [RootLength]byte) [RootLength]byte {

@@ -3,6 +3,7 @@ package validatorops
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"math/big"
@@ -35,8 +36,7 @@ type depositEvent struct {
 	Index               []byte `abi:"index"`
 }
 
-// Depositor submits deposits from the development wallet, which also serves
-// as the withdrawal recipient of every validator it funds.
+// Depositor submits deposits from the development wallet.
 type Depositor struct {
 	node     *live.Node
 	contract *bind.BoundContract
@@ -67,10 +67,10 @@ func NewDepositor(ctx context.Context, node *live.Node, chain consensuscontext.C
 	}, nil
 }
 
-// Deposit stakes amountInShor for key and waits for the transaction to be
-// mined with a matching DepositEvent.
-func (depositor *Depositor) Deposit(ctx context.Context, key *Key, amountInShor uint64) (*types.Receipt, error) {
-	data, root, err := depositInput(key, depositor.node.Address, amountInShor, depositor.domain)
+// Deposit stakes amountInShor for key with the given withdrawal recipient and
+// waits for the transaction to be mined with a matching DepositEvent.
+func (depositor *Depositor) Deposit(ctx context.Context, key *Key, withdrawalRecipient common.Address, amountInShor uint64) (*types.Receipt, error) {
+	data, root, err := depositInput(key, withdrawalRecipient, amountInShor, depositor.domain)
 	if err != nil {
 		return nil, err
 	}
@@ -111,6 +111,12 @@ func (depositor *Depositor) verifyEvent(receipt *types.Receipt, data consensuscr
 		var event depositEvent
 		if err := depositor.contract.UnpackLog(&event, "DepositEvent", *log); err != nil {
 			return fmt.Errorf("decode deposit event: %w", err)
+		}
+		if len(event.Amount) != 8 {
+			return fmt.Errorf("deposit event amount must be 8 bytes, got %d", len(event.Amount))
+		}
+		if amount := binary.LittleEndian.Uint64(event.Amount); amount != data.Amount {
+			return fmt.Errorf("deposit event amount is %d shor, want %d", amount, data.Amount)
 		}
 		if !bytes.Equal(event.PublicKey, data.PublicKey) ||
 			!bytes.Equal(event.WithdrawalRecipient, data.WithdrawalRecipient) ||

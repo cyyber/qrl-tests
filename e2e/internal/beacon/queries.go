@@ -58,16 +58,6 @@ func (client *Client) HeadSlot(ctx context.Context) (uint64, error) {
 	return head.Slot, err
 }
 
-func (client *Client) FinalizedCheckpoint(ctx context.Context) (Checkpoint, error) {
-	data, err := getData[struct {
-		Finalized Checkpoint `json:"finalized"`
-	}](ctx, client, "/qrl/v1/beacon/states/head/finality_checkpoints")
-	if err != nil {
-		return Checkpoint{}, err
-	}
-	return data.Finalized, nil
-}
-
 type validatorContainerWire struct {
 	Index     uint64 `json:"index,string"`
 	Balance   uint64 `json:"balance,string"`

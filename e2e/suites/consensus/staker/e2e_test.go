@@ -16,6 +16,7 @@ import (
 	"github.com/cyyber/qrl-tests/e2e/internal/validatorops"
 	ginkgo "github.com/onsi/ginkgo/v2"
 	gomega "github.com/onsi/gomega"
+	"github.com/theQRL/go-qrl/common"
 	"github.com/theQRL/go-qrl/common/hexutil"
 	"github.com/theQRL/go-qrl/params"
 )
@@ -28,6 +29,7 @@ const (
 	// execution block time at 60s, so with the profile's follow distance of 8
 	// blocks the first vote that can see a post-genesis deposit opens 16
 	// minutes after genesis, and the deposit lands in the state shortly after.
+	// The initial deposit and the subsequent top-up each get their own budget.
 	// Activation then waits for the eligibility epoch to finalize plus the
 	// seed lookahead, and the exit for the committee period, the exit queue
 	// and the withdrawability delay.
@@ -51,13 +53,15 @@ var _ = ginkgo.Describe(
 	ginkgo.Label("e2e", "consensus", "staker", "mutates-chain"),
 	func() {
 		var (
-			node      *live.Node
-			chain     consensuscontext.Context
-			depositor *validatorops.Depositor
-			key       *validatorops.Key
-			publicKey string
-			maximum   uint64
-			validator beacon.Validator
+			node         *live.Node
+			chain        consensuscontext.Context
+			depositor    *validatorops.Depositor
+			key          *validatorops.Key
+			publicKey    string
+			maximum      uint64
+			validator    beacon.Validator
+			recipient    common.Address
+			recipientHex string
 		)
 
 		ginkgo.BeforeAll(func(ctx ginkgo.SpecContext) {
@@ -65,6 +69,9 @@ var _ = ginkgo.Describe(
 			chain = testsuite.MustSucceed(consensuscontext.Load(ctx, node.Beacon))
 			depositor = testsuite.MustSucceed(validatorops.NewDepositor(ctx, node, chain))
 			key = testsuite.MustSucceed(validatorops.DeterministicKey(stakerKeyMarker))
+			recipient = key.Address()
+			recipientHex = hexutil.Encode(recipient[:])
+			gomega.Expect(recipient).NotTo(gomega.Equal(node.Address), "withdrawals must use a dedicated recipient")
 			publicKey = hexutil.Encode(key.PublicKey())
 			maximum = testsuite.MustSucceed(node.Beacon.SpecUint(ctx, "MAX_EFFECTIVE_BALANCE"))
 
@@ -77,28 +84,41 @@ var _ = ginkgo.Describe(
 			second := maximum - first
 
 			ginkgo.By("submitting the initial deposit")
-			_, err := depositor.Deposit(ctx, key, first)
+			_, err := depositor.Deposit(ctx, key, recipient, first)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-			ginkgo.By("submitting the top-up deposit")
-			_, err = depositor.Deposit(ctx, key, second)
-			gomega.Expect(err).NotTo(gomega.HaveOccurred())
-
-			ginkgo.By("waiting for the beacon chain to process both deposits")
+			ginkgo.By("waiting for the half-funded validator to be initialized without activation")
 			gomega.Eventually(func(g gomega.Gomega) {
 				record, err := node.Beacon.Validator(ctx, publicKey)
 				g.Expect(err).NotTo(gomega.HaveOccurred())
-				g.Expect(record.Balance).To(gomega.BeNumerically(">=", maximum))
+				g.Expect(record.Balance).To(gomega.Equal(first))
+				g.Expect(record.EffectiveBalance).To(gomega.Equal(first))
+				g.Expect(record.Status).To(gomega.Equal("pending_initialized"))
+				g.Expect(record.ActivationEpoch).To(gomega.Equal(beacon.FarFutureEpoch))
+				validator = record
+			}).WithContext(ctx).WithTimeout(depositTimeout).WithPolling(pollInterval).Should(gomega.Succeed())
+			initialIndex := validator.Index
+
+			ginkgo.By("submitting the top-up deposit")
+			_, err = depositor.Deposit(ctx, key, recipient, second)
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+
+			ginkgo.By("waiting for the top-up to bring the same validator to the maximum balance")
+			gomega.Eventually(func(g gomega.Gomega) {
+				record, err := node.Beacon.Validator(ctx, publicKey)
+				g.Expect(err).NotTo(gomega.HaveOccurred())
+				g.Expect(record.Index).To(gomega.Equal(initialIndex))
+				g.Expect(record.Balance).To(gomega.Equal(maximum))
 				g.Expect(record.EffectiveBalance).To(gomega.Equal(maximum))
 				validator = record
 			}).WithContext(ctx).WithTimeout(depositTimeout).WithPolling(pollInterval).Should(gomega.Succeed())
 
 			gomega.Expect(validator.PublicKey).To(gomega.Equal(publicKey))
-			gomega.Expect(strings.EqualFold(validator.WithdrawalRecipient, executionAddress(node))).To(gomega.BeTrue(),
-				"withdrawal recipient %s is not the development wallet", validator.WithdrawalRecipient)
+			gomega.Expect(strings.EqualFold(validator.WithdrawalRecipient, recipientHex)).To(gomega.BeTrue(),
+				"withdrawal recipient %s is not the staker wallet", validator.WithdrawalRecipient)
 			gomega.Expect(strings.EqualFold(validator.RandaoCommitment, hexutil.Encode(key.RandaoCommitment()))).To(gomega.BeTrue(),
 				"validator record carries a different RANDAO commitment than the deposit")
-		}, ginkgo.SpecTimeout(depositTimeout))
+		}, ginkgo.SpecTimeout(2*depositTimeout))
 
 		ginkgo.It("activates the validator and schedules it for attestation duties", func(ctx ginkgo.SpecContext) {
 			ginkgo.By("waiting for the activation queue")
@@ -121,7 +141,7 @@ var _ = ginkgo.Describe(
 			gomega.Expect(strings.EqualFold(duties[0].PublicKey, publicKey)).To(gomega.BeTrue())
 		}, ginkgo.SpecTimeout(activationTimeout))
 
-		ginkgo.It("exits the validator and withdraws its stake to the execution wallet", func(ctx ginkgo.SpecContext) {
+		ginkgo.It("exits the validator and withdraws its stake to the staker wallet", func(ctx ginkgo.SpecContext) {
 			gomega.Expect(validator.Status).To(gomega.Equal("active_ongoing"), "the activation spec must pass first")
 			committeePeriod := testsuite.MustSucceed(node.Beacon.SpecUint(ctx, "SHARD_COMMITTEE_PERIOD"))
 
@@ -133,10 +153,11 @@ var _ = ginkgo.Describe(
 			}).WithContext(ctx).WithTimeout(exitTimeout).WithPolling(pollInterval).Should(gomega.Succeed())
 
 			ginkgo.By("submitting the voluntary exit")
+			balanceBefore := testsuite.MustSucceed(node.Execution.BalanceAt(ctx, recipient, nil))
+			gomega.Expect(balanceBefore.Sign()).To(gomega.BeZero(), "the dedicated recipient must be unfunded")
 			head := testsuite.MustSucceed(node.Beacon.Head(ctx))
 			exit := testsuite.MustSucceed(validatorops.VoluntaryExit(key, validator.Index, chain.Epoch(head.Slot), chain))
 			gomega.Expect(node.Beacon.SubmitVoluntaryExit(ctx, exit)).To(gomega.Succeed())
-			balanceBefore := testsuite.MustSucceed(node.Execution.BalanceAt(ctx, node.Address, nil))
 
 			ginkgo.By("waiting for the exit to be included and the stake to be withdrawn")
 			scanner := newOperationScanner(node.Beacon, head.Slot)
@@ -157,38 +178,29 @@ var _ = ginkgo.Describe(
 				g.Expect(withdrawn).NotTo(gomega.BeNil(), "stake not yet withdrawn")
 			}).WithContext(ctx).WithTimeout(exitTimeout).WithPolling(pollInterval).Should(gomega.Succeed())
 
-			gomega.Expect(strings.EqualFold(withdrawn.Address, executionAddress(node))).To(gomega.BeTrue(),
-				"withdrawal went to %s, not the development wallet", withdrawn.Address)
+			gomega.Expect(strings.EqualFold(withdrawn.Address, recipientHex)).To(gomega.BeTrue(),
+				"withdrawal went to %s, not the staker wallet", withdrawn.Address)
 			gomega.Expect(withdrawn.Amount).To(gomega.BeNumerically(">", 0))
 
 			ginkgo.By("checking the validator record and the execution balance")
+			withdrawnValue := new(big.Int).Mul(new(big.Int).SetUint64(withdrawn.Amount), big.NewInt(params.Shor))
 			gomega.Eventually(func(g gomega.Gomega) {
 				record, err := node.Beacon.Validator(ctx, publicKey)
 				g.Expect(err).NotTo(gomega.HaveOccurred())
 				g.Expect(record.Status).To(gomega.Equal("withdrawal_done"))
 				g.Expect(record.Balance).To(gomega.BeZero())
+				balanceAfter, err := node.Execution.BalanceAt(ctx, recipient, nil)
+				g.Expect(err).NotTo(gomega.HaveOccurred())
+				gained := new(big.Int).Sub(balanceAfter, balanceBefore)
+				g.Expect(gained.Cmp(withdrawnValue)).To(gomega.BeZero(),
+					"staker wallet gained %s planck, expected exactly %s planck", gained, withdrawnValue)
 				validator = record
 			}).WithContext(ctx).WithTimeout(exitTimeout).WithPolling(pollInterval).Should(gomega.Succeed())
 			gomega.Expect(validator.ExitEpoch).NotTo(gomega.Equal(beacon.FarFutureEpoch))
 			gomega.Expect(validator.WithdrawableEpoch).To(gomega.BeNumerically(">", validator.ExitEpoch))
-
-			// The development wallet is also the withdrawal recipient of the
-			// genesis validators, so it only ever gains; the full withdrawal
-			// must account for at least the staker's amount.
-			balanceAfter := testsuite.MustSucceed(node.Execution.BalanceAt(ctx, node.Address, nil))
-			withdrawnValue := new(big.Int).Mul(new(big.Int).SetUint64(withdrawn.Amount), big.NewInt(params.Shor))
-			gained := new(big.Int).Sub(balanceAfter, balanceBefore)
-			gomega.Expect(gained.Cmp(withdrawnValue)).To(gomega.BeNumerically(">=", 0),
-				"wallet gained %s planck, expected at least the %s planck withdrawn", gained, withdrawnValue)
 		}, ginkgo.SpecTimeout(exitTimeout))
 	},
 )
-
-// executionAddress renders the development wallet address the way the beacon
-// API renders 64-byte addresses: 0x-prefixed hex.
-func executionAddress(node *live.Node) string {
-	return hexutil.Encode(node.Address.Bytes())
-}
 
 // operationScanner walks every block after a starting slot exactly once, so
 // polling callers do not miss operations between checks.

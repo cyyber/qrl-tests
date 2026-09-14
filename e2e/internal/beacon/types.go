@@ -21,11 +21,6 @@ type Head struct {
 	Root string
 }
 
-type Checkpoint struct {
-	Epoch uint64 `json:"epoch,string"`
-	Root  string `json:"root"`
-}
-
 type DepositContract struct {
 	ChainID uint64 `json:"chain_id,string"`
 	Address string `json:"address"`
