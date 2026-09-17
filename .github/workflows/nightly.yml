@@ -4,10 +4,6 @@ on:
   schedule:
     - cron: "30 2 * * *"
   workflow_dispatch:
-    inputs:
-      qrl-package:
-        description: optional Kurtosis package locator override (QRL_PACKAGE)
-        type: string
 
 concurrency:
   group: qrl-tests-ghcr
@@ -145,7 +141,6 @@ jobs:
       source-qrysm: ${{ needs.images.outputs.qrysm-sha }}
       source-generator: ${{ needs.images.outputs.generator-sha }}
       lane: ${{ matrix.lane }}
-      qrl-package: ${{ inputs.qrl-package }}
 
   image-failure-summary:
     needs: images
