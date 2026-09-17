@@ -25,7 +25,7 @@ const (
 	retryInterval              = 500 * time.Millisecond
 
 	// PackageLocator pins the qrl-package revision every network runs.
-	PackageLocator = "github.com/cyyber/qrl-package@297eb7dcdee510574b56217bfd1c5885e1036a94"
+	PackageLocator = "github.com/cyyber/qrl-package@514f0835097b60f2485b8a64f62fb6ecf8bae087"
 )
 
 func resolvePackageLocator() string {
