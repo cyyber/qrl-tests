@@ -10,7 +10,6 @@ import (
 	"maps"
 	"net"
 	"strconv"
-	"strings"
 
 	"github.com/kurtosis-tech/kurtosis/api/golang/core/kurtosis_core_rpc_api_bindings"
 	"github.com/kurtosis-tech/kurtosis/api/golang/core/lib/services"
@@ -77,16 +76,6 @@ func (client *EnclaveClient) RunRemotePackage(
 	}
 
 	configuration := starlark_run_config.NewRunStarlarkConfig(starlark_run_config.WithSerializedParams(serializedParams))
-	// A filesystem path runs the local checkout so a package change can be
-	// exercised before it is pushed. GitHub locators stay pinned.
-	if strings.HasPrefix(locator, "/") || strings.HasPrefix(locator, ".") {
-		stream, cancel, err := enclave.RunStarlarkPackage(ctx, locator, configuration)
-		if err != nil {
-			return err
-		}
-		defer cancel()
-		return consumeStarlarkCompletion(stream)
-	}
 	stream, cancel, err := enclave.RunStarlarkRemotePackage(ctx, locator, configuration)
 	if err != nil {
 		return err
