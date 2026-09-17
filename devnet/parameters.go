@@ -34,16 +34,17 @@ type participant struct {
 }
 
 type networkParams struct {
-	NetworkID               string             `json:"network_id"`
-	PreregisteredValidators int                `json:"preregistered_validator_count,omitempty"`
-	SecondsPerSlot          int                `json:"seconds_per_slot"`
-	SlotsPerEpoch           int                `json:"slots_per_epoch"`
-	ExecutionFollowDistance int                `json:"execution_follow_distance"`
-	WithdrawabilityDelay    int                `json:"min_validator_withdrawability_delay"`
-	ShardCommitteePeriod    int                `json:"shard_committee_period"`
-	PrefundedAccounts       map[string]account `json:"prefunded_accounts"`
-	WithdrawalAddress       string             `json:"withdrawal_address"`
-	LightKDFEnabled         bool               `json:"light_kdf_enabled"`
+	NetworkID                      string             `json:"network_id"`
+	PreregisteredValidators        int                `json:"preregistered_validator_count,omitempty"`
+	SecondsPerSlot                 int                `json:"seconds_per_slot"`
+	SlotsPerEpoch                  int                `json:"slots_per_epoch"`
+	EpochsPerExecutionVotingPeriod int                `json:"epochs_per_execution_voting_period"`
+	ExecutionFollowDistance        int                `json:"execution_follow_distance"`
+	WithdrawabilityDelay           int                `json:"min_validator_withdrawability_delay"`
+	ShardCommitteePeriod           int                `json:"shard_committee_period"`
+	PrefundedAccounts              map[string]account `json:"prefunded_accounts"`
+	WithdrawalAddress              string             `json:"withdrawal_address"`
+	LightKDFEnabled                bool               `json:"light_kdf_enabled"`
 }
 
 type account struct {
@@ -106,16 +107,17 @@ func profileParameters(address string, options StartOptions) (string, error) {
 	payload, err := json.Marshal(packageParameters{
 		Participants: participants,
 		NetworkParams: networkParams{
-			NetworkID:               "1337",
-			PreregisteredValidators: spec.preregisteredValidators,
-			SecondsPerSlot:          5,
-			SlotsPerEpoch:           8,
-			ExecutionFollowDistance: 8,
-			WithdrawabilityDelay:    2,
-			ShardCommitteePeriod:    2,
-			PrefundedAccounts:       map[string]account{address: {Balance: "2000000QRL"}},
-			WithdrawalAddress:       address,
-			LightKDFEnabled:         true,
+			NetworkID:                      "1337",
+			PreregisteredValidators:        spec.preregisteredValidators,
+			SecondsPerSlot:                 5,
+			SlotsPerEpoch:                  8,
+			EpochsPerExecutionVotingPeriod: 64, // 8 * 64 = 512, Qrysm mainnet SSZ vote-list limit
+			ExecutionFollowDistance:        8,
+			WithdrawabilityDelay:           2,
+			ShardCommitteePeriod:           2,
+			PrefundedAccounts:              map[string]account{address: {Balance: "2000000QRL"}},
+			WithdrawalAddress:              address,
+			LightKDFEnabled:                true,
 		},
 		GenesisParams: generatorParams{Image: images.Genesis},
 	})

@@ -40,6 +40,8 @@ func TestDefaultParameters(t *testing.T) {
 	require.Equal(t, []any{}, participant["vc_extra_params"])
 	require.Equal(t, DefaultGenesisImage, parameters["qrl_genesis_generator_params"].(map[string]any)["image"])
 	require.Equal(t, "1337", network["network_id"])
+	require.Equal(t, float64(8), network["slots_per_epoch"])
+	require.Equal(t, float64(64), network["epochs_per_execution_voting_period"])
 	require.Equal(t, address, network["withdrawal_address"])
 	require.Equal(t, "2000000QRL", prefund["balance"])
 }

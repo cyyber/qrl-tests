@@ -7,6 +7,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"strings"
 	"time"
 
 	"github.com/cyyber/qrl-tests/devnet/internal/kurtosis"
@@ -23,8 +25,15 @@ const (
 	retryInterval              = 500 * time.Millisecond
 
 	// PackageLocator pins the qrl-package revision every network runs.
-	PackageLocator = "github.com/cyyber/qrl-package@04fd3133a7107229531da425dc750129bb691514"
+	PackageLocator = "github.com/cyyber/qrl-package@c855eff3c2e857ffda4624be3b6e5cf819a01b44"
 )
+
+func resolvePackageLocator() string {
+	if locator := strings.TrimSpace(os.Getenv("QRL_PACKAGE")); locator != "" {
+		return locator
+	}
+	return PackageLocator
+}
 
 // enclaveClient owns normal enclave and package operations through the
 // Kurtosis SDK.
@@ -134,7 +143,7 @@ func (manager *Manager) Start(ctx context.Context, options StartOptions) (enviro
 		}
 	}()
 
-	if err := client.RunRemotePackage(ctx, options.EnclaveName, PackageLocator, parameters); err != nil {
+	if err := client.RunRemotePackage(ctx, options.EnclaveName, resolvePackageLocator(), parameters); err != nil {
 		return Environment{}, fmt.Errorf("run pinned qrl-package: %w", err)
 	}
 

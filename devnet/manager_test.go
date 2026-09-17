@@ -274,6 +274,15 @@ func TestStartUsesPinnedPackage(t *testing.T) {
 	require.Equal(t, PackageLocator, client.packageLocator)
 }
 
+func TestStartUsesLocalPackageOverride(t *testing.T) {
+	t.Setenv("QRL_PACKAGE", "/tmp/qrl-package")
+	client := &fakeEnclaveClient{services: singleParticipant()}
+
+	_, err := testManager(client).Start(t.Context(), startOptions())
+	require.NoError(t, err)
+	require.Equal(t, "/tmp/qrl-package", client.packageLocator)
+}
+
 func TestStartRejectsInvalidImages(t *testing.T) {
 	client := new(fakeEnclaveClient)
 	options := startOptions()
