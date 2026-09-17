@@ -76,6 +76,30 @@ jobs:
           repository: ${{ job.workflow_repository }}
           ref: ${{ job.workflow_sha }}
 
+      - name: Resolve qrl-package override
+        id: qrl-package
+        if: inputs.qrl-package != ''
+        env:
+          QRL_PACKAGE_LOCATOR: ${{ inputs.qrl-package }}
+        run: |
+          locator=${QRL_PACKAGE_LOCATOR#github.com/}
+          repository=${locator%@*}
+          ref=${locator#*@}
+          test -n "${repository}" && test -n "${ref}" && test "${repository}" != "${ref}"
+          {
+            echo "repository=${repository}"
+            echo "ref=${ref}"
+            echo "path=${GITHUB_WORKSPACE}/.build/qrl-package"
+          } >>"${GITHUB_OUTPUT}"
+
+      - name: Check out qrl-package override
+        if: steps.qrl-package.outputs.path != ''
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ steps.qrl-package.outputs.repository }}
+          ref: ${{ steps.qrl-package.outputs.ref }}
+          path: .build/qrl-package
+
       - name: Set up Go
         uses: actions/setup-go@v7
         with:
@@ -109,7 +133,7 @@ jobs:
           E2E_SOURCE_GO_QRL: ${{ inputs.source-go-qrl }}
           E2E_SOURCE_QRYSM: ${{ inputs.source-qrysm }}
           E2E_SOURCE_GENERATOR: ${{ inputs.source-generator }}
-          QRL_PACKAGE: ${{ inputs.qrl-package }}
+          QRL_PACKAGE: ${{ steps.qrl-package.outputs.path }}
         run: make e2e-run
 
       - name: Publish the job summary
