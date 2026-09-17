@@ -109,7 +109,7 @@ func profileParameters(address string, options StartOptions) (string, error) {
 			NetworkID:               "1337",
 			PreregisteredValidators: spec.preregisteredValidators,
 			SecondsPerSlot:          5,
-			SlotsPerEpoch:           8, // package derives voting period as 512 / slots
+			SlotsPerEpoch:           8,
 			ExecutionFollowDistance: 8,
 			WithdrawabilityDelay:    2,
 			ShardCommitteePeriod:    2,
