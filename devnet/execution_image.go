@@ -46,18 +46,6 @@ func resolvePrimaryServiceImage(
 	return resolveContainerImage(ctx, id, role, client.ContainerList)
 }
 
-func primaryExecutionServiceID(environment Environment) (string, error) {
-	return primaryServiceID(environment, "execution", func(participant Participant) string {
-		return participant.Execution.ID
-	})
-}
-
-func primaryValidatorServiceID(environment Environment) (string, error) {
-	return primaryServiceID(environment, "validator", func(participant Participant) string {
-		return participant.Validator.ID
-	})
-}
-
 func primaryServiceID(environment Environment, role string, serviceID func(Participant) string) (string, error) {
 	if environment.Backend != BackendDocker {
 		return "", fmt.Errorf("backend %q is not Docker", environment.Backend)

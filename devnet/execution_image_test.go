@@ -79,20 +79,28 @@ func TestPrimaryServiceIDs(t *testing.T) {
 			Validator: ValidatorService{ServiceInfo: ServiceInfo{ID: "primary-validator-service"}},
 		}},
 	}
-	serviceID, err := primaryExecutionServiceID(environment)
+	serviceID, err := primaryServiceID(environment, "execution", func(participant Participant) string {
+		return participant.Execution.ID
+	})
 	require.NoError(t, err)
 	require.Equal(t, "primary-execution-service", serviceID)
 
-	serviceID, err = primaryValidatorServiceID(environment)
+	serviceID, err = primaryServiceID(environment, "validator", func(participant Participant) string {
+		return participant.Validator.ID
+	})
 	require.NoError(t, err)
 	require.Equal(t, "primary-validator-service", serviceID)
 
 	environment.Backend = BackendKubernetes
-	_, err = primaryValidatorServiceID(environment)
+	_, err = primaryServiceID(environment, "validator", func(participant Participant) string {
+		return participant.Validator.ID
+	})
 	require.ErrorContains(t, err, "is not Docker")
 
 	environment.Backend = BackendDocker
 	environment.Participants[0].Validator.ID = ""
-	_, err = primaryValidatorServiceID(environment)
+	_, err = primaryServiceID(environment, "validator", func(participant Participant) string {
+		return participant.Validator.ID
+	})
 	require.ErrorContains(t, err, "primary validator service has no ID")
 }
