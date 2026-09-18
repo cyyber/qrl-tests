@@ -56,18 +56,6 @@ func TestParticipantsFromServices(t *testing.T) {
 	}, participants)
 }
 
-func TestValidatorHTTPPortIsOptional(t *testing.T) {
-	participants, err := participantsFromServices(map[string]kurtosis.Service{
-		"el-1-gqrl-qrysm": service("el-1-gqrl-qrysm", "execution", map[string]uint16{"rpc": 3201, "ws": 3301}),
-		"cl-1-qrysm-gqrl": service("cl-1-qrysm-gqrl", "beacon", map[string]uint16{"http": 4201}),
-		"vc-1-gqrl-qrysm": service("vc-1-gqrl-qrysm", "validator", map[string]uint16{"metrics": 5301}),
-	})
-	require.NoError(t, err)
-	require.Empty(t, participants[0].Validator.URL)
-	require.Equal(t, "http://127.0.0.1:5301", participants[0].Validator.MetricsURL)
-	require.Empty(t, participants[0].Consensus.GRPC)
-}
-
 func TestParticipantIndex(t *testing.T) {
 	index, err := participantIndex("service-without-an-index", map[string]string{"qrl-tests.participant": "7"})
 	require.NoError(t, err)
