@@ -15,6 +15,7 @@ func TestManifestRoundTrip(t *testing.T) {
 		Lane:           "execution",
 		Profile:        devnet.ProfileSingle,
 		ExecutionImage: "registry.example/go-qrl@sha256:digest",
+		ValidatorImage: "registry.example/qrysm-validator@sha256:digest",
 		Environment: devnet.Environment{
 			EnclaveName: "qrl-tests-execution",
 			Backend:     devnet.BackendDocker,

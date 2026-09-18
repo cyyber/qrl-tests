@@ -16,10 +16,7 @@ const (
 	SignatureLength = walletmldsa.SigSize
 )
 
-var (
-	DomainDeposit       = DomainType{0x03, 0x00, 0x00, 0x00}
-	DomainVoluntaryExit = DomainType{0x04, 0x00, 0x00, 0x00}
-)
+var DomainDeposit = DomainType{0x03, 0x00, 0x00, 0x00}
 
 type (
 	DomainType  [4]byte
