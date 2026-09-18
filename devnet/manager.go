@@ -23,7 +23,7 @@ const (
 	retryInterval              = 500 * time.Millisecond
 
 	// PackageLocator pins the qrl-package revision every network runs.
-	PackageLocator = "github.com/cyyber/qrl-package@04fd3133a7107229531da425dc750129bb691514"
+	PackageLocator = "github.com/cyyber/qrl-package@514f0835097b60f2485b8a64f62fb6ecf8bae087"
 )
 
 // enclaveClient owns normal enclave and package operations through the
