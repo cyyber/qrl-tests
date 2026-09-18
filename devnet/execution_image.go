@@ -61,17 +61,6 @@ func primaryServiceID(environment Environment, role string, serviceID func(Parti
 	return id, nil
 }
 
-func resolveExecutionImage(
-	ctx context.Context,
-	serviceID string,
-	listContainers func(
-		context.Context,
-		dockerclient.ContainerListOptions,
-	) (dockerclient.ContainerListResult, error),
-) (string, error) {
-	return resolveContainerImage(ctx, serviceID, "execution", listContainers)
-}
-
 func resolveContainerImage(
 	ctx context.Context,
 	serviceID, role string,

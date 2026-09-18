@@ -26,7 +26,7 @@ func TestResolveExecutionImage(t *testing.T) {
 		}}}, nil
 	}
 
-	resolved, err := resolveExecutionImage(t.Context(), "primary-execution-service", listContainers)
+	resolved, err := resolveContainerImage(t.Context(), "primary-execution-service", "execution", listContainers)
 	require.NoError(t, err)
 	require.Equal(t, imageID, resolved)
 }
@@ -64,7 +64,7 @@ func TestResolveExecutionImageErrors(t *testing.T) {
 				return dockerclient.ContainerListResult{Items: testCase.containers}, testCase.clientErr
 			}
 
-			_, err := resolveExecutionImage(t.Context(), "primary-execution-service", listContainers)
+			_, err := resolveContainerImage(t.Context(), "primary-execution-service", "execution", listContainers)
 			require.ErrorContains(t, err, testCase.wantErr)
 		})
 	}
