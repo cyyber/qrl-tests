@@ -69,7 +69,7 @@ type ExecutionService struct {
 type ConsensusService struct {
 	ServiceInfo
 	URL        string `json:"url"`
-	GRPC       string `json:"grpc,omitempty"`
+	GRPC       string `json:"grpc"`
 	MetricsURL string `json:"metrics_url"`
 }
 
