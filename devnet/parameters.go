@@ -22,11 +22,11 @@ type participant struct {
 	CLImage                 string            `json:"cl_image"`
 	CLExtraParams           []string          `json:"cl_extra_params"`
 	VCImage                 string            `json:"vc_image"`
-	VCExtraParams           []string          `json:"vc_extra_params,omitempty"`
+	VCExtraParams           []string          `json:"vc_extra_params"`
 	UseRemoteSigner         bool              `json:"use_remote_signer"`
-	RemoteSignerType        string            `json:"remote_signer_type,omitempty"`
-	RemoteSignerImage       string            `json:"remote_signer_image,omitempty"`
-	RemoteSignerAutoApprove bool              `json:"remote_signer_auto_approve,omitempty"`
+	RemoteSignerType        string            `json:"remote_signer_type"`
+	RemoteSignerImage       string            `json:"remote_signer_image"`
+	RemoteSignerAutoApprove bool              `json:"remote_signer_auto_approve"`
 	ValidatorCount          int               `json:"validator_count"`
 	ELExtraLabels           map[string]string `json:"el_extra_labels,omitempty"`
 	CLExtraLabels           map[string]string `json:"cl_extra_labels,omitempty"`
@@ -86,17 +86,20 @@ func profileParameters(address string, options StartOptions) (string, error) {
 			partitionLabel: strconv.Itoa(index%2 + 1),
 		}
 		participants[index] = participant{
-			ELImage:         images.Execution,
-			ELExtraParams:   participantParameters(configuration.elExtraParams, "--graphql", "--graphql.vhosts=*"),
-			CLImage:         images.Consensus,
-			CLExtraParams:   participantParameters(configuration.clExtraParams, "--min-sync-peers=0", "--minimum-peers-per-subnet=0"),
-			VCImage:         images.Validator,
-			VCExtraParams:   configuration.vcExtraParams,
-			UseRemoteSigner: false,
-			ValidatorCount:  configuration.validatorCount,
-			ELExtraLabels:   labels,
-			CLExtraLabels:   labels,
-			VCExtraLabels:   labels,
+			ELImage:                 images.Execution,
+			ELExtraParams:           participantParameters(configuration.elExtraParams, "--graphql", "--graphql.vhosts=*"),
+			CLImage:                 images.Consensus,
+			CLExtraParams:           participantParameters(configuration.clExtraParams, "--min-sync-peers=0", "--minimum-peers-per-subnet=0"),
+			VCImage:                 images.Validator,
+			VCExtraParams:           participantParameters(configuration.vcExtraParams),
+			UseRemoteSigner:         true,
+			RemoteSignerType:        "clef",
+			RemoteSignerImage:       images.Clef,
+			RemoteSignerAutoApprove: true,
+			ValidatorCount:          configuration.validatorCount,
+			ELExtraLabels:           labels,
+			CLExtraLabels:           labels,
+			VCExtraLabels:           labels,
 		}
 	}
 
