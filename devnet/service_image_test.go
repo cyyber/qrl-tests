@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestResolveExecutionImage(t *testing.T) {
+func TestResolveContainerImage(t *testing.T) {
 	imageID := "sha256:" + strings.Repeat("ab", 32)
 	listContainers := func(
 		_ context.Context,
@@ -31,7 +31,7 @@ func TestResolveExecutionImage(t *testing.T) {
 	require.Equal(t, imageID, resolved)
 }
 
-func TestResolveExecutionImageErrors(t *testing.T) {
+func TestResolveContainerImageErrors(t *testing.T) {
 	for name, testCase := range map[string]struct {
 		containers []containertypes.Summary
 		clientErr  error
