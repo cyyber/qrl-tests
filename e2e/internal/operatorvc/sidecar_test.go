@@ -1,4 +1,4 @@
-package staker
+package operatorvc
 
 import (
 	"archive/tar"
@@ -12,7 +12,7 @@ import (
 )
 
 func TestRewritePublishedEndpoints(t *testing.T) {
-	url, err := rewritePublishedURL("http://127.0.0.1:3500")
+	url, err := RewritePublishedURL("http://127.0.0.1:3500")
 	require.NoError(t, err)
 	require.Equal(t, "http://host.docker.internal:3500", url)
 
@@ -20,7 +20,7 @@ func TestRewritePublishedEndpoints(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "host.docker.internal:4000", host)
 
-	_, err = rewritePublishedURL("http://127.0.0.1")
+	_, err = RewritePublishedURL("http://127.0.0.1")
 	require.ErrorContains(t, err, "scheme, host, and port")
 
 	_, err = rewritePublishedHost("127.0.0.1")
@@ -36,8 +36,8 @@ func TestParseAuthToken(t *testing.T) {
 	require.ErrorContains(t, err, "empty")
 }
 
-func TestOperatorFixtureArchive(t *testing.T) {
-	archive, err := operatorFixtureArchive([]byte("PRESET_BASE: minimal\n"))
+func TestFixtureArchive(t *testing.T) {
+	archive, err := fixtureArchive([]byte("PRESET_BASE: minimal\n"), nil)
 	require.NoError(t, err)
 
 	files := readTarNames(t, archive)
@@ -48,23 +48,39 @@ func TestOperatorFixtureArchive(t *testing.T) {
 		"network-configs/config.yaml",
 	}, files)
 
-	_, err = operatorFixtureArchive(nil)
+	_, err = fixtureArchive(nil, nil)
 	require.ErrorContains(t, err, "empty")
 }
 
+func TestFixtureArchiveWithKeystores(t *testing.T) {
+	archive, err := fixtureArchive([]byte("PRESET_BASE: minimal\n"), []File{{
+		Name: "/tmp/keystore-m_12381_238_0_0-1.json",
+		Body: []byte(`{"crypto":{}}`),
+	}})
+	require.NoError(t, err)
+	require.Equal(t, []string{
+		"start-validator.sh",
+		"wallet-password.txt",
+		"network-configs",
+		"network-configs/config.yaml",
+		"keys",
+		"keys/keystore-m_12381_238_0_0-1.json",
+	}, readTarNames(t, archive))
+}
+
 func TestPublishedHostPort(t *testing.T) {
-	port, ok := network.PortFrom(operatorGatewayPort, network.TCP)
+	port, ok := network.PortFrom(gatewayPort, network.TCP)
 	require.True(t, ok)
 
 	hostPort, err := publishedHostPort(containertypes.InspectResponse{
 		NetworkSettings: &containertypes.NetworkSettings{
 			Ports: network.PortMap{port: {{HostPort: "32765"}}},
 		},
-	}, operatorGatewayPort)
+	}, gatewayPort)
 	require.NoError(t, err)
 	require.Equal(t, "32765", hostPort)
 
-	_, err = publishedHostPort(containertypes.InspectResponse{}, operatorGatewayPort)
+	_, err = publishedHostPort(containertypes.InspectResponse{}, gatewayPort)
 	require.ErrorContains(t, err, "network settings")
 }
 

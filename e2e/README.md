@@ -9,7 +9,9 @@ endpoints; suites do not provision infrastructure.
 | Lane | Profile | Coverage |
 | --- | --- | --- |
 | `execution` | `single` | Execution ABI calls, events, errors, and WebSocket filters |
-| `consensus` | `single` | Staker lifecycle: deposit, operator validator container, attest, exit, withdraw |
+| `consensus` | `single` | Staker lifecycle via `consensus-staker-protocol` (keymanager HTTP) and `consensus-staker-cli` (deposit + `accounts voluntary-exit`) |
+
+`consensus-staker-cli` needs a local deposit CLI image (`make deposit-image`, or set `DEVNET_DEPOSIT_IMAGE`).
 
 Run one lane with a fresh network:
 
