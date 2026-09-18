@@ -9,6 +9,7 @@ endpoints; suites do not provision infrastructure.
 | Lane | Profile | Coverage |
 | --- | --- | --- |
 | `execution` | `single` | Execution ABI calls, events, errors, and WebSocket filters |
+| `consensus-staking-automated` | `single` | Staking through contract deposits and the keymanager API |
 
 Run one lane with a fresh network:
 

@@ -11,10 +11,6 @@ func (client *Client) Genesis(ctx context.Context) (Genesis, error) {
 	return getData[Genesis](ctx, client, "/qrl/v1/beacon/genesis")
 }
 
-func (client *Client) Fork(ctx context.Context) (Fork, error) {
-	return getData[Fork](ctx, client, "/qrl/v1/beacon/states/head/fork")
-}
-
 func (client *Client) DepositContract(ctx context.Context) (DepositContract, error) {
 	return getData[DepositContract](ctx, client, "/qrl/v1/config/deposit_contract")
 }
@@ -92,6 +88,7 @@ type blockWire struct {
 		Body struct {
 			VoluntaryExits []SignedVoluntaryExit `json:"voluntary_exits"`
 			Payload        struct {
+				BlockNumber uint64       `json:"block_number,string"`
 				Withdrawals []Withdrawal `json:"withdrawals"`
 			} `json:"execution_payload"`
 		} `json:"body"`
@@ -106,7 +103,11 @@ func (client *Client) BlockOperations(ctx context.Context, blockID string) (Bloc
 		return BlockOperations{}, err
 	}
 
-	operations := BlockOperations{Slot: block.Message.Slot, Withdrawals: block.Message.Body.Payload.Withdrawals}
+	operations := BlockOperations{
+		Slot:                 block.Message.Slot,
+		ExecutionBlockNumber: block.Message.Body.Payload.BlockNumber,
+		Withdrawals:          block.Message.Body.Payload.Withdrawals,
+	}
 	for _, exit := range block.Message.Body.VoluntaryExits {
 		operations.VoluntaryExits = append(operations.VoluntaryExits, exit.Message.ValidatorIndex)
 	}

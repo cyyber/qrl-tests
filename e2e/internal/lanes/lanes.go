@@ -21,13 +21,15 @@ type Lane struct {
 type SuiteID string
 
 const (
-	suiteExecutionABI     SuiteID = "execution-abi"
-	suiteExecutionConsole SuiteID = "execution-console"
+	suiteExecutionABI              SuiteID = "execution-abi"
+	suiteExecutionConsole          SuiteID = "execution-console"
+	suiteConsensusStakingAutomated SuiteID = "consensus-staking-automated"
 )
 
 var suitePackages = map[SuiteID]string{
-	suiteExecutionABI:     "./e2e/suites/execution/abi",
-	suiteExecutionConsole: "./e2e/suites/execution/console",
+	suiteExecutionABI:              "./e2e/suites/execution/abi",
+	suiteExecutionConsole:          "./e2e/suites/execution/console",
+	suiteConsensusStakingAutomated: "./e2e/suites/consensus/stakingautomated",
 }
 
 var registry = []Lane{
@@ -35,7 +37,16 @@ var registry = []Lane{
 		Name:    "execution",
 		Profile: devnet.ProfileSingle,
 		Suites:  []SuiteID{suiteExecutionABI, suiteExecutionConsole},
-		Timeout: 30 * time.Minute,
+		Timeout: 20 * time.Minute,
+	},
+	{
+		// On the single profile a voting period is 512 five-second slots, so
+		// the deposits count after about 65 minutes, before activation,
+		// attestation and exit.
+		Name:    "consensus-staking-automated",
+		Profile: devnet.ProfileSingle,
+		Suites:  []SuiteID{suiteConsensusStakingAutomated},
+		Timeout: 95 * time.Minute,
 	},
 }
 
@@ -89,6 +100,10 @@ func (lane Lane) Packages() []string {
 
 func (lane Lane) NeedsExecutionImage() bool {
 	return slices.Contains(lane.Suites, suiteExecutionConsole)
+}
+
+func (lane Lane) NeedsValidatorImage() bool {
+	return slices.Contains(lane.Suites, suiteConsensusStakingAutomated)
 }
 
 func RegisteredSuites() []SuiteID {

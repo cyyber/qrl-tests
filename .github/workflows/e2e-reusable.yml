@@ -36,6 +36,11 @@ on:
         description: E2E lane to run
         type: string
         default: execution
+      timeout-minutes:
+        description: job limit in minutes; covers the lane's timeout plus setup,
+          network start, diagnostics and teardown
+        type: number
+        required: true
   workflow_dispatch:
     inputs:
       execution-image: *execution-image
@@ -47,6 +52,11 @@ on:
       source-qrysm: *source-qrysm
       source-generator: *source-generator
       lane: *lane
+      timeout-minutes:
+        description: job limit in minutes; covers the lane's timeout plus setup,
+          network start, diagnostics and teardown
+        type: number
+        default: 110
       seed:
         description: ginkgo spec-order seed (empty draws a fresh one per lane)
       runner:
@@ -64,7 +74,7 @@ jobs:
   e2e:
     name: tests
     runs-on: ${{ inputs.runner || vars.E2E_RUNNER || 'ubuntu-24.04-arm' }}
-    timeout-minutes: 90
+    timeout-minutes: ${{ inputs.timeout-minutes }}
     steps:
       - name: Check out qrl-tests
         uses: actions/checkout@v7

@@ -11,14 +11,15 @@ import (
 	"time"
 
 	"github.com/cyyber/qrl-tests/devnet"
+	"github.com/cyyber/qrl-tests/e2e/internal/lanes"
 	"github.com/cyyber/qrl-tests/e2e/internal/manifest"
 	"github.com/cyyber/qrl-tests/internal/results"
 )
 
 const (
-	laneCleanupTimeout              = 2 * time.Minute
-	laneDiagnosticsTimeout          = 2 * time.Minute
-	executionImageResolutionTimeout = 30 * time.Second
+	laneCleanupTimeout     = 2 * time.Minute
+	laneDiagnosticsTimeout = 2 * time.Minute
+	imageResolutionTimeout = 30 * time.Second
 
 	// laneReportSlack extends the lane context past ginkgo's own --timeout so
 	// it can report and clean up before the context interrupts the process.
@@ -138,19 +139,11 @@ func (runner *Runner) executeLane(ctx context.Context, plan runPlan, lane laneRu
 	laneLog := &lockedWriter{lock: new(sync.Mutex), writer: logFile}
 	stdout := io.MultiWriter(runner.stdout, laneLog)
 	stderr := io.MultiWriter(runner.stderr, laneLog)
-	executionImage := ""
-	if definition.NeedsExecutionImage() {
-		resolveCtx, cancelResolve := context.WithTimeout(ctx, executionImageResolutionTimeout)
-		executionImage, err = runner.resolveExecutionImage(resolveCtx, lease.environment)
-		cancelResolve()
-		if err != nil {
-			outcome.ExecutionErr = ctx.Err()
-			outcome.Err = fmt.Errorf(
-				"test infrastructure failed: resolve execution image: %w",
-				errors.Join(err, outcome.ExecutionErr),
-			)
-			return outcome
-		}
+	executionImage, validatorImage, err := runner.resolveImages(ctx, definition, lease.environment)
+	if err != nil {
+		outcome.ExecutionErr = ctx.Err()
+		outcome.Err = fmt.Errorf("test infrastructure failed: %w", errors.Join(err, outcome.ExecutionErr))
+		return outcome
 	}
 
 	manifestPath := lane.manifestPath()
@@ -159,6 +152,7 @@ func (runner *Runner) executeLane(ctx context.Context, plan runPlan, lane laneRu
 		Profile:        definition.Profile,
 		Environment:    lease.environment,
 		ExecutionImage: executionImage,
+		ValidatorImage: validatorImage,
 	}); err != nil {
 		outcome.Err = fmt.Errorf("test infrastructure failed: %w", err)
 		return outcome
@@ -180,4 +174,40 @@ func (runner *Runner) executeLane(ctx context.Context, plan runPlan, lane laneRu
 	outcome.Err = outcome.ExecutionErr
 	outcome.CaptureReports(lane.reportDir)
 	return outcome
+}
+
+// resolveImages looks up the images the lane's suites start sidecars from.
+func (runner *Runner) resolveImages(
+	ctx context.Context,
+	definition lanes.Lane,
+	environment devnet.Environment,
+) (execution, validator string, err error) {
+	if definition.NeedsExecutionImage() {
+		if execution, err = resolveImage(ctx, "execution", environment, runner.resolveExecutionImage); err != nil {
+			return "", "", err
+		}
+	}
+	if definition.NeedsValidatorImage() {
+		if validator, err = resolveImage(ctx, "validator", environment, runner.resolveValidatorImage); err != nil {
+			return "", "", err
+		}
+	}
+	return execution, validator, nil
+}
+
+// resolveImage looks up the image a devnet service runs, so the lane's suites
+// can start their sidecars from the same image.
+func resolveImage(
+	ctx context.Context,
+	name string,
+	environment devnet.Environment,
+	resolve func(context.Context, devnet.Environment) (string, error),
+) (string, error) {
+	ctx, cancel := context.WithTimeout(ctx, imageResolutionTimeout)
+	defer cancel()
+	image, err := resolve(ctx, environment)
+	if err != nil {
+		return "", fmt.Errorf("resolve %s image: %w", name, err)
+	}
+	return image, nil
 }
