@@ -69,6 +69,7 @@ type ExecutionService struct {
 type ConsensusService struct {
 	ServiceInfo
 	URL        string `json:"url"`
+	GRPC       string `json:"grpc,omitempty"`
 	MetricsURL string `json:"metrics_url"`
 }
 
@@ -133,6 +134,7 @@ func participantsFromServices(services map[string]kurtosis.Service) ([]Participa
 			if err != nil {
 				return nil, fmt.Errorf("consensus service %q: %w", name, err)
 			}
+			participant.Consensus.GRPC = optionalPublicHostPort(service, rpcPortID)
 			participant.Consensus.MetricsURL = optionalPublicEndpoint(service, metricsPortID, "http")
 		case "validator":
 			participant.Validator.ServiceInfo = info
@@ -186,4 +188,9 @@ func serviceIndex(name string) (int, error) {
 func optionalPublicEndpoint(service kurtosis.Service, portID, scheme string) string {
 	endpoint, _ := service.PublicEndpoint(portID, scheme)
 	return endpoint
+}
+
+func optionalPublicHostPort(service kurtosis.Service, portID string) string {
+	hostPort, _ := service.PublicHostPort(portID)
+	return hostPort
 }
