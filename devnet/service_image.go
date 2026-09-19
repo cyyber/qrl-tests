@@ -3,7 +3,6 @@ package devnet
 import (
 	"context"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"strings"
 
@@ -16,7 +15,26 @@ const kurtosisServiceUUIDDockerLabel = "com.kurtosistech.guid"
 // ResolveExecutionImage returns the immutable Docker image ID used by the
 // primary execution service's running container.
 func ResolveExecutionImage(ctx context.Context, environment Environment) (string, error) {
-	serviceID, err := primaryExecutionServiceID(environment)
+	return resolvePrimaryServiceImage(ctx, environment, "execution", func(participant Participant) string {
+		return participant.Execution.ID
+	})
+}
+
+// ResolveValidatorImage returns the immutable Docker image ID used by the
+// primary validator service's running container.
+func ResolveValidatorImage(ctx context.Context, environment Environment) (string, error) {
+	return resolvePrimaryServiceImage(ctx, environment, "validator", func(participant Participant) string {
+		return participant.Validator.ID
+	})
+}
+
+func resolvePrimaryServiceImage(
+	ctx context.Context,
+	environment Environment,
+	role string,
+	serviceID func(Participant) string,
+) (string, error) {
+	id, err := primaryServiceID(environment, role, serviceID)
 	if err != nil {
 		return "", err
 	}
@@ -25,10 +43,10 @@ func ResolveExecutionImage(ctx context.Context, environment Environment) (string
 		return "", fmt.Errorf("create Docker client: %w", err)
 	}
 	defer func() { _ = client.Close() }()
-	return resolveExecutionImage(ctx, serviceID, client.ContainerList)
+	return resolveContainerImage(ctx, id, role, client.ContainerList)
 }
 
-func primaryExecutionServiceID(environment Environment) (string, error) {
+func primaryServiceID(environment Environment, role string, serviceID func(Participant) string) (string, error) {
 	if environment.Backend != BackendDocker {
 		return "", fmt.Errorf("backend %q is not Docker", environment.Backend)
 	}
@@ -36,16 +54,16 @@ func primaryExecutionServiceID(environment Environment) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("select primary participant: %w", err)
 	}
-	serviceID := strings.TrimSpace(primary.Execution.ID)
-	if serviceID == "" {
-		return "", errors.New("primary execution service has no ID")
+	id := strings.TrimSpace(serviceID(primary))
+	if id == "" {
+		return "", fmt.Errorf("primary %s service has no ID", role)
 	}
-	return serviceID, nil
+	return id, nil
 }
 
-func resolveExecutionImage(
+func resolveContainerImage(
 	ctx context.Context,
-	serviceID string,
+	serviceID, role string,
 	listContainers func(
 		context.Context,
 		dockerclient.ContainerListOptions,
@@ -58,7 +76,7 @@ func resolveExecutionImage(
 		),
 	})
 	if err != nil {
-		return "", fmt.Errorf("find primary execution container: %w", err)
+		return "", fmt.Errorf("find primary %s container: %w", role, err)
 	}
 	if len(containers.Items) != 1 {
 		return "", fmt.Errorf(

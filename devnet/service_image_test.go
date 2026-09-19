@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestResolveExecutionImage(t *testing.T) {
+func TestResolveContainerImage(t *testing.T) {
 	imageID := "sha256:" + strings.Repeat("ab", 32)
 	listContainers := func(
 		_ context.Context,
@@ -26,12 +26,12 @@ func TestResolveExecutionImage(t *testing.T) {
 		}}}, nil
 	}
 
-	resolved, err := resolveExecutionImage(t.Context(), "primary-execution-service", listContainers)
+	resolved, err := resolveContainerImage(t.Context(), "primary-execution-service", "execution", listContainers)
 	require.NoError(t, err)
 	require.Equal(t, imageID, resolved)
 }
 
-func TestResolveExecutionImageErrors(t *testing.T) {
+func TestResolveContainerImageErrors(t *testing.T) {
 	for name, testCase := range map[string]struct {
 		containers []containertypes.Summary
 		clientErr  error
@@ -64,30 +64,43 @@ func TestResolveExecutionImageErrors(t *testing.T) {
 				return dockerclient.ContainerListResult{Items: testCase.containers}, testCase.clientErr
 			}
 
-			_, err := resolveExecutionImage(t.Context(), "primary-execution-service", listContainers)
+			_, err := resolveContainerImage(t.Context(), "primary-execution-service", "execution", listContainers)
 			require.ErrorContains(t, err, testCase.wantErr)
 		})
 	}
 }
 
-func TestPrimaryExecutionServiceID(t *testing.T) {
+func TestPrimaryServiceIDs(t *testing.T) {
 	environment := Environment{
 		Backend: BackendDocker,
 		Participants: []Participant{{
 			Index:     1,
 			Execution: ExecutionService{ServiceInfo: ServiceInfo{ID: "primary-execution-service"}},
+			Validator: ValidatorService{ServiceInfo: ServiceInfo{ID: "primary-validator-service"}},
 		}},
 	}
-	serviceID, err := primaryExecutionServiceID(environment)
+	serviceID, err := primaryServiceID(environment, "execution", func(participant Participant) string {
+		return participant.Execution.ID
+	})
 	require.NoError(t, err)
 	require.Equal(t, "primary-execution-service", serviceID)
 
+	serviceID, err = primaryServiceID(environment, "validator", func(participant Participant) string {
+		return participant.Validator.ID
+	})
+	require.NoError(t, err)
+	require.Equal(t, "primary-validator-service", serviceID)
+
 	environment.Backend = BackendKubernetes
-	_, err = primaryExecutionServiceID(environment)
+	_, err = primaryServiceID(environment, "validator", func(participant Participant) string {
+		return participant.Validator.ID
+	})
 	require.ErrorContains(t, err, "is not Docker")
 
 	environment.Backend = BackendDocker
-	environment.Participants[0].Execution.ID = ""
-	_, err = primaryExecutionServiceID(environment)
-	require.ErrorContains(t, err, "primary execution service has no ID")
+	environment.Participants[0].Validator.ID = ""
+	_, err = primaryServiceID(environment, "validator", func(participant Participant) string {
+		return participant.Validator.ID
+	})
+	require.ErrorContains(t, err, "primary validator service has no ID")
 }

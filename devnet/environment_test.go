@@ -9,10 +9,10 @@ import (
 
 func TestParticipantsFromServices(t *testing.T) {
 	services := map[string]kurtosis.Service{
-		"cl-2-qrysm-gqrl": service("cl-2-qrysm-gqrl", "beacon", map[string]uint16{"http": 4202, "metrics": 4302}),
+		"cl-2-qrysm-gqrl": service("cl-2-qrysm-gqrl", "beacon", map[string]uint16{"http": 4202, "rpc": 4402, "metrics": 4302}),
 		"el-2-gqrl-qrysm": service("el-2-gqrl-qrysm", "execution", map[string]uint16{"rpc": 3202, "ws": 3302, "engine-rpc": 3402}),
 		"vc-2-gqrl-qrysm": service("vc-2-gqrl-qrysm", "validator", map[string]uint16{"http-validator": 5202, "metrics": 5302}),
-		"cl-1-qrysm-gqrl": service("cl-1-qrysm-gqrl", "beacon", map[string]uint16{"http": 4201, "metrics": 4301}),
+		"cl-1-qrysm-gqrl": service("cl-1-qrysm-gqrl", "beacon", map[string]uint16{"http": 4201, "rpc": 4401, "metrics": 4301}),
 		"el-1-gqrl-qrysm": service("el-1-gqrl-qrysm", "execution", map[string]uint16{"rpc": 3201, "ws": 3301, "engine-rpc": 3401}),
 		"vc-1-gqrl-qrysm": service("vc-1-gqrl-qrysm", "validator", map[string]uint16{"http-validator": 5201, "metrics": 5301}),
 		"prometheus":      {Labels: map[string]string{"qrl-package.client-type": "utility"}},
@@ -30,7 +30,7 @@ func TestParticipantsFromServices(t *testing.T) {
 			},
 			Consensus: ConsensusService{
 				ServiceInfo: ServiceInfo{Name: "cl-1-qrysm-gqrl", ID: "cl-1-qrysm-gqrl-id", PrivateIP: "10.0.0.1"},
-				URL:         "http://127.0.0.1:4201", MetricsURL: "http://127.0.0.1:4301",
+				URL:         "http://127.0.0.1:4201", GRPC: "127.0.0.1:4401", MetricsURL: "http://127.0.0.1:4301",
 			},
 			Validator: ValidatorService{
 				ServiceInfo: ServiceInfo{Name: "vc-1-gqrl-qrysm", ID: "vc-1-gqrl-qrysm-id", PrivateIP: "10.0.0.1"},
@@ -46,7 +46,7 @@ func TestParticipantsFromServices(t *testing.T) {
 			},
 			Consensus: ConsensusService{
 				ServiceInfo: ServiceInfo{Name: "cl-2-qrysm-gqrl", ID: "cl-2-qrysm-gqrl-id", PrivateIP: "10.0.0.2"},
-				URL:         "http://127.0.0.1:4202", MetricsURL: "http://127.0.0.1:4302",
+				URL:         "http://127.0.0.1:4202", GRPC: "127.0.0.1:4402", MetricsURL: "http://127.0.0.1:4302",
 			},
 			Validator: ValidatorService{
 				ServiceInfo: ServiceInfo{Name: "vc-2-gqrl-qrysm", ID: "vc-2-gqrl-qrysm-id", PrivateIP: "10.0.0.2"},
