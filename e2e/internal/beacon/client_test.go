@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestValidatorDecodesQrysmRecord(t *testing.T) {
+func TestClientDecodesQrysmResponses(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		switch request.URL.Path {
 		case "/qrl/v1/beacon/headers/head":
@@ -44,7 +44,7 @@ func TestValidatorDecodesQrysmRecord(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, uint64(17), headSlot)
 
-	validator, err := client.Validator(context.Background(), "64")
+	validator, err := client.Validator(t.Context(), "64")
 	require.NoError(t, err)
 	require.Equal(t, Validator{
 		Index: 64, Balance: 40000000000000, Status: "active_ongoing", PublicKey: "0xab",
@@ -52,21 +52,21 @@ func TestValidatorDecodesQrysmRecord(t *testing.T) {
 		ActivationEpoch: 8, ExitEpoch: FarFutureEpoch, WithdrawableEpoch: FarFutureEpoch,
 	}, validator)
 
-	operations, err := client.BlockOperations(context.Background(), "9")
+	operations, err := client.BlockOperations(t.Context(), "9")
 	require.NoError(t, err)
 	require.Equal(t, uint64(9), operations.Slot)
 	require.Equal(t, []uint64{64}, operations.VoluntaryExits)
 	require.Equal(t, []Withdrawal{{ValidatorIndex: 64, Address: "0xcd", Amount: 40000000000000}}, operations.Withdrawals)
 
-	duties, err := client.AttesterDuties(context.Background(), 2, []uint64{64})
+	duties, err := client.AttesterDuties(t.Context(), 2, []uint64{64})
 	require.NoError(t, err)
 	require.Equal(t, []AttesterDuty{{PublicKey: "0xab", ValidatorIndex: 64, Slot: 17}}, duties)
 
-	rewards, err := client.AttestationRewards(context.Background(), 2, []uint64{64})
+	rewards, err := client.AttestationRewards(t.Context(), 2, []uint64{64})
 	require.NoError(t, err)
 	require.Equal(t, []AttestationReward{{ValidatorIndex: 64, Head: 12, Target: 34, Source: 56}}, rewards)
 
-	_, err = client.Validator(context.Background(), "65")
+	_, err = client.Validator(t.Context(), "65")
 	require.True(t, IsNotFound(err), "expected a not-found error, got %v", err)
 }
 

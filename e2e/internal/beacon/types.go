@@ -64,7 +64,6 @@ type BlockOperations struct {
 type AttesterDuty struct {
 	PublicKey      string `json:"pubkey"`
 	ValidatorIndex uint64 `json:"validator_index,string"`
-	CommitteeIndex uint64 `json:"committee_index,string"`
 	Slot           uint64 `json:"slot,string"`
 }
 
