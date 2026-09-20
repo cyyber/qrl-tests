@@ -19,7 +19,6 @@ func (client *Client) DepositContract(ctx context.Context) (DepositContract, err
 	return getData[DepositContract](ctx, client, "/qrl/v1/config/deposit_contract")
 }
 
-// SpecUint reads one numeric value from the chain spec.
 func (client *Client) SpecUint(ctx context.Context, name string) (uint64, error) {
 	values, err := getData[map[string]string](ctx, client, "/qrl/v1/config/spec")
 	if err != nil {
@@ -114,8 +113,6 @@ func (client *Client) BlockOperations(ctx context.Context, blockID string) (Bloc
 	return operations, nil
 }
 
-// AttesterDuties returns the attestation assignments of the given validators
-// for an epoch.
 func (client *Client) AttesterDuties(ctx context.Context, epoch uint64, indices []uint64) ([]AttesterDuty, error) {
 	path := "/qrl/v1/validator/duties/attester/" + strconv.FormatUint(epoch, 10)
 	return postData[[]AttesterDuty](ctx, client, path, formatIndices(indices))
@@ -136,8 +133,6 @@ func (client *Client) AttestationRewards(ctx context.Context, epoch uint64, indi
 	return rewards.TotalRewards, err
 }
 
-// formatIndices renders validator indices the way the beacon API expects
-// them in request bodies: as decimal strings.
 func formatIndices(indices []uint64) []string {
 	formatted := make([]string, len(indices))
 	for position, index := range indices {
