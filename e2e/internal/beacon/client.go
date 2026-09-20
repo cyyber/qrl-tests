@@ -43,7 +43,7 @@ func IsNotFound(err error) bool {
 func New(endpoint string) (*Client, error) {
 	baseURL, err := url.Parse(endpoint)
 	if err != nil {
-		return nil, fmt.Errorf("parse consensus endpoint: %w", err)
+		return nil, fmt.Errorf("parse beacon endpoint: %w", err)
 	}
 	return &Client{baseURL: baseURL, http: &http.Client{Timeout: requestTimeout}}, nil
 }
@@ -81,7 +81,7 @@ func (client *Client) postJSON(ctx context.Context, path string, payload, result
 func (client *Client) do(ctx context.Context, method, path string, body io.Reader, result any) error {
 	reference, err := url.Parse(path)
 	if err != nil {
-		return fmt.Errorf("parse consensus path %q: %w", path, err)
+		return fmt.Errorf("parse beacon path %q: %w", path, err)
 	}
 	endpoint := client.baseURL.ResolveReference(reference)
 
