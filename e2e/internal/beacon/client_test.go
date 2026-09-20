@@ -9,12 +9,17 @@ import (
 	"testing/synctest"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestClientDecodesQrysmResponses(t *testing.T) {
+	// The handler runs on the server goroutine, so it must use assert rather
+	// than require: FailNow is only valid on the test goroutine.
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		switch request.URL.Path {
+		case "/qrl/v1/config/spec":
+			_, _ = writer.Write([]byte(`{"data":{"SLOTS_PER_EPOCH":"128","DEPOSIT_CONTRACT_ADDRESS":"Q4242424242424242424242424242424242424242"}}`))
 		case "/qrl/v1/beacon/headers/head":
 			_, _ = writer.Write([]byte(`{"data":{"root":"0xab","header":{"message":{"slot":"17"}}}}`))
 		case "/qrl/v1/beacon/states/head/validators/64":
@@ -23,14 +28,20 @@ func TestClientDecodesQrysmResponses(t *testing.T) {
 			_, _ = writer.Write([]byte(`{"data":{"message":{"slot":"9","body":{"voluntary_exits":[{"message":{"epoch":"1","validator_index":"64"},"signature":"0x00"}],"execution_payload":{"withdrawals":[{"index":"0","validator_index":"64","address":"0xcd","amount":"40000000000000"}]}}}}}`))
 		case "/qrl/v1/validator/duties/attester/2":
 			var indices []string
-			require.NoError(t, json.NewDecoder(request.Body).Decode(&indices))
-			require.Equal(t, []string{"64"}, indices)
+			assert.NoError(t, json.NewDecoder(request.Body).Decode(&indices))
+			assert.Equal(t, []string{"64"}, indices)
 			_, _ = writer.Write([]byte(`{"dependent_root":"0x00","execution_optimistic":false,"data":[{"pubkey":"0xab","validator_index":"64","committee_index":"0","committee_length":"8","committees_at_slot":"1","validator_committee_index":"3","slot":"17"}]}`))
 		case "/qrl/v1/beacon/rewards/attestations/2":
 			var indices []string
-			require.NoError(t, json.NewDecoder(request.Body).Decode(&indices))
-			require.Equal(t, []string{"64"}, indices)
+			assert.NoError(t, json.NewDecoder(request.Body).Decode(&indices))
+			assert.Equal(t, []string{"64"}, indices)
 			_, _ = writer.Write([]byte(`{"data":{"total_rewards":[{"validator_index":"64","head":"12","target":"34","source":"56"}]}}`))
+		case "/qrl/v1/beacon/pool/voluntary_exits":
+			assert.Equal(t, http.MethodPost, request.Method)
+			assert.Equal(t, "application/json", request.Header.Get("Content-Type"))
+			var exit SignedVoluntaryExit
+			assert.NoError(t, json.NewDecoder(request.Body).Decode(&exit))
+			assert.Equal(t, SignedVoluntaryExit{Message: VoluntaryExit{Epoch: 1, ValidatorIndex: 64}, Signature: "0x00"}, exit)
 		default:
 			http.NotFound(writer, request)
 		}
@@ -39,6 +50,14 @@ func TestClientDecodesQrysmResponses(t *testing.T) {
 
 	client, err := New(server.URL)
 	require.NoError(t, err)
+
+	slotsPerEpoch, err := client.SpecUint(t.Context(), "SLOTS_PER_EPOCH")
+	require.NoError(t, err)
+	require.Equal(t, uint64(128), slotsPerEpoch)
+	_, err = client.SpecUint(t.Context(), "MISSING")
+	require.ErrorContains(t, err, "does not define MISSING")
+	_, err = client.SpecUint(t.Context(), "DEPOSIT_CONTRACT_ADDRESS")
+	require.ErrorContains(t, err, "parse spec value DEPOSIT_CONTRACT_ADDRESS")
 
 	headSlot, err := client.HeadSlot(t.Context())
 	require.NoError(t, err)
@@ -65,6 +84,10 @@ func TestClientDecodesQrysmResponses(t *testing.T) {
 	rewards, err := client.AttestationRewards(t.Context(), 2, []uint64{64})
 	require.NoError(t, err)
 	require.Equal(t, []AttestationReward{{ValidatorIndex: 64, Head: 12, Target: 34, Source: 56}}, rewards)
+
+	require.NoError(t, client.SubmitVoluntaryExit(t.Context(), SignedVoluntaryExit{
+		Message: VoluntaryExit{Epoch: 1, ValidatorIndex: 64}, Signature: "0x00",
+	}))
 
 	_, err = client.Validator(t.Context(), "65")
 	require.True(t, IsNotFound(err), "expected a not-found error, got %v", err)
