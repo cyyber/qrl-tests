@@ -117,12 +117,8 @@ func (client *Client) BlockOperations(ctx context.Context, blockID string) (Bloc
 // AttesterDuties returns the attestation assignments of the given validators
 // for an epoch.
 func (client *Client) AttesterDuties(ctx context.Context, epoch uint64, indices []uint64) ([]AttesterDuty, error) {
-	request := make([]string, len(indices))
-	for position, index := range indices {
-		request[position] = strconv.FormatUint(index, 10)
-	}
 	path := "/qrl/v1/validator/duties/attester/" + strconv.FormatUint(epoch, 10)
-	return postData[[]AttesterDuty](ctx, client, path, request)
+	return postData[[]AttesterDuty](ctx, client, path, formatIndices(indices))
 }
 
 func (client *Client) SubmitVoluntaryExit(ctx context.Context, exit SignedVoluntaryExit) error {
@@ -133,18 +129,19 @@ func (client *Client) SubmitVoluntaryExit(ctx context.Context, exit SignedVolunt
 // in a completed epoch. Qrysm serves an epoch only after two later epochs
 // have elapsed so every attestation has a chance of inclusion.
 func (client *Client) AttestationRewards(ctx context.Context, epoch uint64, indices []uint64) ([]AttestationReward, error) {
-	request := make([]string, len(indices))
-	for position, index := range indices {
-		request[position] = strconv.FormatUint(index, 10)
-	}
-	var response struct {
-		Data struct {
-			TotalRewards []AttestationReward `json:"total_rewards"`
-		} `json:"data"`
-	}
 	path := "/qrl/v1/beacon/rewards/attestations/" + strconv.FormatUint(epoch, 10)
-	if err := client.postJSON(ctx, path, request, &response); err != nil {
-		return nil, err
+	rewards, err := postData[struct {
+		TotalRewards []AttestationReward `json:"total_rewards"`
+	}](ctx, client, path, formatIndices(indices))
+	return rewards.TotalRewards, err
+}
+
+// formatIndices renders validator indices the way the beacon API expects
+// them in request bodies: as decimal strings.
+func formatIndices(indices []uint64) []string {
+	formatted := make([]string, len(indices))
+	for position, index := range indices {
+		formatted[position] = strconv.FormatUint(index, 10)
 	}
-	return response.Data.TotalRewards, nil
+	return formatted
 }
