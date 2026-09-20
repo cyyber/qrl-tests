@@ -47,7 +47,7 @@ func (client *Client) HeadSlot(ctx context.Context) (uint64, error) {
 	return head.Header.Message.Slot, err
 }
 
-type validatorContainerWire struct {
+type validatorWire struct {
 	Index     uint64 `json:"index,string"`
 	Balance   uint64 `json:"balance,string"`
 	Status    string `json:"status"`
@@ -66,7 +66,7 @@ type validatorContainerWire struct {
 // Validator looks a validator up by index or 0x-prefixed public key in the
 // head state. An unknown validator is reported through IsNotFound.
 func (client *Client) Validator(ctx context.Context, validatorID string) (Validator, error) {
-	record, err := getData[validatorContainerWire](
+	record, err := getData[validatorWire](
 		ctx, client, "/qrl/v1/beacon/states/head/validators/"+url.PathEscape(validatorID),
 	)
 	if err != nil {
