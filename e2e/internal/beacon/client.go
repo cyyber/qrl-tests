@@ -1,4 +1,4 @@
-// Package beacon implements a minimal client for the beacon node REST API.
+// Package beacon is a minimal beacon REST client.
 package beacon
 
 import (
