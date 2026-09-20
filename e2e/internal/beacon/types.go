@@ -21,8 +21,6 @@ type DepositContract struct {
 	Address string `json:"address"`
 }
 
-// Validator is one beacon-state validator record with its live balance and
-// status.
 type Validator struct {
 	Index               uint64
 	Balance             uint64
@@ -53,7 +51,6 @@ type Withdrawal struct {
 	Amount         uint64 `json:"amount,string"`
 }
 
-// BlockOperations is the exits and withdrawals from one block.
 type BlockOperations struct {
 	Slot           uint64
 	VoluntaryExits []uint64
