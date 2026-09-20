@@ -48,13 +48,12 @@ type SignedVoluntaryExit struct {
 }
 
 type Withdrawal struct {
-	Index          uint64 `json:"index,string"`
 	ValidatorIndex uint64 `json:"validator_index,string"`
 	Address        string `json:"address"`
 	Amount         uint64 `json:"amount,string"`
 }
 
-// BlockOperations is the subset of a block body the lifecycle suite scans for.
+// BlockOperations is the exits and withdrawals from one block.
 type BlockOperations struct {
 	Slot           uint64
 	VoluntaryExits []uint64
