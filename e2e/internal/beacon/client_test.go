@@ -15,7 +15,8 @@ import (
 
 func TestClientDecodesQrysmResponses(t *testing.T) {
 	// The handler runs on the server goroutine, so it must use assert rather
-	// than require: FailNow is only valid on the test goroutine.
+	// than require: the test still fails, but FailNow is only valid on the
+	// test goroutine.
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		switch request.URL.Path {
 		case "/qrl/v1/beacon/genesis":
