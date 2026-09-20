@@ -93,6 +93,13 @@ func TestClientDecodesQrysmResponses(t *testing.T) {
 	require.True(t, IsNotFound(err), "expected a not-found error, got %v", err)
 }
 
+func TestNewRejectsRelativeEndpoints(t *testing.T) {
+	for _, endpoint := range []string{"", "localhost:3500", "/qrl/v1", "beacon.test"} {
+		_, err := New(endpoint)
+		require.ErrorContains(t, err, "must be an absolute URL", "endpoint %q", endpoint)
+	}
+}
+
 type stalledTransport struct{}
 
 func (stalledTransport) RoundTrip(request *http.Request) (*http.Response, error) {

@@ -45,6 +45,9 @@ func New(endpoint string) (*Client, error) {
 	if err != nil {
 		return nil, fmt.Errorf("parse beacon endpoint: %w", err)
 	}
+	if baseURL.Scheme == "" || baseURL.Host == "" {
+		return nil, fmt.Errorf("beacon endpoint %q must be an absolute URL", endpoint)
+	}
 	return &Client{baseURL: baseURL, http: &http.Client{Timeout: requestTimeout}}, nil
 }
 
