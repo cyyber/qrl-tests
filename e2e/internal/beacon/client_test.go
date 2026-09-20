@@ -93,9 +93,11 @@ func TestClientDecodesQrysmResponses(t *testing.T) {
 
 	operations, err := client.BlockOperations(t.Context(), "9")
 	require.NoError(t, err)
-	require.Equal(t, uint64(9), operations.Slot)
-	require.Equal(t, []uint64{64}, operations.VoluntaryExits)
-	require.Equal(t, []Withdrawal{{ValidatorIndex: 64, Address: "0xcd", Amount: 40000000000000}}, operations.Withdrawals)
+	require.Equal(t, BlockOperations{
+		Slot:           9,
+		VoluntaryExits: []uint64{64},
+		Withdrawals:    []Withdrawal{{ValidatorIndex: 64, Address: "0xcd", Amount: 40000000000000}},
+	}, operations)
 
 	duties, err := client.AttesterDuties(t.Context(), 2, []uint64{64})
 	require.NoError(t, err)
