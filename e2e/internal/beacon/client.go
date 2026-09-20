@@ -1,4 +1,4 @@
-// Package beacon is the minimal beacon REST client the consensus suites use.
+// Package beacon is a minimal beacon REST client.
 package beacon
 
 import (
