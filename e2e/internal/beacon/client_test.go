@@ -18,6 +18,12 @@ func TestClientDecodesQrysmResponses(t *testing.T) {
 	// than require: FailNow is only valid on the test goroutine.
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		switch request.URL.Path {
+		case "/qrl/v1/beacon/genesis":
+			_, _ = writer.Write([]byte(`{"data":{"genesis_time":"1700000000","genesis_validators_root":"0x11","genesis_fork_version":"0x20000089"}}`))
+		case "/qrl/v1/beacon/states/head/fork":
+			_, _ = writer.Write([]byte(`{"data":{"previous_version":"0x20000089","current_version":"0x20000090","epoch":"5"}}`))
+		case "/qrl/v1/config/deposit_contract":
+			_, _ = writer.Write([]byte(`{"data":{"chain_id":"32382","address":"Q4242424242424242424242424242424242424242"}}`))
 		case "/qrl/v1/config/spec":
 			_, _ = writer.Write([]byte(`{"data":{"SLOTS_PER_EPOCH":"128","DEPOSIT_CONTRACT_ADDRESS":"Q4242424242424242424242424242424242424242"}}`))
 		case "/qrl/v1/beacon/headers/head":
@@ -42,6 +48,8 @@ func TestClientDecodesQrysmResponses(t *testing.T) {
 			var exit SignedVoluntaryExit
 			assert.NoError(t, json.NewDecoder(request.Body).Decode(&exit))
 			assert.Equal(t, SignedVoluntaryExit{Message: VoluntaryExit{Epoch: 1, ValidatorIndex: 64}, Signature: "0x00"}, exit)
+		case "/qrl/v1/beacon/blocks/broken":
+			http.Error(writer, `{"message":"state not available"}`, http.StatusInternalServerError)
 		default:
 			http.NotFound(writer, request)
 		}
@@ -50,6 +58,18 @@ func TestClientDecodesQrysmResponses(t *testing.T) {
 
 	client, err := New(server.URL)
 	require.NoError(t, err)
+
+	genesis, err := client.Genesis(t.Context())
+	require.NoError(t, err)
+	require.Equal(t, Genesis{Time: 1700000000, ValidatorsRoot: "0x11", ForkVersion: "0x20000089"}, genesis)
+
+	fork, err := client.Fork(t.Context())
+	require.NoError(t, err)
+	require.Equal(t, Fork{PreviousVersion: "0x20000089", CurrentVersion: "0x20000090", Epoch: 5}, fork)
+
+	depositContract, err := client.DepositContract(t.Context())
+	require.NoError(t, err)
+	require.Equal(t, DepositContract{ChainID: 32382, Address: "Q4242424242424242424242424242424242424242"}, depositContract)
 
 	slotsPerEpoch, err := client.SpecUint(t.Context(), "SLOTS_PER_EPOCH")
 	require.NoError(t, err)
@@ -91,6 +111,10 @@ func TestClientDecodesQrysmResponses(t *testing.T) {
 
 	_, err = client.Validator(t.Context(), "65")
 	require.True(t, IsNotFound(err), "expected a not-found error, got %v", err)
+
+	_, err = client.BlockOperations(t.Context(), "broken")
+	require.EqualError(t, err, `GET /qrl/v1/beacon/blocks/broken returned 500 Internal Server Error: {"message":"state not available"}`)
+	require.False(t, IsNotFound(err))
 }
 
 func TestNewRejectsRelativeEndpoints(t *testing.T) {
