@@ -1,6 +1,6 @@
-// Package consensuscontext resolves the chain configuration needed to sign
-// consensus objects for a live network.
-package consensuscontext
+// Package chaininfo resolves the genesis and fork values of a live network
+// that signing domains depend on.
+package chaininfo
 
 import (
 	"context"
@@ -12,15 +12,15 @@ import (
 	"github.com/cyyber/qrl-tests/e2e/internal/consensuscrypto"
 )
 
-// Source is the subset of the beacon API the context is loaded from.
+// Source is the subset of the beacon API the info is loaded from.
 type Source interface {
 	Genesis(context.Context) (beacon.Genesis, error)
 	Fork(context.Context) (beacon.Fork, error)
 	SpecUint(context.Context, string) (uint64, error)
 }
 
-// Context carries the fork and genesis values that domains depend on.
-type Context struct {
+// Info carries the fork and genesis values that domains depend on.
+type Info struct {
 	SlotsPerEpoch uint64
 
 	genesisRoot        [consensuscrypto.RootLength]byte
@@ -30,46 +30,46 @@ type Context struct {
 	forkEpoch          uint64
 }
 
-func Load(ctx context.Context, source Source) (Context, error) {
+func Load(ctx context.Context, source Source) (Info, error) {
 	genesis, err := source.Genesis(ctx)
 	if err != nil {
-		return Context{}, err
+		return Info{}, err
 	}
 
-	var chain Context
+	var chain Info
 	if err := decodeFixed("genesis validators root", genesis.ValidatorsRoot, chain.genesisRoot[:]); err != nil {
-		return Context{}, err
+		return Info{}, err
 	}
 	if err := decodeFixed("genesis fork version", genesis.ForkVersion, chain.genesisForkVersion[:]); err != nil {
-		return Context{}, err
+		return Info{}, err
 	}
 
 	fork, err := source.Fork(ctx)
 	if err != nil {
-		return Context{}, err
+		return Info{}, err
 	}
 	if err := decodeFixed("previous fork version", fork.PreviousVersion, chain.previousVersion[:]); err != nil {
-		return Context{}, err
+		return Info{}, err
 	}
 	if err := decodeFixed("current fork version", fork.CurrentVersion, chain.currentVersion[:]); err != nil {
-		return Context{}, err
+		return Info{}, err
 	}
 	chain.forkEpoch = fork.Epoch
 
 	chain.SlotsPerEpoch, err = source.SpecUint(ctx, "SLOTS_PER_EPOCH")
 	if err != nil {
-		return Context{}, err
+		return Info{}, err
 	}
 	return chain, nil
 }
 
-func (chain Context) Epoch(slot uint64) uint64 {
+func (chain Info) Epoch(slot uint64) uint64 {
 	return slot / chain.SlotsPerEpoch
 }
 
 // Domain returns the signing domain for an epoch, honouring the fork version
 // active at that epoch.
-func (chain Context) Domain(domainType [4]byte, epoch uint64) [consensuscrypto.RootLength]byte {
+func (chain Info) Domain(domainType [4]byte, epoch uint64) [consensuscrypto.RootLength]byte {
 	version := chain.currentVersion
 	if epoch < chain.forkEpoch {
 		version = chain.previousVersion
@@ -79,7 +79,7 @@ func (chain Context) Domain(domainType [4]byte, epoch uint64) [consensuscrypto.R
 
 // DepositDomain is fork-independent: the genesis fork version with a zero
 // genesis validators root, as the deposit contract predates genesis.
-func (chain Context) DepositDomain() [consensuscrypto.RootLength]byte {
+func (chain Info) DepositDomain() [consensuscrypto.RootLength]byte {
 	return consensuscrypto.ComputeDomain(
 		consensuscrypto.DomainDeposit, chain.genesisForkVersion, [consensuscrypto.RootLength]byte{},
 	)
