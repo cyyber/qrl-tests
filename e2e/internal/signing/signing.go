@@ -16,8 +16,6 @@ const (
 	SignatureLength = walletmldsa.SigSize
 )
 
-// Same-width values get distinct types so the arguments of ComputeDomain and
-// SigningRoot cannot be swapped silently.
 type (
 	DomainType  [4]byte
 	ForkVersion [4]byte
