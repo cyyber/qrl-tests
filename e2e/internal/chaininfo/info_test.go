@@ -3,8 +3,8 @@ package chaininfo
 import (
 	"bytes"
 	"context"
+	"encoding/hex"
 	"fmt"
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -12,6 +12,14 @@ import (
 	"github.com/cyyber/qrl-tests/e2e/internal/beacon"
 	"github.com/cyyber/qrl-tests/e2e/internal/signing"
 )
+
+var (
+	genesisValidatorsRoot = [signing.RootLength]byte(bytes.Repeat([]byte{0x55}, signing.RootLength))
+	genesisVersion        = signing.ForkVersion{0x10, 0x00, 0x00, 0x20}
+	currentVersion        = signing.ForkVersion{0x10, 0x00, 0x00, 0x21}
+)
+
+func hex0x(value []byte) string { return "0x" + hex.EncodeToString(value) }
 
 type fakeSource struct {
 	genesis beacon.Genesis
@@ -31,10 +39,14 @@ func (fakeSource) SpecUint(_ context.Context, name string) (uint64, error) {
 func validSource() fakeSource {
 	return fakeSource{
 		genesis: beacon.Genesis{
-			ValidatorsRoot: "0x" + strings.Repeat("55", signing.RootLength),
-			ForkVersion:    "0x10000020",
+			ValidatorsRoot: hex0x(genesisValidatorsRoot[:]),
+			ForkVersion:    hex0x(genesisVersion[:]),
 		},
-		fork: beacon.Fork{PreviousVersion: "0x10000020", CurrentVersion: "0x10000021", Epoch: 6},
+		fork: beacon.Fork{
+			PreviousVersion: hex0x(genesisVersion[:]),
+			CurrentVersion:  hex0x(currentVersion[:]),
+			Epoch:           6,
+		},
 	}
 }
 
@@ -44,18 +56,13 @@ func TestLoadDerivesDomainsFromTheForkSchedule(t *testing.T) {
 	require.Equal(t, uint64(128), chain.SlotsPerEpoch)
 	require.Equal(t, uint64(2), chain.Epoch(300))
 
-	var genesisValidatorsRoot [signing.RootLength]byte
-	copy(genesisValidatorsRoot[:], bytes.Repeat([]byte{0x55}, signing.RootLength))
-	previous := signing.ComputeDomain(signing.DomainVoluntaryExit, signing.ForkVersion{0x10, 0x00, 0x00, 0x20}, genesisValidatorsRoot)
-	current := signing.ComputeDomain(signing.DomainVoluntaryExit, signing.ForkVersion{0x10, 0x00, 0x00, 0x21}, genesisValidatorsRoot)
-
+	previous := signing.ComputeDomain(signing.DomainVoluntaryExit, genesisVersion, genesisValidatorsRoot)
+	current := signing.ComputeDomain(signing.DomainVoluntaryExit, currentVersion, genesisValidatorsRoot)
 	require.Equal(t, previous, chain.Domain(signing.DomainVoluntaryExit, 5))
 	require.Equal(t, current, chain.Domain(signing.DomainVoluntaryExit, 6))
 	require.Equal(t, current, chain.Domain(signing.DomainVoluntaryExit, 7))
 
-	deposit := signing.ComputeDomain(
-		signing.DomainDeposit, signing.ForkVersion{0x10, 0x00, 0x00, 0x20}, [signing.RootLength]byte{},
-	)
+	deposit := signing.ComputeDomain(signing.DomainDeposit, genesisVersion, [signing.RootLength]byte{})
 	require.Equal(t, deposit, chain.DepositDomain())
 }
 
