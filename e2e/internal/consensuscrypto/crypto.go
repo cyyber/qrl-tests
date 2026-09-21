@@ -11,7 +11,11 @@ import (
 	walletmldsa "github.com/theQRL/go-qrllib/wallet/ml_dsa_87"
 )
 
-const RootLength = sha256.Size
+const (
+	RootLength      = sha256.Size
+	PublicKeyLength = walletmldsa.PKSize
+	SignatureLength = walletmldsa.SigSize
+)
 
 var (
 	DomainDeposit       = [4]byte{0x03, 0x00, 0x00, 0x00}

@@ -7,8 +7,6 @@ import (
 )
 
 const (
-	PublicKeyLength           = 2592
-	SignatureLength           = 4627
 	WithdrawalRecipientLength = 64
 	RandaoCommitmentLength    = 32
 )
