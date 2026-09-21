@@ -31,24 +31,37 @@ type DepositMessage struct {
 }
 
 func (message DepositMessage) HashTreeRoot() ([RootLength]byte, error) {
-	fields, err := depositFieldRoots(message.PublicKey, message.WithdrawalRecipient, message.Amount, message.RandaoCommitment)
+	fields, err := message.fieldRoots()
 	if err != nil {
 		return [RootLength]byte{}, err
 	}
 	return containerRoot(fields...), nil
 }
 
+func (message DepositMessage) fieldRoots() ([][RootLength]byte, error) {
+	publicKeyRoot, err := fixedBytesRoot("deposit public key", message.PublicKey, PublicKeyLength)
+	if err != nil {
+		return nil, err
+	}
+	recipientRoot, err := fixedBytesRoot("withdrawal recipient", message.WithdrawalRecipient, WithdrawalRecipientLength)
+	if err != nil {
+		return nil, err
+	}
+	commitmentRoot, err := fixedBytesRoot("randao commitment", message.RandaoCommitment, RandaoCommitmentLength)
+	if err != nil {
+		return nil, err
+	}
+	return [][RootLength]byte{publicKeyRoot, recipientRoot, uint64Root(message.Amount), commitmentRoot}, nil
+}
+
 // DepositData is the signed deposit whose root the deposit contract checks.
 type DepositData struct {
-	PublicKey           []byte
-	WithdrawalRecipient []byte
-	Amount              uint64
-	RandaoCommitment    []byte
-	Signature           []byte
+	DepositMessage
+	Signature []byte
 }
 
 func (data DepositData) HashTreeRoot() ([RootLength]byte, error) {
-	fields, err := depositFieldRoots(data.PublicKey, data.WithdrawalRecipient, data.Amount, data.RandaoCommitment)
+	fields, err := data.fieldRoots()
 	if err != nil {
 		return [RootLength]byte{}, err
 	}
@@ -57,22 +70,6 @@ func (data DepositData) HashTreeRoot() ([RootLength]byte, error) {
 		return [RootLength]byte{}, err
 	}
 	return containerRoot(append(fields, signature)...), nil
-}
-
-func depositFieldRoots(publicKey, withdrawalRecipient []byte, amount uint64, randaoCommitment []byte) ([][RootLength]byte, error) {
-	publicKeyRoot, err := fixedBytesRoot("deposit public key", publicKey, PublicKeyLength)
-	if err != nil {
-		return nil, err
-	}
-	recipientRoot, err := fixedBytesRoot("withdrawal recipient", withdrawalRecipient, WithdrawalRecipientLength)
-	if err != nil {
-		return nil, err
-	}
-	commitmentRoot, err := fixedBytesRoot("randao commitment", randaoCommitment, RandaoCommitmentLength)
-	if err != nil {
-		return nil, err
-	}
-	return [][RootLength]byte{publicKeyRoot, recipientRoot, uint64Root(amount), commitmentRoot}, nil
 }
 
 func uint64Root(value uint64) [RootLength]byte {

@@ -17,16 +17,14 @@ func TestDepositRootsMatchQrysm(t *testing.T) {
 	commitment := bytes.Repeat([]byte{0x33}, RandaoCommitmentLength)
 	signature := bytes.Repeat([]byte{0x44}, SignatureLength)
 
-	messageRoot, err := DepositMessage{
+	message := DepositMessage{
 		PublicKey: publicKey, WithdrawalRecipient: recipient, Amount: 40000000000000, RandaoCommitment: commitment,
-	}.HashTreeRoot()
+	}
+	messageRoot, err := message.HashTreeRoot()
 	require.NoError(t, err)
 	require.Equal(t, "d957a6404c9eca4e40f8de7005a25ad4b28467375aa328d889daff3d62909adf", hex.EncodeToString(messageRoot[:]))
 
-	dataRoot, err := DepositData{
-		PublicKey: publicKey, WithdrawalRecipient: recipient, Amount: 40000000000000,
-		RandaoCommitment: commitment, Signature: signature,
-	}.HashTreeRoot()
+	dataRoot, err := DepositData{DepositMessage: message, Signature: signature}.HashTreeRoot()
 	require.NoError(t, err)
 	require.Equal(t, "aebc87a70fe917788ede6ee25d3e3e453a42b856b46e54ccc73b67d9d95b3835", hex.EncodeToString(dataRoot[:]))
 }
