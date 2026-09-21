@@ -15,7 +15,7 @@ type VoluntaryExit struct {
 }
 
 func (exit VoluntaryExit) HashTreeRoot() (Root, error) {
-	return containerRoot(uint64Root(exit.Epoch), uint64Root(exit.ValidatorIndex)), nil
+	return merkleize([]Root{uint64Root(exit.Epoch), uint64Root(exit.ValidatorIndex)}), nil
 }
 
 // DepositMessage is the unsigned part of a deposit: what the validator key
@@ -32,7 +32,7 @@ func (message DepositMessage) HashTreeRoot() (Root, error) {
 	if err != nil {
 		return Root{}, err
 	}
-	return containerRoot(fields...), nil
+	return merkleize(fields), nil
 }
 
 func (message DepositMessage) fieldRoots() ([]Root, error) {
@@ -66,7 +66,7 @@ func (data DepositData) HashTreeRoot() (Root, error) {
 	if err != nil {
 		return Root{}, err
 	}
-	return containerRoot(append(fields, signature)...), nil
+	return merkleize(append(fields, signature)), nil
 }
 
 func uint64Root(value uint64) Root {
@@ -84,10 +84,6 @@ func fixedBytesRoot(name string, value []byte, length int) (Root, error) {
 		copy(chunks[index][:], value[index*RootLength:])
 	}
 	return merkleize(chunks), nil
-}
-
-func containerRoot(fields ...Root) Root {
-	return merkleize(fields)
 }
 
 func merkleize(chunks []Root) Root {

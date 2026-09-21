@@ -33,7 +33,7 @@ type (
 func ComputeDomain(domainType DomainType, forkVersion ForkVersion, genesisValidatorsRoot Root) Domain {
 	var version Root
 	copy(version[:4], forkVersion[:])
-	forkDataRoot := containerRoot(version, genesisValidatorsRoot)
+	forkDataRoot := merkleize([]Root{version, genesisValidatorsRoot})
 
 	var domain Domain
 	copy(domain[:4], domainType[:])
@@ -43,7 +43,7 @@ func ComputeDomain(domainType DomainType, forkVersion ForkVersion, genesisValida
 
 // SigningRoot mirrors compute_signing_root for an object root and domain.
 func SigningRoot(objectRoot Root, domain Domain) Root {
-	return containerRoot(objectRoot, Root(domain))
+	return merkleize([]Root{objectRoot, Root(domain)})
 }
 
 // Verify checks an ML-DSA-87 signature over message with the given public key.
