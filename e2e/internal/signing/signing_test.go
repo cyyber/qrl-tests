@@ -6,6 +6,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"github.com/theQRL/go-qrllib/wallet/common"
+	walletmldsa "github.com/theQRL/go-qrllib/wallet/ml_dsa_87"
 )
 
 // The expected values were produced by qrysm's SSZ generated code and
@@ -39,18 +41,40 @@ func TestVoluntaryExitSigningRootMatchesQrysm(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "d2e59fb9a42ce1736c3619e1b7aaf5d561bf8326eb079fdce3f9d24acb0eda4a", hex.EncodeToString(exitRoot[:]))
 
-	var genesisRoot Root
-	copy(genesisRoot[:], bytes.Repeat([]byte{0x55}, RootLength))
-	domain := ComputeDomain(DomainVoluntaryExit, ForkVersion{0x10, 0x00, 0x00, 0x20}, genesisRoot)
+	genesisValidatorsRoot := Root(bytes.Repeat([]byte{0x55}, RootLength))
+	domain := ComputeDomain(DomainVoluntaryExit, ForkVersion{0x10, 0x00, 0x00, 0x20}, genesisValidatorsRoot)
 	require.Equal(t, "040000008a56f5ef2f9a899359789c0a048f96d5d1e1e3446b2cc5e02d1a6e78", hex.EncodeToString(domain[:]))
 
 	signingRoot := SigningRoot(exitRoot, domain)
 	require.Equal(t, "745a91a7ed70c334e37d38af4a2ca0a66d7a24896492ec37df054131e373516c", hex.EncodeToString(signingRoot[:]))
 }
 
-func TestDepositDomainUsesZeroGenesisRoot(t *testing.T) {
+func TestDepositDomainMatchesQrysm(t *testing.T) {
 	domain := ComputeDomain(DomainDeposit, ForkVersion{0x10, 0x00, 0x00, 0x20}, Root{})
 	require.Equal(t, "0300000014a245e19985c526271213b92ac915999e4bd92e4c4a3c05e19f7557", hex.EncodeToString(domain[:]))
+}
+
+func TestVerifyChecksMLDSASignatures(t *testing.T) {
+	var seed common.Seed
+	for index := range seed {
+		seed[index] = byte(0x91 + index)
+	}
+	wallet, err := walletmldsa.NewWalletFromSeed(seed)
+	require.NoError(t, err)
+	publicKey := wallet.GetPK()
+
+	message := Root{0x01}
+	signature, err := wallet.Sign(message[:])
+	require.NoError(t, err)
+	require.NoError(t, Verify(message, publicKey[:], signature[:]))
+
+	tampered := signature
+	tampered[0] ^= 0xff
+	require.EqualError(t, Verify(message, publicKey[:], tampered[:]), "signature did not verify")
+	require.EqualError(t, Verify(Root{0x02}, publicKey[:], signature[:]), "signature did not verify")
+
+	require.ErrorContains(t, Verify(message, publicKey[:], signature[:SignatureLength-1]), "signature must be 4627 bytes, got 4626")
+	require.Error(t, Verify(message, publicKey[:PublicKeyLength-1], signature[:]))
 }
 
 func TestRandaoCommitmentMatchesQrysm(t *testing.T) {
