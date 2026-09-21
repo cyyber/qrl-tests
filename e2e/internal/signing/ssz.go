@@ -1,4 +1,4 @@
-package consensuscrypto
+package signing
 
 import (
 	"crypto/sha256"

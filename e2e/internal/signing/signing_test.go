@@ -1,4 +1,4 @@
-package consensuscrypto
+package signing
 
 import (
 	"bytes"

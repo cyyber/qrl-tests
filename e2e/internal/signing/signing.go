@@ -1,7 +1,6 @@
-// Package consensuscrypto implements the protocol-level domain and signing
-// root formulas used to build and independently verify QRL consensus
-// signatures.
-package consensuscrypto
+// Package signing implements the domain, root, and signature formulas used to
+// build and independently verify QRL consensus signatures.
+package signing
 
 import (
 	"crypto/sha256"

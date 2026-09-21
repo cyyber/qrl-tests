@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	"github.com/cyyber/qrl-tests/e2e/internal/beacon"
-	"github.com/cyyber/qrl-tests/e2e/internal/consensuscrypto"
+	"github.com/cyyber/qrl-tests/e2e/internal/signing"
 )
 
 // Source is the subset of the beacon API the info is loaded from.
@@ -23,7 +23,7 @@ type Source interface {
 type Info struct {
 	SlotsPerEpoch uint64
 
-	genesisRoot        [consensuscrypto.RootLength]byte
+	genesisRoot        [signing.RootLength]byte
 	genesisForkVersion [4]byte
 	previousVersion    [4]byte
 	currentVersion     [4]byte
@@ -69,19 +69,19 @@ func (chain Info) Epoch(slot uint64) uint64 {
 
 // Domain returns the signing domain for an epoch, honouring the fork version
 // active at that epoch.
-func (chain Info) Domain(domainType [4]byte, epoch uint64) [consensuscrypto.RootLength]byte {
+func (chain Info) Domain(domainType [4]byte, epoch uint64) [signing.RootLength]byte {
 	version := chain.currentVersion
 	if epoch < chain.forkEpoch {
 		version = chain.previousVersion
 	}
-	return consensuscrypto.ComputeDomain(domainType, version, chain.genesisRoot)
+	return signing.ComputeDomain(domainType, version, chain.genesisRoot)
 }
 
 // DepositDomain is fork-independent: the genesis fork version with a zero
 // genesis validators root, as the deposit contract predates genesis.
-func (chain Info) DepositDomain() [consensuscrypto.RootLength]byte {
-	return consensuscrypto.ComputeDomain(
-		consensuscrypto.DomainDeposit, chain.genesisForkVersion, [consensuscrypto.RootLength]byte{},
+func (chain Info) DepositDomain() [signing.RootLength]byte {
+	return signing.ComputeDomain(
+		signing.DomainDeposit, chain.genesisForkVersion, [signing.RootLength]byte{},
 	)
 }
 

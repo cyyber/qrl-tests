@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/cyyber/qrl-tests/e2e/internal/beacon"
-	"github.com/cyyber/qrl-tests/e2e/internal/consensuscrypto"
+	"github.com/cyyber/qrl-tests/e2e/internal/signing"
 )
 
 type fakeSource struct {
@@ -31,7 +31,7 @@ func (fakeSource) SpecUint(_ context.Context, name string) (uint64, error) {
 func validSource() fakeSource {
 	return fakeSource{
 		genesis: beacon.Genesis{
-			ValidatorsRoot: "0x" + strings.Repeat("55", consensuscrypto.RootLength),
+			ValidatorsRoot: "0x" + strings.Repeat("55", signing.RootLength),
 			ForkVersion:    "0x10000020",
 		},
 		fork: beacon.Fork{PreviousVersion: "0x10000020", CurrentVersion: "0x10000021", Epoch: 6},
@@ -44,17 +44,17 @@ func TestLoadDerivesDomainsFromTheForkSchedule(t *testing.T) {
 	require.Equal(t, uint64(128), chain.SlotsPerEpoch)
 	require.Equal(t, uint64(2), chain.Epoch(300))
 
-	var genesisRoot [consensuscrypto.RootLength]byte
-	copy(genesisRoot[:], bytes.Repeat([]byte{0x55}, consensuscrypto.RootLength))
-	previous := consensuscrypto.ComputeDomain(consensuscrypto.DomainVoluntaryExit, [4]byte{0x10, 0x00, 0x00, 0x20}, genesisRoot)
-	current := consensuscrypto.ComputeDomain(consensuscrypto.DomainVoluntaryExit, [4]byte{0x10, 0x00, 0x00, 0x21}, genesisRoot)
+	var genesisRoot [signing.RootLength]byte
+	copy(genesisRoot[:], bytes.Repeat([]byte{0x55}, signing.RootLength))
+	previous := signing.ComputeDomain(signing.DomainVoluntaryExit, [4]byte{0x10, 0x00, 0x00, 0x20}, genesisRoot)
+	current := signing.ComputeDomain(signing.DomainVoluntaryExit, [4]byte{0x10, 0x00, 0x00, 0x21}, genesisRoot)
 
-	require.Equal(t, previous, chain.Domain(consensuscrypto.DomainVoluntaryExit, 5))
-	require.Equal(t, current, chain.Domain(consensuscrypto.DomainVoluntaryExit, 6))
-	require.Equal(t, current, chain.Domain(consensuscrypto.DomainVoluntaryExit, 7))
+	require.Equal(t, previous, chain.Domain(signing.DomainVoluntaryExit, 5))
+	require.Equal(t, current, chain.Domain(signing.DomainVoluntaryExit, 6))
+	require.Equal(t, current, chain.Domain(signing.DomainVoluntaryExit, 7))
 
-	deposit := consensuscrypto.ComputeDomain(
-		consensuscrypto.DomainDeposit, [4]byte{0x10, 0x00, 0x00, 0x20}, [consensuscrypto.RootLength]byte{},
+	deposit := signing.ComputeDomain(
+		signing.DomainDeposit, [4]byte{0x10, 0x00, 0x00, 0x20}, [signing.RootLength]byte{},
 	)
 	require.Equal(t, deposit, chain.DepositDomain())
 }
