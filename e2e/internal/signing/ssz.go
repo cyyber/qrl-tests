@@ -6,10 +6,7 @@ import (
 	"fmt"
 )
 
-const (
-	WithdrawalRecipientLength = 64
-	RandaoCommitmentLength    = 32
-)
+const WithdrawalRecipientLength = 64
 
 // VoluntaryExit mirrors the consensus VoluntaryExit container.
 type VoluntaryExit struct {

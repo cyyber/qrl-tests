@@ -2,6 +2,8 @@ package signing
 
 import "crypto/sha256"
 
+const RandaoCommitmentLength = 32
+
 // randaoOnionLayers is the hash-onion length the validator client and the
 // staking deposit CLI use, so a commitment built here opens with the same
 // reveals a running validator would produce.
