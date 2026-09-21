@@ -14,7 +14,7 @@ import (
 )
 
 var (
-	genesisValidatorsRoot = [signing.RootLength]byte(bytes.Repeat([]byte{0x55}, signing.RootLength))
+	genesisValidatorsRoot = signing.Root(bytes.Repeat([]byte{0x55}, signing.RootLength))
 	genesisVersion        = signing.ForkVersion{0x10, 0x00, 0x00, 0x20}
 	currentVersion        = signing.ForkVersion{0x10, 0x00, 0x00, 0x21}
 )
@@ -62,7 +62,7 @@ func TestLoadDerivesDomainsFromTheForkSchedule(t *testing.T) {
 	require.Equal(t, current, chain.Domain(signing.DomainVoluntaryExit, 6))
 	require.Equal(t, current, chain.Domain(signing.DomainVoluntaryExit, 7))
 
-	deposit := signing.ComputeDomain(signing.DomainDeposit, genesisVersion, [signing.RootLength]byte{})
+	deposit := signing.ComputeDomain(signing.DomainDeposit, genesisVersion, signing.Root{})
 	require.Equal(t, deposit, chain.DepositDomain())
 }
 

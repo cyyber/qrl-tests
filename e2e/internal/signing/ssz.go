@@ -14,7 +14,7 @@ type VoluntaryExit struct {
 	ValidatorIndex uint64
 }
 
-func (exit VoluntaryExit) HashTreeRoot() ([RootLength]byte, error) {
+func (exit VoluntaryExit) HashTreeRoot() (Root, error) {
 	return containerRoot(uint64Root(exit.Epoch), uint64Root(exit.ValidatorIndex)), nil
 }
 
@@ -27,15 +27,15 @@ type DepositMessage struct {
 	RandaoCommitment    []byte
 }
 
-func (message DepositMessage) HashTreeRoot() ([RootLength]byte, error) {
+func (message DepositMessage) HashTreeRoot() (Root, error) {
 	fields, err := message.fieldRoots()
 	if err != nil {
-		return [RootLength]byte{}, err
+		return Root{}, err
 	}
 	return containerRoot(fields...), nil
 }
 
-func (message DepositMessage) fieldRoots() ([][RootLength]byte, error) {
+func (message DepositMessage) fieldRoots() ([]Root, error) {
 	publicKeyRoot, err := fixedBytesRoot("deposit public key", message.PublicKey, PublicKeyLength)
 	if err != nil {
 		return nil, err
@@ -48,7 +48,7 @@ func (message DepositMessage) fieldRoots() ([][RootLength]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return [][RootLength]byte{publicKeyRoot, recipientRoot, uint64Root(message.Amount), commitmentRoot}, nil
+	return []Root{publicKeyRoot, recipientRoot, uint64Root(message.Amount), commitmentRoot}, nil
 }
 
 // DepositData is the signed deposit whose root the deposit contract checks.
@@ -57,45 +57,45 @@ type DepositData struct {
 	Signature []byte
 }
 
-func (data DepositData) HashTreeRoot() ([RootLength]byte, error) {
+func (data DepositData) HashTreeRoot() (Root, error) {
 	fields, err := data.fieldRoots()
 	if err != nil {
-		return [RootLength]byte{}, err
+		return Root{}, err
 	}
 	signature, err := fixedBytesRoot("deposit signature", data.Signature, SignatureLength)
 	if err != nil {
-		return [RootLength]byte{}, err
+		return Root{}, err
 	}
 	return containerRoot(append(fields, signature)...), nil
 }
 
-func uint64Root(value uint64) [RootLength]byte {
-	var root [RootLength]byte
+func uint64Root(value uint64) Root {
+	var root Root
 	binary.LittleEndian.PutUint64(root[:8], value)
 	return root
 }
 
-func fixedBytesRoot(name string, value []byte, length int) ([RootLength]byte, error) {
+func fixedBytesRoot(name string, value []byte, length int) (Root, error) {
 	if len(value) != length {
-		return [RootLength]byte{}, fmt.Errorf("%s must be %d bytes, got %d", name, length, len(value))
+		return Root{}, fmt.Errorf("%s must be %d bytes, got %d", name, length, len(value))
 	}
-	chunks := make([][RootLength]byte, (length+RootLength-1)/RootLength)
+	chunks := make([]Root, (length+RootLength-1)/RootLength)
 	for index := range chunks {
 		copy(chunks[index][:], value[index*RootLength:])
 	}
 	return merkleize(chunks), nil
 }
 
-func containerRoot(fields ...[RootLength]byte) [RootLength]byte {
+func containerRoot(fields ...Root) Root {
 	return merkleize(fields)
 }
 
-func merkleize(chunks [][RootLength]byte) [RootLength]byte {
+func merkleize(chunks []Root) Root {
 	width := 1
 	for width < len(chunks) {
 		width *= 2
 	}
-	level := make([][RootLength]byte, width)
+	level := make([]Root, width)
 	copy(level, chunks)
 	for width > 1 {
 		for index := 0; index < width; index += 2 {

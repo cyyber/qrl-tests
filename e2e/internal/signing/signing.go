@@ -16,11 +16,13 @@ const (
 	SignatureLength = walletmldsa.SigSize
 )
 
-// DomainType and ForkVersion are distinct types so the two 4-byte arguments
-// of ComputeDomain cannot be swapped silently.
+// Same-width values get distinct types so the arguments of ComputeDomain and
+// SigningRoot cannot be swapped silently.
 type (
 	DomainType  [4]byte
 	ForkVersion [4]byte
+	Root        [RootLength]byte
+	Domain      [RootLength]byte
 )
 
 var (
@@ -30,24 +32,24 @@ var (
 
 // ComputeDomain mirrors compute_domain: the domain type followed by the first
 // 28 bytes of the fork data root.
-func ComputeDomain(domainType DomainType, forkVersion ForkVersion, genesisValidatorsRoot [RootLength]byte) [RootLength]byte {
-	var version [RootLength]byte
+func ComputeDomain(domainType DomainType, forkVersion ForkVersion, genesisValidatorsRoot Root) Domain {
+	var version Root
 	copy(version[:4], forkVersion[:])
 	forkDataRoot := containerRoot(version, genesisValidatorsRoot)
 
-	var domain [RootLength]byte
+	var domain Domain
 	copy(domain[:4], domainType[:])
 	copy(domain[4:], forkDataRoot[:RootLength-4])
 	return domain
 }
 
 // SigningRoot mirrors compute_signing_root for an object root and domain.
-func SigningRoot(objectRoot, domain [RootLength]byte) [RootLength]byte {
-	return containerRoot(objectRoot, domain)
+func SigningRoot(objectRoot Root, domain Domain) Root {
+	return containerRoot(objectRoot, Root(domain))
 }
 
 // Verify checks an ML-DSA-87 signature over message with the given public key.
-func Verify(message [RootLength]byte, publicKey, signature []byte) error {
+func Verify(message Root, publicKey, signature []byte) error {
 	key, err := walletmldsa.BytesToPK(publicKey)
 	if err != nil {
 		return err

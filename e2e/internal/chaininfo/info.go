@@ -23,7 +23,7 @@ type Source interface {
 type Info struct {
 	SlotsPerEpoch uint64
 
-	genesisValidatorsRoot [signing.RootLength]byte
+	genesisValidatorsRoot signing.Root
 	genesisForkVersion    signing.ForkVersion
 	previousVersion       signing.ForkVersion
 	currentVersion        signing.ForkVersion
@@ -69,7 +69,7 @@ func (chain Info) Epoch(slot uint64) uint64 {
 
 // Domain returns the signing domain for an epoch, honouring the fork version
 // active at that epoch.
-func (chain Info) Domain(domainType signing.DomainType, epoch uint64) [signing.RootLength]byte {
+func (chain Info) Domain(domainType signing.DomainType, epoch uint64) signing.Domain {
 	version := chain.currentVersion
 	if epoch < chain.forkEpoch {
 		version = chain.previousVersion
@@ -79,9 +79,9 @@ func (chain Info) Domain(domainType signing.DomainType, epoch uint64) [signing.R
 
 // DepositDomain is fork-independent: the genesis fork version with a zero
 // genesis validators root, as the deposit contract predates genesis.
-func (chain Info) DepositDomain() [signing.RootLength]byte {
+func (chain Info) DepositDomain() signing.Domain {
 	return signing.ComputeDomain(
-		signing.DomainDeposit, chain.genesisForkVersion, [signing.RootLength]byte{},
+		signing.DomainDeposit, chain.genesisForkVersion, signing.Root{},
 	)
 }
 

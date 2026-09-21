@@ -39,7 +39,7 @@ func TestVoluntaryExitSigningRootMatchesQrysm(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "d2e59fb9a42ce1736c3619e1b7aaf5d561bf8326eb079fdce3f9d24acb0eda4a", hex.EncodeToString(exitRoot[:]))
 
-	var genesisRoot [RootLength]byte
+	var genesisRoot Root
 	copy(genesisRoot[:], bytes.Repeat([]byte{0x55}, RootLength))
 	domain := ComputeDomain(DomainVoluntaryExit, ForkVersion{0x10, 0x00, 0x00, 0x20}, genesisRoot)
 	require.Equal(t, "040000008a56f5ef2f9a899359789c0a048f96d5d1e1e3446b2cc5e02d1a6e78", hex.EncodeToString(domain[:]))
@@ -49,7 +49,7 @@ func TestVoluntaryExitSigningRootMatchesQrysm(t *testing.T) {
 }
 
 func TestDepositDomainUsesZeroGenesisRoot(t *testing.T) {
-	domain := ComputeDomain(DomainDeposit, ForkVersion{0x10, 0x00, 0x00, 0x20}, [RootLength]byte{})
+	domain := ComputeDomain(DomainDeposit, ForkVersion{0x10, 0x00, 0x00, 0x20}, Root{})
 	require.Equal(t, "0300000014a245e19985c526271213b92ac915999e4bd92e4c4a3c05e19f7557", hex.EncodeToString(domain[:]))
 }
 
