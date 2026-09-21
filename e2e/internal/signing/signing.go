@@ -16,14 +16,21 @@ const (
 	SignatureLength = walletmldsa.SigSize
 )
 
+// DomainType and ForkVersion are distinct types so the two 4-byte arguments
+// of ComputeDomain cannot be swapped silently.
+type (
+	DomainType  [4]byte
+	ForkVersion [4]byte
+)
+
 var (
-	DomainDeposit       = [4]byte{0x03, 0x00, 0x00, 0x00}
-	DomainVoluntaryExit = [4]byte{0x04, 0x00, 0x00, 0x00}
+	DomainDeposit       = DomainType{0x03, 0x00, 0x00, 0x00}
+	DomainVoluntaryExit = DomainType{0x04, 0x00, 0x00, 0x00}
 )
 
 // ComputeDomain mirrors compute_domain: the domain type followed by the first
 // 28 bytes of the fork data root.
-func ComputeDomain(domainType [4]byte, forkVersion [4]byte, genesisValidatorsRoot [RootLength]byte) [RootLength]byte {
+func ComputeDomain(domainType DomainType, forkVersion ForkVersion, genesisValidatorsRoot [RootLength]byte) [RootLength]byte {
 	var version [RootLength]byte
 	copy(version[:4], forkVersion[:])
 	forkDataRoot := containerRoot(version, genesisValidatorsRoot)

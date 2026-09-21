@@ -24,9 +24,9 @@ type Info struct {
 	SlotsPerEpoch uint64
 
 	genesisValidatorsRoot [signing.RootLength]byte
-	genesisForkVersion    [4]byte
-	previousVersion       [4]byte
-	currentVersion        [4]byte
+	genesisForkVersion    signing.ForkVersion
+	previousVersion       signing.ForkVersion
+	currentVersion        signing.ForkVersion
 	forkEpoch             uint64
 }
 
@@ -69,7 +69,7 @@ func (chain Info) Epoch(slot uint64) uint64 {
 
 // Domain returns the signing domain for an epoch, honouring the fork version
 // active at that epoch.
-func (chain Info) Domain(domainType [4]byte, epoch uint64) [signing.RootLength]byte {
+func (chain Info) Domain(domainType signing.DomainType, epoch uint64) [signing.RootLength]byte {
 	version := chain.currentVersion
 	if epoch < chain.forkEpoch {
 		version = chain.previousVersion

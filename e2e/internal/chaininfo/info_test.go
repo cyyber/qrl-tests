@@ -44,17 +44,17 @@ func TestLoadDerivesDomainsFromTheForkSchedule(t *testing.T) {
 	require.Equal(t, uint64(128), chain.SlotsPerEpoch)
 	require.Equal(t, uint64(2), chain.Epoch(300))
 
-	var genesisRoot [signing.RootLength]byte
-	copy(genesisRoot[:], bytes.Repeat([]byte{0x55}, signing.RootLength))
-	previous := signing.ComputeDomain(signing.DomainVoluntaryExit, [4]byte{0x10, 0x00, 0x00, 0x20}, genesisRoot)
-	current := signing.ComputeDomain(signing.DomainVoluntaryExit, [4]byte{0x10, 0x00, 0x00, 0x21}, genesisRoot)
+	var genesisValidatorsRoot [signing.RootLength]byte
+	copy(genesisValidatorsRoot[:], bytes.Repeat([]byte{0x55}, signing.RootLength))
+	previous := signing.ComputeDomain(signing.DomainVoluntaryExit, signing.ForkVersion{0x10, 0x00, 0x00, 0x20}, genesisValidatorsRoot)
+	current := signing.ComputeDomain(signing.DomainVoluntaryExit, signing.ForkVersion{0x10, 0x00, 0x00, 0x21}, genesisValidatorsRoot)
 
 	require.Equal(t, previous, chain.Domain(signing.DomainVoluntaryExit, 5))
 	require.Equal(t, current, chain.Domain(signing.DomainVoluntaryExit, 6))
 	require.Equal(t, current, chain.Domain(signing.DomainVoluntaryExit, 7))
 
 	deposit := signing.ComputeDomain(
-		signing.DomainDeposit, [4]byte{0x10, 0x00, 0x00, 0x20}, [signing.RootLength]byte{},
+		signing.DomainDeposit, signing.ForkVersion{0x10, 0x00, 0x00, 0x20}, [signing.RootLength]byte{},
 	)
 	require.Equal(t, deposit, chain.DepositDomain())
 }
