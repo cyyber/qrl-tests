@@ -54,12 +54,16 @@ func TestDepositDomainMatchesQrysm(t *testing.T) {
 	require.Equal(t, "0300000014a245e19985c526271213b92ac915999e4bd92e4c4a3c05e19f7557", hex.EncodeToString(domain[:]))
 }
 
-func TestVerifyChecksMLDSASignatures(t *testing.T) {
+func testSeed() common.Seed {
 	var seed common.Seed
 	for index := range seed {
 		seed[index] = byte(0x91 + index)
 	}
-	wallet, err := walletmldsa.NewWalletFromSeed(seed)
+	return seed
+}
+
+func TestVerifyChecksMLDSASignatures(t *testing.T) {
+	wallet, err := walletmldsa.NewWalletFromSeed(testSeed())
 	require.NoError(t, err)
 	publicKey := wallet.GetPK()
 
@@ -78,10 +82,7 @@ func TestVerifyChecksMLDSASignatures(t *testing.T) {
 }
 
 func TestRandaoCommitmentMatchesQrysm(t *testing.T) {
-	seed := make([]byte, 48)
-	for index := range seed {
-		seed[index] = byte(0x91 + index)
-	}
-	commitment := RandaoCommitment(seed)
+	seed := testSeed()
+	commitment := RandaoCommitment(seed[:])
 	require.Equal(t, "3a4c6ce43d45814c5f37ef3d08b4888af27ffbfb8f2870d0229d3fabe941c6b9", hex.EncodeToString(commitment[:]))
 }
