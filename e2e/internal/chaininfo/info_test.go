@@ -3,6 +3,7 @@ package chaininfo
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -19,7 +20,13 @@ type fakeSource struct {
 
 func (source fakeSource) Genesis(context.Context) (beacon.Genesis, error) { return source.genesis, nil }
 func (source fakeSource) Fork(context.Context) (beacon.Fork, error)       { return source.fork, nil }
-func (fakeSource) SpecUint(context.Context, string) (uint64, error)       { return 128, nil }
+
+func (fakeSource) SpecUint(_ context.Context, name string) (uint64, error) {
+	if name != "SLOTS_PER_EPOCH" {
+		return 0, fmt.Errorf("unexpected spec value %s", name)
+	}
+	return 128, nil
+}
 
 func validSource() fakeSource {
 	return fakeSource{
@@ -58,9 +65,21 @@ func TestLoadRejectsMalformedValues(t *testing.T) {
 		mutate func(*fakeSource)
 		want   string
 	}{
-		{"short genesis root", func(s *fakeSource) { s.genesis.ValidatorsRoot = "0x5555" }, "invalid genesis validators root length 2, want 32"},
-		{"non-hex fork version", func(s *fakeSource) { s.fork.CurrentVersion = "0xzz000021" }, "decode current fork version"},
-		{"long previous version", func(s *fakeSource) { s.fork.PreviousVersion = "0x1000002000" }, "invalid previous fork version length 5, want 4"},
+		{
+			"short genesis root",
+			func(source *fakeSource) { source.genesis.ValidatorsRoot = "0x5555" },
+			"invalid genesis validators root length 2, want 32",
+		},
+		{
+			"non-hex fork version",
+			func(source *fakeSource) { source.fork.CurrentVersion = "0xzz000021" },
+			"decode current fork version",
+		},
+		{
+			"long previous version",
+			func(source *fakeSource) { source.fork.PreviousVersion = "0x1000002000" },
+			"invalid previous fork version length 5, want 4",
+		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			source := validSource()
