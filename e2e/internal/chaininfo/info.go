@@ -23,11 +23,11 @@ type Source interface {
 type Info struct {
 	SlotsPerEpoch uint64
 
-	genesisRoot        [signing.RootLength]byte
-	genesisForkVersion [4]byte
-	previousVersion    [4]byte
-	currentVersion     [4]byte
-	forkEpoch          uint64
+	genesisValidatorsRoot [signing.RootLength]byte
+	genesisForkVersion    [4]byte
+	previousVersion       [4]byte
+	currentVersion        [4]byte
+	forkEpoch             uint64
 }
 
 func Load(ctx context.Context, source Source) (Info, error) {
@@ -37,7 +37,7 @@ func Load(ctx context.Context, source Source) (Info, error) {
 	}
 
 	var chain Info
-	if err := decodeFixed("genesis validators root", genesis.ValidatorsRoot, chain.genesisRoot[:]); err != nil {
+	if err := decodeFixed("genesis validators root", genesis.ValidatorsRoot, chain.genesisValidatorsRoot[:]); err != nil {
 		return Info{}, err
 	}
 	if err := decodeFixed("genesis fork version", genesis.ForkVersion, chain.genesisForkVersion[:]); err != nil {
@@ -74,7 +74,7 @@ func (chain Info) Domain(domainType [4]byte, epoch uint64) [signing.RootLength]b
 	if epoch < chain.forkEpoch {
 		version = chain.previousVersion
 	}
-	return signing.ComputeDomain(domainType, version, chain.genesisRoot)
+	return signing.ComputeDomain(domainType, version, chain.genesisValidatorsRoot)
 }
 
 // DepositDomain is fork-independent: the genesis fork version with a zero
