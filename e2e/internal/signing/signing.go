@@ -16,16 +16,16 @@ const (
 	SignatureLength = walletmldsa.SigSize
 )
 
+var (
+	DomainDeposit       = DomainType{0x03, 0x00, 0x00, 0x00}
+	DomainVoluntaryExit = DomainType{0x04, 0x00, 0x00, 0x00}
+)
+
 type (
 	DomainType  [4]byte
 	ForkVersion [4]byte
 	Root        [RootLength]byte
 	Domain      [RootLength]byte
-)
-
-var (
-	DomainDeposit       = DomainType{0x03, 0x00, 0x00, 0x00}
-	DomainVoluntaryExit = DomainType{0x04, 0x00, 0x00, 0x00}
 )
 
 // ComputeDomain mirrors compute_domain: the domain type followed by the first
