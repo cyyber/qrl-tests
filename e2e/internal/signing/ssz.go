@@ -1,0 +1,107 @@
+package signing
+
+import (
+	"crypto/sha256"
+	"encoding/binary"
+	"fmt"
+)
+
+const WithdrawalRecipientLength = 64
+
+// VoluntaryExit mirrors the consensus VoluntaryExit container.
+type VoluntaryExit struct {
+	Epoch          uint64
+	ValidatorIndex uint64
+}
+
+func (exit VoluntaryExit) HashTreeRoot() (Root, error) {
+	return merkleize([]Root{uint64Root(exit.Epoch), uint64Root(exit.ValidatorIndex)}), nil
+}
+
+// DepositMessage is the unsigned part of a deposit: what the validator key
+// signs under the deposit domain.
+type DepositMessage struct {
+	PublicKey           []byte
+	WithdrawalRecipient []byte
+	Amount              uint64
+	RandaoCommitment    []byte
+}
+
+func (message DepositMessage) HashTreeRoot() (Root, error) {
+	fields, err := message.fieldRoots()
+	if err != nil {
+		return Root{}, err
+	}
+	return merkleize(fields), nil
+}
+
+func (message DepositMessage) fieldRoots() ([]Root, error) {
+	publicKeyRoot, err := fixedBytesRoot("deposit public key", message.PublicKey, PublicKeyLength)
+	if err != nil {
+		return nil, err
+	}
+	recipientRoot, err := fixedBytesRoot("withdrawal recipient", message.WithdrawalRecipient, WithdrawalRecipientLength)
+	if err != nil {
+		return nil, err
+	}
+	commitmentRoot, err := fixedBytesRoot("randao commitment", message.RandaoCommitment, RandaoCommitmentLength)
+	if err != nil {
+		return nil, err
+	}
+	return []Root{publicKeyRoot, recipientRoot, uint64Root(message.Amount), commitmentRoot}, nil
+}
+
+// DepositData is the signed deposit whose root the deposit contract checks.
+type DepositData struct {
+	DepositMessage
+	Signature []byte
+}
+
+func (data DepositData) HashTreeRoot() (Root, error) {
+	fields, err := data.fieldRoots()
+	if err != nil {
+		return Root{}, err
+	}
+	signature, err := fixedBytesRoot("deposit signature", data.Signature, SignatureLength)
+	if err != nil {
+		return Root{}, err
+	}
+	return merkleize(append(fields, signature)), nil
+}
+
+func uint64Root(value uint64) Root {
+	var root Root
+	binary.LittleEndian.PutUint64(root[:8], value)
+	return root
+}
+
+func fixedBytesRoot(name string, value []byte, length int) (Root, error) {
+	if len(value) != length {
+		return Root{}, fmt.Errorf("%s must be %d bytes, got %d", name, length, len(value))
+	}
+	chunks := make([]Root, (length+RootLength-1)/RootLength)
+	for index := range chunks {
+		copy(chunks[index][:], value[index*RootLength:])
+	}
+	return merkleize(chunks), nil
+}
+
+func merkleize(chunks []Root) Root {
+	width := 1
+	for width < len(chunks) {
+		width *= 2
+	}
+	level := make([]Root, width)
+	copy(level, chunks)
+	for width > 1 {
+		for index := 0; index < width; index += 2 {
+			var pair [RootLength * 2]byte
+			copy(pair[:RootLength], level[index][:])
+			copy(pair[RootLength:], level[index+1][:])
+			level[index/2] = sha256.Sum256(pair[:])
+		}
+		width /= 2
+		level = level[:width]
+	}
+	return level[0]
+}
