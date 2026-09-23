@@ -1,7 +1,7 @@
-// Package sidecar runs helper containers next to the Kurtosis devnet. They
-// reach the devnet through its host-published ports, and since they are not
-// Kurtosis services the lane diagnostics never collect their logs, so errors
-// carry the end of the container's output instead.
+// Package sidecar runs helper containers next to the Kurtosis devnet.
+// Sidecars reach the devnet through its host-published ports. They are not
+// Kurtosis services, so the lane diagnostics don't collect their logs; errors
+// include the end of a sidecar's output instead.
 package sidecar
 
 import (
