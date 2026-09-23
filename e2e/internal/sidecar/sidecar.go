@@ -62,7 +62,7 @@ type Container struct {
 	client Client
 	id     string
 	name   string
-	port   uint16
+	port   network.Port
 }
 
 // Start creates the container, copies its files in, and starts it. On any
@@ -132,8 +132,10 @@ func create(ctx context.Context, client Client, spec Spec) (*Container, error) {
 		Labels:     map[string]string{labelKey: spec.Name},
 	}
 	hostConfig := &containertypes.HostConfig{ExtraHosts: []string{containerHost + ":host-gateway"}}
+	var port network.Port
 	if spec.Port != 0 {
-		port, ok := network.PortFrom(spec.Port, network.TCP)
+		var ok bool
+		port, ok = network.PortFrom(spec.Port, network.TCP)
 		if !ok {
 			return nil, fmt.Errorf("%s port %d is invalid", spec.Name, spec.Port)
 		}
@@ -148,7 +150,7 @@ func create(ctx context.Context, client Client, spec Spec) (*Container, error) {
 	if created.ID == "" {
 		return nil, fmt.Errorf("create %s container: Docker returned no container ID", spec.Name)
 	}
-	container := &Container{client: client, id: created.ID, name: spec.Name, port: spec.Port}
+	container := &Container{client: client, id: created.ID, name: spec.Name, port: port}
 
 	if _, err := client.CopyToContainer(ctx, created.ID, dockerclient.CopyToContainerOptions{
 		DestinationPath: "/",
@@ -181,6 +183,9 @@ func (container *Container) Close() error {
 // PublishedPort returns the host port bound to the Spec's Port. It returns an
 // *ExitError once the container has stopped.
 func (container *Container) PublishedPort(ctx context.Context) (string, error) {
+	if !container.port.IsValid() {
+		return "", fmt.Errorf("%s publishes no port", container.name)
+	}
 	inspected, err := container.client.ContainerInspect(ctx, container.id, dockerclient.ContainerInspectOptions{})
 	if err != nil {
 		return "", fmt.Errorf("inspect %s container: %w", container.name, err)
@@ -196,6 +201,17 @@ func (container *Container) PublishedPort(ctx context.Context) (string, error) {
 		return "", container.WithLogs(&ExitError{name: container.name, status: status})
 	}
 	return publishedHostPort(inspected.Container, container.port)
+}
+
+func publishedHostPort(inspected containertypes.InspectResponse, port network.Port) (string, error) {
+	if inspected.NetworkSettings == nil {
+		return "", errors.New("container has no network settings")
+	}
+	bindings := inspected.NetworkSettings.Ports[port]
+	if len(bindings) == 0 || bindings[0].HostPort == "" {
+		return "", fmt.Errorf("container port %s is not published", port)
+	}
+	return bindings[0].HostPort, nil
 }
 
 // ReadFile copies one file out of the container.

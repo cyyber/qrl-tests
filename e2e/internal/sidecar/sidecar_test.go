@@ -163,15 +163,33 @@ func TestHostRewrites(t *testing.T) {
 	require.Equal(t, "host.docker.internal:4000", address)
 
 	_, err = HostURL("http://127.0.0.1")
-	require.ErrorContains(t, err, "scheme, host, and port")
+	require.EqualError(t, err, `URL "http://127.0.0.1" must include a scheme, host, and port`)
 
 	_, err = HostAddress("127.0.0.1")
 	require.ErrorContains(t, err, "host:port")
+
+	_, err = HostAddress("127.0.0.1:")
+	require.EqualError(t, err, `address "127.0.0.1:" must include a port`)
 }
 
 func TestPublishedHostPortRequiresNetworkSettings(t *testing.T) {
-	_, err := publishedHostPort(containertypes.InspectResponse{}, 7500)
+	port, ok := network.PortFrom(7500, network.TCP)
+	require.True(t, ok)
+	_, err := publishedHostPort(containertypes.InspectResponse{}, port)
 	require.ErrorContains(t, err, "network settings")
+
+	_, err = publishedHostPort(containertypes.InspectResponse{NetworkSettings: &containertypes.NetworkSettings{}}, port)
+	require.EqualError(t, err, "container port 7500/tcp is not published")
+}
+
+func TestPublishedPortRequiresASpecPort(t *testing.T) {
+	spec := testSpec()
+	spec.Port = 0
+	container, err := Start(t.Context(), sidecartest.NewDocker(), spec)
+	require.NoError(t, err)
+
+	_, err = container.PublishedPort(t.Context())
+	require.EqualError(t, err, "test sidecar publishes no port")
 }
 
 func TestRunWaitsForSuccessfulExit(t *testing.T) {
