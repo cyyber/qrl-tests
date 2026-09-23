@@ -43,6 +43,18 @@ type Keystore struct {
 	PublicKey string `json:"validating_pubkey"`
 }
 
+// ContainsPublicKey reports whether keystores holds publicKey, ignoring case
+// and the 0x prefix.
+func ContainsPublicKey(keystores []Keystore, publicKey string) bool {
+	wanted := strings.TrimPrefix(strings.ToLower(publicKey), "0x")
+	for _, keystore := range keystores {
+		if strings.TrimPrefix(strings.ToLower(keystore.PublicKey), "0x") == wanted {
+			return true
+		}
+	}
+	return false
+}
+
 type importStatus struct {
 	Status  string `json:"status"`
 	Message string `json:"message"`

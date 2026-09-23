@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const testToken = "0x" + "aa"
+const testToken = "0xaa"
 
 // newTestClient serves handler behind the bearer-token check. The handler runs
 // on the server goroutine, so it must use assert rather than require: the test
@@ -97,6 +97,16 @@ func TestClientReportsErrorResponses(t *testing.T) {
 
 	_, err := client.ListKeystores(t.Context())
 	require.EqualError(t, err, `GET /qrl/v1/keystores returned 401 Unauthorized: {"message":"unauthorized"}`)
+}
+
+func TestContainsPublicKey(t *testing.T) {
+	keystores := []Keystore{{PublicKey: "0xAB"}, {PublicKey: "cd"}}
+
+	require.True(t, ContainsPublicKey(keystores, "0xab"))
+	require.True(t, ContainsPublicKey(keystores, "AB"))
+	require.True(t, ContainsPublicKey(keystores, "0xCD"))
+	require.False(t, ContainsPublicKey(keystores, "0xef"))
+	require.False(t, ContainsPublicKey(nil, "0xab"))
 }
 
 func TestNewValidatesArguments(t *testing.T) {
