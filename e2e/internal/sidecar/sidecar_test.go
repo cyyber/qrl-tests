@@ -207,7 +207,7 @@ func TestRunReportsFailedExit(t *testing.T) {
 
 func TestRunReportsCancellationWithLogs(t *testing.T) {
 	docker := sidecartest.NewDocker()
-	docker.Hangs = true
+	docker.NeverExits = true
 	docker.Logs = "waiting for execution client"
 	ctx, cancel := context.WithCancelCause(t.Context())
 	cancelErr := errors.New("suite timed out")
@@ -241,7 +241,7 @@ func TestRunReportsWaitError(t *testing.T) {
 
 func TestExecStopsWithContext(t *testing.T) {
 	docker := sidecartest.NewDocker()
-	docker.ExecHangs = true
+	docker.ExecNeverExits = true
 	container, err := Start(t.Context(), docker, testSpec())
 	require.NoError(t, err)
 	ctx, cancel := context.WithCancelCause(t.Context())

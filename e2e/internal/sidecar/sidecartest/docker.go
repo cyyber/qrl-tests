@@ -24,36 +24,41 @@ import (
 const ContainerID = "sidecar"
 
 // Docker serves one sidecar container whose state, output and failures the
-// test sets, and records what the code under test asked Docker to do.
+// test sets, and records what the code under test asked Docker to do. It is not
+// safe for concurrent use.
 type Docker struct {
+	// The container.
+	State *containertypes.State
+	// HostPort is the host port published for every exposed container port.
+	HostPort string
+	Logs     string
 	// Files are served by CopyFromContainer, keyed by path, for any container.
 	Files map[string][]byte
-	// Containers are returned by ContainerList.
-	Containers []containertypes.Summary
-	State      *containertypes.State
-	// HostPort is the host port published for every exposed container port.
-	HostPort     string
-	Logs         string
-	ExecOutput   string
-	ExecExitCode int
-	// ExitCode is what ContainerWait reports once the container has started.
+
+	// Its exit, which ContainerWait reports once the container has started.
 	ExitCode int64
 	// WaitMessage is reported as the wait response's error.
 	WaitMessage string
-	// Hangs keeps ContainerWait from reporting an exit; like Docker's client,
-	// the waiter then fails once its context ends.
-	Hangs bool
-	// ExecHangs keeps an exec's output open until the caller closes it.
-	ExecHangs     bool
+	// NeverExits keeps ContainerWait from reporting an exit; like Docker's
+	// client, the waiter then fails once its context ends.
+	NeverExits bool
+
+	// Commands run with Exec.
+	ExecOutput   string
+	ExecExitCode int
+	// ExecNeverExits keeps an exec's output open until the caller closes it.
+	ExecNeverExits bool
+
+	// Failures returned by the matching calls.
 	StartErr      error
 	RemoveErr     error
-	ImageErr      error
 	LogsErr       error
 	ExecCreateErr error
 	ExecAttachErr error
 
+	// What the code under test asked Docker to do.
 	Created dockerclient.ContainerCreateOptions
-	// Archive is the tar the code under test copied into the container.
+	// Archive is the tar copied into the container.
 	Archive []byte
 	Execs   [][]string
 	Removed []string
@@ -101,15 +106,11 @@ func (docker *Docker) ContainerInspect(context.Context, string, dockerclient.Con
 	}}, nil
 }
 
-func (docker *Docker) ContainerList(context.Context, dockerclient.ContainerListOptions) (dockerclient.ContainerListResult, error) {
-	return dockerclient.ContainerListResult{Items: docker.Containers}, nil
-}
-
 func (docker *Docker) ContainerLogs(context.Context, string, dockerclient.ContainerLogsOptions) (dockerclient.ContainerLogsResult, error) {
 	if docker.LogsErr != nil {
 		return nil, docker.LogsErr
 	}
-	return io.NopCloser(bytes.NewReader(Multiplexed(stdcopy.Stderr, docker.Logs))), nil
+	return io.NopCloser(bytes.NewReader(multiplexed(stdcopy.Stderr, docker.Logs))), nil
 }
 
 func (docker *Docker) ContainerRemove(_ context.Context, containerID string, _ dockerclient.ContainerRemoveOptions) (dockerclient.ContainerRemoveResult, error) {
@@ -164,10 +165,10 @@ func (docker *Docker) ContainerWait(ctx context.Context, _ string, _ dockerclien
 	result := make(chan containertypes.WaitResponse, 1)
 	errs := make(chan error, 1)
 	switch {
-	case docker.Hangs && ctx.Err() != nil:
+	case docker.NeverExits && ctx.Err() != nil:
 		// Docker's client fails the wait request itself on a done context.
 		errs <- ctx.Err()
-	case docker.Hangs:
+	case docker.NeverExits:
 		go func() {
 			<-ctx.Done()
 			errs <- ctx.Err()
@@ -180,10 +181,6 @@ func (docker *Docker) ContainerWait(ctx context.Context, _ string, _ dockerclien
 		result <- response
 	}
 	return dockerclient.ContainerWaitResult{Result: result, Error: errs}
-}
-
-func (docker *Docker) ImageInspect(context.Context, string, ...dockerclient.ImageInspectOption) (dockerclient.ImageInspectResult, error) {
-	return dockerclient.ImageInspectResult{}, docker.ImageErr
 }
 
 func (docker *Docker) CopyToContainer(_ context.Context, _ string, options dockerclient.CopyToContainerOptions) (dockerclient.CopyToContainerResult, error) {
@@ -202,8 +199,8 @@ func (docker *Docker) ExecAttach(context.Context, string, dockerclient.ExecAttac
 		return dockerclient.ExecAttachResult{}, docker.ExecAttachErr
 	}
 	conn, _ := net.Pipe()
-	reader := bufio.NewReader(bytes.NewReader(Multiplexed(stdcopy.Stdout, docker.ExecOutput)))
-	if docker.ExecHangs {
+	reader := bufio.NewReader(bytes.NewReader(multiplexed(stdcopy.Stdout, docker.ExecOutput)))
+	if docker.ExecNeverExits {
 		// Nothing writes the other end, so reads block until conn is closed.
 		reader = bufio.NewReader(conn)
 	}
@@ -214,9 +211,9 @@ func (docker *Docker) ExecInspect(context.Context, string, dockerclient.ExecInsp
 	return dockerclient.ExecInspectResult{ExitCode: docker.ExecExitCode}, nil
 }
 
-// Multiplexed frames text the way Docker streams output from a container
+// multiplexed frames text the way Docker streams output from a container
 // without a TTY.
-func Multiplexed(stream stdcopy.StdType, text string) []byte {
+func multiplexed(stream stdcopy.StdType, text string) []byte {
 	frame := make([]byte, 8, 8+len(text))
 	frame[0] = byte(stream)
 	binary.BigEndian.PutUint32(frame[4:], uint32(len(text)))
