@@ -62,21 +62,6 @@ func NewDocker() *Docker {
 	}
 }
 
-func (docker *Docker) ArchiveNames() ([]string, error) {
-	reader := tar.NewReader(bytes.NewReader(docker.archive))
-	var names []string
-	for {
-		header, err := reader.Next()
-		if errors.Is(err, io.EOF) {
-			return names, nil
-		}
-		if err != nil {
-			return nil, err
-		}
-		names = append(names, header.Name)
-	}
-}
-
 func (docker *Docker) ContainerCreate(_ context.Context, options dockerclient.ContainerCreateOptions) (dockerclient.ContainerCreateResult, error) {
 	docker.Created = options
 	return dockerclient.ContainerCreateResult{ID: ContainerID}, nil
@@ -111,21 +96,39 @@ func (docker *Docker) ContainerStart(context.Context, string, dockerclient.Conta
 	return dockerclient.ContainerStartResult{}, docker.Fail["ContainerStart"]
 }
 
+func (docker *Docker) ContainerWait(ctx context.Context, _ string, _ dockerclient.ContainerWaitOptions) dockerclient.ContainerWaitResult {
+	result := make(chan containertypes.WaitResponse, 1)
+	errs := make(chan error, 1)
+	switch {
+	case docker.NeverExits && ctx.Err() != nil:
+		// Docker's client fails the wait request itself on a done context.
+		errs <- ctx.Err()
+	case docker.NeverExits:
+		go func() {
+			<-ctx.Done()
+			errs <- ctx.Err()
+		}()
+	default:
+		response := containertypes.WaitResponse{StatusCode: docker.ExitCode}
+		if docker.WaitMessage != "" {
+			response.Error = &containertypes.WaitExitError{Message: docker.WaitMessage}
+		}
+		result <- response
+	}
+	return dockerclient.ContainerWaitResult{Result: result, Error: errs}
+}
+
 // CopyFromContainer serves a file, or every file under a directory, from Files
 // and names the archive entries relative to the source's parent, as Docker does.
 func (docker *Docker) CopyFromContainer(_ context.Context, _ string, options dockerclient.CopyFromContainerOptions) (dockerclient.CopyFromContainerResult, error) {
 	source := path.Clean(options.SourcePath)
 	var names []string
-	if _, ok := docker.Files[source]; ok {
-		names = []string{source}
-	} else {
-		for name := range docker.Files {
-			if strings.HasPrefix(name, source+"/") {
-				names = append(names, name)
-			}
+	for name := range docker.Files {
+		if name == source || strings.HasPrefix(name, source+"/") {
+			names = append(names, name)
 		}
-		slices.Sort(names)
 	}
+	slices.Sort(names)
 	if len(names) == 0 {
 		return dockerclient.CopyFromContainerResult{}, errors.New("no such file: " + options.SourcePath)
 	}
@@ -148,28 +151,6 @@ func (docker *Docker) CopyFromContainer(_ context.Context, _ string, options doc
 		return dockerclient.CopyFromContainerResult{}, err
 	}
 	return dockerclient.CopyFromContainerResult{Content: io.NopCloser(&archive)}, nil
-}
-
-func (docker *Docker) ContainerWait(ctx context.Context, _ string, _ dockerclient.ContainerWaitOptions) dockerclient.ContainerWaitResult {
-	result := make(chan containertypes.WaitResponse, 1)
-	errs := make(chan error, 1)
-	switch {
-	case docker.NeverExits && ctx.Err() != nil:
-		// Docker's client fails the wait request itself on a done context.
-		errs <- ctx.Err()
-	case docker.NeverExits:
-		go func() {
-			<-ctx.Done()
-			errs <- ctx.Err()
-		}()
-	default:
-		response := containertypes.WaitResponse{StatusCode: docker.ExitCode}
-		if docker.WaitMessage != "" {
-			response.Error = &containertypes.WaitExitError{Message: docker.WaitMessage}
-		}
-		result <- response
-	}
-	return dockerclient.ContainerWaitResult{Result: result, Error: errs}
 }
 
 func (docker *Docker) CopyToContainer(_ context.Context, _ string, options dockerclient.CopyToContainerOptions) (dockerclient.CopyToContainerResult, error) {
@@ -198,6 +179,21 @@ func (docker *Docker) ExecAttach(context.Context, string, dockerclient.ExecAttac
 
 func (docker *Docker) ExecInspect(context.Context, string, dockerclient.ExecInspectOptions) (dockerclient.ExecInspectResult, error) {
 	return dockerclient.ExecInspectResult{ExitCode: docker.ExecExitCode}, nil
+}
+
+func (docker *Docker) ArchiveNames() ([]string, error) {
+	reader := tar.NewReader(bytes.NewReader(docker.archive))
+	var names []string
+	for {
+		header, err := reader.Next()
+		if errors.Is(err, io.EOF) {
+			return names, nil
+		}
+		if err != nil {
+			return nil, err
+		}
+		names = append(names, header.Name)
+	}
 }
 
 // multiplexed frames text the way Docker streams output from a container
