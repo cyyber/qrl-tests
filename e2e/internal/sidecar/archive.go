@@ -34,12 +34,13 @@ func archiveFiles(files []File) ([]byte, error) {
 	// A repeated path would silently overwrite the earlier file on extraction.
 	listed := make(map[string]bool, len(files))
 	for _, file := range files {
-		name := strings.TrimPrefix(path.Clean("/"+file.Name), "/")
+		containerPath := path.Clean("/" + file.Name)
+		name := strings.TrimPrefix(containerPath, "/")
 		if name == "" {
 			return nil, errors.New("file name is empty")
 		}
 		if listed[name] {
-			return nil, fmt.Errorf("file /%s is listed twice", name)
+			return nil, fmt.Errorf("file %s is listed twice", containerPath)
 		}
 		listed[name] = true
 
@@ -49,10 +50,10 @@ func archiveFiles(files []File) ([]byte, error) {
 		}
 		header := &tar.Header{Name: name, Mode: mode, Typeflag: tar.TypeReg, Size: int64(len(file.Body))}
 		if err := writer.WriteHeader(header); err != nil {
-			return nil, fmt.Errorf("archive %s: %w", name, err)
+			return nil, fmt.Errorf("archive %s: %w", containerPath, err)
 		}
 		if _, err := writer.Write(file.Body); err != nil {
-			return nil, fmt.Errorf("archive %s: %w", name, err)
+			return nil, fmt.Errorf("archive %s: %w", containerPath, err)
 		}
 	}
 	if err := writer.Close(); err != nil {
