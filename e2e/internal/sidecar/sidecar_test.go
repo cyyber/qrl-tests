@@ -91,6 +91,61 @@ func TestStartRemovesContainerOnFailure(t *testing.T) {
 	}
 }
 
+func TestRunWaitsForSuccessfulExit(t *testing.T) {
+	docker := sidecartest.NewDocker()
+	docker.Files["/out/a.json"] = []byte("[]")
+	docker.Files["/out/b.json"] = []byte("{}")
+
+	container, err := Run(t.Context(), docker, testSpec())
+	require.NoError(t, err)
+	require.Empty(t, docker.Removed, "a successful run keeps the container for its output")
+
+	files, err := container.ReadDir(t.Context(), "/out")
+	require.NoError(t, err)
+	require.Equal(t, []File{
+		{Name: "/out/a.json", Body: []byte("[]"), Mode: 0o600},
+		{Name: "/out/b.json", Body: []byte("{}"), Mode: 0o600},
+	}, files)
+
+	require.NoError(t, container.Close())
+	require.Equal(t, []string{sidecartest.ContainerID}, docker.Removed)
+}
+
+func TestRunReportsFailedExit(t *testing.T) {
+	docker := sidecartest.NewDocker()
+	docker.ExitCode = 1
+	docker.Logs = "tool failed"
+
+	_, err := Run(t.Context(), docker, testSpec())
+	var exitErr *ExitError
+	require.ErrorAs(t, err, &exitErr)
+	require.EqualError(t, err, "test sidecar container exited with code 1\nlast log lines:\ntool failed")
+	require.Equal(t, []string{sidecartest.ContainerID}, docker.Removed)
+}
+
+func TestRunReportsWaitError(t *testing.T) {
+	docker := sidecartest.NewDocker()
+	docker.WaitMessage = "container removed before it exited"
+
+	_, err := Run(t.Context(), docker, testSpec())
+	require.EqualError(t, err, "wait for test sidecar: container removed before it exited")
+	require.Equal(t, []string{sidecartest.ContainerID}, docker.Removed)
+}
+
+func TestRunReportsCancellationWithLogs(t *testing.T) {
+	docker := sidecartest.NewDocker()
+	docker.NeverExits = true
+	docker.Logs = "waiting for peer"
+	ctx, cancel := context.WithCancelCause(t.Context())
+	cancelErr := errors.New("suite timed out")
+	cancel(cancelErr)
+
+	_, err := Run(ctx, docker, testSpec())
+	require.ErrorIs(t, err, cancelErr)
+	require.EqualError(t, err, "wait for test sidecar: suite timed out\nlast log lines:\nwaiting for peer")
+	require.Equal(t, []string{sidecartest.ContainerID}, docker.Removed)
+}
+
 func TestPublishedPortReportsExit(t *testing.T) {
 	docker := sidecartest.NewDocker()
 	container, err := Start(t.Context(), docker, testSpec())
@@ -145,6 +200,17 @@ func TestReadFile(t *testing.T) {
 
 	_, err = container.ReadFile(t.Context(), "/data")
 	require.EqualError(t, err, "archive does not contain /data", "a directory is not a file")
+}
+
+func TestWithLogsReportsUnavailableLogs(t *testing.T) {
+	docker := sidecartest.NewDocker()
+	container, err := Start(t.Context(), docker, testSpec())
+	require.NoError(t, err)
+	docker.State = &containertypes.State{Status: containertypes.StateExited, ExitCode: 1}
+	docker.Fail["ContainerLogs"] = errors.New("daemon unavailable")
+
+	_, err = container.PublishedPort(t.Context())
+	require.EqualError(t, err, "test sidecar container exited with code 1\n(logs unavailable: daemon unavailable)")
 }
 
 func TestExecReportsExitCode(t *testing.T) {
@@ -228,70 +294,4 @@ func TestExecStopsWithContext(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("Exec kept running after its context ended")
 	}
-}
-
-func TestRunWaitsForSuccessfulExit(t *testing.T) {
-	docker := sidecartest.NewDocker()
-	docker.Files["/out/a.json"] = []byte("[]")
-	docker.Files["/out/b.json"] = []byte("{}")
-
-	container, err := Run(t.Context(), docker, testSpec())
-	require.NoError(t, err)
-	require.Empty(t, docker.Removed, "a successful run keeps the container for its output")
-
-	files, err := container.ReadDir(t.Context(), "/out")
-	require.NoError(t, err)
-	require.Equal(t, []File{
-		{Name: "/out/a.json", Body: []byte("[]"), Mode: 0o600},
-		{Name: "/out/b.json", Body: []byte("{}"), Mode: 0o600},
-	}, files)
-
-	require.NoError(t, container.Close())
-	require.Equal(t, []string{sidecartest.ContainerID}, docker.Removed)
-}
-
-func TestRunReportsFailedExit(t *testing.T) {
-	docker := sidecartest.NewDocker()
-	docker.ExitCode = 1
-	docker.Logs = "tool failed"
-
-	_, err := Run(t.Context(), docker, testSpec())
-	var exitErr *ExitError
-	require.ErrorAs(t, err, &exitErr)
-	require.EqualError(t, err, "test sidecar container exited with code 1\nlast log lines:\ntool failed")
-	require.Equal(t, []string{sidecartest.ContainerID}, docker.Removed)
-}
-
-func TestRunReportsWaitError(t *testing.T) {
-	docker := sidecartest.NewDocker()
-	docker.WaitMessage = "container removed before it exited"
-
-	_, err := Run(t.Context(), docker, testSpec())
-	require.EqualError(t, err, "wait for test sidecar: container removed before it exited")
-	require.Equal(t, []string{sidecartest.ContainerID}, docker.Removed)
-}
-
-func TestRunReportsCancellationWithLogs(t *testing.T) {
-	docker := sidecartest.NewDocker()
-	docker.NeverExits = true
-	docker.Logs = "waiting for peer"
-	ctx, cancel := context.WithCancelCause(t.Context())
-	cancelErr := errors.New("suite timed out")
-	cancel(cancelErr)
-
-	_, err := Run(ctx, docker, testSpec())
-	require.ErrorIs(t, err, cancelErr)
-	require.EqualError(t, err, "wait for test sidecar: suite timed out\nlast log lines:\nwaiting for peer")
-	require.Equal(t, []string{sidecartest.ContainerID}, docker.Removed)
-}
-
-func TestWithLogsReportsUnavailableLogs(t *testing.T) {
-	docker := sidecartest.NewDocker()
-	container, err := Start(t.Context(), docker, testSpec())
-	require.NoError(t, err)
-	docker.State = &containertypes.State{Status: containertypes.StateExited, ExitCode: 1}
-	docker.Fail["ContainerLogs"] = errors.New("daemon unavailable")
-
-	_, err = container.PublishedPort(t.Context())
-	require.EqualError(t, err, "test sidecar container exited with code 1\n(logs unavailable: daemon unavailable)")
 }
