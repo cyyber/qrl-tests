@@ -29,7 +29,6 @@ const (
 	labelKey = "qrl-tests.sidecar"
 )
 
-// Client is the Docker API a sidecar needs.
 type Client interface {
 	ContainerCreate(context.Context, dockerclient.ContainerCreateOptions) (dockerclient.ContainerCreateResult, error)
 	ContainerInspect(context.Context, string, dockerclient.ContainerInspectOptions) (dockerclient.ContainerInspectResult, error)
@@ -44,15 +43,13 @@ type Client interface {
 	ExecInspect(context.Context, string, dockerclient.ExecInspectOptions) (dockerclient.ExecInspectResult, error)
 }
 
-// Spec describes one sidecar container.
 type Spec struct {
 	// Name identifies the sidecar in errors, such as "validator sidecar".
 	Name       string
 	Image      string
 	Entrypoint []string
 	Env        []string
-	// Files are copied into the container before it starts.
-	Files []File
+	Files      []File
 	// Port, when set, is published on 127.0.0.1 at a host port Docker picks.
 	Port uint16
 }
@@ -117,8 +114,6 @@ func Run(ctx context.Context, client Client, spec Spec) (*Container, error) {
 	return nil, container.abort(container.WithLogs(fmt.Errorf("wait for %s: %w", spec.Name, context.Cause(ctx))))
 }
 
-// create creates the container and copies its files in, removing it again if
-// the copy fails.
 func create(ctx context.Context, client Client, spec Spec) (*Container, error) {
 	archive, err := archiveFiles(spec.Files)
 	if err != nil {
@@ -161,7 +156,6 @@ func create(ctx context.Context, client Client, spec Spec) (*Container, error) {
 	return container, nil
 }
 
-// abort removes a container that failed to come up, returning both errors.
 func (container *Container) abort(err error) error {
 	return errors.Join(err, container.Close())
 }
@@ -214,7 +208,6 @@ func publishedHostPort(inspected containertypes.InspectResponse, port network.Po
 	return bindings[0].HostPort, nil
 }
 
-// ReadFile copies one file out of the container.
 func (container *Container) ReadFile(ctx context.Context, source string) ([]byte, error) {
 	return ReadFile(ctx, container.client, container.id, source)
 }
@@ -326,7 +319,6 @@ func (container *Container) Exec(ctx context.Context, command ...string) (string
 	return output.String(), nil
 }
 
-// ExitError reports a sidecar container that stopped.
 type ExitError struct {
 	name   string
 	status string

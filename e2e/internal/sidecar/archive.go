@@ -12,7 +12,6 @@ import (
 
 const defaultFileMode = 0o600
 
-// File is one regular file copied into or out of a sidecar container.
 type File struct {
 	// Name is the file's path inside the container. A relative name is taken
 	// from the root.

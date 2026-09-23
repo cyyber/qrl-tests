@@ -20,12 +20,10 @@ import (
 	dockerclient "github.com/moby/moby/client"
 )
 
-// ContainerID is the ID the fake gives every container it creates.
 const ContainerID = "sidecar"
 
-// Docker serves one sidecar container whose state, output and failures the
-// test sets, and records what the code under test asked Docker to do. It is not
-// safe for concurrent use.
+// Docker fakes a Docker daemon serving one sidecar container. It is not safe
+// for concurrent use.
 type Docker struct {
 	State    *containertypes.State
 	HostPort string
@@ -64,7 +62,6 @@ func NewDocker() *Docker {
 	}
 }
 
-// ArchiveNames lists the entries of the archive copied into the container.
 func (docker *Docker) ArchiveNames() ([]string, error) {
 	reader := tar.NewReader(bytes.NewReader(docker.archive))
 	var names []string
