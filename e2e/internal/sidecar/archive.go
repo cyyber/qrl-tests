@@ -14,17 +14,20 @@ const defaultFileMode = 0o600
 
 // File is one regular file copied into or out of a sidecar container.
 type File struct {
-	// Name is the file's path inside the container.
+	// Name is the file's path inside the container. A relative name is taken
+	// from the root.
 	Name string
 	Body []byte
-	// Mode defaults to 0600.
+	// Mode holds the permission bits; zero means 0600.
 	Mode int64
 }
 
-// archiveFiles tars files for extraction at the container root. It writes no
-// directory entries: Docker applies an entry's mode and owner even to a
-// directory the image already has, so an entry for /tmp would reset it. Docker
-// creates missing parent directories itself, leaving existing ones alone.
+// archiveFiles tars files for extraction at the container root. The files are
+// owned by root.
+//
+// It writes no directory entries, because Docker would apply their mode and
+// owner to directories the image already has, such as /tmp. Docker creates
+// missing parent directories itself.
 func archiveFiles(files []File) ([]byte, error) {
 	var archive bytes.Buffer
 	writer := tar.NewWriter(&archive)
@@ -52,8 +55,8 @@ func archiveFiles(files []File) ([]byte, error) {
 	return archive.Bytes(), nil
 }
 
-// readTarFiles returns the regular files in an archive whose entry names are
-// relative to parent.
+// readTarFiles returns the regular files in an archive, each named by joining
+// parent and its entry name. Directories and other entry types are skipped.
 func readTarFiles(reader io.Reader, parent string) ([]File, error) {
 	archive := tar.NewReader(reader)
 	var files []File
