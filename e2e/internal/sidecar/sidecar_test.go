@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/netip"
 	"testing"
+	"time"
 
 	"github.com/cyyber/qrl-tests/e2e/internal/sidecar/sidecartest"
 	containertypes "github.com/moby/moby/api/types/container"
@@ -221,6 +222,17 @@ func TestRunReportsCancellationWithLogs(t *testing.T) {
 	require.Equal(t, []string{sidecartest.ContainerID}, docker.Removed)
 }
 
+func TestWithLogsReportsUnavailableLogs(t *testing.T) {
+	docker := sidecartest.NewDocker()
+	container, err := Start(t.Context(), docker, testSpec())
+	require.NoError(t, err)
+	docker.State = &containertypes.State{Status: containertypes.StateExited, ExitCode: 1}
+	docker.LogsErr = errors.New("daemon unavailable")
+
+	_, err = container.PublishedPort(t.Context())
+	require.EqualError(t, err, "test sidecar container exited with code 1\n(logs unavailable: daemon unavailable)")
+}
+
 func TestRunReportsWaitError(t *testing.T) {
 	docker := sidecartest.NewDocker()
 	docker.WaitMessage = "container removed before it exited"
@@ -228,6 +240,30 @@ func TestRunReportsWaitError(t *testing.T) {
 	_, err := Run(t.Context(), docker, testSpec())
 	require.EqualError(t, err, "wait for test sidecar: container removed before it exited")
 	require.Equal(t, []string{sidecartest.ContainerID}, docker.Removed)
+}
+
+func TestExecStopsWithContext(t *testing.T) {
+	docker := sidecartest.NewDocker()
+	docker.ExecHangs = true
+	container, err := Start(t.Context(), docker, testSpec())
+	require.NoError(t, err)
+	ctx, cancel := context.WithCancelCause(t.Context())
+	cancelErr := errors.New("spec timed out")
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := container.Exec(ctx, "/validator", "accounts", "voluntary-exit")
+		done <- err
+	}()
+	cancel(cancelErr)
+
+	select {
+	case err := <-done:
+		require.ErrorIs(t, err, cancelErr)
+		require.EqualError(t, err, "exec /validator accounts voluntary-exit: spec timed out")
+	case <-time.After(5 * time.Second):
+		t.Fatal("Exec kept running after its context ended")
+	}
 }
 
 func TestExecReportsDockerFailures(t *testing.T) {

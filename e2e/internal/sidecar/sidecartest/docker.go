@@ -40,11 +40,15 @@ type Docker struct {
 	ExitCode int64
 	// WaitMessage is reported as the wait response's error.
 	WaitMessage string
-	// Hangs keeps ContainerWait from ever reporting an exit.
-	Hangs         bool
+	// Hangs keeps ContainerWait from reporting an exit; like Docker's client,
+	// the waiter then fails once its context ends.
+	Hangs bool
+	// ExecHangs keeps an exec's output open until the caller closes it.
+	ExecHangs     bool
 	StartErr      error
 	RemoveErr     error
 	ImageErr      error
+	LogsErr       error
 	ExecCreateErr error
 	ExecAttachErr error
 
@@ -102,6 +106,9 @@ func (docker *Docker) ContainerList(context.Context, dockerclient.ContainerListO
 }
 
 func (docker *Docker) ContainerLogs(context.Context, string, dockerclient.ContainerLogsOptions) (dockerclient.ContainerLogsResult, error) {
+	if docker.LogsErr != nil {
+		return nil, docker.LogsErr
+	}
 	return io.NopCloser(bytes.NewReader(Multiplexed(stdcopy.Stderr, docker.Logs))), nil
 }
 
@@ -153,16 +160,26 @@ func (docker *Docker) CopyFromContainer(_ context.Context, _ string, options doc
 	return dockerclient.CopyFromContainerResult{Content: io.NopCloser(&archive)}, nil
 }
 
-func (docker *Docker) ContainerWait(context.Context, string, dockerclient.ContainerWaitOptions) dockerclient.ContainerWaitResult {
+func (docker *Docker) ContainerWait(ctx context.Context, _ string, _ dockerclient.ContainerWaitOptions) dockerclient.ContainerWaitResult {
 	result := make(chan containertypes.WaitResponse, 1)
-	if !docker.Hangs {
+	errs := make(chan error, 1)
+	switch {
+	case docker.Hangs && ctx.Err() != nil:
+		// Docker's client fails the wait request itself on a done context.
+		errs <- ctx.Err()
+	case docker.Hangs:
+		go func() {
+			<-ctx.Done()
+			errs <- ctx.Err()
+		}()
+	default:
 		response := containertypes.WaitResponse{StatusCode: docker.ExitCode}
 		if docker.WaitMessage != "" {
 			response.Error = &containertypes.WaitExitError{Message: docker.WaitMessage}
 		}
 		result <- response
 	}
-	return dockerclient.ContainerWaitResult{Result: result, Error: make(chan error)}
+	return dockerclient.ContainerWaitResult{Result: result, Error: errs}
 }
 
 func (docker *Docker) ImageInspect(context.Context, string, ...dockerclient.ImageInspectOption) (dockerclient.ImageInspectResult, error) {
@@ -185,10 +202,12 @@ func (docker *Docker) ExecAttach(context.Context, string, dockerclient.ExecAttac
 		return dockerclient.ExecAttachResult{}, docker.ExecAttachErr
 	}
 	conn, _ := net.Pipe()
-	return dockerclient.ExecAttachResult{HijackedResponse: dockerclient.HijackedResponse{
-		Conn:   conn,
-		Reader: bufio.NewReader(bytes.NewReader(Multiplexed(stdcopy.Stdout, docker.ExecOutput))),
-	}}, nil
+	reader := bufio.NewReader(bytes.NewReader(Multiplexed(stdcopy.Stdout, docker.ExecOutput)))
+	if docker.ExecHangs {
+		// Nothing writes the other end, so reads block until conn is closed.
+		reader = bufio.NewReader(conn)
+	}
+	return dockerclient.ExecAttachResult{HijackedResponse: dockerclient.HijackedResponse{Conn: conn, Reader: reader}}, nil
 }
 
 func (docker *Docker) ExecInspect(context.Context, string, dockerclient.ExecInspectOptions) (dockerclient.ExecInspectResult, error) {

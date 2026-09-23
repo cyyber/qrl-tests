@@ -95,10 +95,6 @@ func Run(ctx context.Context, client Client, spec Spec) (*Container, error) {
 	}
 
 	select {
-	case err := <-waiter.Error:
-		return nil, container.abort(fmt.Errorf("wait for %s: %w", spec.Name, err))
-	case <-ctx.Done():
-		return nil, container.abort(container.WithLogs(fmt.Errorf("wait for %s: %w", spec.Name, context.Cause(ctx))))
 	case status := <-waiter.Result:
 		if status.Error != nil {
 			return nil, container.abort(fmt.Errorf("wait for %s: %s", spec.Name, status.Error.Message))
@@ -109,8 +105,16 @@ func Run(ctx context.Context, client Client, spec Spec) (*Container, error) {
 				status: fmt.Sprintf("exited with code %d", status.StatusCode),
 			}))
 		}
+		return container, nil
+	case err := <-waiter.Error:
+		// The waiter reads with ctx, so it fails as well once ctx ends; report
+		// that as the cancellation it is.
+		if ctx.Err() == nil {
+			return nil, container.abort(fmt.Errorf("wait for %s: %w", spec.Name, err))
+		}
+	case <-ctx.Done():
 	}
-	return container, nil
+	return nil, container.abort(container.WithLogs(fmt.Errorf("wait for %s: %w", spec.Name, context.Cause(ctx))))
 }
 
 // create creates the container and copies its files in, removing it again if
@@ -220,9 +224,23 @@ func ReadFile(ctx context.Context, client Client, containerID, path string) ([]b
 	return readTarFile(copied.Content, path)
 }
 
-// Logs returns the end of the container's output. It reads on its own
-// deadline, since logs matter most once the caller's context has run out.
-func (container *Container) Logs() string {
+// WithLogs appends the end of the container's output to err, for failures the
+// sidecar's own logs explain.
+func (container *Container) WithLogs(err error) error {
+	logs, logsErr := container.logs()
+	switch {
+	case logsErr != nil:
+		return fmt.Errorf("%w\n(logs unavailable: %v)", err, logsErr)
+	case logs == "":
+		return err
+	default:
+		return fmt.Errorf("%w\nlast log lines:\n%s", err, logs)
+	}
+}
+
+// logs reads the end of the container's output on its own deadline, since
+// logs matter most once the caller's context has run out.
+func (container *Container) logs() (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), logTimeout)
 	defer cancel()
 	logs, err := container.client.ContainerLogs(ctx, container.id, dockerclient.ContainerLogsOptions{
@@ -231,25 +249,15 @@ func (container *Container) Logs() string {
 		Tail:       exitLogTail,
 	})
 	if err != nil {
-		return "logs unavailable: " + err.Error()
+		return "", err
 	}
 	defer logs.Close()
 
 	var output bytes.Buffer
 	if _, err := stdcopy.StdCopy(&output, &output, logs); err != nil {
-		return "logs unavailable: " + err.Error()
+		return "", err
 	}
-	return strings.TrimSpace(output.String())
-}
-
-// WithLogs appends the end of the container's output to err, for failures the
-// sidecar's own logs explain.
-func (container *Container) WithLogs(err error) error {
-	logs := container.Logs()
-	if logs == "" {
-		return err
-	}
-	return fmt.Errorf("%w\nlast log lines:\n%s", err, logs)
+	return strings.TrimSpace(output.String()), nil
 }
 
 // Exec runs command inside the container and returns its combined output. A
@@ -269,9 +277,16 @@ func (container *Container) Exec(ctx context.Context, command ...string) (string
 		return "", fmt.Errorf("attach exec %s: %w", commandLine, err)
 	}
 	defer attached.Close()
+	// The attached stream does not end with ctx; close it so a command that
+	// never exits cannot block past the caller's deadline.
+	stop := context.AfterFunc(ctx, attached.Close)
+	defer stop()
 
 	var output bytes.Buffer
 	if _, err := stdcopy.StdCopy(&output, &output, attached.Reader); err != nil {
+		if ctx.Err() != nil {
+			return output.String(), fmt.Errorf("exec %s: %w", commandLine, context.Cause(ctx))
+		}
 		return output.String(), fmt.Errorf("read exec %s: %w", commandLine, err)
 	}
 	inspected, err := container.client.ExecInspect(ctx, created.ID, dockerclient.ExecInspectOptions{})
