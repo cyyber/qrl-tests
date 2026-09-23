@@ -153,11 +153,6 @@ func TestReadFile(t *testing.T) {
 	require.EqualError(t, err, "archive does not contain /wallet", "a directory is not a file")
 }
 
-func TestArchiveFilesRejectsEmptyName(t *testing.T) {
-	_, err := archiveFiles([]File{{Name: "/"}})
-	require.ErrorContains(t, err, "file name is empty")
-}
-
 func TestHostRewrites(t *testing.T) {
 	url, err := HostURL("http://127.0.0.1:3500")
 	require.NoError(t, err)

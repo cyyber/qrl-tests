@@ -31,11 +31,17 @@ type File struct {
 func archiveFiles(files []File) ([]byte, error) {
 	var archive bytes.Buffer
 	writer := tar.NewWriter(&archive)
+	// A repeated path would silently overwrite the earlier file on extraction.
+	listed := make(map[string]bool, len(files))
 	for _, file := range files {
 		name := strings.TrimPrefix(path.Clean("/"+file.Name), "/")
 		if name == "" {
 			return nil, errors.New("file name is empty")
 		}
+		if listed[name] {
+			return nil, fmt.Errorf("file /%s is listed twice", name)
+		}
+		listed[name] = true
 
 		mode := file.Mode
 		if mode == 0 {
