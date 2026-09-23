@@ -37,10 +37,16 @@ type Docker struct {
 	ExecOutput   string
 	ExecExitCode int
 	// ExitCode is what ContainerWait reports once the container has started.
-	ExitCode  int64
-	StartErr  error
-	RemoveErr error
-	ImageErr  error
+	ExitCode int64
+	// WaitMessage is reported as the wait response's error.
+	WaitMessage string
+	// Hangs keeps ContainerWait from ever reporting an exit.
+	Hangs         bool
+	StartErr      error
+	RemoveErr     error
+	ImageErr      error
+	ExecCreateErr error
+	ExecAttachErr error
 
 	Created dockerclient.ContainerCreateOptions
 	// Archive is the tar the code under test copied into the container.
@@ -149,7 +155,13 @@ func (docker *Docker) CopyFromContainer(_ context.Context, _ string, options doc
 
 func (docker *Docker) ContainerWait(context.Context, string, dockerclient.ContainerWaitOptions) dockerclient.ContainerWaitResult {
 	result := make(chan containertypes.WaitResponse, 1)
-	result <- containertypes.WaitResponse{StatusCode: docker.ExitCode}
+	if !docker.Hangs {
+		response := containertypes.WaitResponse{StatusCode: docker.ExitCode}
+		if docker.WaitMessage != "" {
+			response.Error = &containertypes.WaitExitError{Message: docker.WaitMessage}
+		}
+		result <- response
+	}
 	return dockerclient.ContainerWaitResult{Result: result, Error: make(chan error)}
 }
 
@@ -165,10 +177,13 @@ func (docker *Docker) CopyToContainer(_ context.Context, _ string, options docke
 
 func (docker *Docker) ExecCreate(_ context.Context, _ string, options dockerclient.ExecCreateOptions) (dockerclient.ExecCreateResult, error) {
 	docker.Execs = append(docker.Execs, options.Cmd)
-	return dockerclient.ExecCreateResult{ID: "exec"}, nil
+	return dockerclient.ExecCreateResult{ID: "exec"}, docker.ExecCreateErr
 }
 
 func (docker *Docker) ExecAttach(context.Context, string, dockerclient.ExecAttachOptions) (dockerclient.ExecAttachResult, error) {
+	if docker.ExecAttachErr != nil {
+		return dockerclient.ExecAttachResult{}, docker.ExecAttachErr
+	}
 	conn, _ := net.Pipe()
 	return dockerclient.ExecAttachResult{HijackedResponse: dockerclient.HijackedResponse{
 		Conn:   conn,

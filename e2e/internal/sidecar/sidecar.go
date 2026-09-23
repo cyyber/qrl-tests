@@ -22,7 +22,11 @@ import (
 
 const (
 	cleanupTimeout = 30 * time.Second
+	logTimeout     = 10 * time.Second
 	exitLogTail    = "50"
+	// labelKey marks every sidecar container, so ones a killed test process
+	// never removed can be found with a label filter.
+	labelKey = "qrl-tests.sidecar"
 )
 
 // Client is the Docker API a sidecar needs.
@@ -94,14 +98,16 @@ func Run(ctx context.Context, client Client, spec Spec) (*Container, error) {
 	case err := <-waiter.Error:
 		return nil, container.abort(fmt.Errorf("wait for %s: %w", spec.Name, err))
 	case <-ctx.Done():
-		return nil, container.abort(fmt.Errorf("wait for %s: %w", spec.Name, ctx.Err()))
+		return nil, container.abort(container.WithLogs(fmt.Errorf("wait for %s: %w", spec.Name, context.Cause(ctx))))
 	case status := <-waiter.Result:
+		if status.Error != nil {
+			return nil, container.abort(fmt.Errorf("wait for %s: %s", spec.Name, status.Error.Message))
+		}
 		if status.StatusCode != 0 {
-			return nil, container.abort(&ExitError{
+			return nil, container.abort(container.WithLogs(&ExitError{
 				name:   spec.Name,
 				status: fmt.Sprintf("exited with code %d", status.StatusCode),
-				logs:   container.Logs(ctx),
-			})
+			}))
 		}
 	}
 	return container, nil
@@ -115,7 +121,12 @@ func create(ctx context.Context, client Client, spec Spec) (*Container, error) {
 		return nil, fmt.Errorf("archive %s files: %w", spec.Name, err)
 	}
 
-	config := &containertypes.Config{Image: spec.Image, Entrypoint: spec.Entrypoint, Env: spec.Env}
+	config := &containertypes.Config{
+		Image:      spec.Image,
+		Entrypoint: spec.Entrypoint,
+		Env:        spec.Env,
+		Labels:     map[string]string{labelKey: spec.Name},
+	}
 	hostConfig := &containertypes.HostConfig{ExtraHosts: []string{containerHost + ":host-gateway"}}
 	if spec.Port != 0 {
 		port, ok := network.PortFrom(spec.Port, network.TCP)
@@ -171,11 +182,14 @@ func (container *Container) PublishedPort(ctx context.Context) (string, error) {
 		return "", fmt.Errorf("inspect %s container: %w", container.name, err)
 	}
 	if state := inspected.Container.State; state != nil && !state.Running {
-		status := string(state.Status)
+		status := "is " + string(state.Status)
+		if state.Status == containertypes.StateExited {
+			status = fmt.Sprintf("exited with code %d", state.ExitCode)
+		}
 		if state.Error != "" {
 			status += ": " + state.Error
 		}
-		return "", &ExitError{name: container.name, status: status, logs: container.Logs(ctx)}
+		return "", container.WithLogs(&ExitError{name: container.name, status: status})
 	}
 	return publishedHostPort(inspected.Container, container.port)
 }
@@ -206,8 +220,11 @@ func ReadFile(ctx context.Context, client Client, containerID, path string) ([]b
 	return readTarFile(copied.Content, path)
 }
 
-// Logs returns the end of the container's output.
-func (container *Container) Logs(ctx context.Context) string {
+// Logs returns the end of the container's output. It reads on its own
+// deadline, since logs matter most once the caller's context has run out.
+func (container *Container) Logs() string {
+	ctx, cancel := context.WithTimeout(context.Background(), logTimeout)
+	defer cancel()
 	logs, err := container.client.ContainerLogs(ctx, container.id, dockerclient.ContainerLogsOptions{
 		ShowStdout: true,
 		ShowStderr: true,
@@ -223,6 +240,16 @@ func (container *Container) Logs(ctx context.Context) string {
 		return "logs unavailable: " + err.Error()
 	}
 	return strings.TrimSpace(output.String())
+}
+
+// WithLogs appends the end of the container's output to err, for failures the
+// sidecar's own logs explain.
+func (container *Container) WithLogs(err error) error {
+	logs := container.Logs()
+	if logs == "" {
+		return err
+	}
+	return fmt.Errorf("%w\nlast log lines:\n%s", err, logs)
 }
 
 // Exec runs command inside the container and returns its combined output. A
@@ -257,17 +284,12 @@ func (container *Container) Exec(ctx context.Context, command ...string) (string
 	return output.String(), nil
 }
 
-// ExitError reports a sidecar container that stopped, with its last log lines.
+// ExitError reports a sidecar container that stopped.
 type ExitError struct {
 	name   string
 	status string
-	logs   string
 }
 
 func (err *ExitError) Error() string {
-	message := err.name + " container is " + err.status
-	if err.logs != "" {
-		message += "\nlast log lines:\n" + err.logs
-	}
-	return message
+	return err.name + " container " + err.status
 }

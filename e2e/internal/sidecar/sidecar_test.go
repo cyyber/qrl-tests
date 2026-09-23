@@ -1,6 +1,7 @@
 package sidecar
 
 import (
+	"context"
 	"errors"
 	"net/netip"
 	"testing"
@@ -38,11 +39,13 @@ func TestStartCreatesPublishedContainer(t *testing.T) {
 	require.Equal(t, []string{"/bin/sh", "/start.sh"}, docker.Created.Config.Entrypoint)
 	require.Equal(t, []string{"MODE=test"}, docker.Created.Config.Env)
 	require.Equal(t, []string{"host.docker.internal:host-gateway"}, docker.Created.HostConfig.ExtraHosts)
+	require.Equal(t, map[string]string{"qrl-tests.sidecar": "test sidecar"}, docker.Created.Config.Labels)
 	require.Equal(t, network.PortMap{port: {{HostIP: netip.MustParseAddr("127.0.0.1")}}}, docker.Created.HostConfig.PortBindings)
 
 	names, err := docker.ArchiveNames()
 	require.NoError(t, err)
-	require.Equal(t, []string{"start.sh", "config/", "config/network/", "config/network/config.yaml"}, names)
+	require.Equal(t, []string{"start.sh", "config/network/config.yaml"}, names,
+		"directory entries would reset existing directories; Docker creates missing parents itself")
 
 	hostPort, err := container.PublishedPort(t.Context())
 	require.NoError(t, err)
@@ -90,13 +93,18 @@ func TestPublishedPortReportsExit(t *testing.T) {
 	container, err := Start(t.Context(), docker, testSpec())
 	require.NoError(t, err)
 
-	docker.State = &containertypes.State{Status: containertypes.StateExited, Error: "exit status 1"}
+	docker.State = &containertypes.State{Status: containertypes.StateExited, ExitCode: 1}
 	docker.Logs = "could not decrypt keystore: invalid password\n"
 
 	_, err = container.PublishedPort(t.Context())
 	var exitErr *ExitError
 	require.ErrorAs(t, err, &exitErr)
-	require.EqualError(t, err, "test sidecar container is exited: exit status 1\nlast log lines:\ncould not decrypt keystore: invalid password")
+	require.EqualError(t, err, "test sidecar container exited with code 1\nlast log lines:\ncould not decrypt keystore: invalid password")
+
+	docker.State = &containertypes.State{Status: containertypes.StateDead, Error: "OCI runtime error"}
+	docker.Logs = ""
+	_, err = container.PublishedPort(t.Context())
+	require.EqualError(t, err, "test sidecar container is dead: OCI runtime error")
 }
 
 func TestExecReportsExitCode(t *testing.T) {
@@ -195,6 +203,60 @@ func TestRunReportsFailedExit(t *testing.T) {
 	_, err := Run(t.Context(), docker, testSpec())
 	var exitErr *ExitError
 	require.ErrorAs(t, err, &exitErr)
-	require.EqualError(t, err, "test sidecar container is exited with code 1\nlast log lines:\ninsufficient funds for deposit")
+	require.EqualError(t, err, "test sidecar container exited with code 1\nlast log lines:\ninsufficient funds for deposit")
 	require.Equal(t, []string{sidecartest.ContainerID}, docker.Removed)
+}
+
+func TestRunReportsCancellationWithLogs(t *testing.T) {
+	docker := sidecartest.NewDocker()
+	docker.Hangs = true
+	docker.Logs = "waiting for execution client"
+	ctx, cancel := context.WithCancelCause(t.Context())
+	cancelErr := errors.New("suite timed out")
+	cancel(cancelErr)
+
+	_, err := Run(ctx, docker, testSpec())
+	require.ErrorIs(t, err, cancelErr)
+	require.EqualError(t, err, "wait for test sidecar: suite timed out\nlast log lines:\nwaiting for execution client")
+	require.Equal(t, []string{sidecartest.ContainerID}, docker.Removed)
+}
+
+func TestRunReportsWaitError(t *testing.T) {
+	docker := sidecartest.NewDocker()
+	docker.WaitMessage = "container removed before it exited"
+
+	_, err := Run(t.Context(), docker, testSpec())
+	require.EqualError(t, err, "wait for test sidecar: container removed before it exited")
+	require.Equal(t, []string{sidecartest.ContainerID}, docker.Removed)
+}
+
+func TestExecReportsDockerFailures(t *testing.T) {
+	execErr := errors.New("daemon unavailable")
+	for _, test := range []struct {
+		name    string
+		setup   func(*sidecartest.Docker)
+		wantErr string
+	}{
+		{
+			name:    "create",
+			setup:   func(docker *sidecartest.Docker) { docker.ExecCreateErr = execErr },
+			wantErr: "create exec /validator accounts list: daemon unavailable",
+		},
+		{
+			name:    "attach",
+			setup:   func(docker *sidecartest.Docker) { docker.ExecAttachErr = execErr },
+			wantErr: "attach exec /validator accounts list: daemon unavailable",
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			docker := sidecartest.NewDocker()
+			container, err := Start(t.Context(), docker, testSpec())
+			require.NoError(t, err)
+			test.setup(docker)
+
+			_, err = container.Exec(t.Context(), "/validator", "accounts", "list")
+			require.ErrorIs(t, err, execErr)
+			require.EqualError(t, err, test.wantErr)
+		})
+	}
 }

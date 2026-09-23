@@ -21,25 +21,17 @@ type File struct {
 	Mode int64
 }
 
-// archiveFiles tars files for extraction at the container root, adding an
-// entry for each parent directory ahead of the files inside it.
+// archiveFiles tars files for extraction at the container root. It writes no
+// directory entries: Docker applies an entry's mode and owner even to a
+// directory the image already has, so an entry for /tmp would reset it. Docker
+// creates missing parent directories itself, leaving existing ones alone.
 func archiveFiles(files []File) ([]byte, error) {
 	var archive bytes.Buffer
 	writer := tar.NewWriter(&archive)
-	directories := map[string]bool{}
 	for _, file := range files {
 		name := strings.TrimPrefix(path.Clean("/"+file.Name), "/")
 		if name == "" {
 			return nil, errors.New("file name is empty")
-		}
-		for _, directory := range parentDirectories(name) {
-			if directories[directory] {
-				continue
-			}
-			directories[directory] = true
-			if err := writer.WriteHeader(&tar.Header{Name: directory + "/", Mode: 0o755, Typeflag: tar.TypeDir}); err != nil {
-				return nil, fmt.Errorf("archive %s: %w", directory, err)
-			}
 		}
 
 		mode := file.Mode
@@ -58,15 +50,6 @@ func archiveFiles(files []File) ([]byte, error) {
 		return nil, err
 	}
 	return archive.Bytes(), nil
-}
-
-// parentDirectories lists the directories above name, outermost first.
-func parentDirectories(name string) []string {
-	var directories []string
-	for directory := path.Dir(name); directory != "."; directory = path.Dir(directory) {
-		directories = append([]string{directory}, directories...)
-	}
-	return directories
 }
 
 // readTarFile returns the regular file in the archive whose base name matches
