@@ -48,8 +48,7 @@ func TestStartCreatesPublishedContainer(t *testing.T) {
 
 	names, err := docker.ArchiveNames()
 	require.NoError(t, err)
-	require.Equal(t, []string{"start.sh", "config/network/config.yaml"}, names,
-		"directory entries would reset existing directories; Docker creates missing parents itself")
+	require.Equal(t, []string{"start.sh", "config/network/config.yaml"}, names)
 
 	hostPort, err := container.PublishedPort(t.Context())
 	require.NoError(t, err)

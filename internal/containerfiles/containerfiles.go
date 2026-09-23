@@ -1,17 +1,23 @@
-package sidecar
+// Package containerfiles copies regular files into and out of Docker
+// containers, in the tar archives the Docker API exchanges.
+package containerfiles
 
 import (
 	"archive/tar"
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io"
 	"path"
 	"strings"
+
+	dockerclient "github.com/moby/moby/client"
 )
 
 const defaultFileMode = 0o600
 
+// File is a regular file inside a container.
 type File struct {
 	// Name is the file's path inside the container. A relative name is taken
 	// from the root.
@@ -21,13 +27,44 @@ type File struct {
 	Mode int64
 }
 
-// archiveFiles tars files for extraction at the container root. The files are
+// Copier is the part of the Docker client Read and ReadFile use.
+type Copier interface {
+	CopyFromContainer(context.Context, string, dockerclient.CopyFromContainerOptions) (dockerclient.CopyFromContainerResult, error)
+}
+
+// Read copies the regular files at source, a file or a directory, out of a
+// container, named by their paths inside it.
+func Read(ctx context.Context, client Copier, containerID, source string) ([]File, error) {
+	copied, err := client.CopyFromContainer(ctx, containerID, dockerclient.CopyFromContainerOptions{SourcePath: source})
+	if err != nil {
+		return nil, fmt.Errorf("copy %s: %w", source, err)
+	}
+	defer copied.Content.Close()
+	// Docker names the entries relative to the source's parent directory.
+	return ReadArchive(copied.Content, path.Dir(path.Clean(source)))
+}
+
+// ReadFile copies one regular file out of a container.
+func ReadFile(ctx context.Context, client Copier, containerID, source string) ([]byte, error) {
+	files, err := Read(ctx, client, containerID, source)
+	if err != nil {
+		return nil, err
+	}
+	for _, file := range files {
+		if file.Name == path.Clean(source) {
+			return file.Body, nil
+		}
+	}
+	return nil, fmt.Errorf("archive does not contain %s", source)
+}
+
+// Archive tars files for extraction at the container root. The files are
 // owned by root.
 //
 // It writes no directory entries, because Docker would apply their mode and
 // owner to directories the image already has, such as /tmp. Docker creates
 // missing parent directories itself.
-func archiveFiles(files []File) ([]byte, error) {
+func Archive(files []File) ([]byte, error) {
 	var archive bytes.Buffer
 	writer := tar.NewWriter(&archive)
 	// A repeated path would silently overwrite the earlier file on extraction.
@@ -61,9 +98,9 @@ func archiveFiles(files []File) ([]byte, error) {
 	return archive.Bytes(), nil
 }
 
-// readArchive returns the regular files in an archive, each named by joining
+// ReadArchive returns the regular files in an archive, each named by joining
 // parent and its entry name. Directories and other entry types are skipped.
-func readArchive(reader io.Reader, parent string) ([]File, error) {
+func ReadArchive(reader io.Reader, parent string) ([]File, error) {
 	archive := tar.NewReader(reader)
 	var files []File
 	for {

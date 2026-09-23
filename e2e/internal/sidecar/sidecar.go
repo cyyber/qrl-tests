@@ -10,10 +10,10 @@ import (
 	"errors"
 	"fmt"
 	"net/netip"
-	"path"
 	"strings"
 	"time"
 
+	"github.com/cyyber/qrl-tests/internal/containerfiles"
 	"github.com/moby/moby/api/pkg/stdcopy"
 	containertypes "github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/api/types/network"
@@ -42,6 +42,9 @@ type Client interface {
 	ExecAttach(context.Context, string, dockerclient.ExecAttachOptions) (dockerclient.ExecAttachResult, error)
 	ExecInspect(context.Context, string, dockerclient.ExecInspectOptions) (dockerclient.ExecInspectResult, error)
 }
+
+// File is a file a sidecar copies into its container or reads out of it.
+type File = containerfiles.File
 
 type Spec struct {
 	// Name identifies the sidecar in errors, such as "validator sidecar".
@@ -114,7 +117,7 @@ func Run(ctx context.Context, client Client, spec Spec) (*Container, error) {
 }
 
 func create(ctx context.Context, client Client, spec Spec) (*Container, error) {
-	archive, err := archiveFiles(spec.Files)
+	archive, err := containerfiles.Archive(spec.Files)
 	if err != nil {
 		return nil, fmt.Errorf("archive %s files: %w", spec.Name, err)
 	}
@@ -207,38 +210,15 @@ func publishedHostPort(inspected containertypes.InspectResponse, port network.Po
 	return bindings[0].HostPort, nil
 }
 
+// ReadFile copies one file out of the container.
 func (container *Container) ReadFile(ctx context.Context, source string) ([]byte, error) {
-	return ReadFile(ctx, container.client, container.id, source)
+	return containerfiles.ReadFile(ctx, container.client, container.id, source)
 }
 
 // ReadDir copies the regular files under dir out of the container, named by
 // their paths inside it.
 func (container *Container) ReadDir(ctx context.Context, dir string) ([]File, error) {
-	return copyFiles(ctx, container.client, container.id, dir)
-}
-
-// ReadFile copies one file out of any container, such as a devnet service's.
-func ReadFile(ctx context.Context, client Client, containerID, source string) ([]byte, error) {
-	files, err := copyFiles(ctx, client, containerID, source)
-	if err != nil {
-		return nil, err
-	}
-	for _, file := range files {
-		if file.Name == path.Clean(source) {
-			return file.Body, nil
-		}
-	}
-	return nil, fmt.Errorf("archive does not contain %s", source)
-}
-
-func copyFiles(ctx context.Context, client Client, containerID, source string) ([]File, error) {
-	copied, err := client.CopyFromContainer(ctx, containerID, dockerclient.CopyFromContainerOptions{SourcePath: source})
-	if err != nil {
-		return nil, err
-	}
-	defer copied.Content.Close()
-	// Docker names the entries relative to the source's parent directory.
-	return readArchive(copied.Content, path.Dir(path.Clean(source)))
+	return containerfiles.Read(ctx, container.client, container.id, dir)
 }
 
 // WithLogs appends the end of the container's output to err, for failures the

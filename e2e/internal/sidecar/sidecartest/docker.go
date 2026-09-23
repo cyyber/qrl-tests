@@ -2,7 +2,6 @@
 package sidecartest
 
 import (
-	"archive/tar"
 	"bufio"
 	"bytes"
 	"context"
@@ -14,6 +13,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/cyyber/qrl-tests/internal/containerfiles"
 	"github.com/moby/moby/api/pkg/stdcopy"
 	containertypes "github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/api/types/network"
@@ -30,6 +30,9 @@ type Docker struct {
 	Logs     string
 	// Files are served by CopyFromContainer, keyed by path, for any container.
 	Files map[string][]byte
+	// Containers are served by ContainerList whatever the filter; Listed
+	// records the options.
+	Containers []containertypes.Summary
 
 	ExitCode    int64
 	WaitMessage string
@@ -51,6 +54,7 @@ type Docker struct {
 	archive []byte
 	Execs   [][]string
 	Removed []string
+	Listed  []dockerclient.ContainerListOptions
 }
 
 // NewDocker returns a fake whose sidecar is running.
@@ -133,24 +137,16 @@ func (docker *Docker) CopyFromContainer(_ context.Context, _ string, options doc
 		return dockerclient.CopyFromContainerResult{}, errors.New("no such file: " + options.SourcePath)
 	}
 
-	var archive bytes.Buffer
-	writer := tar.NewWriter(&archive)
-	for _, name := range names {
-		body := docker.Files[name]
+	files := make([]containerfiles.File, len(names))
+	for index, name := range names {
 		relative := strings.TrimPrefix(name, strings.TrimSuffix(path.Dir(source), "/")+"/")
-		if err := writer.WriteHeader(&tar.Header{
-			Name: relative, Mode: 0o600, Typeflag: tar.TypeReg, Size: int64(len(body)),
-		}); err != nil {
-			return dockerclient.CopyFromContainerResult{}, err
-		}
-		if _, err := writer.Write(body); err != nil {
-			return dockerclient.CopyFromContainerResult{}, err
-		}
+		files[index] = containerfiles.File{Name: relative, Body: docker.Files[name]}
 	}
-	if err := writer.Close(); err != nil {
+	archive, err := containerfiles.Archive(files)
+	if err != nil {
 		return dockerclient.CopyFromContainerResult{}, err
 	}
-	return dockerclient.CopyFromContainerResult{Content: io.NopCloser(&archive)}, nil
+	return dockerclient.CopyFromContainerResult{Content: io.NopCloser(bytes.NewReader(archive))}, nil
 }
 
 func (docker *Docker) CopyToContainer(_ context.Context, _ string, options dockerclient.CopyToContainerOptions) (dockerclient.CopyToContainerResult, error) {
@@ -181,19 +177,22 @@ func (docker *Docker) ExecInspect(context.Context, string, dockerclient.ExecInsp
 	return dockerclient.ExecInspectResult{ExitCode: docker.ExecExitCode}, nil
 }
 
+func (docker *Docker) ContainerList(_ context.Context, options dockerclient.ContainerListOptions) (dockerclient.ContainerListResult, error) {
+	docker.Listed = append(docker.Listed, options)
+	return dockerclient.ContainerListResult{Items: docker.Containers}, nil
+}
+
+// ArchiveNames lists the files copied into the container, relative to its root.
 func (docker *Docker) ArchiveNames() ([]string, error) {
-	reader := tar.NewReader(bytes.NewReader(docker.archive))
-	var names []string
-	for {
-		header, err := reader.Next()
-		if errors.Is(err, io.EOF) {
-			return names, nil
-		}
-		if err != nil {
-			return nil, err
-		}
-		names = append(names, header.Name)
+	files, err := containerfiles.ReadArchive(bytes.NewReader(docker.archive), "")
+	if err != nil {
+		return nil, err
 	}
+	names := make([]string, len(files))
+	for index, file := range files {
+		names[index] = file.Name
+	}
+	return names, nil
 }
 
 // multiplexed frames text the way Docker streams output from a container
