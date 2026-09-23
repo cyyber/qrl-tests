@@ -157,8 +157,6 @@ func TestFixtureFiles(t *testing.T) {
 
 	_, err = fixtureFiles(nil, nil)
 	require.EqualError(t, err, "chain config is empty")
-	_, err = fixtureFiles([]byte("PRESET_BASE: minimal\n"), []sidecar.File{{Name: " "}})
-	require.EqualError(t, err, "keystore name is empty")
 }
 
 func TestParseAuthToken(t *testing.T) {

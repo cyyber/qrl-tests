@@ -1,326 +1,113 @@
 package console
 
 import (
-	"archive/tar"
 	"bytes"
 	"context"
 	"embed"
 	"errors"
 	"fmt"
 	"io"
-	"net"
-	"net/url"
+	"io/fs"
+	"path"
 	"sync"
 	"time"
 
-	"github.com/cyyber/qrl-tests/internal/dockerapi"
-	"github.com/moby/moby/api/pkg/stdcopy"
-	containertypes "github.com/moby/moby/api/types/container"
-	dockerclient "github.com/moby/moby/client"
+	"github.com/cyyber/qrl-tests/e2e/internal/sidecar"
+	"github.com/cyyber/qrl-tests/e2e/internal/sidecar/gqrl"
 )
 
 const (
 	passPrefix = "CONSOLE_E2E_PASS "
 	failPrefix = "CONSOLE_E2E_FAIL "
 
-	consoleFixtureDirectory        = "testdata/console"
-	consoleContainerRoot           = "/tmp"
-	consoleContainerJSPath         = consoleContainerRoot + "/" + consoleFixtureDirectory
-	consoleContainerDataDir        = consoleContainerRoot + "/qrl-tests-console"
-	consoleContainerHost           = "host.docker.internal"
-	consoleContainerCleanupTimeout = 30 * time.Second
-	consoleProcessExitTimeout      = 5 * time.Second
+	fixtureDirectory   = "testdata/console"
+	processExitTimeout = 5 * time.Second
 )
 
 //go:embed testdata/console/*.js
-var consoleFixtures embed.FS
+var fixtures embed.FS
 
-type consoleContainerConfig struct {
+type consoleScenario struct {
 	image       string
 	endpointURL string
 	scenario    string
 	interactive bool
 }
 
-type consoleContainerEngine interface {
-	createContainer(context.Context, consoleContainerConfig) (string, error)
-	copyFixtures(context.Context, string, []byte) error
-	startContainer(context.Context, string, bool) (consoleContainerProcess, error)
-	removeContainer(context.Context, string) error
+// consoleProcess is the part of *sidecar.Process the harness uses; tests replace
+// it with a fake.
+type consoleProcess interface {
+	Output(io.Writer) error
+	CloseInput(context.Context, string) error
+	Wait() error
+	Detach()
+	Close() error
 }
 
-type consoleContainerProcess interface {
-	readOutput(io.Writer) error
-	requestExit(context.Context) error
-	wait() error
-	close()
-}
+type startConsole func(context.Context, gqrl.Config) (consoleProcess, error)
 
-type consoleDockerClient interface {
-	ContainerAttach(context.Context, string, dockerclient.ContainerAttachOptions) (dockerclient.ContainerAttachResult, error)
-	ContainerCreate(context.Context, dockerclient.ContainerCreateOptions) (dockerclient.ContainerCreateResult, error)
-	ContainerRemove(context.Context, string, dockerclient.ContainerRemoveOptions) (dockerclient.ContainerRemoveResult, error)
-	ContainerStart(context.Context, string, dockerclient.ContainerStartOptions) (dockerclient.ContainerStartResult, error)
-	ContainerWait(context.Context, string, dockerclient.ContainerWaitOptions) dockerclient.ContainerWaitResult
-	CopyToContainer(context.Context, string, dockerclient.CopyToContainerOptions) (dockerclient.CopyToContainerResult, error)
-}
-
-type dockerConsoleEngine struct {
-	client consoleDockerClient
-}
-
-func (engine dockerConsoleEngine) createContainer(ctx context.Context, config consoleContainerConfig) (string, error) {
-	endpoint, err := consoleContainerEndpoint(config.endpointURL)
+func attachConsole(ctx context.Context, config gqrl.Config) (consoleProcess, error) {
+	console, err := gqrl.Attach(ctx, config)
 	if err != nil {
-		return "", fmt.Errorf("create console suite %s container: %w", config.scenario, err)
+		return nil, err
 	}
-
-	arguments := []string{
-		"attach",
-		"--datadir", consoleContainerDataDir,
-		"--jspath", consoleContainerJSPath,
-	}
-	if config.interactive {
-		arguments = append(arguments, "--preload", "harness.js,assertions.js,"+config.scenario+".js")
-	} else {
-		arguments = append(
-			arguments,
-			"--exec",
-			"loadScript('harness.js');loadScript('assertions.js');loadScript('"+config.scenario+".js')",
-		)
-	}
-	arguments = append(arguments, endpoint)
-
-	created, err := engine.client.ContainerCreate(ctx, dockerclient.ContainerCreateOptions{
-		Config: &containertypes.Config{
-			Image:        config.image,
-			Entrypoint:   []string{"gqrl"},
-			Cmd:          arguments,
-			AttachStdin:  config.interactive,
-			AttachStdout: true,
-			AttachStderr: true,
-			OpenStdin:    config.interactive,
-			StdinOnce:    config.interactive,
-		},
-		HostConfig: &containertypes.HostConfig{
-			ExtraHosts: []string{consoleContainerHost + ":host-gateway"},
-		},
-	})
-	if err != nil {
-		return "", fmt.Errorf("create console suite %s container: %w", config.scenario, err)
-	}
-	if created.ID == "" {
-		return "", fmt.Errorf("create console suite %s container: Docker returned no container ID", config.scenario)
-	}
-	return created.ID, nil
+	return console, nil
 }
 
-func (engine dockerConsoleEngine) copyFixtures(ctx context.Context, containerID string, archive []byte) error {
-	if _, err := engine.client.CopyToContainer(ctx, containerID, dockerclient.CopyToContainerOptions{
-		DestinationPath: consoleContainerRoot,
-		Content:         bytes.NewReader(archive),
-	}); err != nil {
-		return fmt.Errorf("copy fixtures into console container: %w", err)
+// consoleConfig runs the harness, the assertions and the scenario's script.
+func consoleConfig(config consoleScenario, scripts []sidecar.File) gqrl.Config {
+	return gqrl.Config{
+		Image:       config.image,
+		EndpointURL: config.endpointURL,
+		Scripts:     scripts,
+		Run:         []string{"harness.js", "assertions.js", config.scenario + ".js"},
+		Interactive: config.interactive,
 	}
-	return nil
 }
 
-func (engine dockerConsoleEngine) startContainer(
-	ctx context.Context,
-	containerID string,
-	interactive bool,
-) (consoleContainerProcess, error) {
-	processCtx, cancel := context.WithCancel(ctx)
-	attached, err := engine.client.ContainerAttach(processCtx, containerID, dockerclient.ContainerAttachOptions{
-		Stream: true,
-		Stdin:  interactive,
-		Stdout: true,
-		Stderr: true,
-	})
+// consoleScripts returns the embedded console scripts, plus the scenario
+// parameters as .params.js when there are any.
+func consoleScripts(parameters []byte) ([]sidecar.File, error) {
+	entries, err := fs.ReadDir(fixtures, fixtureDirectory)
 	if err != nil {
-		cancel()
-		return nil, fmt.Errorf("attach to console container: %w", err)
+		return nil, fmt.Errorf("read console fixtures: %w", err)
 	}
-	waiter := engine.client.ContainerWait(processCtx, containerID, dockerclient.ContainerWaitOptions{
-		Condition: containertypes.WaitConditionNextExit,
-	})
-	select {
-	case err := <-waiter.Error:
+	scripts := make([]sidecar.File, 0, len(entries)+1)
+	for _, entry := range entries {
+		body, err := fs.ReadFile(fixtures, path.Join(fixtureDirectory, entry.Name()))
 		if err != nil {
-			cancel()
-			attached.Close()
-			return nil, fmt.Errorf("register console container exit waiter: %w", err)
+			return nil, fmt.Errorf("read console fixture %s: %w", entry.Name(), err)
 		}
-	default:
-	}
-	if _, err := engine.client.ContainerStart(processCtx, containerID, dockerclient.ContainerStartOptions{}); err != nil {
-		cancel()
-		attached.Close()
-		return nil, fmt.Errorf("start console container: %w", err)
-	}
-	return &dockerConsoleProcess{
-		ctx:    processCtx,
-		cancel: cancel,
-		attach: attached,
-		waiter: waiter,
-	}, nil
-}
-
-func (engine dockerConsoleEngine) removeContainer(ctx context.Context, containerID string) error {
-	if _, err := engine.client.ContainerRemove(ctx, containerID, dockerclient.ContainerRemoveOptions{Force: true}); err != nil {
-		return fmt.Errorf("remove Docker container: %w", err)
-	}
-	return nil
-}
-
-type dockerConsoleProcess struct {
-	ctx       context.Context
-	cancel    context.CancelFunc
-	attach    dockerclient.ContainerAttachResult
-	waiter    dockerclient.ContainerWaitResult
-	closeOnce sync.Once
-}
-
-func (process *dockerConsoleProcess) readOutput(destination io.Writer) error {
-	_, err := stdcopy.StdCopy(destination, destination, process.attach.Reader)
-	return err
-}
-
-func (process *dockerConsoleProcess) sendExitCommand() error {
-	_, writeErr := io.WriteString(process.attach.Conn, "exit\n")
-	if writeErr != nil {
-		writeErr = fmt.Errorf("write console exit command: %w", writeErr)
-	}
-	closeErr := process.attach.CloseWrite()
-	if closeErr != nil {
-		closeErr = fmt.Errorf("close console process input: %w", closeErr)
-	}
-	return errors.Join(writeErr, closeErr)
-}
-
-func (process *dockerConsoleProcess) requestExit(ctx context.Context) error {
-	done := make(chan error, 1)
-	go func() { done <- process.sendExitCommand() }()
-	select {
-	case err := <-done:
-		return err
-	case <-ctx.Done():
-		process.close()
-		return context.Cause(ctx)
-	}
-}
-
-func (process *dockerConsoleProcess) wait() error {
-	select {
-	case response := <-process.waiter.Result:
-		if response.Error != nil {
-			return errors.New(response.Error.Message)
-		}
-		if response.StatusCode != 0 {
-			return fmt.Errorf("exit status %d", response.StatusCode)
-		}
-		return nil
-	case err := <-process.waiter.Error:
-		return err
-	case <-process.ctx.Done():
-		return process.ctx.Err()
-	}
-}
-
-func (process *dockerConsoleProcess) close() {
-	process.closeOnce.Do(func() {
-		process.cancel()
-		process.attach.Close()
-	})
-}
-
-func consoleContainerEndpoint(endpointURL string) (string, error) {
-	endpoint, err := url.Parse(endpointURL)
-	if err != nil {
-		return "", fmt.Errorf("parse console endpoint: %w", err)
-	}
-	port := endpoint.Port()
-	if endpoint.Scheme == "" || endpoint.Hostname() == "" || port == "" {
-		return "", errors.New("parse console endpoint: URL must include a scheme, host, and port")
-	}
-
-	endpoint.Host = net.JoinHostPort(consoleContainerHost, port)
-	return endpoint.String(), nil
-}
-
-func consoleFixtureArchive(parameters []byte) ([]byte, error) {
-	var archive bytes.Buffer
-	tarWriter := tar.NewWriter(&archive)
-	if err := tarWriter.AddFS(consoleFixtures); err != nil {
-		return nil, fmt.Errorf("archive console fixtures: %w", err)
+		scripts = append(scripts, sidecar.File{Name: entry.Name(), Body: body, Mode: 0o444})
 	}
 
 	if len(parameters) > 0 {
-		parameterScript := append([]byte("var PARAMS = "), parameters...)
-		parameterScript = append(parameterScript, ';', '\n')
-		if err := tarWriter.WriteHeader(&tar.Header{
-			Name:     consoleFixtureDirectory + "/.params.js",
-			Mode:     0o600,
-			Size:     int64(len(parameterScript)),
-			Typeflag: tar.TypeReg,
-		}); err != nil {
-			return nil, fmt.Errorf("archive console parameters: %w", err)
-		}
-		if _, err := tarWriter.Write(parameterScript); err != nil {
-			return nil, fmt.Errorf("archive console parameters: %w", err)
-		}
+		parameterScript := fmt.Appendf(nil, "var PARAMS = %s;\n", parameters)
+		scripts = append(scripts, sidecar.File{Name: ".params.js", Body: parameterScript, Mode: 0o444})
 	}
-	if err := tarWriter.Close(); err != nil {
-		return nil, fmt.Errorf("archive console fixtures: %w", err)
-	}
-	return archive.Bytes(), nil
+	return scripts, nil
 }
 
-func runScenario(
-	ctx context.Context,
-	config consoleContainerConfig,
-	fixtureArchive []byte,
-) error {
-	client, err := dockerapi.New()
-	if err != nil {
-		return fmt.Errorf("create Docker client: %w", err)
-	}
-	defer func() { _ = client.Close() }()
-	return runScenarioWithEngine(
-		ctx,
-		config,
-		fixtureArchive,
-		dockerConsoleEngine{client: client},
-	)
+func runScenario(ctx context.Context, config consoleScenario, scripts []sidecar.File) error {
+	return runScenarioWith(ctx, config, scripts, attachConsole)
 }
 
-func runScenarioWithEngine(
+func runScenarioWith(
 	ctx context.Context,
-	config consoleContainerConfig,
-	fixtureArchive []byte,
-	engine consoleContainerEngine,
+	config consoleScenario,
+	scripts []sidecar.File,
+	start startConsole,
 ) (result error) {
-	containerID, err := engine.createContainer(ctx, config)
-	if err != nil {
-		return err
-	}
-	defer func() {
-		cleanupCtx, cancel := context.WithTimeout(context.Background(), consoleContainerCleanupTimeout)
-		defer cancel()
-		if err := engine.removeContainer(cleanupCtx, containerID); err != nil {
-			result = errors.Join(result, fmt.Errorf("remove console suite %s container: %w", config.scenario, err))
-		}
-	}()
-	if err := engine.copyFixtures(ctx, containerID, fixtureArchive); err != nil {
-		return fmt.Errorf("copy console suite %s fixtures: %w", config.scenario, err)
-	}
-
-	process, err := engine.startContainer(ctx, containerID, config.interactive)
+	process, err := start(ctx, consoleConfig(config, scripts))
 	if err != nil {
 		return fmt.Errorf("start console suite %s: %w", config.scenario, err)
 	}
-	defer process.close()
-	return newConsoleProcessSupervisor(ctx, process, config.scenario, config.interactive).run()
+	defer func() {
+		if err := process.Close(); err != nil {
+			result = errors.Join(result, fmt.Errorf("close console suite %s: %w", config.scenario, err))
+		}
+	}()
+	return newProcessSupervisor(ctx, process, config.scenario, config.interactive).run()
 }
 
 type terminalSignal uint8
@@ -360,43 +147,48 @@ func (markers terminalMarkers) detect(line []byte) terminalSignal {
 	}
 }
 
-type consoleProcessEventKind uint8
+type eventKind uint8
 
 const (
-	consoleTerminalSignalDetected consoleProcessEventKind = iota
-	consoleOutputCompleted
-	consoleContainerWaitCompleted
-	consoleExitRequestFailed
+	eventSignalDetected eventKind = iota
+	eventOutputDone
+	eventWaitDone
+	eventExitRequestFailed
 )
 
-type consoleProcessEvent struct {
-	kind   consoleProcessEventKind
-	output consoleOutputResult
+type processEvent struct {
+	kind   eventKind
+	output outputResult
 	err    error
 }
 
-type consoleOutput struct {
+// outputRecorder keeps the console's output and, in interactive mode, reports
+// the first result marker.
+type outputRecorder struct {
+	mu             sync.Mutex
 	data           bytes.Buffer
 	line           []byte
-	events         chan<- consoleProcessEvent
+	events         chan<- processEvent
 	watchForResult bool
 	markers        terminalMarkers
 }
 
-func newConsoleOutput(
+func newOutputRecorder(
 	name string,
-	events chan<- consoleProcessEvent,
+	events chan<- processEvent,
 	watchForResult bool,
-) *consoleOutput {
-	return &consoleOutput{
+) *outputRecorder {
+	return &outputRecorder{
 		events:         events,
 		watchForResult: watchForResult,
 		markers:        newTerminalMarkers(name),
 	}
 }
 
-func (output *consoleOutput) Write(data []byte) (int, error) {
+func (output *outputRecorder) Write(data []byte) (int, error) {
+	output.mu.Lock()
 	written, err := output.data.Write(data)
+	output.mu.Unlock()
 	if !output.watchForResult {
 		return written, err
 	}
@@ -412,86 +204,99 @@ func (output *consoleOutput) Write(data []byte) (int, error) {
 	return written, err
 }
 
-func (output *consoleOutput) inspect(line []byte) {
+func (output *outputRecorder) inspect(line []byte) {
 	if !output.watchForResult || output.markers.detect(line) == terminalSignalNone {
 		return
 	}
 	output.watchForResult = false
-	output.events <- consoleProcessEvent{kind: consoleTerminalSignalDetected}
+	output.events <- processEvent{kind: eventSignalDetected}
 }
 
-func (output *consoleOutput) complete(readErr error) consoleOutputResult {
+func (output *outputRecorder) complete(readErr error) outputResult {
 	if output.watchForResult && len(output.line) > 0 {
 		output.inspect(output.line)
 	}
-	return consoleOutputResult{
-		output:  bytes.Clone(output.data.Bytes()),
+	return outputResult{
+		output:  output.snapshot(),
 		readErr: readErr,
 	}
 }
 
-type consoleOutputResult struct {
+// snapshot returns the output recorded so far.
+func (output *outputRecorder) snapshot() []byte {
+	output.mu.Lock()
+	defer output.mu.Unlock()
+	return bytes.Clone(output.data.Bytes())
+}
+
+type outputResult struct {
 	output  []byte
 	readErr error
 }
 
-type consoleProcessResult struct {
-	output                 *consoleOutputResult
+type processResult struct {
+	output                 *outputResult
 	containerWaitCompleted bool
 	forcedClose            bool
 	containerWaitErr       error
 	exitRequestErr         error
 }
 
-type consoleProcessSupervisor struct {
+// processSupervisor waits for the console's output to end and its container
+// to exit. In interactive mode it watches the output for the result marker,
+// then sends exit on stdin. Once either finishes, the other gets
+// processExitTimeout before the console is detached.
+type processSupervisor struct {
 	ctx         context.Context
-	process     consoleContainerProcess
+	process     consoleProcess
 	name        string
 	interactive bool
+	recorder    *outputRecorder
 
-	events        chan consoleProcessEvent
+	events        chan processEvent
 	exitRequested bool
 
 	shutdownCtx    context.Context
 	shutdownDone   <-chan struct{}
 	shutdownCancel context.CancelFunc
-	result         consoleProcessResult
+	result         processResult
 }
 
-func newConsoleProcessSupervisor(
+func newProcessSupervisor(
 	ctx context.Context,
-	process consoleContainerProcess,
+	process consoleProcess,
 	name string,
 	interactive bool,
-) *consoleProcessSupervisor {
+) *processSupervisor {
 	// Each event kind is emitted at most once. The buffer lets every final send
 	// complete even if the supervisor returns early.
-	events := make(chan consoleProcessEvent, 4)
+	events := make(chan processEvent, 4)
 	// --exec scenarios exit on their own. Interactive preload scenarios watch
 	// for a terminal result so the supervisor can request a graceful exit.
-	output := newConsoleOutput(name, events, interactive)
+	output := newOutputRecorder(name, events, interactive)
 	go func() {
-		readErr := process.readOutput(output)
-		events <- consoleProcessEvent{
-			kind:   consoleOutputCompleted,
+		readErr := process.Output(output)
+		events <- processEvent{
+			kind:   eventOutputDone,
 			output: output.complete(readErr),
 		}
 	}()
 	go func() {
-		waitErr := process.wait()
-		events <- consoleProcessEvent{kind: consoleContainerWaitCompleted, err: waitErr}
+		waitErr := process.Wait()
+		events <- processEvent{kind: eventWaitDone, err: waitErr}
 	}()
 
-	return &consoleProcessSupervisor{
+	return &processSupervisor{
 		ctx:         ctx,
 		process:     process,
 		name:        name,
 		interactive: interactive,
+		recorder:    output,
 		events:      events,
 	}
 }
 
-func (supervisor *consoleProcessSupervisor) run() error {
+func (supervisor *processSupervisor) run() error {
 	defer supervisor.cancelShutdownDeadline()
 	for !supervisor.requiredResultsComplete() {
 		select {
@@ -507,26 +312,26 @@ func (supervisor *consoleProcessSupervisor) run() error {
 	return supervisor.finish(nil)
 }
 
-func (supervisor *consoleProcessSupervisor) requiredResultsComplete() bool {
+func (supervisor *processSupervisor) requiredResultsComplete() bool {
 	return supervisor.result.output != nil && supervisor.result.containerWaitCompleted
 }
 
 // recordEventBatch drains events already queued before responding, so each
 // response uses all state currently available to the supervisor.
-func (supervisor *consoleProcessSupervisor) recordEventBatch(
-	event consoleProcessEvent,
+func (supervisor *processSupervisor) recordEventBatch(
+	event processEvent,
 ) (terminalSignalDetected bool) {
 	for {
 		switch event.kind {
-		case consoleTerminalSignalDetected:
+		case eventSignalDetected:
 			terminalSignalDetected = true
-		case consoleOutputCompleted:
+		case eventOutputDone:
 			output := event.output
 			supervisor.result.output = &output
-		case consoleContainerWaitCompleted:
+		case eventWaitDone:
 			supervisor.result.containerWaitCompleted = true
 			supervisor.result.containerWaitErr = event.err
-		case consoleExitRequestFailed:
+		case eventExitRequestFailed:
 			supervisor.result.exitRequestErr = event.err
 		}
 		select {
@@ -537,7 +342,7 @@ func (supervisor *consoleProcessSupervisor) recordEventBatch(
 	}
 }
 
-func (supervisor *consoleProcessSupervisor) recordReadyEvents() {
+func (supervisor *processSupervisor) recordReadyEvents() {
 	select {
 	case firstEvent := <-supervisor.events:
 		supervisor.recordEventBatch(firstEvent)
@@ -545,7 +350,7 @@ func (supervisor *consoleProcessSupervisor) recordReadyEvents() {
 	}
 }
 
-func (supervisor *consoleProcessSupervisor) respondToEvents(terminalSignalDetected bool) {
+func (supervisor *processSupervisor) respondToEvents(terminalSignalDetected bool) {
 	if supervisor.requiredResultsComplete() {
 		return
 	}
@@ -571,48 +376,48 @@ func (supervisor *consoleProcessSupervisor) respondToEvents(terminalSignalDetect
 	}
 }
 
-func (supervisor *consoleProcessSupervisor) requestExit() {
+func (supervisor *processSupervisor) requestExit() {
 	if supervisor.result.containerWaitCompleted || supervisor.exitRequested || supervisor.result.forcedClose {
 		return
 	}
 	supervisor.exitRequested = true
 	supervisor.startShutdownDeadline()
 	go func() {
-		if err := supervisor.process.requestExit(supervisor.shutdownCtx); err != nil {
-			supervisor.events <- consoleProcessEvent{
-				kind: consoleExitRequestFailed,
+		if err := supervisor.process.CloseInput(supervisor.shutdownCtx, "exit\n"); err != nil {
+			supervisor.events <- processEvent{
+				kind: eventExitRequestFailed,
 				err:  err,
 			}
 		}
 	}()
 }
 
-func (supervisor *consoleProcessSupervisor) startShutdownDeadline() {
+func (supervisor *processSupervisor) startShutdownDeadline() {
 	if supervisor.shutdownCtx != nil {
 		return
 	}
 	supervisor.shutdownCtx, supervisor.shutdownCancel = context.WithTimeoutCause(
 		supervisor.ctx,
-		consoleProcessExitTimeout,
-		fmt.Errorf("console process did not shut down within %s", consoleProcessExitTimeout),
+		processExitTimeout,
+		fmt.Errorf("console process did not shut down within %s", processExitTimeout),
 	)
 	supervisor.shutdownDone = supervisor.shutdownCtx.Done()
 }
 
-func (supervisor *consoleProcessSupervisor) forceClose() {
+func (supervisor *processSupervisor) forceClose() {
 	if supervisor.result.forcedClose {
 		return
 	}
 	supervisor.result.forcedClose = true
-	supervisor.process.close()
+	supervisor.process.Detach()
 }
 
-func (supervisor *consoleProcessSupervisor) abort(err error) error {
+func (supervisor *processSupervisor) abort(err error) error {
 	supervisor.forceClose()
 	return supervisor.finish(err)
 }
 
-func (supervisor *consoleProcessSupervisor) finish(supervisorErr error) error {
+func (supervisor *processSupervisor) finish(supervisorErr error) error {
 	supervisor.recordReadyEvents()
 	// Cancellation or shutdown expiry can race the final completion event.
 	if supervisorErr == nil {
@@ -623,20 +428,27 @@ func (supervisor *consoleProcessSupervisor) finish(supervisorErr error) error {
 			supervisorErr = context.Cause(supervisor.shutdownCtx)
 		}
 	}
-	return finishConsoleProcess(supervisor.name, supervisor.result, supervisorErr)
+	err := finishProcess(supervisor.name, supervisor.result, supervisorErr)
+	if err != nil && supervisor.result.output == nil {
+		// The output never ended, so show what the console printed so far.
+		if output := supervisor.recorder.snapshot(); len(output) > 0 {
+			err = fmt.Errorf("%w\n%s", err, output)
+		}
+	}
+	return err
 }
 
-func (supervisor *consoleProcessSupervisor) cancelShutdownDeadline() {
+func (supervisor *processSupervisor) cancelShutdownDeadline() {
 	if supervisor.shutdownCancel != nil {
 		supervisor.shutdownCancel()
 	}
 }
 
-func finishConsoleProcess(name string, result consoleProcessResult, supervisorErr error) error {
+func finishProcess(name string, result processResult, supervisorErr error) error {
 	exitedGracefully := result.containerWaitCompleted && result.containerWaitErr == nil && !result.forcedClose
 	containerWaitErr := result.containerWaitErr
 	if (result.forcedClose || supervisorErr != nil) &&
-		errors.Is(containerWaitErr, context.Canceled) {
+		(errors.Is(containerWaitErr, context.Canceled) || errors.Is(containerWaitErr, supervisorErr)) {
 		containerWaitErr = nil
 	}
 	exitRequestErr := result.exitRequestErr
