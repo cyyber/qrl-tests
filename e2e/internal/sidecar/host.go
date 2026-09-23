@@ -6,8 +6,9 @@ import (
 	"net/url"
 )
 
-// containerHost resolves to the Docker host from inside a sidecar; Start maps
-// it to the host gateway.
+// containerHost resolves to the Docker host from inside a sidecar. Docker
+// Desktop defines it; on Linux it only resolves because every sidecar is
+// created with a host-gateway mapping for it.
 const containerHost = "host.docker.internal"
 
 // HostURL rewrites a host-published URL, such as an HTTP or WebSocket endpoint,
