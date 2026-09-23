@@ -52,7 +52,7 @@ type Docker struct {
 
 	// Recorded calls.
 	Created dockerclient.ContainerCreateOptions
-	Archive []byte
+	archive []byte
 	Execs   [][]string
 	Removed []string
 }
@@ -67,7 +67,7 @@ func NewDocker() *Docker {
 
 // ArchiveNames lists the entries of the archive copied into the container.
 func (docker *Docker) ArchiveNames() ([]string, error) {
-	reader := tar.NewReader(bytes.NewReader(docker.Archive))
+	reader := tar.NewReader(bytes.NewReader(docker.archive))
 	var names []string
 	for {
 		header, err := reader.Next()
@@ -178,7 +178,7 @@ func (docker *Docker) ContainerWait(ctx context.Context, _ string, _ dockerclien
 
 func (docker *Docker) CopyToContainer(_ context.Context, _ string, options dockerclient.CopyToContainerOptions) (dockerclient.CopyToContainerResult, error) {
 	archive, err := io.ReadAll(options.Content)
-	docker.Archive = archive
+	docker.archive = archive
 	return dockerclient.CopyToContainerResult{}, err
 }
 

@@ -13,6 +13,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+var _ Client = (*sidecartest.Docker)(nil)
+
 func testSpec() Spec {
 	return Spec{
 		Name:       "test sidecar",
