@@ -10,6 +10,7 @@ endpoints; suites do not provision infrastructure.
 | --- | --- | --- |
 | `execution` | `single` | Execution ABI calls, events, errors, and WebSocket filters |
 | `consensus-staking-automated` | `single` | Staking through contract deposits and the keymanager API |
+| `consensus-staking-operator` | `single` | Staking through the deposit and validator CLIs |
 
 Run one lane with a fresh network:
 

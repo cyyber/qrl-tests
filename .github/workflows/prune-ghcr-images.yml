@@ -24,6 +24,7 @@ jobs:
           - go-qrl-clef
           - qrysm-beacon
           - qrysm-validator
+          - qrysm-alltools
           - qrl-genesis-generator
     steps:
       - name: Keep only the newest window

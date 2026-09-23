@@ -39,6 +39,16 @@ func TestStartWaitsForKeymanager(t *testing.T) {
 	require.Len(t, docker.Listed, 1)
 	require.Equal(t, dockerclient.Filters{"label": {"com.kurtosistech.guid=consensus-service": true}}, docker.Listed[0].Filters)
 
+	docker.Logs = "Submitted new attestations\n"
+	logs, err := validator.Logs()
+	require.NoError(t, err)
+	require.Equal(t, "Submitted new attestations", logs)
+
+	var notStarted *Sidecar
+	logs, err = notStarted.Logs()
+	require.NoError(t, err)
+	require.Empty(t, logs)
+
 	require.NoError(t, validator.Close())
 	require.Equal(t, []string{sidecartest.ContainerID}, docker.Removed)
 }
@@ -126,7 +136,9 @@ func TestVoluntaryExit(t *testing.T) {
 				require.ErrorContains(t, err, want)
 			}
 			require.Equal(t, [][]string{{
-				"/validator", "accounts", "voluntary-exit",
+				"/validator",
+				"--chain-config-file=/network-configs/config.yaml",
+				"accounts", "voluntary-exit",
 				"--accept-terms-of-use",
 				"--wallet-dir=/wallet",
 				"--wallet-password-file=/wallet-password.txt",

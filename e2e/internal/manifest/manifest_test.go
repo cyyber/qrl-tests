@@ -12,10 +12,11 @@ import (
 func TestManifestRoundTrip(t *testing.T) {
 	path := filepath.Join(t.TempDir(), FileName)
 	want := Manifest{
-		Lane:           "execution",
-		Profile:        devnet.ProfileSingle,
-		ExecutionImage: "registry.example/go-qrl@sha256:digest",
-		ValidatorImage: "registry.example/qrysm-validator@sha256:digest",
+		Lane:               "execution",
+		Profile:            devnet.ProfileSingle,
+		ExecutionImage:     "registry.example/go-qrl@sha256:digest",
+		ValidatorImage:     "registry.example/qrysm-validator@sha256:digest",
+		QrysmAlltoolsImage: "registry.example/qrysm-alltools@sha256:digest",
 		Environment: devnet.Environment{
 			EnclaveName: "qrl-tests-execution",
 			Backend:     devnet.BackendDocker,

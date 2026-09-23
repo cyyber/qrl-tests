@@ -4,7 +4,6 @@ package stakingautomated
 
 import (
 	"context"
-	"strings"
 	"testing"
 	"time"
 
@@ -74,6 +73,10 @@ var _ = ginkgo.Describe(
 			gomega.Expect(err).To(gomega.Satisfy(beacon.IsNotFound), "the staker key must not be a validator yet")
 		}, ginkgo.NodeTimeout(2*time.Minute))
 
+		ginkgo.AfterEach(func() {
+			testsuite.ReportLogsOnFailure("validator client", sidecar)
+		})
+
 		// No SpecTimeout: the wait is sized from the live voting period.
 		ginkgo.It("deposits the maximum balance through the deposit contract", func(ctx ginkgo.SpecContext) {
 			ginkgo.By("submitting the deposit")
@@ -90,25 +93,8 @@ var _ = ginkgo.Describe(
 			gomega.Expect(keymanager.ContainsPublicKey(keystores, publicKey)).To(gomega.BeTrue(),
 				"imported key is not in the validator client")
 
-			ginkgo.By("waiting for the deposit to initialize the validator at the maximum balance")
-			gomega.Eventually(func(g gomega.Gomega) {
-				record, err := node.Beacon.Validator(ctx, publicKey)
-				g.Expect(err).NotTo(gomega.HaveOccurred())
-				g.Expect(record.Balance).To(gomega.Equal(maximum))
-				g.Expect(record.EffectiveBalance).To(gomega.Equal(maximum))
-				beaconValidator = record
-			}).WithContext(ctx).
-				WithTimeout(chain.DepositWait()).
-				WithPolling(staking.PollInterval).
-				Should(gomega.Succeed())
-
-			recipientHex := hexutil.Encode(recipient[:])
-			gomega.Expect(strings.EqualFold(beaconValidator.WithdrawalRecipient, recipientHex)).To(gomega.BeTrue(),
-				"withdrawal recipient %s is not the staker wallet", beaconValidator.WithdrawalRecipient)
-
-			randaoCommitment := hexutil.Encode(key.RandaoCommitment())
-			gomega.Expect(strings.EqualFold(beaconValidator.RandaoCommitment, randaoCommitment)).To(gomega.BeTrue(),
-				"validator record carries a different RANDAO commitment than the deposit")
+			beaconValidator = staking.ExpectDeposited(ctx, node, chain, publicKey, maximum, recipient,
+				hexutil.Encode(key.RandaoCommitment()))
 		})
 
 		ginkgo.It("activates the validator and attests", func(ctx ginkgo.SpecContext) {

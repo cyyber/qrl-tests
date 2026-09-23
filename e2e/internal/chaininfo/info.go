@@ -86,6 +86,12 @@ func (chain Info) DepositWait() time.Duration {
 	return chain.ExecutionFollowDistance + chain.ExecutionVotingPeriod*3/2 + 4*epoch
 }
 
+// GenesisForkVersion is the fork version deposits are signed for, as
+// 0x-prefixed hex.
+func (chain Info) GenesisForkVersion() string {
+	return "0x" + hex.EncodeToString(chain.genesisForkVersion[:])
+}
+
 // DepositDomain is fork-independent: the genesis fork version with a zero
 // genesis validators root, as the deposit contract predates genesis.
 func (chain Info) DepositDomain() signing.Domain {

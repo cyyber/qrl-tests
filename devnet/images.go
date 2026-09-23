@@ -15,6 +15,10 @@ const (
 	DefaultConsensusImage = "local/qrysm-beacon:devnet"
 	DefaultValidatorImage = "local/qrysm-validator:devnet"
 	DefaultGenesisImage   = "local/qrl-genesis-generator:devnet"
+
+	// DefaultQrysmAlltoolsImage is not an image of the network: sidecars run
+	// Qrysm's command-line tools from it.
+	DefaultQrysmAlltoolsImage = "local/qrysm-alltools:devnet"
 )
 
 type Images struct {

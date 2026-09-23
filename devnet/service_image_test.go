@@ -27,6 +27,25 @@ func TestResolveContainerImage(t *testing.T) {
 	}, client.listed.Filters)
 }
 
+func TestResolveLocalImage(t *testing.T) {
+	imageID := "sha256:" + strings.Repeat("ef", 32)
+
+	resolved, err := resolveLocalImage(t.Context(), "local/qrysm-alltools:devnet", &fakeDocker{imageID: imageID})
+	require.NoError(t, err)
+	require.Equal(t, imageID, resolved)
+
+	missing := errors.New("no such image")
+	_, err = resolveLocalImage(t.Context(), "local/qrysm-alltools:devnet", &fakeDocker{inspectErr: missing})
+	require.ErrorIs(t, err, missing)
+	require.ErrorContains(t, err, `inspect image "local/qrysm-alltools:devnet"`)
+
+	_, err = resolveLocalImage(t.Context(), "local/qrysm-alltools:devnet", &fakeDocker{imageID: "not-an-id"})
+	require.ErrorContains(t, err, `invalid Docker image ID "not-an-id"`)
+
+	_, err = ResolveLocalImage(t.Context(), Environment{Backend: BackendKubernetes}, "local/qrysm-alltools:devnet")
+	require.ErrorContains(t, err, "is not Docker")
+}
+
 func TestResolveContainerImageErrors(t *testing.T) {
 	for name, testCase := range map[string]struct {
 		containers []containertypes.Summary
@@ -137,12 +156,21 @@ func TestReadServiceFileErrors(t *testing.T) {
 type fakeDocker struct {
 	containers []containertypes.Summary
 	listErr    error
+	// imageID and inspectErr are what ImageInspect returns.
+	imageID    string
+	inspectErr error
 	// entries are the archive entries CopyFromContainer returns, by name.
 	entries map[string]string
 
 	listed     dockerclient.ContainerListOptions
 	copiedFrom string
 	copiedPath string
+}
+
+func (client *fakeDocker) ImageInspect(context.Context, string, ...dockerclient.ImageInspectOption) (dockerclient.ImageInspectResult, error) {
+	var inspected dockerclient.ImageInspectResult
+	inspected.ID = client.imageID
+	return inspected, client.inspectErr
 }
 
 func (client *fakeDocker) ContainerList(_ context.Context, options dockerclient.ContainerListOptions) (dockerclient.ContainerListResult, error) {

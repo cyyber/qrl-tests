@@ -8,6 +8,7 @@ image_inventory=(
 	'go-qrl-clef|GO_QRL_CLEF_IMAGE_TAG|clef-image|bake'
 	'qrysm-beacon|QRYSM_BEACON_IMAGE_TAG|consensus-image|qrysm'
 	'qrysm-validator|QRYSM_VALIDATOR_IMAGE_TAG|validator-image|qrysm'
+	'qrysm-alltools|QRYSM_ALLTOOLS_IMAGE_TAG|qrysm-alltools-image|qrysm'
 	'qrl-genesis-generator|GENESIS_IMAGE_TAG|genesis-image|bake'
 )
 
@@ -51,6 +52,7 @@ plan() {
 	GO_QRL_CLEF_IMAGE_TAG="${REGISTRY_NAMESPACE}/go-qrl-clef:src-${GO_QRL_GIT_COMMIT:0:12}-r${bake_recipe_revision}-${arch}"
 	QRYSM_BEACON_IMAGE_TAG="${REGISTRY_NAMESPACE}/qrysm-beacon:src-${QRYSM_GIT_COMMIT:0:12}-r${qrysm_recipe_revision}-${arch}"
 	QRYSM_VALIDATOR_IMAGE_TAG="${REGISTRY_NAMESPACE}/qrysm-validator:src-${QRYSM_GIT_COMMIT:0:12}-r${qrysm_recipe_revision}-${arch}"
+	QRYSM_ALLTOOLS_IMAGE_TAG="${REGISTRY_NAMESPACE}/qrysm-alltools:src-${QRYSM_GIT_COMMIT:0:12}-r${qrysm_recipe_revision}-${arch}"
 	GENESIS_IMAGE_TAG="${REGISTRY_NAMESPACE}/qrl-genesis-generator:src-${GENERATOR_GIT_COMMIT:0:12}-q${QRYSM_GIT_COMMIT:0:12}-r${bake_recipe_revision}-${arch}"
 
 	{
@@ -67,6 +69,7 @@ plan() {
 			GO_QRL_CLEF_IMAGE_TAG "${GO_QRL_CLEF_IMAGE_TAG}" \
 			QRYSM_BEACON_IMAGE_TAG "${QRYSM_BEACON_IMAGE_TAG}" \
 			QRYSM_VALIDATOR_IMAGE_TAG "${QRYSM_VALIDATOR_IMAGE_TAG}" \
+			QRYSM_ALLTOOLS_IMAGE_TAG "${QRYSM_ALLTOOLS_IMAGE_TAG}" \
 			GENESIS_IMAGE_TAG "${GENESIS_IMAGE_TAG}"
 	} >>"${GITHUB_ENV}"
 

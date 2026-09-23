@@ -63,6 +63,13 @@ func TestLaneWithSuites(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, automated.NeedsValidatorImage())
 	require.False(t, automated.NeedsExecutionImage())
+	require.False(t, automated.NeedsQrysmAlltoolsImage())
+
+	operator, err := Named("consensus-staking-operator")
+	require.NoError(t, err)
+	require.True(t, operator.NeedsValidatorImage())
+	require.True(t, operator.NeedsQrysmAlltoolsImage())
+	require.False(t, operator.NeedsExecutionImage())
 
 	_, err = execution.WithSuites([]string{"unknown"})
 	require.ErrorContains(t, err, "unknown E2E suite")

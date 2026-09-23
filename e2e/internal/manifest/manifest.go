@@ -16,11 +16,12 @@ const (
 )
 
 type Manifest struct {
-	Lane           string             `json:"lane,omitempty"`
-	Profile        devnet.Profile     `json:"profile,omitempty"`
-	Environment    devnet.Environment `json:"environment"`
-	ExecutionImage string             `json:"execution_image,omitempty"`
-	ValidatorImage string             `json:"validator_image,omitempty"`
+	Lane               string             `json:"lane,omitempty"`
+	Profile            devnet.Profile     `json:"profile,omitempty"`
+	Environment        devnet.Environment `json:"environment"`
+	ExecutionImage     string             `json:"execution_image,omitempty"`
+	ValidatorImage     string             `json:"validator_image,omitempty"`
+	QrysmAlltoolsImage string             `json:"qrysm_alltools_image,omitempty"`
 }
 
 func Write(path string, manifest Manifest) error {

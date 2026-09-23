@@ -28,6 +28,10 @@ const (
 	startScriptPath   = "/start-validator.sh"
 	authTokenPath     = walletDir + "/auth-token"
 	walletPassword    = validatorops.KeystorePassword
+
+	// failureLogLines is how much of the validator client's output a failed
+	// spec reports.
+	failureLogLines = 100
 )
 
 // startScript reads its settings from the environment set by containerEnv, so
@@ -158,15 +162,21 @@ func (validator *Sidecar) Close() error {
 	return err
 }
 
+// Logs returns the end of the validator client's output, and nothing for a
+// sidecar that never started.
+func (validator *Sidecar) Logs() (string, error) {
+	if validator == nil {
+		return "", nil
+	}
+	return validator.container.Logs(failureLogLines)
+}
+
 // VoluntaryExit signs and submits an exit for publicKey, a key in the wallet,
 // through the validator binary's accounts command. That path dials the beacon
 // itself and does not use the keymanager HTTP API.
-//
-// The accounts command ignores --chain-config-file and computes the exit epoch
-// with mainnet timing, so on the devnet it signs an exit for an early epoch,
-// which the beacon node accepts.
 func (validator *Sidecar) VoluntaryExit(ctx context.Context, publicKey string) error {
 	output, err := validator.container.Exec(ctx, "/validator",
+		"--chain-config-file="+chainConfigPath,
 		"accounts", "voluntary-exit",
 		"--accept-terms-of-use",
 		"--wallet-dir="+walletDir,
