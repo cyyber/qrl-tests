@@ -111,68 +111,123 @@ func TestRunWaitsForSuccessfulExit(t *testing.T) {
 	require.Equal(t, []string{sidecartest.ContainerID}, docker.Removed)
 }
 
-func TestRunReportsFailedExit(t *testing.T) {
-	docker := sidecartest.NewDocker()
-	docker.ExitCode = 1
-	docker.Logs = "tool failed"
+func TestRunRemovesContainerOnFailure(t *testing.T) {
+	for _, test := range []struct {
+		name        string
+		exitCode    int64
+		waitMessage string
+		neverExits  bool
+		logs        string
+		cancel      error
+		wantExit    bool
+		wantErr     string
+	}{
+		{
+			name:     "non-zero exit",
+			exitCode: 1,
+			logs:     "tool failed",
+			wantExit: true,
+			wantErr:  "test sidecar container exited with code 1\nlast log lines:\ntool failed",
+		},
+		{
+			name:        "wait error",
+			waitMessage: "container removed before it exited",
+			wantErr:     "wait for test sidecar: container removed before it exited",
+		},
+		{
+			name:       "cancelled",
+			neverExits: true,
+			logs:       "waiting for peer",
+			cancel:     errors.New("suite timed out"),
+			wantErr:    "wait for test sidecar: suite timed out\nlast log lines:\nwaiting for peer",
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			docker := sidecartest.NewDocker()
+			docker.ExitCode = test.exitCode
+			docker.WaitMessage = test.waitMessage
+			docker.NeverExits = test.neverExits
+			docker.Logs = test.logs
+			ctx := t.Context()
+			if test.cancel != nil {
+				var cancel context.CancelCauseFunc
+				ctx, cancel = context.WithCancelCause(ctx)
+				cancel(test.cancel)
+			}
 
-	_, err := Run(t.Context(), docker, testSpec())
-	var exitErr *ExitError
-	require.ErrorAs(t, err, &exitErr)
-	require.EqualError(t, err, "test sidecar container exited with code 1\nlast log lines:\ntool failed")
-	require.Equal(t, []string{sidecartest.ContainerID}, docker.Removed)
+			_, err := Run(ctx, docker, testSpec())
+			require.EqualError(t, err, test.wantErr)
+			if test.wantExit {
+				var exitErr *ExitError
+				require.ErrorAs(t, err, &exitErr)
+			}
+			if test.cancel != nil {
+				require.ErrorIs(t, err, test.cancel)
+			}
+			require.Equal(t, []string{sidecartest.ContainerID}, docker.Removed)
+		})
+	}
 }
 
-func TestRunReportsWaitError(t *testing.T) {
-	docker := sidecartest.NewDocker()
-	docker.WaitMessage = "container removed before it exited"
+func TestPublishedPortErrors(t *testing.T) {
+	exited := &containertypes.State{Status: containertypes.StateExited, ExitCode: 1}
+	for _, test := range []struct {
+		name     string
+		noPort   bool
+		state    *containertypes.State
+		logs     string
+		fail     map[string]error
+		wantExit bool
+		wantErr  string
+	}{
+		{
+			name:     "exited with logs",
+			state:    exited,
+			logs:     "could not read config\n",
+			wantExit: true,
+			wantErr:  "test sidecar container exited with code 1\nlast log lines:\ncould not read config",
+		},
+		{
+			name:     "dead without logs",
+			state:    &containertypes.State{Status: containertypes.StateDead, Error: "OCI runtime error"},
+			wantExit: true,
+			wantErr:  "test sidecar container is dead: OCI runtime error",
+		},
+		{
+			name:     "logs unavailable",
+			state:    exited,
+			fail:     map[string]error{"ContainerLogs": errors.New("daemon unavailable")},
+			wantExit: true,
+			wantErr:  "test sidecar container exited with code 1\n(logs unavailable: daemon unavailable)",
+		},
+		{
+			name:    "no port in the spec",
+			noPort:  true,
+			wantErr: "test sidecar publishes no port",
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			docker := sidecartest.NewDocker()
+			spec := testSpec()
+			if test.noPort {
+				spec.Port = 0
+			}
+			container, err := Start(t.Context(), docker, spec)
+			require.NoError(t, err)
+			if test.state != nil {
+				docker.State = test.state
+			}
+			docker.Logs = test.logs
+			maps.Copy(docker.Fail, test.fail)
 
-	_, err := Run(t.Context(), docker, testSpec())
-	require.EqualError(t, err, "wait for test sidecar: container removed before it exited")
-	require.Equal(t, []string{sidecartest.ContainerID}, docker.Removed)
-}
-
-func TestRunReportsCancellationWithLogs(t *testing.T) {
-	docker := sidecartest.NewDocker()
-	docker.NeverExits = true
-	docker.Logs = "waiting for peer"
-	ctx, cancel := context.WithCancelCause(t.Context())
-	cancelErr := errors.New("suite timed out")
-	cancel(cancelErr)
-
-	_, err := Run(ctx, docker, testSpec())
-	require.ErrorIs(t, err, cancelErr)
-	require.EqualError(t, err, "wait for test sidecar: suite timed out\nlast log lines:\nwaiting for peer")
-	require.Equal(t, []string{sidecartest.ContainerID}, docker.Removed)
-}
-
-func TestPublishedPortReportsExit(t *testing.T) {
-	docker := sidecartest.NewDocker()
-	container, err := Start(t.Context(), docker, testSpec())
-	require.NoError(t, err)
-
-	docker.State = &containertypes.State{Status: containertypes.StateExited, ExitCode: 1}
-	docker.Logs = "could not read config\n"
-
-	_, err = container.PublishedPort(t.Context())
-	var exitErr *ExitError
-	require.ErrorAs(t, err, &exitErr)
-	require.EqualError(t, err, "test sidecar container exited with code 1\nlast log lines:\ncould not read config")
-
-	docker.State = &containertypes.State{Status: containertypes.StateDead, Error: "OCI runtime error"}
-	docker.Logs = ""
-	_, err = container.PublishedPort(t.Context())
-	require.EqualError(t, err, "test sidecar container is dead: OCI runtime error")
-}
-
-func TestPublishedPortRequiresASpecPort(t *testing.T) {
-	spec := testSpec()
-	spec.Port = 0
-	container, err := Start(t.Context(), sidecartest.NewDocker(), spec)
-	require.NoError(t, err)
-
-	_, err = container.PublishedPort(t.Context())
-	require.EqualError(t, err, "test sidecar publishes no port")
+			_, err = container.PublishedPort(t.Context())
+			require.EqualError(t, err, test.wantErr)
+			if test.wantExit {
+				var exitErr *ExitError
+				require.ErrorAs(t, err, &exitErr)
+			}
+		})
+	}
 }
 
 func TestPublishedHostPortRequiresNetworkSettings(t *testing.T) {
@@ -202,25 +257,27 @@ func TestReadFile(t *testing.T) {
 	require.EqualError(t, err, "archive does not contain /data", "a directory is not a file")
 }
 
-func TestWithLogsReportsUnavailableLogs(t *testing.T) {
-	docker := sidecartest.NewDocker()
-	container, err := Start(t.Context(), docker, testSpec())
-	require.NoError(t, err)
-	docker.State = &containertypes.State{Status: containertypes.StateExited, ExitCode: 1}
-	docker.Fail["ContainerLogs"] = errors.New("daemon unavailable")
-
-	_, err = container.PublishedPort(t.Context())
-	require.EqualError(t, err, "test sidecar container exited with code 1\n(logs unavailable: daemon unavailable)")
-}
-
-func TestExecReportsExitCode(t *testing.T) {
+func TestExec(t *testing.T) {
+	errDaemon := errors.New("daemon unavailable")
 	for _, test := range []struct {
-		name     string
-		exitCode int
-		wantErr  string
+		name       string
+		exitCode   int
+		fail       map[string]error
+		wantOutput string
+		wantErr    string
 	}{
-		{name: "success", exitCode: 0},
-		{name: "failure", exitCode: 1, wantErr: "/bin/tool run: exit 1: tool output"},
+		{name: "success", wantOutput: "tool output"},
+		{name: "non-zero exit", exitCode: 1, wantOutput: "tool output", wantErr: "/bin/tool run: exit 1: tool output"},
+		{
+			name:    "create fails",
+			fail:    map[string]error{"ExecCreate": errDaemon},
+			wantErr: "create exec /bin/tool run: daemon unavailable",
+		},
+		{
+			name:    "attach fails",
+			fail:    map[string]error{"ExecAttach": errDaemon},
+			wantErr: "attach exec /bin/tool run: daemon unavailable",
+		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			docker := sidecartest.NewDocker()
@@ -228,46 +285,19 @@ func TestExecReportsExitCode(t *testing.T) {
 			docker.ExecExitCode = test.exitCode
 			container, err := Start(t.Context(), docker, testSpec())
 			require.NoError(t, err)
+			maps.Copy(docker.Fail, test.fail)
 
 			output, err := container.Exec(t.Context(), "/bin/tool", "run")
-			require.Equal(t, "tool output", output)
+			require.Equal(t, test.wantOutput, output)
 			require.Equal(t, [][]string{{"/bin/tool", "run"}}, docker.Execs)
 			if test.wantErr == "" {
 				require.NoError(t, err)
 				return
 			}
 			require.EqualError(t, err, test.wantErr)
-		})
-	}
-}
-
-func TestExecReportsDockerFailures(t *testing.T) {
-	errDaemon := errors.New("daemon unavailable")
-	for _, test := range []struct {
-		name    string
-		fail    map[string]error
-		wantErr string
-	}{
-		{
-			name:    "create",
-			fail:    map[string]error{"ExecCreate": errDaemon},
-			wantErr: "create exec /bin/tool run: daemon unavailable",
-		},
-		{
-			name:    "attach",
-			fail:    map[string]error{"ExecAttach": errDaemon},
-			wantErr: "attach exec /bin/tool run: daemon unavailable",
-		},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			docker := sidecartest.NewDocker()
-			container, err := Start(t.Context(), docker, testSpec())
-			require.NoError(t, err)
-			maps.Copy(docker.Fail, test.fail)
-
-			_, err = container.Exec(t.Context(), "/bin/tool", "run")
-			require.ErrorIs(t, err, errDaemon)
-			require.EqualError(t, err, test.wantErr)
+			if len(test.fail) > 0 {
+				require.ErrorIs(t, err, errDaemon)
+			}
 		})
 	}
 }
