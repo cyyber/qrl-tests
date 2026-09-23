@@ -52,26 +52,8 @@ func archiveFiles(files []File) ([]byte, error) {
 	return archive.Bytes(), nil
 }
 
-// readTarFile returns the regular file in the archive whose base name matches
-// the base of want, which is how Docker names a single copied file.
-func readTarFile(reader io.Reader, want string) ([]byte, error) {
-	archive := tar.NewReader(reader)
-	for {
-		header, err := archive.Next()
-		if errors.Is(err, io.EOF) {
-			return nil, fmt.Errorf("archive does not contain %s", want)
-		}
-		if err != nil {
-			return nil, err
-		}
-		if header.Typeflag == tar.TypeReg && path.Base(header.Name) == path.Base(want) {
-			return io.ReadAll(archive)
-		}
-	}
-}
-
-// readTarFiles returns the regular files in a directory archive from Docker,
-// whose entry names are relative to parent.
+// readTarFiles returns the regular files in an archive whose entry names are
+// relative to parent.
 func readTarFiles(reader io.Reader, parent string) ([]File, error) {
 	archive := tar.NewReader(reader)
 	var files []File

@@ -148,6 +148,9 @@ func TestReadFile(t *testing.T) {
 
 	_, err = container.ReadFile(t.Context(), "/wallet/missing")
 	require.ErrorContains(t, err, "no such file")
+
+	_, err = container.ReadFile(t.Context(), "/wallet")
+	require.EqualError(t, err, "archive does not contain /wallet", "a directory is not a file")
 }
 
 func TestArchiveFilesRejectsEmptyName(t *testing.T) {

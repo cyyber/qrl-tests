@@ -199,29 +199,40 @@ func (container *Container) PublishedPort(ctx context.Context) (string, error) {
 }
 
 // ReadFile copies one file out of the container.
-func (container *Container) ReadFile(ctx context.Context, path string) ([]byte, error) {
-	return ReadFile(ctx, container.client, container.id, path)
+func (container *Container) ReadFile(ctx context.Context, source string) ([]byte, error) {
+	return ReadFile(ctx, container.client, container.id, source)
 }
 
 // ReadDir copies the regular files under dir out of the container, named by
 // their paths inside it.
 func (container *Container) ReadDir(ctx context.Context, dir string) ([]File, error) {
-	copied, err := container.client.CopyFromContainer(ctx, container.id, dockerclient.CopyFromContainerOptions{SourcePath: dir})
-	if err != nil {
-		return nil, err
-	}
-	defer copied.Content.Close()
-	return readTarFiles(copied.Content, path.Dir(path.Clean(dir)))
+	return copyFiles(ctx, container.client, container.id, dir)
 }
 
 // ReadFile copies one file out of any container, such as a devnet service's.
-func ReadFile(ctx context.Context, client Client, containerID, path string) ([]byte, error) {
-	copied, err := client.CopyFromContainer(ctx, containerID, dockerclient.CopyFromContainerOptions{SourcePath: path})
+func ReadFile(ctx context.Context, client Client, containerID, source string) ([]byte, error) {
+	files, err := copyFiles(ctx, client, containerID, source)
+	if err != nil {
+		return nil, err
+	}
+	for _, file := range files {
+		if file.Name == path.Clean(source) {
+			return file.Body, nil
+		}
+	}
+	return nil, fmt.Errorf("archive does not contain %s", source)
+}
+
+// copyFiles copies source, a file or a directory, out of a container and
+// returns the regular files in it, named by their paths inside the container.
+func copyFiles(ctx context.Context, client Client, containerID, source string) ([]File, error) {
+	copied, err := client.CopyFromContainer(ctx, containerID, dockerclient.CopyFromContainerOptions{SourcePath: source})
 	if err != nil {
 		return nil, err
 	}
 	defer copied.Content.Close()
-	return readTarFile(copied.Content, path)
+	// Docker names the entries relative to the source's parent directory.
+	return readTarFiles(copied.Content, path.Dir(path.Clean(source)))
 }
 
 // WithLogs appends the end of the container's output to err, for failures the
