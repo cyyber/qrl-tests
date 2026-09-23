@@ -27,38 +27,31 @@ const ContainerID = "sidecar"
 // test sets, and records what the code under test asked Docker to do. It is not
 // safe for concurrent use.
 type Docker struct {
-	// The container.
-	State *containertypes.State
-	// HostPort is the host port published for every exposed container port.
+	State    *containertypes.State
 	HostPort string
 	Logs     string
 	// Files are served by CopyFromContainer, keyed by path, for any container.
 	Files map[string][]byte
 
-	// Its exit, which ContainerWait reports once the container has started.
-	ExitCode int64
-	// WaitMessage is reported as the wait response's error.
+	ExitCode    int64
 	WaitMessage string
 	// NeverExits keeps ContainerWait from reporting an exit; like Docker's
 	// client, the waiter then fails once its context ends.
 	NeverExits bool
 
-	// Commands run with Exec.
 	ExecOutput   string
 	ExecExitCode int
 	// ExecNeverExits keeps an exec's output open until the caller closes it.
 	ExecNeverExits bool
 
-	// Failures returned by the matching calls.
 	StartErr      error
 	RemoveErr     error
 	LogsErr       error
 	ExecCreateErr error
 	ExecAttachErr error
 
-	// What the code under test asked Docker to do.
+	// Recorded calls.
 	Created dockerclient.ContainerCreateOptions
-	// Archive is the tar copied into the container.
 	Archive []byte
 	Execs   [][]string
 	Removed []string
