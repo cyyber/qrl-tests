@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/cyyber/qrl-tests/e2e/internal/beacon"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -32,7 +33,7 @@ func TestClientDecodesQrysmResponses(t *testing.T) {
 	client := newTestClient(t, func(writer http.ResponseWriter, request *http.Request) {
 		switch {
 		case request.Method == http.MethodGet && request.URL.Path == "/qrl/v1/keystores":
-			_, _ = writer.Write([]byte(`{"data":[{"validating_pubkey":"0xab","derivation_path":"","readonly":false}]}`))
+			_, _ = writer.Write([]byte(`{"data":[{"validating_pubkey":"0xab"}]}`))
 		case request.Method == http.MethodPost && request.URL.Path == "/qrl/v1/keystores":
 			assert.Equal(t, "application/json", request.Header.Get("Content-Type"))
 			var body struct {
@@ -59,9 +60,9 @@ func TestClientDecodesQrysmResponses(t *testing.T) {
 
 	exit, err := client.SignVoluntaryExit(t.Context(), "0xab", 3)
 	require.NoError(t, err)
-	require.Equal(t, uint64(3), exit.Message.Epoch)
-	require.Equal(t, uint64(64), exit.Message.ValidatorIndex)
-	require.Equal(t, "0xcd", exit.Signature)
+	require.Equal(t, beacon.SignedVoluntaryExit{
+		Message: beacon.VoluntaryExit{Epoch: 3, ValidatorIndex: 64}, Signature: "0xcd",
+	}, exit)
 }
 
 func TestImportKeystoreStatus(t *testing.T) {
@@ -71,7 +72,7 @@ func TestImportKeystoreStatus(t *testing.T) {
 		wantErr  string
 	}{
 		{name: "imported", response: `{"data":[{"status":"imported"}]}`},
-		{name: "duplicate", response: `{"data":[{"status":"DUPLICATE"}]}`},
+		{name: "duplicate in upper case", response: `{"data":[{"status":"DUPLICATE"}]}`},
 		{name: "error with message", response: `{"data":[{"status":"error","message":"bad password"}]}`, wantErr: "import keystore: error: bad password"},
 		{name: "error without message", response: `{"data":[{"status":"error"}]}`, wantErr: "import keystore: error"},
 		{name: "no status", response: `{"data":[]}`, wantErr: "import keystore: expected 1 status, got 0"},
@@ -109,10 +110,14 @@ func TestContainsPublicKey(t *testing.T) {
 	require.False(t, ContainsPublicKey(nil, "0xab"))
 }
 
-func TestNewValidatesArguments(t *testing.T) {
-	_, err := New("validator.test", testToken)
-	require.ErrorContains(t, err, "absolute URL")
+func TestNewRejectsRelativeEndpoints(t *testing.T) {
+	for _, endpoint := range []string{"", "localhost:7500", "/qrl/v1", "validator.test"} {
+		_, err := New(endpoint, testToken)
+		require.ErrorContains(t, err, "must be an absolute URL", "endpoint %q", endpoint)
+	}
+}
 
-	_, err = New("http://validator.test", "")
-	require.ErrorContains(t, err, "token")
+func TestNewRequiresToken(t *testing.T) {
+	_, err := New("http://validator.test", "")
+	require.ErrorContains(t, err, "token is required")
 }
