@@ -66,14 +66,14 @@ func TestStartRemovesContainerOnFailure(t *testing.T) {
 	}{
 		{
 			name:     "start fails",
-			setup:    func(docker *sidecartest.Docker) { docker.StartErr = errors.New("no space left") },
+			setup:    func(docker *sidecartest.Docker) { docker.Fail["ContainerStart"] = errors.New("no space left") },
 			wantErrs: []string{"start test sidecar container: no space left"},
 		},
 		{
 			name: "start and removal fail",
 			setup: func(docker *sidecartest.Docker) {
-				docker.StartErr = errors.New("no space left")
-				docker.RemoveErr = errors.New("daemon unavailable")
+				docker.Fail["ContainerStart"] = errors.New("no space left")
+				docker.Fail["ContainerRemove"] = errors.New("daemon unavailable")
 			},
 			wantErrs: []string{"no space left", "remove test sidecar container: daemon unavailable"},
 		},
@@ -226,7 +226,7 @@ func TestWithLogsReportsUnavailableLogs(t *testing.T) {
 	container, err := Start(t.Context(), docker, testSpec())
 	require.NoError(t, err)
 	docker.State = &containertypes.State{Status: containertypes.StateExited, ExitCode: 1}
-	docker.LogsErr = errors.New("daemon unavailable")
+	docker.Fail["ContainerLogs"] = errors.New("daemon unavailable")
 
 	_, err = container.PublishedPort(t.Context())
 	require.EqualError(t, err, "test sidecar container exited with code 1\n(logs unavailable: daemon unavailable)")
@@ -274,12 +274,12 @@ func TestExecReportsDockerFailures(t *testing.T) {
 	}{
 		{
 			name:    "create",
-			setup:   func(docker *sidecartest.Docker) { docker.ExecCreateErr = execErr },
+			setup:   func(docker *sidecartest.Docker) { docker.Fail["ExecCreate"] = execErr },
 			wantErr: "create exec /validator accounts list: daemon unavailable",
 		},
 		{
 			name:    "attach",
-			setup:   func(docker *sidecartest.Docker) { docker.ExecAttachErr = execErr },
+			setup:   func(docker *sidecartest.Docker) { docker.Fail["ExecAttach"] = execErr },
 			wantErr: "attach exec /validator accounts list: daemon unavailable",
 		},
 	} {

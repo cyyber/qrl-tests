@@ -44,11 +44,9 @@ type Docker struct {
 	// ExecNeverExits keeps an exec's output open until the caller closes it.
 	ExecNeverExits bool
 
-	StartErr      error
-	RemoveErr     error
-	LogsErr       error
-	ExecCreateErr error
-	ExecAttachErr error
+	// Fail makes a call return the error, keyed by method name, such as
+	// "ContainerStart".
+	Fail map[string]error
 
 	// Recorded calls.
 	Created dockerclient.ContainerCreateOptions
@@ -61,6 +59,7 @@ type Docker struct {
 func NewDocker() *Docker {
 	return &Docker{
 		Files: map[string][]byte{},
+		Fail:  map[string]error{},
 		State: &containertypes.State{Status: containertypes.StateRunning, Running: true},
 	}
 }
@@ -100,19 +99,19 @@ func (docker *Docker) ContainerInspect(context.Context, string, dockerclient.Con
 }
 
 func (docker *Docker) ContainerLogs(context.Context, string, dockerclient.ContainerLogsOptions) (dockerclient.ContainerLogsResult, error) {
-	if docker.LogsErr != nil {
-		return nil, docker.LogsErr
+	if err := docker.Fail["ContainerLogs"]; err != nil {
+		return nil, err
 	}
 	return io.NopCloser(bytes.NewReader(multiplexed(stdcopy.Stderr, docker.Logs))), nil
 }
 
 func (docker *Docker) ContainerRemove(_ context.Context, containerID string, _ dockerclient.ContainerRemoveOptions) (dockerclient.ContainerRemoveResult, error) {
 	docker.Removed = append(docker.Removed, containerID)
-	return dockerclient.ContainerRemoveResult{}, docker.RemoveErr
+	return dockerclient.ContainerRemoveResult{}, docker.Fail["ContainerRemove"]
 }
 
 func (docker *Docker) ContainerStart(context.Context, string, dockerclient.ContainerStartOptions) (dockerclient.ContainerStartResult, error) {
-	return dockerclient.ContainerStartResult{}, docker.StartErr
+	return dockerclient.ContainerStartResult{}, docker.Fail["ContainerStart"]
 }
 
 // CopyFromContainer serves a file, or every file under a directory, from Files
@@ -184,12 +183,12 @@ func (docker *Docker) CopyToContainer(_ context.Context, _ string, options docke
 
 func (docker *Docker) ExecCreate(_ context.Context, _ string, options dockerclient.ExecCreateOptions) (dockerclient.ExecCreateResult, error) {
 	docker.Execs = append(docker.Execs, options.Cmd)
-	return dockerclient.ExecCreateResult{ID: "exec"}, docker.ExecCreateErr
+	return dockerclient.ExecCreateResult{ID: "exec"}, docker.Fail["ExecCreate"]
 }
 
 func (docker *Docker) ExecAttach(context.Context, string, dockerclient.ExecAttachOptions) (dockerclient.ExecAttachResult, error) {
-	if docker.ExecAttachErr != nil {
-		return dockerclient.ExecAttachResult{}, docker.ExecAttachErr
+	if err := docker.Fail["ExecAttach"]; err != nil {
+		return dockerclient.ExecAttachResult{}, err
 	}
 	conn, _ := net.Pipe()
 	reader := bufio.NewReader(bytes.NewReader(multiplexed(stdcopy.Stdout, docker.ExecOutput)))
