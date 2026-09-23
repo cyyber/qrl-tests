@@ -232,7 +232,7 @@ func copyFiles(ctx context.Context, client Client, containerID, source string) (
 	}
 	defer copied.Content.Close()
 	// Docker names the entries relative to the source's parent directory.
-	return readTarFiles(copied.Content, path.Dir(path.Clean(source)))
+	return readArchive(copied.Content, path.Dir(path.Clean(source)))
 }
 
 // WithLogs appends the end of the container's output to err, for failures the

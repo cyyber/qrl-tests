@@ -55,9 +55,9 @@ func archiveFiles(files []File) ([]byte, error) {
 	return archive.Bytes(), nil
 }
 
-// readTarFiles returns the regular files in an archive, each named by joining
+// readArchive returns the regular files in an archive, each named by joining
 // parent and its entry name. Directories and other entry types are skipped.
-func readTarFiles(reader io.Reader, parent string) ([]File, error) {
+func readArchive(reader io.Reader, parent string) ([]File, error) {
 	archive := tar.NewReader(reader)
 	var files []File
 	for {
