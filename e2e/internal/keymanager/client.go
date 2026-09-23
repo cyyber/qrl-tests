@@ -1,11 +1,11 @@
-// Package validatorclient is the minimal Qrysm validator keymanager client
-// the consensus suites use.
-package validatorclient
+// Package keymanager is a minimal Qrysm validator keymanager REST client.
+package keymanager
 
 import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -28,69 +28,67 @@ type Client struct {
 func New(endpoint, token string) (*Client, error) {
 	baseURL, err := url.Parse(endpoint)
 	if err != nil {
-		return nil, fmt.Errorf("parse validator endpoint: %w", err)
+		return nil, fmt.Errorf("parse keymanager endpoint: %w", err)
+	}
+	if baseURL.Scheme == "" || baseURL.Host == "" {
+		return nil, fmt.Errorf("keymanager endpoint %q must be an absolute URL", endpoint)
 	}
 	if token == "" {
-		return nil, fmt.Errorf("validator keymanager token is required")
+		return nil, errors.New("keymanager token is required")
 	}
-	return &Client{
-		baseURL: baseURL,
-		token:   token,
-		http:    &http.Client{Timeout: requestTimeout},
-	}, nil
+	return &Client{baseURL: baseURL, token: token, http: &http.Client{Timeout: requestTimeout}}, nil
 }
 
 type Keystore struct {
-	PublicKey string
+	PublicKey string `json:"validating_pubkey"`
+}
+
+type importStatus struct {
+	Status  string `json:"status"`
+	Message string `json:"message"`
+}
+
+type dataResponse[T any] struct {
+	Data T `json:"data"`
 }
 
 func (client *Client) ListKeystores(ctx context.Context) ([]Keystore, error) {
-	var response struct {
-		Data []struct {
-			PublicKey string `json:"validating_pubkey"`
-		} `json:"data"`
-	}
+	var response dataResponse[[]Keystore]
 	if err := client.do(ctx, http.MethodGet, "/qrl/v1/keystores", nil, &response); err != nil {
 		return nil, err
 	}
-	keystores := make([]Keystore, len(response.Data))
-	for index, item := range response.Data {
-		keystores[index] = Keystore{PublicKey: item.PublicKey}
-	}
-	return keystores, nil
+	return response.Data, nil
 }
 
+// ImportKeystore imports one keystore. A keystore the validator already holds
+// is reported as a duplicate, which counts as imported.
 func (client *Client) ImportKeystore(ctx context.Context, keystoreJSON, password string) error {
-	var response struct {
-		Data []struct {
-			Status  string `json:"status"`
-			Message string `json:"message"`
-		} `json:"data"`
-	}
-	if err := client.do(ctx, http.MethodPost, "/qrl/v1/keystores", map[string]any{
-		"keystores": []string{keystoreJSON},
-		"passwords": []string{password},
+	var response dataResponse[[]importStatus]
+	if err := client.do(ctx, http.MethodPost, "/qrl/v1/keystores", struct {
+		Keystores []string `json:"keystores"`
+		Passwords []string `json:"passwords"`
+	}{
+		Keystores: []string{keystoreJSON},
+		Passwords: []string{password},
 	}, &response); err != nil {
 		return err
 	}
 	if len(response.Data) != 1 {
 		return fmt.Errorf("import keystore: expected 1 status, got %d", len(response.Data))
 	}
-	status := strings.ToLower(response.Data[0].Status)
-	if status == "imported" || status == "duplicate" {
+	result := response.Data[0]
+	if strings.EqualFold(result.Status, "imported") || strings.EqualFold(result.Status, "duplicate") {
 		return nil
 	}
-	if response.Data[0].Message != "" {
-		return fmt.Errorf("import keystore: %s: %s", response.Data[0].Status, response.Data[0].Message)
+	if result.Message != "" {
+		return fmt.Errorf("import keystore: %s: %s", result.Status, result.Message)
 	}
-	return fmt.Errorf("import keystore: %s", response.Data[0].Status)
+	return fmt.Errorf("import keystore: %s", result.Status)
 }
 
 func (client *Client) SignVoluntaryExit(ctx context.Context, publicKey string, epoch uint64) (beacon.SignedVoluntaryExit, error) {
 	path := "/qrl/v1/validator/" + url.PathEscape(publicKey) + "/voluntary_exit?epoch=" + strconv.FormatUint(epoch, 10)
-	var response struct {
-		Data beacon.SignedVoluntaryExit `json:"data"`
-	}
+	var response dataResponse[beacon.SignedVoluntaryExit]
 	if err := client.do(ctx, http.MethodPost, path, struct{}{}, &response); err != nil {
 		return beacon.SignedVoluntaryExit{}, err
 	}
@@ -100,7 +98,7 @@ func (client *Client) SignVoluntaryExit(ctx context.Context, publicKey string, e
 func (client *Client) do(ctx context.Context, method, path string, payload, result any) error {
 	reference, err := url.Parse(path)
 	if err != nil {
-		return fmt.Errorf("parse validator path %q: %w", path, err)
+		return fmt.Errorf("parse keymanager path %q: %w", path, err)
 	}
 
 	var body io.Reader
