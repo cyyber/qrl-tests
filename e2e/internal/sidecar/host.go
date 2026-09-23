@@ -10,11 +10,12 @@ import (
 // it to the host gateway.
 const containerHost = "host.docker.internal"
 
-// HostURL rewrites a host-published http(s) URL so a sidecar can reach it.
+// HostURL rewrites a host-published URL, such as an HTTP or WebSocket endpoint,
+// so a sidecar can reach it.
 func HostURL(endpointURL string) (string, error) {
 	endpoint, err := url.Parse(endpointURL)
 	if err != nil {
-		return "", fmt.Errorf("parse endpoint: %w", err)
+		return "", err
 	}
 	if endpoint.Scheme == "" || endpoint.Hostname() == "" || endpoint.Port() == "" {
 		return "", fmt.Errorf("URL %q must include a scheme, host, and port", endpointURL)

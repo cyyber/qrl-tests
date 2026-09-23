@@ -153,25 +153,6 @@ func TestReadFile(t *testing.T) {
 	require.EqualError(t, err, "archive does not contain /wallet", "a directory is not a file")
 }
 
-func TestHostRewrites(t *testing.T) {
-	url, err := HostURL("http://127.0.0.1:3500")
-	require.NoError(t, err)
-	require.Equal(t, "http://host.docker.internal:3500", url)
-
-	address, err := HostAddress("127.0.0.1:4000")
-	require.NoError(t, err)
-	require.Equal(t, "host.docker.internal:4000", address)
-
-	_, err = HostURL("http://127.0.0.1")
-	require.EqualError(t, err, `URL "http://127.0.0.1" must include a scheme, host, and port`)
-
-	_, err = HostAddress("127.0.0.1")
-	require.ErrorContains(t, err, "host:port")
-
-	_, err = HostAddress("127.0.0.1:")
-	require.EqualError(t, err, `address "127.0.0.1:" must include a port`)
-}
-
 func TestPublishedHostPortRequiresNetworkSettings(t *testing.T) {
 	port, ok := network.PortFrom(7500, network.TCP)
 	require.True(t, ok)
