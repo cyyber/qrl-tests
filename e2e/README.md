@@ -10,6 +10,9 @@ endpoints; suites do not provision infrastructure.
 | --- | --- | --- |
 | `execution` | `single` | Execution ABI calls, events, errors, and WebSocket filters |
 | `consensus-staking-automated` | `single` | Staking through contract deposits and the keymanager API |
+| `consensus-staking-operator` | `single` | Staking through the deposit and validator CLIs |
+
+`consensus-staking-operator` needs a local deposit CLI image (`make deposit-image`, or set `DEVNET_DEPOSIT_IMAGE`).
 
 Run one lane with a fresh network:
 

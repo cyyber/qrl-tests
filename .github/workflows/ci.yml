@@ -36,7 +36,7 @@ jobs:
         run: make lint
 
       - name: Run ShellCheck
-        run: shellcheck ci/images/*.sh
+        run: shellcheck ci/images/*.sh scripts/*.sh
 
       - name: Validate the Bake definition
         run: |

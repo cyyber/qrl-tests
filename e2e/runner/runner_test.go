@@ -522,15 +522,19 @@ func TestRunAllProvisionsPerLane(t *testing.T) {
 
 	require.NoError(t, runner.RunAll(t.Context()))
 	// Every registered lane provisions its own enclave and runs its own suites.
-	require.Equal(t, "qrl-tests-consensus-staking-automated", networks.started.EnclaveName)
+	require.Equal(t, "qrl-tests-consensus-staking-operator", networks.started.EnclaveName)
 	require.Equal(t, devnet.ProfileSingle, networks.started.Profile)
-	require.Equal(t, []string{"qrl-tests-execution", "qrl-tests-consensus-staking-automated"}, networks.stopped)
-	require.Len(t, commands, 2)
+	require.Equal(t, []string{
+		"qrl-tests-execution", "qrl-tests-consensus-staking-automated", "qrl-tests-consensus-staking-operator",
+	}, networks.stopped)
+	require.Len(t, commands, 3)
 	require.Contains(t, commands[0].Args, "./e2e/suites/execution/abi")
 	require.Contains(t, commands[1].Args, "./e2e/suites/consensus/stakingautomated")
+	require.Contains(t, commands[2].Args, "./e2e/suites/consensus/stakingoperator")
 	record := testutil.ReadJSON[runmanifest.Manifest](t, filepath.Join(reports, runmanifest.FileName))
 	require.Equal(t, "qrl-tests-execution", record.Lanes[0].Enclave)
 	require.Equal(t, "qrl-tests-consensus-staking-automated", record.Lanes[1].Enclave)
+	require.Equal(t, "qrl-tests-consensus-staking-operator", record.Lanes[2].Enclave)
 }
 
 func TestRunReturnsCleanupFailure(t *testing.T) {

@@ -162,11 +162,12 @@ func (validator *Sidecar) Close() error {
 // through the validator binary's accounts command. That path dials the beacon
 // itself and does not use the keymanager HTTP API.
 //
-// The accounts command ignores --chain-config-file and computes the exit epoch
-// with mainnet timing, so on the devnet it signs an exit for an early epoch,
-// which the beacon node accepts.
+// --chain-config-file is a global flag, so it precedes the subcommand. Images
+// built before cyyber/qrysm#102 ignore it and sign an exit for an early epoch,
+// which the beacon node also accepts.
 func (validator *Sidecar) VoluntaryExit(ctx context.Context, publicKey string) error {
 	output, err := validator.container.Exec(ctx, "/validator",
+		"--chain-config-file="+chainConfigPath,
 		"accounts", "voluntary-exit",
 		"--accept-terms-of-use",
 		"--wallet-dir="+walletDir,
