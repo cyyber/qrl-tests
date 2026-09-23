@@ -39,6 +39,10 @@ func New(endpoint, token string) (*Client, error) {
 	return &Client{baseURL: baseURL, token: token, http: &http.Client{Timeout: requestTimeout}}, nil
 }
 
+type dataResponse[T any] struct {
+	Data T `json:"data"`
+}
+
 type Keystore struct {
 	PublicKey string `json:"validating_pubkey"`
 }
@@ -55,21 +59,17 @@ func ContainsPublicKey(keystores []Keystore, publicKey string) bool {
 	return false
 }
 
-type importStatus struct {
-	Status  string `json:"status"`
-	Message string `json:"message"`
-}
-
-type dataResponse[T any] struct {
-	Data T `json:"data"`
-}
-
 func (client *Client) ListKeystores(ctx context.Context) ([]Keystore, error) {
 	var response dataResponse[[]Keystore]
 	if err := client.do(ctx, http.MethodGet, "/qrl/v1/keystores", nil, &response); err != nil {
 		return nil, err
 	}
 	return response.Data, nil
+}
+
+type importStatus struct {
+	Status  string `json:"status"`
+	Message string `json:"message"`
 }
 
 // ImportKeystore imports one keystore. A keystore the validator already holds
