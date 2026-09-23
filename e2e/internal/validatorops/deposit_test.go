@@ -101,7 +101,7 @@ func TestDepositInput(t *testing.T) {
 	require.Equal(t, dataRoot, root)
 }
 
-func TestVerifyDepositEvent(t *testing.T) {
+func TestDepositEvent(t *testing.T) {
 	parsed, err := abi.JSON(strings.NewReader(depositContractABI))
 	require.NoError(t, err)
 	address := common.Address{1}
@@ -192,6 +192,25 @@ func TestVerifyDepositEvent(t *testing.T) {
 				require.ErrorContains(t, err, "successful deposit receipt has no deposit event")
 			})
 		}
+	})
+
+	t.Run("find by public key", func(t *testing.T) {
+		other := eventLog(address, changed(data.PublicKey), data.WithdrawalRecipient, data.RandaoCommitment, data.Signature, amount)
+		match := eventLog(address, data.PublicKey, data.WithdrawalRecipient, data.RandaoCommitment, data.Signature, amount)
+
+		found, ok, err := depositor.findDeposit([]types.Log{*other, *match}, data.PublicKey)
+		require.NoError(t, err)
+		require.True(t, ok)
+		require.Equal(t, data.Amount, found)
+
+		_, ok, err = depositor.findDeposit([]types.Log{*other}, data.PublicKey)
+		require.NoError(t, err)
+		require.False(t, ok)
+
+		short := eventLog(address, data.PublicKey, data.WithdrawalRecipient, data.RandaoCommitment, data.Signature, make([]byte, 7))
+		_, ok, err = depositor.findDeposit([]types.Log{*short}, data.PublicKey)
+		require.EqualError(t, err, "deposit event amount must be 8 bytes, got 7")
+		require.False(t, ok)
 	})
 }
 

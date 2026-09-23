@@ -24,12 +24,14 @@ const (
 	suiteExecutionABI              SuiteID = "execution-abi"
 	suiteExecutionConsole          SuiteID = "execution-console"
 	suiteConsensusStakingAutomated SuiteID = "consensus-staking-automated"
+	suiteConsensusStakingOperator  SuiteID = "consensus-staking-operator"
 )
 
 var suitePackages = map[SuiteID]string{
 	suiteExecutionABI:              "./e2e/suites/execution/abi",
 	suiteExecutionConsole:          "./e2e/suites/execution/console",
 	suiteConsensusStakingAutomated: "./e2e/suites/consensus/stakingautomated",
+	suiteConsensusStakingOperator:  "./e2e/suites/consensus/stakingoperator",
 }
 
 var registry = []Lane{
@@ -46,6 +48,14 @@ var registry = []Lane{
 		Name:    "consensus-staking-automated",
 		Profile: devnet.ProfileSingle,
 		Suites:  []SuiteID{suiteConsensusStakingAutomated},
+		Timeout: 95 * time.Minute,
+	},
+	{
+		// The deposit counts after about 65 minutes on the single profile,
+		// before activation, attestation and exit.
+		Name:    "consensus-staking-operator",
+		Profile: devnet.ProfileSingle,
+		Suites:  []SuiteID{suiteConsensusStakingOperator},
 		Timeout: 95 * time.Minute,
 	},
 }
@@ -103,7 +113,8 @@ func (lane Lane) NeedsExecutionImage() bool {
 }
 
 func (lane Lane) NeedsValidatorImage() bool {
-	return slices.Contains(lane.Suites, suiteConsensusStakingAutomated)
+	return slices.Contains(lane.Suites, suiteConsensusStakingAutomated) ||
+		slices.Contains(lane.Suites, suiteConsensusStakingOperator)
 }
 
 func RegisteredSuites() []SuiteID {
