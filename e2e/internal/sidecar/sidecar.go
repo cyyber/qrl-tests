@@ -62,8 +62,7 @@ type Container struct {
 	port   network.Port
 }
 
-// Start creates the container, copies its files in, and starts it. On any
-// failure the container is removed again.
+// Start creates and starts the container, removing it again on any failure.
 func Start(ctx context.Context, client Client, spec Spec) (*Container, error) {
 	container, err := create(ctx, client, spec)
 	if err != nil {
@@ -232,8 +231,6 @@ func ReadFile(ctx context.Context, client Client, containerID, source string) ([
 	return nil, fmt.Errorf("archive does not contain %s", source)
 }
 
-// copyFiles copies source, a file or a directory, out of a container and
-// returns the regular files in it, named by their paths inside the container.
 func copyFiles(ctx context.Context, client Client, containerID, source string) ([]File, error) {
 	copied, err := client.CopyFromContainer(ctx, containerID, dockerclient.CopyFromContainerOptions{SourcePath: source})
 	if err != nil {
