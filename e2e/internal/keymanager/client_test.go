@@ -110,14 +110,19 @@ func TestContainsPublicKey(t *testing.T) {
 	require.False(t, ContainsPublicKey(nil, "0xab"))
 }
 
-func TestNewRejectsRelativeEndpoints(t *testing.T) {
-	for _, endpoint := range []string{"", "localhost:7500", "/qrl/v1", "validator.test"} {
-		_, err := New(endpoint, testToken)
-		require.ErrorContains(t, err, "must be an absolute URL", "endpoint %q", endpoint)
+func TestNewRejectsInvalidArguments(t *testing.T) {
+	for _, test := range []struct {
+		endpoint string
+		token    string
+		wantErr  string
+	}{
+		{endpoint: "", token: testToken, wantErr: "must be an absolute URL"},
+		{endpoint: "localhost:7500", token: testToken, wantErr: "must be an absolute URL"},
+		{endpoint: "/qrl/v1", token: testToken, wantErr: "must be an absolute URL"},
+		{endpoint: "validator.test", token: testToken, wantErr: "must be an absolute URL"},
+		{endpoint: "http://validator.test", token: "", wantErr: "token is required"},
+	} {
+		_, err := New(test.endpoint, test.token)
+		require.ErrorContains(t, err, test.wantErr, "endpoint %q, token %q", test.endpoint, test.token)
 	}
-}
-
-func TestNewRequiresToken(t *testing.T) {
-	_, err := New("http://validator.test", "")
-	require.ErrorContains(t, err, "token is required")
 }
