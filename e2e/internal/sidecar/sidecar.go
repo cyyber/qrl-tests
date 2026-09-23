@@ -24,8 +24,8 @@ const (
 	cleanupTimeout = 30 * time.Second
 	logTimeout     = 10 * time.Second
 	exitLogTail    = "50"
-	// labelKey marks every sidecar container, so ones a killed test process
-	// never removed can be found with a label filter.
+	// labelKey tags every sidecar container, so containers left behind by an
+	// interrupted test run can be found with a label filter.
 	labelKey = "qrl-tests.sidecar"
 )
 
