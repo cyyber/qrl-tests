@@ -52,10 +52,22 @@ func TestLaneWithSuites(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, []SuiteID{suiteExecutionABI, suiteExecutionConsole}, selected.Suites)
 	require.True(t, selected.NeedsExecutionImage())
+	require.False(t, selected.NeedsValidatorImage())
 
 	selected, err = execution.WithSuites([]string{string(suiteExecutionABI)})
 	require.NoError(t, err)
 	require.False(t, selected.NeedsExecutionImage())
+	require.False(t, selected.NeedsValidatorImage())
+
+	automated, err := Named("consensus-staking-automated")
+	require.NoError(t, err)
+	require.True(t, automated.NeedsValidatorImage())
+	require.False(t, automated.NeedsExecutionImage())
+
+	operator, err := Named("consensus-staking-operator")
+	require.NoError(t, err)
+	require.True(t, operator.NeedsValidatorImage())
+	require.False(t, operator.NeedsExecutionImage())
 
 	_, err = execution.WithSuites([]string{"unknown"})
 	require.ErrorContains(t, err, "unknown E2E suite")

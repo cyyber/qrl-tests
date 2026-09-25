@@ -21,8 +21,6 @@ func TestClientDecodesQrysmResponses(t *testing.T) {
 		switch request.URL.Path {
 		case "/qrl/v1/beacon/genesis":
 			_, _ = writer.Write([]byte(`{"data":{"genesis_time":"1700000000","genesis_validators_root":"0x11","genesis_fork_version":"0x20000089"}}`))
-		case "/qrl/v1/beacon/states/head/fork":
-			_, _ = writer.Write([]byte(`{"data":{"previous_version":"0x20000089","current_version":"0x20000090","epoch":"5"}}`))
 		case "/qrl/v1/config/deposit_contract":
 			_, _ = writer.Write([]byte(`{"data":{"chain_id":"32382","address":"Q4242424242424242424242424242424242424242"}}`))
 		case "/qrl/v1/config/spec":
@@ -32,7 +30,7 @@ func TestClientDecodesQrysmResponses(t *testing.T) {
 		case "/qrl/v1/beacon/states/head/validators/64":
 			_, _ = writer.Write([]byte(`{"execution_optimistic":false,"finalized":false,"data":{"index":"64","balance":"40000000000000","status":"active_ongoing","validator":{"pubkey":"0xab","withdrawal_recipient":"0xcd","effective_balance":"40000000000000","slashed":false,"activation_eligibility_epoch":"3","activation_epoch":"8","exit_epoch":"18446744073709551615","withdrawable_epoch":"18446744073709551615","randao_commitment":"0xef"}}}`))
 		case "/qrl/v1/beacon/blocks/9":
-			_, _ = writer.Write([]byte(`{"data":{"message":{"slot":"9","body":{"voluntary_exits":[{"message":{"epoch":"1","validator_index":"64"},"signature":"0x00"}],"execution_payload":{"withdrawals":[{"index":"0","validator_index":"64","address":"0xcd","amount":"40000000000000"}]}}}}}`))
+			_, _ = writer.Write([]byte(`{"data":{"message":{"slot":"9","body":{"voluntary_exits":[{"message":{"epoch":"1","validator_index":"64"},"signature":"0x00"}],"execution_payload":{"block_number":"42","withdrawals":[{"index":"0","validator_index":"64","address":"0xcd","amount":"40000000000000"}]}}}}}`))
 		case "/qrl/v1/validator/duties/attester/2":
 			var indices []string
 			assert.NoError(t, json.NewDecoder(request.Body).Decode(&indices))
@@ -64,10 +62,6 @@ func TestClientDecodesQrysmResponses(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, Genesis{Time: 1700000000, ValidatorsRoot: "0x11", ForkVersion: "0x20000089"}, genesis)
 
-	fork, err := client.Fork(t.Context())
-	require.NoError(t, err)
-	require.Equal(t, Fork{PreviousVersion: "0x20000089", CurrentVersion: "0x20000090", Epoch: 5}, fork)
-
 	depositContract, err := client.DepositContract(t.Context())
 	require.NoError(t, err)
 	require.Equal(t, DepositContract{ChainID: 32382, Address: "Q4242424242424242424242424242424242424242"}, depositContract)
@@ -95,9 +89,10 @@ func TestClientDecodesQrysmResponses(t *testing.T) {
 	operations, err := client.BlockOperations(t.Context(), "9")
 	require.NoError(t, err)
 	require.Equal(t, BlockOperations{
-		Slot:           9,
-		VoluntaryExits: []uint64{64},
-		Withdrawals:    []Withdrawal{{ValidatorIndex: 64, Address: "0xcd", Amount: 40000000000000}},
+		Slot:                 9,
+		ExecutionBlockNumber: 42,
+		VoluntaryExits:       []uint64{64},
+		Withdrawals:          []Withdrawal{{ValidatorIndex: 64, Address: "0xcd", Amount: 40000000000000}},
 	}, operations)
 
 	duties, err := client.AttesterDuties(t.Context(), 2, []uint64{64})

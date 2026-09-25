@@ -21,13 +21,17 @@ type Lane struct {
 type SuiteID string
 
 const (
-	suiteExecutionABI     SuiteID = "execution-abi"
-	suiteExecutionConsole SuiteID = "execution-console"
+	suiteExecutionABI              SuiteID = "execution-abi"
+	suiteExecutionConsole          SuiteID = "execution-console"
+	suiteConsensusStakingAutomated SuiteID = "consensus-staking-automated"
+	suiteConsensusStakingOperator  SuiteID = "consensus-staking-operator"
 )
 
 var suitePackages = map[SuiteID]string{
-	suiteExecutionABI:     "./e2e/suites/execution/abi",
-	suiteExecutionConsole: "./e2e/suites/execution/console",
+	suiteExecutionABI:              "./e2e/suites/execution/abi",
+	suiteExecutionConsole:          "./e2e/suites/execution/console",
+	suiteConsensusStakingAutomated: "./e2e/suites/consensus/stakingautomated",
+	suiteConsensusStakingOperator:  "./e2e/suites/consensus/stakingoperator",
 }
 
 var registry = []Lane{
@@ -35,7 +39,24 @@ var registry = []Lane{
 		Name:    "execution",
 		Profile: devnet.ProfileSingle,
 		Suites:  []SuiteID{suiteExecutionABI, suiteExecutionConsole},
-		Timeout: 30 * time.Minute,
+		Timeout: 20 * time.Minute,
+	},
+	{
+		// On the single profile a voting period is 512 five-second slots, so
+		// the deposits count after about 65 minutes, before activation,
+		// attestation and exit.
+		Name:    "consensus-staking-automated",
+		Profile: devnet.ProfileSingle,
+		Suites:  []SuiteID{suiteConsensusStakingAutomated},
+		Timeout: 95 * time.Minute,
+	},
+	{
+		// The deposit counts after about 65 minutes on the single profile,
+		// before activation, attestation and exit.
+		Name:    "consensus-staking-operator",
+		Profile: devnet.ProfileSingle,
+		Suites:  []SuiteID{suiteConsensusStakingOperator},
+		Timeout: 95 * time.Minute,
 	},
 }
 
@@ -89,6 +110,11 @@ func (lane Lane) Packages() []string {
 
 func (lane Lane) NeedsExecutionImage() bool {
 	return slices.Contains(lane.Suites, suiteExecutionConsole)
+}
+
+func (lane Lane) NeedsValidatorImage() bool {
+	return slices.Contains(lane.Suites, suiteConsensusStakingAutomated) ||
+		slices.Contains(lane.Suites, suiteConsensusStakingOperator)
 }
 
 func RegisteredSuites() []SuiteID {

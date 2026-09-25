@@ -10,6 +10,7 @@ import (
 	"github.com/cyyber/qrl-tests/e2e/internal/beacon"
 	"github.com/cyyber/qrl-tests/e2e/internal/manifest"
 	"github.com/cyyber/qrl-tests/internal/devwallet"
+	"github.com/theQRL/go-qrl/common"
 	qrlwallet "github.com/theQRL/go-qrl/crypto/pqcrypto/wallet"
 	"github.com/theQRL/go-qrl/qrlclient"
 )
@@ -17,8 +18,10 @@ import (
 // Runtime owns the network metadata and shared resources for one live suite.
 type Runtime struct {
 	Wallet         qrlwallet.Wallet
+	Address        common.Address
 	ChainID        *big.Int
 	ExecutionImage string
+	ValidatorImage string
 
 	environment devnet.Environment
 	nodes       []*Node
@@ -33,6 +36,8 @@ type Node struct {
 	Execution             *qrlclient.Client
 	ExecutionWebSocket    *qrlclient.Client
 	BeaconURL             string
+	BeaconGRPC            string
+	ConsensusServiceID    string
 	Beacon                *beacon.Client
 }
 
@@ -51,7 +56,9 @@ func Load() (*Runtime, error) {
 
 	runtime := &Runtime{
 		Wallet:         wallet,
+		Address:        common.Address(wallet.GetAddress()),
 		ExecutionImage: suiteManifest.ExecutionImage,
+		ValidatorImage: suiteManifest.ValidatorImage,
 		environment:    suiteManifest.Environment,
 	}
 	return runtime, nil
@@ -99,6 +106,8 @@ func (runtime *Runtime) open(ctx context.Context, participant devnet.Participant
 		ExecutionWebSocketURL: participant.Execution.WebSocketURL,
 		Execution:             client,
 		BeaconURL:             participant.Consensus.URL,
+		BeaconGRPC:            participant.Consensus.GRPC,
+		ConsensusServiceID:    participant.Consensus.ID,
 		Beacon:                beaconClient,
 	}
 	if withWebSocket {

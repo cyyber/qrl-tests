@@ -83,6 +83,7 @@ type Runner struct {
 	configuration         Config
 	networks              networkManager
 	resolveExecutionImage func(context.Context, devnet.Environment) (string, error)
+	resolveValidatorImage func(context.Context, devnet.Environment) (string, error)
 	runCommand            func(context.Context, commandSpec) error
 	stdout                io.Writer
 	stderr                io.Writer
@@ -94,6 +95,7 @@ func New(configuration Config, stdout, stderr io.Writer) *Runner {
 		configuration:         configuration.withDefaults(),
 		networks:              devnet.NewManager(),
 		resolveExecutionImage: devnet.ResolveExecutionImage,
+		resolveValidatorImage: devnet.ResolveValidatorImage,
 		runCommand:            execute,
 		stdout:                &lockedWriter{lock: outputLock, writer: stdout},
 		stderr:                &lockedWriter{lock: outputLock, writer: stderr},

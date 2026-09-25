@@ -200,6 +200,10 @@ func (docker *Docker) ContainerList(_ context.Context, options dockerclient.Cont
 	return dockerclient.ContainerListResult{Items: docker.Containers}, nil
 }
 
+func (docker *Docker) ImageInspect(context.Context, string, ...dockerclient.ImageInspectOption) (dockerclient.ImageInspectResult, error) {
+	return dockerclient.ImageInspectResult{}, docker.Fail["ImageInspect"]
+}
+
 // ArchiveNames lists the files copied into the container, relative to its root.
 func (docker *Docker) ArchiveNames() ([]string, error) {
 	files, err := containerfiles.ReadArchive(bytes.NewReader(docker.archive), "")
