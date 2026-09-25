@@ -8,16 +8,6 @@ import (
 
 const WithdrawalRecipientLength = 64
 
-// VoluntaryExit mirrors the consensus VoluntaryExit container.
-type VoluntaryExit struct {
-	Epoch          uint64
-	ValidatorIndex uint64
-}
-
-func (exit VoluntaryExit) HashTreeRoot() (Root, error) {
-	return merkleize([]Root{uint64Root(exit.Epoch), uint64Root(exit.ValidatorIndex)}), nil
-}
-
 // DepositMessage is the unsigned part of a deposit: what the validator key
 // signs under the deposit domain.
 type DepositMessage struct {
