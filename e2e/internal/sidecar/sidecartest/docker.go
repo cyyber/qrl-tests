@@ -20,6 +20,7 @@ import (
 	dockerclient "github.com/moby/moby/client"
 )
 
+// ContainerID is the ID of the fake's only container.
 const ContainerID = "sidecar"
 
 // Docker fakes a Docker daemon serving one sidecar container. It is not safe
@@ -45,16 +46,19 @@ type Docker struct {
 	// ExecNeverExits keeps an exec's output open until the caller closes it.
 	ExecNeverExits bool
 
-	// Fail makes a call return the error, keyed by method name, such as
-	// "ContainerStart".
+	AttachOutput string
+
+	// Fail makes a call return the error, keyed by method name, for the
+	// methods that support it, such as "ContainerStart".
 	Fail map[string]error
 
 	// Recorded calls.
-	Created dockerclient.ContainerCreateOptions
-	archive []byte
-	Execs   [][]string
-	Removed []string
-	Listed  []dockerclient.ContainerListOptions
+	Created  dockerclient.ContainerCreateOptions
+	Attached dockerclient.ContainerAttachOptions
+	archive  []byte
+	Execs    [][]string
+	Removed  []string
+	Listed   []dockerclient.ContainerListOptions
 }
 
 // NewDocker returns a fake whose sidecar is running.
@@ -64,6 +68,18 @@ func NewDocker() *Docker {
 		Fail:  map[string]error{},
 		State: &containertypes.State{Status: containertypes.StateRunning, Running: true},
 	}
+}
+
+func (docker *Docker) ContainerAttach(_ context.Context, _ string, options dockerclient.ContainerAttachOptions) (dockerclient.ContainerAttachResult, error) {
+	docker.Attached = options
+	if err := docker.Fail["ContainerAttach"]; err != nil {
+		return dockerclient.ContainerAttachResult{}, err
+	}
+	conn, _ := net.Pipe()
+	return dockerclient.ContainerAttachResult{HijackedResponse: dockerclient.HijackedResponse{
+		Conn:   conn,
+		Reader: bufio.NewReader(bytes.NewReader(multiplexed(stdcopy.Stdout, docker.AttachOutput))),
+	}}, nil
 }
 
 func (docker *Docker) ContainerCreate(_ context.Context, options dockerclient.ContainerCreateOptions) (dockerclient.ContainerCreateResult, error) {
@@ -104,6 +120,8 @@ func (docker *Docker) ContainerWait(ctx context.Context, _ string, _ dockerclien
 	result := make(chan containertypes.WaitResponse, 1)
 	errs := make(chan error, 1)
 	switch {
+	case docker.Fail["ContainerWait"] != nil:
+		errs <- docker.Fail["ContainerWait"]
 	case docker.NeverExits && ctx.Err() != nil:
 		// Docker's client fails the wait request itself on a done context.
 		errs <- ctx.Err()

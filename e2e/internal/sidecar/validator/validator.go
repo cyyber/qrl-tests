@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"net"
-	"path"
 	"strconv"
 	"strings"
 	"time"
@@ -197,14 +196,11 @@ func fixtureFiles(chainConfig []byte, keystores []sidecar.File) ([]sidecar.File,
 		{Name: passwordPath, Body: []byte(walletPassword)},
 		{Name: chainConfigPath, Body: chainConfig},
 	}
-	for _, keystore := range keystores {
-		name := path.Base(strings.TrimSpace(keystore.Name))
-		if name == "." || name == "/" {
-			return nil, errors.New("keystore name is empty")
-		}
-		files = append(files, sidecar.File{Name: path.Join(keysDir, name), Body: keystore.Body})
+	keys, err := sidecar.FilesIn(keysDir, keystores)
+	if err != nil {
+		return nil, err
 	}
-	return files, nil
+	return append(files, keys...), nil
 }
 
 func waitForKeymanager(ctx context.Context, container *sidecar.Container) (*keymanager.Client, error) {

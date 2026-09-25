@@ -31,13 +31,13 @@ var _ = ginkgo.Describe(
 		})
 
 		ginkgo.It("validates console and RPC APIs against the live network", func(ctx ginkgo.SpecContext) {
-			fixtureArchive := testsuite.MustSucceed(consoleFixtureArchive(nil))
+			scripts := testsuite.MustSucceed(consoleScripts(nil))
 			gomega.Expect(
-				runScenario(ctx, consoleContainerConfig{
+				runScenario(ctx, consoleScenario{
 					image:       node.ExecutionImage,
 					endpointURL: node.ExecutionRPCURL,
 					scenario:    "api",
-				}, fixtureArchive),
+				}, scripts),
 			).To(gomega.Succeed())
 		})
 
@@ -47,37 +47,37 @@ var _ = ginkgo.Describe(
 			parameters := testsuite.MustSucceed(
 				prepareContractParameters(ctx, node, contracts.ConsoleProbeABI, bytecode),
 			)
-			fixtureArchive := testsuite.MustSucceed(consoleFixtureArchive(parameters))
+			scripts := testsuite.MustSucceed(consoleScripts(parameters))
 			gomega.Expect(
-				runScenario(ctx, consoleContainerConfig{
+				runScenario(ctx, consoleScenario{
 					image:       node.ExecutionImage,
 					endpointURL: node.ExecutionRPCURL,
 					scenario:    "contract",
-				}, fixtureArchive),
+				}, scripts),
 			).To(gomega.Succeed())
 		})
 
 		ginkgo.It("validates indexed VM64 event topics and generated filters", func(ctx ginkgo.SpecContext) {
 			ginkgo.By("preparing the indexed topic fixture")
 			parameters := testsuite.MustSucceed(prepareTopicParameters(ctx, node))
-			fixtureArchive := testsuite.MustSucceed(consoleFixtureArchive(parameters))
+			scripts := testsuite.MustSucceed(consoleScripts(parameters))
 			gomega.Expect(
-				runScenario(ctx, consoleContainerConfig{
+				runScenario(ctx, consoleScenario{
 					image:       node.ExecutionImage,
 					endpointURL: node.ExecutionRPCURL,
 					scenario:    "topics",
-				}, fixtureArchive),
+				}, scripts),
 			).To(gomega.Succeed())
 		})
 
 		ginkgo.It("transfers value through the node-managed console account", func(ctx ginkgo.SpecContext) {
-			fixtureArchive := testsuite.MustSucceed(consoleFixtureArchive(nil))
+			scripts := testsuite.MustSucceed(consoleScripts(nil))
 			gomega.Expect(
-				runScenario(ctx, consoleContainerConfig{
+				runScenario(ctx, consoleScenario{
 					image:       node.ExecutionImage,
 					endpointURL: node.ExecutionRPCURL,
 					scenario:    "transactions",
-				}, fixtureArchive),
+				}, scripts),
 			).To(gomega.Succeed())
 		})
 
@@ -87,14 +87,14 @@ var _ = ginkgo.Describe(
 			parameters := testsuite.MustSucceed(
 				prepareConstructorParameters(ctx, node, contracts.ConsoleProbeABI, bytecode),
 			)
-			fixtureArchive := testsuite.MustSucceed(consoleFixtureArchive(parameters))
+			scripts := testsuite.MustSucceed(consoleScripts(parameters))
 			gomega.Expect(
-				runScenario(ctx, consoleContainerConfig{
+				runScenario(ctx, consoleScenario{
 					image:       node.ExecutionImage,
 					endpointURL: node.ExecutionWebSocketURL,
 					scenario:    "constructor",
 					interactive: true,
-				}, fixtureArchive),
+				}, scripts),
 			).To(gomega.Succeed())
 		})
 
@@ -104,14 +104,14 @@ var _ = ginkgo.Describe(
 			parameters := testsuite.MustSucceed(
 				prepareEventParameters(ctx, node, contracts.ConsoleProbeABI, bytecode),
 			)
-			fixtureArchive := testsuite.MustSucceed(consoleFixtureArchive(parameters))
+			scripts := testsuite.MustSucceed(consoleScripts(parameters))
 			gomega.Expect(
-				runScenario(ctx, consoleContainerConfig{
+				runScenario(ctx, consoleScenario{
 					image:       node.ExecutionImage,
 					endpointURL: node.ExecutionWebSocketURL,
 					scenario:    "events",
 					interactive: true,
-				}, fixtureArchive),
+				}, scripts),
 			).To(gomega.Succeed())
 		})
 	},

@@ -1,9 +1,12 @@
 package sidecar
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"io"
 	"maps"
+	"net"
 	"net/netip"
 	"testing"
 	"time"
@@ -11,6 +14,7 @@ import (
 	"github.com/cyyber/qrl-tests/e2e/internal/sidecar/sidecartest"
 	containertypes "github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/api/types/network"
+	dockerclient "github.com/moby/moby/client"
 	"github.com/stretchr/testify/require"
 )
 
@@ -136,9 +140,8 @@ func TestRunRemovesContainerOnFailure(t *testing.T) {
 		{
 			name:       "cancelled",
 			neverExits: true,
-			logs:       "waiting for peer",
 			cancel:     errors.New("suite timed out"),
-			wantErr:    "wait for test sidecar: suite timed out\nlast log lines:\nwaiting for peer",
+			wantErr:    "register test sidecar exit waiter: suite timed out",
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -166,6 +169,123 @@ func TestRunRemovesContainerOnFailure(t *testing.T) {
 			require.Equal(t, []string{sidecartest.ContainerID}, docker.Removed)
 		})
 	}
+}
+
+func TestAttachStreamsTheProcess(t *testing.T) {
+	for _, test := range []struct {
+		name        string
+		stdin       bool
+		exitCode    int64
+		waitMessage string
+		wantErr     string
+		wantExit    bool
+	}{
+		{name: "output only"},
+		{name: "with stdin", stdin: true},
+		{name: "failed exit", exitCode: 2, wantErr: "test sidecar container exited with code 2", wantExit: true},
+		{name: "wait error", waitMessage: "container removed", wantErr: "wait for test sidecar: container removed"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			docker := sidecartest.NewDocker()
+			docker.AttachOutput = "tool output\n"
+			docker.ExitCode = test.exitCode
+			docker.WaitMessage = test.waitMessage
+			spec := testSpec()
+			spec.Cmd = []string{"--mode", "test"}
+			spec.Stdin = test.stdin
+
+			process, err := Attach(t.Context(), docker, spec)
+			require.NoError(t, err)
+			require.Equal(t, []string{"--mode", "test"}, docker.Created.Config.Cmd)
+			require.True(t, docker.Created.Config.AttachStdout)
+			require.True(t, docker.Created.Config.AttachStderr)
+			require.Equal(t, test.stdin, docker.Created.Config.AttachStdin)
+			require.Equal(t, test.stdin, docker.Created.Config.OpenStdin)
+			require.Equal(t, test.stdin, docker.Created.Config.StdinOnce)
+			require.Equal(t, dockerclient.ContainerAttachOptions{Stream: true, Stdin: test.stdin, Stdout: true, Stderr: true}, docker.Attached)
+
+			var output bytes.Buffer
+			require.NoError(t, process.Output(&output))
+			require.Equal(t, "tool output\n", output.String())
+			if test.wantErr == "" {
+				require.NoError(t, process.Wait())
+			} else {
+				err := process.Wait()
+				require.EqualError(t, err, test.wantErr)
+				var exitErr *ExitError
+				require.Equal(t, test.wantExit, errors.As(err, &exitErr))
+			}
+
+			require.NoError(t, process.Close())
+			require.Equal(t, []string{sidecartest.ContainerID}, docker.Removed)
+		})
+	}
+}
+
+func TestAttachRemovesContainerOnFailure(t *testing.T) {
+	errDaemon := errors.New("daemon unavailable")
+	for _, test := range []struct {
+		method  string
+		wantErr string
+	}{
+		{method: "ContainerAttach", wantErr: "attach to test sidecar container: daemon unavailable"},
+		{method: "ContainerWait", wantErr: "register test sidecar exit waiter: daemon unavailable"},
+		{method: "ContainerStart", wantErr: "start test sidecar container: daemon unavailable"},
+	} {
+		t.Run(test.method, func(t *testing.T) {
+			docker := sidecartest.NewDocker()
+			docker.Fail[test.method] = errDaemon
+
+			process, err := Attach(t.Context(), docker, testSpec())
+			require.Nil(t, process)
+			require.EqualError(t, err, test.wantErr)
+			require.ErrorIs(t, err, errDaemon)
+			require.Equal(t, []string{sidecartest.ContainerID}, docker.Removed)
+		})
+	}
+}
+
+func TestProcessWaitStops(t *testing.T) {
+	cause := errors.New("suite timed out")
+	for _, test := range []struct {
+		name    string
+		stop    func(*Process, context.CancelCauseFunc)
+		wantErr error
+	}{
+		{name: "detached", stop: func(process *Process, _ context.CancelCauseFunc) { process.Detach() }, wantErr: context.Canceled},
+		{name: "cancelled", stop: func(_ *Process, cancel context.CancelCauseFunc) { cancel(cause) }, wantErr: cause},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			docker := sidecartest.NewDocker()
+			docker.NeverExits = true
+			ctx, cancel := context.WithCancelCause(t.Context())
+			defer cancel(nil)
+			process, err := Attach(ctx, docker, testSpec())
+			require.NoError(t, err)
+
+			test.stop(process, cancel)
+			err = process.Wait()
+			require.EqualError(t, err, "wait for test sidecar: "+test.wantErr.Error())
+			require.ErrorIs(t, err, test.wantErr)
+			require.NoError(t, process.Close())
+		})
+	}
+}
+
+func TestProcessCloseClosesOwnedClient(t *testing.T) {
+	docker := sidecartest.NewDocker()
+	process, err := Attach(t.Context(), docker, testSpec())
+	require.NoError(t, err)
+	errClient := errors.New("client close failed")
+	closed := false
+	process.closeClient = func() error {
+		closed = true
+		return errClient
+	}
+
+	require.ErrorIs(t, process.Close(), errClient)
+	require.True(t, closed)
+	require.Equal(t, []string{sidecartest.ContainerID}, docker.Removed)
 }
 
 func TestPublishedPortErrors(t *testing.T) {
@@ -233,7 +353,7 @@ func TestPublishedHostPortRequiresNetworkSettings(t *testing.T) {
 	port, ok := network.PortFrom(7500, network.TCP)
 	require.True(t, ok)
 	_, err := publishedHostPort(containertypes.InspectResponse{}, port)
-	require.ErrorContains(t, err, "network settings")
+	require.EqualError(t, err, "container has no network settings")
 
 	_, err = publishedHostPort(containertypes.InspectResponse{NetworkSettings: &containertypes.NetworkSettings{}}, port)
 	require.EqualError(t, err, "container port 7500/tcp is not published")
@@ -254,6 +374,23 @@ func TestReadFile(t *testing.T) {
 
 	_, err = container.ReadFile(t.Context(), "/data")
 	require.EqualError(t, err, "archive does not contain /data", "a directory is not a file")
+}
+
+func TestFilesIn(t *testing.T) {
+	files, err := FilesIn("/keys", []File{
+		{Name: "a.json", Body: []byte("a")},
+		{Name: " dir/b.json ", Body: []byte("b"), Mode: 0o444},
+	})
+	require.NoError(t, err)
+	require.Equal(t, []File{
+		{Name: "/keys/a.json", Body: []byte("a")},
+		{Name: "/keys/b.json", Body: []byte("b"), Mode: 0o444},
+	}, files)
+
+	for _, name := range []string{"", " ", "/"} {
+		_, err := FilesIn("/keys", []File{{Name: name}})
+		require.EqualError(t, err, "file name is empty", "name %q", name)
+	}
 }
 
 func TestExec(t *testing.T) {
@@ -323,4 +460,90 @@ func TestExecStopsWithContext(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("Exec kept running after its context ended")
 	}
+}
+
+func TestProcessCloseInput(t *testing.T) {
+	newProcess := func(t *testing.T) (*Process, *writeSignalingConn, net.Conn) {
+		t.Helper()
+		clientConn, serverConn := net.Pipe()
+		connection := &writeSignalingConn{
+			Conn:        clientConn,
+			started:     make(chan struct{}),
+			writeDone:   make(chan struct{}),
+			inputClosed: make(chan struct{}),
+		}
+		processCtx, cancel := context.WithCancel(t.Context())
+		process := &Process{
+			Container: &Container{name: "test sidecar"},
+			ctx:       processCtx,
+			cancel:    cancel,
+			attach: dockerclient.ContainerAttachResult{
+				HijackedResponse: dockerclient.NewHijackedResponse(connection, ""),
+			},
+		}
+		t.Cleanup(process.Detach)
+		t.Cleanup(func() { _ = serverConn.Close() })
+		return process, connection, serverConn
+	}
+
+	t.Run("success", func(t *testing.T) {
+		process, connection, serverConn := newProcess(t)
+		done := make(chan error, 1)
+		go func() { done <- process.CloseInput(t.Context(), "exit\n") }()
+
+		input := make([]byte, len("exit\n"))
+		_, err := io.ReadFull(serverConn, input)
+		require.NoError(t, err)
+		require.Equal(t, "exit\n", string(input))
+		require.NoError(t, <-done)
+		<-connection.inputClosed
+	})
+
+	t.Run("cancellation", func(t *testing.T) {
+		process, connection, _ := newProcess(t)
+		closeCtx, cancel := context.WithCancelCause(t.Context())
+		cancelErr := errors.New("input cancelled")
+		done := make(chan error, 1)
+		go func() { done <- process.CloseInput(closeCtx, "exit\n") }()
+		<-connection.started
+		cancel(cancelErr)
+
+		select {
+		case err := <-done:
+			require.ErrorIs(t, err, cancelErr)
+		case <-time.After(time.Second):
+			t.Fatal("closing input remained blocked after cancellation")
+		}
+		select {
+		case <-connection.writeDone:
+		case <-time.After(time.Second):
+			t.Fatal("blocked input writer was not released")
+		}
+		select {
+		case <-connection.inputClosed:
+		case <-time.After(time.Second):
+			t.Fatal("input was not closed after cancellation")
+		}
+	})
+}
+
+// writeSignalingConn reports when a write starts and ends, and records
+// CloseWrite, so tests can hold a write open.
+type writeSignalingConn struct {
+	net.Conn
+	started     chan struct{}
+	writeDone   chan struct{}
+	inputClosed chan struct{}
+}
+
+func (connection *writeSignalingConn) Write(data []byte) (int, error) {
+	close(connection.started)
+	written, err := connection.Conn.Write(data)
+	close(connection.writeDone)
+	return written, err
+}
+
+func (connection *writeSignalingConn) CloseWrite() error {
+	close(connection.inputClosed)
+	return nil
 }
