@@ -126,7 +126,9 @@ func TestVoluntaryExit(t *testing.T) {
 				require.ErrorContains(t, err, want)
 			}
 			require.Equal(t, [][]string{{
-				"/validator", "accounts", "voluntary-exit",
+				"/validator",
+				"--chain-config-file=/network-configs/config.yaml",
+				"accounts", "voluntary-exit",
 				"--accept-terms-of-use",
 				"--wallet-dir=/wallet",
 				"--wallet-password-file=/wallet-password.txt",

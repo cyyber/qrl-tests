@@ -12,6 +12,7 @@ import (
 	"github.com/cyyber/qrl-tests/e2e/internal/chaininfo"
 	"github.com/cyyber/qrl-tests/e2e/internal/live"
 	"github.com/cyyber/qrl-tests/e2e/internal/signing"
+	"github.com/theQRL/go-qrl"
 	"github.com/theQRL/go-qrl/accounts/abi"
 	"github.com/theQRL/go-qrl/accounts/abi/bind"
 	"github.com/theQRL/go-qrl/common"
@@ -109,10 +110,11 @@ func (depositor *Depositor) verifyEvent(receipt *types.Receipt, data signing.Dep
 		if err := depositor.contract.UnpackLog(&event, "DepositEvent", *log); err != nil {
 			return fmt.Errorf("decode deposit event: %w", err)
 		}
-		if len(event.Amount) != 8 {
-			return fmt.Errorf("deposit event amount must be 8 bytes, got %d", len(event.Amount))
+		amount, err := event.amount()
+		if err != nil {
+			return err
 		}
-		if amount := binary.LittleEndian.Uint64(event.Amount); amount != data.Amount {
+		if amount != data.Amount {
 			return fmt.Errorf("deposit event amount is %d shor, want %d", amount, data.Amount)
 		}
 		if !bytes.Equal(event.PublicKey, data.PublicKey) ||
@@ -124,6 +126,41 @@ func (depositor *Depositor) verifyEvent(receipt *types.Receipt, data signing.Dep
 		return nil
 	}
 	return errors.New("successful deposit receipt has no deposit event")
+}
+
+// DepositedAmount returns the amount, in shor, of the first deposit the
+// contract has logged for publicKey since fromBlock, and false if there is none
+// yet.
+func (depositor *Depositor) DepositedAmount(ctx context.Context, publicKey []byte, fromBlock uint64) (uint64, bool, error) {
+	logs, err := depositor.node.Execution.FilterLogs(ctx, qrl.FilterQuery{
+		FromBlock: new(big.Int).SetUint64(fromBlock),
+		Addresses: []common.Address{depositor.address},
+	})
+	if err != nil {
+		return 0, false, fmt.Errorf("query deposit events: %w", err)
+	}
+	return depositor.findDeposit(logs, publicKey)
+}
+
+func (depositor *Depositor) findDeposit(logs []types.Log, publicKey []byte) (uint64, bool, error) {
+	for _, log := range logs {
+		var event depositEvent
+		if err := depositor.contract.UnpackLog(&event, "DepositEvent", log); err != nil {
+			return 0, false, fmt.Errorf("decode deposit event: %w", err)
+		}
+		if bytes.Equal(event.PublicKey, publicKey) {
+			amount, err := event.amount()
+			return amount, err == nil, err
+		}
+	}
+	return 0, false, nil
+}
+
+func (event depositEvent) amount() (uint64, error) {
+	if len(event.Amount) != 8 {
+		return 0, fmt.Errorf("deposit event amount must be 8 bytes, got %d", len(event.Amount))
+	}
+	return binary.LittleEndian.Uint64(event.Amount), nil
 }
 
 func depositInput(

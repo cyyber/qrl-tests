@@ -2,8 +2,10 @@ package validatorops
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -99,7 +101,7 @@ func TestDepositInput(t *testing.T) {
 	require.Equal(t, dataRoot, root)
 }
 
-func TestVerifyDepositEvent(t *testing.T) {
+func TestDepositEvent(t *testing.T) {
 	parsed, err := abi.JSON(strings.NewReader(depositContractABI))
 	require.NoError(t, err)
 	address := common.Address{1}
@@ -191,4 +193,53 @@ func TestVerifyDepositEvent(t *testing.T) {
 			})
 		}
 	})
+
+	t.Run("find by public key", func(t *testing.T) {
+		other := eventLog(address, changed(data.PublicKey), data.WithdrawalRecipient, data.RandaoCommitment, data.Signature, amount)
+		match := eventLog(address, data.PublicKey, data.WithdrawalRecipient, data.RandaoCommitment, data.Signature, amount)
+
+		found, ok, err := depositor.findDeposit([]types.Log{*other, *match}, data.PublicKey)
+		require.NoError(t, err)
+		require.True(t, ok)
+		require.Equal(t, data.Amount, found)
+
+		_, ok, err = depositor.findDeposit([]types.Log{*other}, data.PublicKey)
+		require.NoError(t, err)
+		require.False(t, ok)
+
+		short := eventLog(address, data.PublicKey, data.WithdrawalRecipient, data.RandaoCommitment, data.Signature, make([]byte, 7))
+		_, ok, err = depositor.findDeposit([]types.Log{*short}, data.PublicKey)
+		require.EqualError(t, err, "deposit event amount must be 8 bytes, got 7")
+		require.False(t, ok)
+	})
+}
+
+type chainSource struct{}
+
+func (chainSource) Genesis(context.Context) (beacon.Genesis, error) {
+	return beacon.Genesis{ForkVersion: "0x10000020"}, nil
+}
+
+func (chainSource) SpecUint(_ context.Context, name string) (uint64, error) {
+	switch name {
+	case "SLOTS_PER_EPOCH":
+		return 8, nil
+	case "SECONDS_PER_SLOT":
+		return 5, nil
+	case "EPOCHS_PER_EXECUTION_VOTING_PERIOD":
+		return 64, nil
+	case "EXECUTION_FOLLOW_DISTANCE":
+		return 8, nil
+	case "SECONDS_PER_EXECUTION_BLOCK":
+		return 5, nil
+	default:
+		return 0, fmt.Errorf("unexpected spec value %s", name)
+	}
+}
+
+func loadChainInfo(t *testing.T) chaininfo.Info {
+	t.Helper()
+	chain, err := chaininfo.Load(t.Context(), chainSource{})
+	require.NoError(t, err)
+	return chain
 }
