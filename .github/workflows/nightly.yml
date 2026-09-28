@@ -128,7 +128,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        lane: ${{ fromJSON(vars.E2E_NIGHTLY_LANES || '["execution"]') }}
+        lane: ${{ fromJSON(vars.E2E_NIGHTLY_LANES || '["execution", "consensus-staking-automated"]') }}
     uses: ./.github/workflows/e2e-reusable.yml
     with:
       # Immutable digest references from the images job.
@@ -141,6 +141,7 @@ jobs:
       source-qrysm: ${{ needs.images.outputs.qrysm-sha }}
       source-generator: ${{ needs.images.outputs.generator-sha }}
       lane: ${{ matrix.lane }}
+      timeout-minutes: ${{ fromJSON('{"execution":30,"consensus-staking-automated":110}')[matrix.lane] }}
 
   image-failure-summary:
     needs: images

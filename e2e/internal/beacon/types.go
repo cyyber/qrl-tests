@@ -10,12 +10,6 @@ type Genesis struct {
 	ForkVersion    string `json:"genesis_fork_version"`
 }
 
-type Fork struct {
-	PreviousVersion string `json:"previous_version"`
-	CurrentVersion  string `json:"current_version"`
-	Epoch           uint64 `json:"epoch,string"`
-}
-
 type DepositContract struct {
 	ChainID uint64 `json:"chain_id,string"`
 	Address string `json:"address"`
@@ -52,9 +46,10 @@ type Withdrawal struct {
 }
 
 type BlockOperations struct {
-	Slot           uint64
-	VoluntaryExits []uint64
-	Withdrawals    []Withdrawal
+	Slot                 uint64
+	ExecutionBlockNumber uint64
+	VoluntaryExits       []uint64
+	Withdrawals          []Withdrawal
 }
 
 type AttesterDuty struct {
