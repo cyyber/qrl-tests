@@ -91,7 +91,11 @@ func (docker *Docker) ContainerInspect(context.Context, string, dockerclient.Con
 	ports := network.PortMap{}
 	if docker.Created.Config != nil {
 		for port := range docker.Created.Config.ExposedPorts {
-			ports[port] = []network.PortBinding{{HostPort: docker.HostPort}}
+			hostPort := docker.HostPort
+			if hostPort == "" {
+				hostPort = docker.Created.HostConfig.PortBindings[port][0].HostPort
+			}
+			ports[port] = []network.PortBinding{{HostPort: hostPort}}
 		}
 	}
 	return dockerclient.ContainerInspectResult{Container: containertypes.InspectResponse{
