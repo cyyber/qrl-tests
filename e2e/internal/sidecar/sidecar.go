@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/netip"
 	"path"
 	"strings"
@@ -77,7 +78,7 @@ type Spec struct {
 	Files      []File
 	// Stdin keeps the container's standard input open for Attach.
 	Stdin bool
-	// Port, when set, is published on 127.0.0.1 at a host port Docker picks.
+	// Port, when set, is published on 127.0.0.1 at a free host port.
 	Port uint16
 }
 
@@ -232,8 +233,12 @@ func create(ctx context.Context, client Client, spec Spec, attached bool) (*Cont
 		if !ok {
 			return nil, fmt.Errorf("%s port %d is invalid", spec.Name, spec.Port)
 		}
+		hostPort, err := freeHostPort()
+		if err != nil {
+			return nil, fmt.Errorf("find a host port for %s: %w", spec.Name, err)
+		}
 		config.ExposedPorts = network.PortSet{port: {}}
-		hostConfig.PortBindings = network.PortMap{port: {{HostIP: netip.MustParseAddr("127.0.0.1")}}}
+		hostConfig.PortBindings = network.PortMap{port: {{HostIP: netip.MustParseAddr("127.0.0.1"), HostPort: hostPort}}}
 	}
 
 	created, err := client.ContainerCreate(ctx, dockerclient.ContainerCreateOptions{Config: config, HostConfig: hostConfig})
@@ -252,6 +257,19 @@ func create(ctx context.Context, client Client, spec Spec, attached bool) (*Cont
 		return nil, container.abort(fmt.Errorf("copy %s files: %w", spec.Name, err))
 	}
 	return container, nil
+}
+
+// freeHostPort returns a TCP port that is free on 127.0.0.1. Docker 28 gives up
+// on a port it picks itself after ten taken ports in a row, and a devnet's
+// published ports fill the start of the range it picks from.
+func freeHostPort() (string, error) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		return "", err
+	}
+	defer listener.Close()
+	_, port, err := net.SplitHostPort(listener.Addr().String())
+	return port, err
 }
 
 func (container *Container) abort(err error) error {

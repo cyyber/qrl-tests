@@ -36,7 +36,6 @@ func testSpec() Spec {
 
 func TestStartCreatesPublishedContainer(t *testing.T) {
 	docker := sidecartest.NewDocker()
-	docker.HostPort = "32765"
 
 	container, err := Start(t.Context(), docker, testSpec())
 	require.NoError(t, err)
@@ -48,7 +47,10 @@ func TestStartCreatesPublishedContainer(t *testing.T) {
 	require.Equal(t, []string{"MODE=test"}, docker.Created.Config.Env)
 	require.Equal(t, []string{"host.docker.internal:host-gateway"}, docker.Created.HostConfig.ExtraHosts)
 	require.Equal(t, map[string]string{"qrl-tests.sidecar": "test sidecar"}, docker.Created.Config.Labels)
-	require.Equal(t, network.PortMap{port: {{HostIP: netip.MustParseAddr("127.0.0.1")}}}, docker.Created.HostConfig.PortBindings)
+	bindings := docker.Created.HostConfig.PortBindings[port]
+	require.Len(t, bindings, 1)
+	require.Equal(t, netip.MustParseAddr("127.0.0.1"), bindings[0].HostIP)
+	require.NotEmpty(t, bindings[0].HostPort)
 
 	names, err := docker.ArchiveNames()
 	require.NoError(t, err)
@@ -56,7 +58,7 @@ func TestStartCreatesPublishedContainer(t *testing.T) {
 
 	hostPort, err := container.PublishedPort(t.Context())
 	require.NoError(t, err)
-	require.Equal(t, "32765", hostPort)
+	require.Equal(t, bindings[0].HostPort, hostPort)
 
 	require.NoError(t, container.Close())
 	require.Equal(t, []string{sidecartest.ContainerID}, docker.Removed)
