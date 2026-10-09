@@ -120,6 +120,12 @@ func runnerFlags() []cli.Flag {
 		},
 	}
 
+	flags = append(flags, &cli.StringFlag{
+		Name:    "qrysm-alltools-image",
+		Usage:   "Qrysm all-tools image reference, for lanes that run its command-line tools",
+		Value:   devnet.DefaultQrysmAlltoolsImage,
+		EnvVars: []string{"DEVNET_QRYSM_ALLTOOLS_IMAGE"},
+	})
 	return append(flags, imageFlags()...)
 }
 
@@ -140,15 +146,16 @@ func runnerConfig(command *cli.Context) (runner.Config, error) {
 	}
 
 	return runner.Config{
-		TestsDir:     command.String("tests-dir"),
-		BaseName:     command.String("enclave-name"),
-		ReportDir:    command.String("report-dir"),
-		Backend:      backend,
-		Parameters:   parameters,
-		Suites:       command.StringSlice("suite"),
-		StartTimeout: command.Duration("start-timeout"),
-		MaxParallel:  maxParallel,
-		Images:       imagesFromFlags(command),
-		Seed:         command.Int64("seed"),
+		TestsDir:           command.String("tests-dir"),
+		BaseName:           command.String("enclave-name"),
+		ReportDir:          command.String("report-dir"),
+		Backend:            backend,
+		Parameters:         parameters,
+		Suites:             command.StringSlice("suite"),
+		StartTimeout:       command.Duration("start-timeout"),
+		MaxParallel:        maxParallel,
+		Images:             imagesFromFlags(command),
+		QrysmAlltoolsImage: command.String("qrysm-alltools-image"),
+		Seed:               command.Int64("seed"),
 	}, nil
 }

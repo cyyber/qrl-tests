@@ -26,6 +26,7 @@ import (
 const (
 	executionLaneName     = "execution"
 	consensusLaneName     = "consensus-staking-automated"
+	operatorLaneName      = "consensus-staking-operator"
 	executionABISuite     = "execution-abi"
 	executionConsoleSuite = "execution-console"
 )
@@ -52,6 +53,9 @@ func newTestRunner(t *testing.T, configuration Config, stdout, stderr io.Writer)
 	}
 	runner.resolveValidatorImage = func(context.Context, devnet.Environment) (string, error) {
 		return "sha256:" + strings.Repeat("cd", 32), nil
+	}
+	runner.resolveQrysmAlltoolsImage = func(context.Context, devnet.Environment) (string, error) {
+		return "sha256:" + strings.Repeat("ef", 32), nil
 	}
 	return runner
 }
@@ -149,14 +153,17 @@ func TestRunBuildsCommandAndCleansUp(t *testing.T) {
 func TestRunRecordsResolvedImage(t *testing.T) {
 	executionImage := "sha256:" + strings.Repeat("ab", 32)
 	validatorImage := "sha256:" + strings.Repeat("cd", 32)
+	qrysmAlltoolsImage := "sha256:" + strings.Repeat("ef", 32)
 	for _, testCase := range []struct {
-		lane          string
-		suites        []string
-		wantExecution string
-		wantValidator string
+		lane              string
+		suites            []string
+		wantExecution     string
+		wantValidator     string
+		wantQrysmAlltools string
 	}{
 		{lane: executionLaneName, suites: []string{executionConsoleSuite}, wantExecution: executionImage},
 		{lane: consensusLaneName, wantValidator: validatorImage},
+		{lane: operatorLaneName, wantValidator: validatorImage, wantQrysmAlltools: qrysmAlltoolsImage},
 	} {
 		t.Run(testCase.lane, func(t *testing.T) {
 			reports := t.TempDir()
@@ -180,6 +187,7 @@ func TestRunRecordsResolvedImage(t *testing.T) {
 			}
 			runner.resolveExecutionImage = resolved(executionImage)
 			runner.resolveValidatorImage = resolved(validatorImage)
+			runner.resolveQrysmAlltoolsImage = resolved(qrysmAlltoolsImage)
 			runner.runCommand = func(context.Context, commandSpec) error {
 				writeGinkgoReport(t, filepath.Join(reports, "lanes", testCase.lane), types.SpecStatePassed)
 				return nil
@@ -190,18 +198,21 @@ func TestRunRecordsResolvedImage(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, testCase.wantExecution, configured.ExecutionImage)
 			require.Equal(t, testCase.wantValidator, configured.ValidatorImage)
+			require.Equal(t, testCase.wantQrysmAlltools, configured.QrysmAlltoolsImage)
 		})
 	}
 }
 
 func TestRunImageResolutionError(t *testing.T) {
 	for _, testCase := range []struct {
-		lane    string
-		suites  []string
-		wantErr string
+		lane              string
+		suites            []string
+		validatorResolves bool
+		wantErr           string
 	}{
 		{lane: executionLaneName, suites: []string{executionConsoleSuite}, wantErr: "resolve execution image: inspect failed"},
 		{lane: consensusLaneName, wantErr: "resolve validator image: inspect failed"},
+		{lane: operatorLaneName, validatorResolves: true, wantErr: "resolve Qrysm all-tools image: inspect failed"},
 	} {
 		t.Run(testCase.lane, func(t *testing.T) {
 			networks := new(recordingNetworks)
@@ -212,6 +223,12 @@ func TestRunImageResolutionError(t *testing.T) {
 			}
 			runner.resolveExecutionImage = failed
 			runner.resolveValidatorImage = failed
+			runner.resolveQrysmAlltoolsImage = failed
+			if testCase.validatorResolves {
+				runner.resolveValidatorImage = func(context.Context, devnet.Environment) (string, error) {
+					return "sha256:" + strings.Repeat("cd", 32), nil
+				}
+			}
 			commandRan := false
 			runner.runCommand = func(context.Context, commandSpec) error {
 				commandRan = true
@@ -472,6 +489,10 @@ func TestNewResolvesConfigurationDefaults(t *testing.T) {
 	require.Equal(t, DefaultReportDir, runner.configuration.ReportDir)
 	require.Equal(t, devnet.BackendDocker, runner.configuration.Backend)
 	require.Equal(t, devnet.DefaultStartTimeout, runner.configuration.StartTimeout)
+	require.Equal(t, devnet.DefaultQrysmAlltoolsImage, runner.configuration.QrysmAlltoolsImage)
+
+	configured := New(Config{QrysmAlltoolsImage: " registry.example/qrysm-alltools:dev "}, io.Discard, io.Discard)
+	require.Equal(t, "registry.example/qrysm-alltools:dev", configured.configuration.QrysmAlltoolsImage)
 }
 
 func TestListDescribesLanesAndSuites(t *testing.T) {
@@ -522,15 +543,19 @@ func TestRunAllProvisionsPerLane(t *testing.T) {
 
 	require.NoError(t, runner.RunAll(t.Context()))
 	// Every registered lane provisions its own enclave and runs its own suites.
-	require.Equal(t, "qrl-tests-consensus-staking-automated", networks.started.EnclaveName)
+	require.Equal(t, "qrl-tests-consensus-staking-operator", networks.started.EnclaveName)
 	require.Equal(t, devnet.ProfileSingle, networks.started.Profile)
-	require.Equal(t, []string{"qrl-tests-execution", "qrl-tests-consensus-staking-automated"}, networks.stopped)
-	require.Len(t, commands, 2)
+	require.Equal(t, []string{
+		"qrl-tests-execution", "qrl-tests-consensus-staking-automated", "qrl-tests-consensus-staking-operator",
+	}, networks.stopped)
+	require.Len(t, commands, 3)
 	require.Contains(t, commands[0].Args, "./e2e/suites/execution/abi")
 	require.Contains(t, commands[1].Args, "./e2e/suites/consensus/stakingautomated")
+	require.Contains(t, commands[2].Args, "./e2e/suites/consensus/stakingoperator")
 	record := testutil.ReadJSON[runmanifest.Manifest](t, filepath.Join(reports, runmanifest.FileName))
 	require.Equal(t, "qrl-tests-execution", record.Lanes[0].Enclave)
 	require.Equal(t, "qrl-tests-consensus-staking-automated", record.Lanes[1].Enclave)
+	require.Equal(t, "qrl-tests-consensus-staking-operator", record.Lanes[2].Enclave)
 }
 
 func TestRunReturnsCleanupFailure(t *testing.T) {

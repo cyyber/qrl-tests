@@ -32,6 +32,7 @@ jobs:
       clef-image: ${{ steps.pin.outputs.clef-image }}
       consensus-image: ${{ steps.pin.outputs.consensus-image }}
       validator-image: ${{ steps.pin.outputs.validator-image }}
+      qrysm-alltools-image: ${{ steps.pin.outputs.qrysm-alltools-image }}
       genesis-image: ${{ steps.pin.outputs.genesis-image }}
     steps:
       - name: Check out qrl-tests
@@ -128,7 +129,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        lane: ${{ fromJSON(vars.E2E_NIGHTLY_LANES || '["execution", "consensus-staking-automated"]') }}
+        lane: ${{ fromJSON(vars.E2E_NIGHTLY_LANES || '["execution", "consensus-staking-automated", "consensus-staking-operator"]') }}
     uses: ./.github/workflows/e2e-reusable.yml
     with:
       # Immutable digest references from the images job.
@@ -136,12 +137,14 @@ jobs:
       clef-image: ${{ needs.images.outputs.clef-image }}
       consensus-image: ${{ needs.images.outputs.consensus-image }}
       validator-image: ${{ needs.images.outputs.validator-image }}
+      # Only this lane runs Qrysm's command-line tools.
+      qrysm-alltools-image: ${{ matrix.lane == 'consensus-staking-operator' && needs.images.outputs.qrysm-alltools-image || '' }}
       genesis-image: ${{ needs.images.outputs.genesis-image }}
       source-go-qrl: ${{ needs.images.outputs.go-qrl-sha }}
       source-qrysm: ${{ needs.images.outputs.qrysm-sha }}
       source-generator: ${{ needs.images.outputs.generator-sha }}
       lane: ${{ matrix.lane }}
-      timeout-minutes: ${{ fromJSON('{"execution":30,"consensus-staking-automated":110}')[matrix.lane] }}
+      timeout-minutes: ${{ fromJSON('{"execution":30,"consensus-staking-automated":110,"consensus-staking-operator":110}')[matrix.lane] }}
 
   image-failure-summary:
     needs: images

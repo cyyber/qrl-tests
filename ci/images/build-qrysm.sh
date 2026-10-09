@@ -4,6 +4,7 @@ set -euo pipefail
 : "${QRYSM_TARGETS:?set QRYSM_TARGETS to the missing Qrysm targets}"
 : "${QRYSM_BEACON_IMAGE_TAG:?set QRYSM_BEACON_IMAGE_TAG to the beacon image tag}"
 : "${QRYSM_VALIDATOR_IMAGE_TAG:?set QRYSM_VALIDATOR_IMAGE_TAG to the validator image tag}"
+: "${QRYSM_ALLTOOLS_IMAGE_TAG:?set QRYSM_ALLTOOLS_IMAGE_TAG to the all-tools image tag}"
 
 source_dir=${QRYSM_SOURCE_DIR:-.build/qrysm}
 source_dir=$(cd -- "${source_dir}" && pwd)
@@ -34,6 +35,10 @@ for requested in "${requested_targets[@]}"; do
 		target=cmd/validator
 		image_tags+=("${QRYSM_VALIDATOR_IMAGE_TAG}")
 		;;
+	qrysm-alltools)
+		target=cmd/alltools
+		image_tags+=("${QRYSM_ALLTOOLS_IMAGE_TAG}")
+		;;
 	*) echo "unknown Qrysm target: ${requested}" >&2; exit 2 ;;
 	esac
 	bazel_targets+=("//${target}:oci_image_tarball")
@@ -46,7 +51,7 @@ done
 		"${bazel_targets[@]}" "${platform_args[@]}" --config=release
 )
 
-# Both tarballs load under the same upstream name, so each one must be
+# Every tarball loads under the same upstream name, so each one must be
 # retagged before the next load overwrites it.
 for index in "${!archives[@]}"; do
 	loaded=$(docker load --input "${archives[index]}" | sed -n 's/^Loaded image: //p')

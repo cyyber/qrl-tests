@@ -50,6 +50,7 @@ cluster. The commands use the currently selected Kurtosis context.
 | `DEVNET_CONSENSUS_IMAGE` | `local/qrysm-beacon:devnet` | Consensus client image reference |
 | `DEVNET_VALIDATOR_IMAGE` | `local/qrysm-validator:devnet` | Validator client image reference |
 | `DEVNET_GENESIS_IMAGE` | `local/qrl-genesis-generator:devnet` | Genesis generator image reference |
+| `DEVNET_QRYSM_ALLTOOLS_IMAGE` | `local/qrysm-alltools:devnet` | Qrysm all-tools image reference, for E2E lanes that run its command-line tools; it is not pulled |
 | `DEVNET_PROFILE` | `single` | Built-in profile used by `network-start` |
 | `DEVNET_START_TIMEOUT` | `5m` | Network startup budget |
 | `DEVNET_PARAMS_FILE` | unset | Complete qrl-package YAML parameters |

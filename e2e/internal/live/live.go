@@ -17,11 +17,12 @@ import (
 
 // Runtime owns the network metadata and shared resources for one live suite.
 type Runtime struct {
-	Wallet         qrlwallet.Wallet
-	Address        common.Address
-	ChainID        *big.Int
-	ExecutionImage string
-	ValidatorImage string
+	Wallet             qrlwallet.Wallet
+	Address            common.Address
+	ChainID            *big.Int
+	ExecutionImage     string
+	ValidatorImage     string
+	QrysmAlltoolsImage string
 
 	environment devnet.Environment
 	nodes       []*Node
@@ -55,11 +56,12 @@ func Load() (*Runtime, error) {
 	}
 
 	runtime := &Runtime{
-		Wallet:         wallet,
-		Address:        common.Address(wallet.GetAddress()),
-		ExecutionImage: suiteManifest.ExecutionImage,
-		ValidatorImage: suiteManifest.ValidatorImage,
-		environment:    suiteManifest.Environment,
+		Wallet:             wallet,
+		Address:            common.Address(wallet.GetAddress()),
+		ExecutionImage:     suiteManifest.ExecutionImage,
+		ValidatorImage:     suiteManifest.ValidatorImage,
+		QrysmAlltoolsImage: suiteManifest.QrysmAlltoolsImage,
+		environment:        suiteManifest.Environment,
 	}
 	return runtime, nil
 }

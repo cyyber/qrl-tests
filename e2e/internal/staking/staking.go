@@ -37,6 +37,40 @@ const (
 	ExitTimeout = 8 * time.Minute
 )
 
+// ExpectDeposited waits for the deposit of publicKey to initialize a validator
+// at the maximum balance, checks that the validator carries recipient and
+// randaoCommitment, and returns its record. The wait is sized from the live
+// voting period.
+func ExpectDeposited(
+	ctx context.Context,
+	node *live.Node,
+	chain chaininfo.Info,
+	publicKey string,
+	maximum uint64,
+	recipient common.Address,
+	randaoCommitment string,
+) beacon.Validator {
+	var validator beacon.Validator
+	ginkgo.By("waiting for the deposit to initialize the validator at the maximum balance")
+	gomega.Eventually(func(g gomega.Gomega) {
+		record, err := node.Beacon.Validator(ctx, publicKey)
+		g.Expect(err).NotTo(gomega.HaveOccurred())
+		g.Expect(record.Balance).To(gomega.Equal(maximum))
+		g.Expect(record.EffectiveBalance).To(gomega.Equal(maximum))
+		validator = record
+	}).WithContext(ctx).
+		WithTimeout(chain.DepositWait()).
+		WithPolling(PollInterval).
+		Should(gomega.Succeed())
+
+	recipientHex := hexutil.Encode(recipient[:])
+	gomega.Expect(strings.EqualFold(validator.WithdrawalRecipient, recipientHex)).To(gomega.BeTrue(),
+		"withdrawal recipient is %s, want %s", validator.WithdrawalRecipient, recipientHex)
+	gomega.Expect(strings.EqualFold(validator.RandaoCommitment, randaoCommitment)).To(gomega.BeTrue(),
+		"validator record carries a different RANDAO commitment than the deposit")
+	return validator
+}
+
 // ExpectActiveAndAttesting waits for the validator to activate and earn an
 // attestation reward, and returns its record.
 func ExpectActiveAndAttesting(

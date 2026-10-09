@@ -13,6 +13,7 @@ import (
 	"net"
 	"net/netip"
 	"path"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -28,7 +29,7 @@ import (
 const (
 	cleanupTimeout = 30 * time.Second
 	logTimeout     = 10 * time.Second
-	exitLogTail    = "50"
+	exitLogLines   = 50
 	// labelKey tags every sidecar container, so containers left behind by an
 	// interrupted test run can be found with a label filter.
 	labelKey = "qrl-tests.sidecar"
@@ -338,7 +339,7 @@ func (container *Container) ReadDir(ctx context.Context, dir string) ([]File, er
 // WithLogs appends the end of the container's output to err, for failures the
 // sidecar's own logs explain.
 func (container *Container) WithLogs(err error) error {
-	logs, logsErr := container.logs()
+	logs, logsErr := container.Logs(exitLogLines)
 	switch {
 	case logsErr != nil:
 		return fmt.Errorf("%w\n(logs unavailable: %v)", err, logsErr)
@@ -349,15 +350,15 @@ func (container *Container) WithLogs(err error) error {
 	}
 }
 
-// logs reads the end of the container's output on its own deadline, since
-// logs matter most once the caller's context has run out.
-func (container *Container) logs() (string, error) {
+// Logs returns the last lines of the container's output. It reads on its own
+// deadline, since logs matter most once the caller's context has run out.
+func (container *Container) Logs(lines int) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), logTimeout)
 	defer cancel()
 	logs, err := container.client.ContainerLogs(ctx, container.id, dockerclient.ContainerLogsOptions{
 		ShowStdout: true,
 		ShowStderr: true,
-		Tail:       exitLogTail,
+		Tail:       strconv.Itoa(lines),
 	})
 	if err != nil {
 		return "", err

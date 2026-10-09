@@ -30,6 +30,38 @@ func ResolveValidatorImage(ctx context.Context, environment Environment) (string
 	})
 }
 
+// ResolveLocalImage returns the immutable Docker image ID of an image on the
+// Docker host. Sidecars do not pull, so an image that no service of the
+// network runs has to be there already.
+func ResolveLocalImage(ctx context.Context, environment Environment, imageReference string) (string, error) {
+	if environment.Backend != BackendDocker {
+		return "", fmt.Errorf("backend %q is not Docker", environment.Backend)
+	}
+	client, err := dockerapi.New()
+	if err != nil {
+		return "", fmt.Errorf("create Docker client: %w", err)
+	}
+	defer func() { _ = client.Close() }()
+	return resolveLocalImage(ctx, imageReference, client)
+}
+
+// imageInspector is the part of the Docker client resolveLocalImage uses.
+type imageInspector interface {
+	ImageInspect(context.Context, string, ...dockerclient.ImageInspectOption) (dockerclient.ImageInspectResult, error)
+}
+
+func resolveLocalImage(ctx context.Context, imageReference string, client imageInspector) (string, error) {
+	inspected, err := client.ImageInspect(ctx, imageReference)
+	if err != nil {
+		return "", fmt.Errorf("inspect image %q: %w", imageReference, err)
+	}
+	imageID := strings.TrimSpace(inspected.ID)
+	if !validSHA256ID(imageID) {
+		return "", fmt.Errorf("invalid Docker image ID %q", imageID)
+	}
+	return imageID, nil
+}
+
 func resolvePrimaryServiceImage(
 	ctx context.Context,
 	environment Environment,

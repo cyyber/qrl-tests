@@ -139,7 +139,7 @@ func (runner *Runner) executeLane(ctx context.Context, plan runPlan, lane laneRu
 	laneLog := &lockedWriter{lock: new(sync.Mutex), writer: logFile}
 	stdout := io.MultiWriter(runner.stdout, laneLog)
 	stderr := io.MultiWriter(runner.stderr, laneLog)
-	executionImage, validatorImage, err := runner.resolveImages(ctx, definition, lease.environment)
+	images, err := runner.resolveImages(ctx, definition, lease.environment)
 	if err != nil {
 		outcome.ExecutionErr = ctx.Err()
 		outcome.Err = fmt.Errorf("test infrastructure failed: %w", errors.Join(err, outcome.ExecutionErr))
@@ -148,11 +148,12 @@ func (runner *Runner) executeLane(ctx context.Context, plan runPlan, lane laneRu
 
 	manifestPath := lane.manifestPath()
 	if err := manifest.Write(manifestPath, manifest.Manifest{
-		Lane:           definition.Name,
-		Profile:        definition.Profile,
-		Environment:    lease.environment,
-		ExecutionImage: executionImage,
-		ValidatorImage: validatorImage,
+		Lane:               definition.Name,
+		Profile:            definition.Profile,
+		Environment:        lease.environment,
+		ExecutionImage:     images.execution,
+		ValidatorImage:     images.validator,
+		QrysmAlltoolsImage: images.qrysmAlltools,
 	}); err != nil {
 		outcome.Err = fmt.Errorf("test infrastructure failed: %w", err)
 		return outcome
@@ -176,27 +177,39 @@ func (runner *Runner) executeLane(ctx context.Context, plan runPlan, lane laneRu
 	return outcome
 }
 
+// sidecarImages are the images a lane's suites start sidecars from.
+type sidecarImages struct {
+	execution     string
+	validator     string
+	qrysmAlltools string
+}
+
 // resolveImages looks up the images the lane's suites start sidecars from.
 func (runner *Runner) resolveImages(
 	ctx context.Context,
 	definition lanes.Lane,
 	environment devnet.Environment,
-) (execution, validator string, err error) {
+) (images sidecarImages, err error) {
 	if definition.NeedsExecutionImage() {
-		if execution, err = resolveImage(ctx, "execution", environment, runner.resolveExecutionImage); err != nil {
-			return "", "", err
+		if images.execution, err = resolveImage(ctx, "execution", environment, runner.resolveExecutionImage); err != nil {
+			return sidecarImages{}, err
 		}
 	}
 	if definition.NeedsValidatorImage() {
-		if validator, err = resolveImage(ctx, "validator", environment, runner.resolveValidatorImage); err != nil {
-			return "", "", err
+		if images.validator, err = resolveImage(ctx, "validator", environment, runner.resolveValidatorImage); err != nil {
+			return sidecarImages{}, err
 		}
 	}
-	return execution, validator, nil
+	if definition.NeedsQrysmAlltoolsImage() {
+		if images.qrysmAlltools, err = resolveImage(ctx, "Qrysm all-tools", environment, runner.resolveQrysmAlltoolsImage); err != nil {
+			return sidecarImages{}, err
+		}
+	}
+	return images, nil
 }
 
-// resolveImage looks up the image a devnet service runs, so the lane's suites
-// can start their sidecars from the same image.
+// resolveImage looks up an image by its immutable ID, so the lane's suites
+// start their sidecars from exactly that image.
 func resolveImage(
 	ctx context.Context,
 	name string,

@@ -55,6 +55,7 @@ func TestLoad(t *testing.T) {
 
 	deposit := signing.ComputeDomain(signing.DomainDeposit, genesisVersion, signing.Root{})
 	require.Equal(t, deposit, chain.DepositDomain())
+	require.Equal(t, "0x10000020", chain.GenesisForkVersion())
 }
 
 func TestLoadRejectsMalformedValues(t *testing.T) {

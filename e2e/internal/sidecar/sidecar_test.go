@@ -440,6 +440,21 @@ func TestExec(t *testing.T) {
 	}
 }
 
+func TestLogs(t *testing.T) {
+	docker := sidecartest.NewDocker()
+	docker.Logs = "imported the key\nwaiting for activation\n"
+	container, err := Start(t.Context(), docker, testSpec())
+	require.NoError(t, err)
+
+	logs, err := container.Logs(10)
+	require.NoError(t, err)
+	require.Equal(t, "imported the key\nwaiting for activation", logs)
+
+	docker.Fail["ContainerLogs"] = errors.New("daemon unavailable")
+	_, err = container.Logs(10)
+	require.ErrorIs(t, err, docker.Fail["ContainerLogs"])
+}
+
 func TestExecStopsWithContext(t *testing.T) {
 	docker := sidecartest.NewDocker()
 	docker.ExecNeverExits = true
