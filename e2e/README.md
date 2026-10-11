@@ -8,7 +8,7 @@ endpoints; suites do not provision infrastructure.
 
 | Lane | Profile | Coverage |
 | --- | --- | --- |
-| `execution` | `single` | Execution ABI calls, events, errors, and WebSocket filters |
+| `execution` | `single` | Execution client: contract ABI, gqrl console, and transaction pool |
 | `consensus-staking-automated` | `single` | Staking through contract deposits and the keymanager API |
 | `consensus-staking-operator` | `single` | Staking through the deposit and validator CLIs |
 
