@@ -64,6 +64,16 @@ function requireUnderpriced(description, transaction) {
     throw new Error(description + " was accepted");
 }
 
+function requirePooled(description, transactionHash) {
+    var transaction = qrl.getTransaction(transactionHash);
+    if (transaction === null) {
+        throw new Error(description + " is not in the pool");
+    }
+    if (transaction.blockNumber !== null) {
+        throw new Error(description + " was mined");
+    }
+}
+
 check("node-managed signer replaces a queued transaction", function () {
     var sender = web3.toChecksumAddress(qrl.accounts[0]);
     var recipient = web3.toChecksumAddress("Q" + new Array(65).join("a6"));
@@ -91,9 +101,7 @@ check("node-managed signer replaces a queued transaction", function () {
     var balanceBefore = qrl.getBalance(recipient);
     var original = qrl.sendTransaction(transfer(nonce + 1, 1, feeCap, tip));
     requireHash("original transaction hash", original);
-    if (qrl.getTransaction(original) === null) {
-        throw new Error("original transaction is not in the pool");
-    }
+    requirePooled("original transaction", original);
     if (qrl.getTransactionCount(sender, "pending") !== nonce) {
         throw new Error("original transaction is not queued behind the nonce gap");
     }
@@ -108,18 +116,14 @@ check("node-managed signer replaces a queued transaction", function () {
         transfer(nonce + 1, 2, bumpFee(feeCap).minus(1), bumpFee(tip)));
     requireUnderpriced("replacement with the tip one planck short of the price bump",
         transfer(nonce + 1, 2, bumpFee(feeCap), bumpFee(tip).minus(1)));
-    if (qrl.getTransaction(original) === null) {
-        throw new Error("original transaction left the pool");
-    }
+    requirePooled("original transaction", original);
 
     var replacement = qrl.sendTransaction(transfer(nonce + 1, 2, bumpFee(feeCap), bumpFee(tip)));
     requireHash("replacement transaction hash", replacement);
     if (qrl.getTransaction(original) !== null) {
         throw new Error("original transaction is still in the pool");
     }
-    if (qrl.getTransaction(replacement) === null) {
-        throw new Error("replacement transaction is not in the pool");
-    }
+    requirePooled("replacement transaction", replacement);
 
     // Fill the nonce gap, so the replacement becomes executable.
     requireHash("gap transaction hash", qrl.sendTransaction(transfer(nonce, 0, feeCap, tip)));

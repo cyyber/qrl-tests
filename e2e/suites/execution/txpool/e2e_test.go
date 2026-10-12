@@ -88,7 +88,7 @@ var _ = ginkgo.Describe(
 		// Filling the gap lets the queued transaction be mined.
 		ginkgo.AfterAll(func(ctx ginkgo.SpecContext) {
 			if original == nil {
-				return
+				return // no transaction was queued
 			}
 			if testsuite.MustSucceed(node.Execution.PendingNonceAt(ctx, node.Address)) != nonce {
 				return
