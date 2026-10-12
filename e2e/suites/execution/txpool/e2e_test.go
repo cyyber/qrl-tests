@@ -108,13 +108,13 @@ var _ = ginkgo.Describe(
 			feeCap = new(big.Int).Mul(head.BaseFee, big.NewInt(2))
 			feeCap.Add(feeCap, tip)
 
-			// A stuck transaction blocks its sender's later nonces, so a new
-			// account sends it and the shared wallet stays usable if a spec
-			// fails.
+			ginkgo.By("funding a new account to send the transactions")
+			// A stuck transaction blocks its sender's later nonces, so the
+			// shared wallet does not send them.
 			sender = testsuite.MustSucceed(qrlwallet.Generate(qrlwallet.ML_DSA_87))
 			senderAddress = common.Address(sender.GetAddress())
-			// The sender has four transactions mined. Each can cost its gas at
-			// the fee cap after a price bump, plus a value of one planck.
+			// Four of its transactions are mined. Each can cost its gas at the
+			// fee cap after a price bump, plus a value of one planck.
 			funding := new(big.Int).Mul(new(big.Int).SetUint64(params.TxGas), bump(feeCap))
 			funding.Add(funding, big.NewInt(1))
 			funding.Mul(funding, big.NewInt(4))
