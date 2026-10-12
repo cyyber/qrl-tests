@@ -63,9 +63,8 @@ var _ = ginkgo.Describe(
 			signer        types.Signer
 			sender        qrlwallet.Wallet
 			senderAddress common.Address
-			// feeCap and tip are normal fees, which cover the base fee.
-			feeCap, tip *big.Int
-			stuck       *types.Transaction
+			feeCap, tip   *big.Int
+			stuck         *types.Transaction
 
 			recipient         = common.BytesToAddress([]byte("txpool e2e recipient"))
 			mistakenRecipient = common.BytesToAddress([]byte("txpool e2e mistaken"))
