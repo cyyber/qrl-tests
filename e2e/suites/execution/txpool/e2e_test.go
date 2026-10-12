@@ -113,8 +113,6 @@ var _ = ginkgo.Describe(
 
 			waitForBlocks(ctx, node, stuckAfterBlocks)
 			expectInPool(ctx, node, stuck)
-			// The pending nonce moved: the transaction has the sender's next
-			// nonce, and only its fees keep it out of a block.
 			gomega.Expect(node.Execution.PendingNonceAt(ctx, senderAddress)).To(gomega.Equal(uint64(1)))
 		}, ginkgo.SpecTimeout(2*time.Minute))
 

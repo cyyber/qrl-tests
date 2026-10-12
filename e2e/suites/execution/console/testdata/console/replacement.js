@@ -115,8 +115,6 @@ check("node-managed signer raises the fees of a stuck transaction", function () 
         // Normal fees take at most two blocks.
         waitForBlocks(3);
         requireInPool("stuck transaction", stuck);
-        // The pending nonce moved: the transaction has the sender's next
-        // nonce, and only its fees keep it out of a block.
         if (qrl.getTransactionCount(sender, "pending") !== nonce + 1) {
             throw new Error("stuck transaction is not executable");
         }
