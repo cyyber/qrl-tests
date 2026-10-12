@@ -45,7 +45,8 @@ func TestE2E(t *testing.T) {
 	testsuite.Run(t, "Transaction pool E2E suite")
 }
 
-// feeCase names the fees of a replacement that the pool rejects.
+// feeCase is a named pair of fees for a replacement transaction that the pool
+// must reject.
 type feeCase struct {
 	name        string
 	feeCap, tip *big.Int
@@ -156,7 +157,7 @@ var _ = ginkgo.Describe(
 		// With fees of a few planck the price bump rounds down to nothing, and
 		// the pool only asks that both fees are higher. The last spec checks
 		// the price bump itself, with normal fees.
-		ginkgo.It("rejects a replacement that does not raise both fees", func(ctx ginkgo.SpecContext) {
+		ginkgo.It("rejects a replacement transaction that does not raise both fees", func(ctx ginkgo.SpecContext) {
 			for _, fees := range []feeCase{
 				{"the same fees", stuckFeeCap, stuckTip},
 				{"only the fee cap raised", bump(stuckFeeCap), stuckTip},
@@ -164,7 +165,7 @@ var _ = ginkgo.Describe(
 			} {
 				err := node.Execution.SendTransaction(ctx, cancellation(0, fees.feeCap, fees.tip))
 				gomega.Expect(err).To(gomega.MatchError(gomega.ContainSubstring(replaceUnderpriced)),
-					"replacement with %s", fees.name)
+					"replacement transaction with %s", fees.name)
 			}
 			expectPooled(ctx, node, stuck, "stuck")
 		}, ginkgo.SpecTimeout(time.Minute))

@@ -1,8 +1,8 @@
 var suite = createConsoleSuite("replacement");
 var check = suite.check;
 
-// The pool's default --txpool.pricebump: a replacement must raise both fees by
-// this percentage.
+// The pool's default --txpool.pricebump: a replacement transaction must raise
+// both fees by this percentage.
 var priceBump = 10;
 
 // A plain transfer's gas. It is passed explicitly, because the node cannot
@@ -150,11 +150,11 @@ check("node-managed signer raises the fees of a stuck transaction", function () 
         // With fees of a few planck the price bump rounds down to nothing,
         // and the pool only asks that both fees are higher. The last check
         // has the price bump itself, with normal fees.
-        requireUnderpriced("replacement with the same fees",
+        requireUnderpriced("replacement transaction with the same fees",
             cancellation(nonce, stuckFeeCap, stuckTip));
-        requireUnderpriced("replacement with only the fee cap raised",
+        requireUnderpriced("replacement transaction with only the fee cap raised",
             cancellation(nonce, bumpFee(stuckFeeCap), stuckTip));
-        requireUnderpriced("replacement with only the tip raised",
+        requireUnderpriced("replacement transaction with only the tip raised",
             cancellation(nonce, stuckFeeCap, bumpFee(stuckTip)));
         requirePooled("stuck transaction", stuck);
     } catch (error) {
