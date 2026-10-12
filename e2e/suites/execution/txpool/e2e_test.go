@@ -24,22 +24,18 @@ const (
 	// priceBump is the pool's default --txpool.pricebump, in percent.
 	priceBump = 10
 
-	// Pool error. core/txpool does not build with this module's dependencies.
+	// The pool's error text; core/txpool cannot be imported here.
 	replaceUnderpriced = "replacement transaction underpriced"
 
-	// pollInterval is short next to a slot, so a spec acts soon after a block
-	// lands or the pool promotes a transaction.
+	// pollInterval is well under a slot, so specs react quickly to new blocks.
 	pollInterval = 200 * time.Millisecond
-	// stuckAfterBlocks is how many blocks the specs wait before they check
-	// that a low-fee transaction is still unmined. A transaction with normal
-	// fees is mined within two blocks, so one left out of three is stuck, not
-	// slow.
+	// stuckAfterBlocks is how many blocks an unmined transaction is left
+	// before it counts as stuck. Normal fees take at most two.
 	stuckAfterBlocks = 3
 )
 
-// The fees of a stuck transaction, in planck. No block includes it: the base
-// fee of an idle chain drops to 7 planck and stays there, above this fee cap.
-// The tip is half the fee cap, so either fee can be raised without the other.
+// Fees of a stuck transaction, in planck. The base fee never drops below 7,
+// so no block includes it. The tip is lower, so it can be raised on its own.
 var (
 	stuckFeeCap = big.NewInt(4)
 	stuckTip    = big.NewInt(2)

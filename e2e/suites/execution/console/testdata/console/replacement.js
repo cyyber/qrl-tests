@@ -9,9 +9,8 @@ var priceBump = 10;
 // estimate the gas of a transaction whose fee cap is below the base fee.
 var transferGas = 21000;
 
-// The fees of a stuck transaction, in planck. No block includes it: the base
-// fee of an idle chain drops to 7 planck and stays there, above this fee cap.
-// The tip is half the fee cap, so either fee can be raised without the other.
+// Fees of a stuck transaction, in planck. The base fee never drops below 7,
+// so no block includes it. The tip is lower, so it can be raised on its own.
 var stuckFeeCap = web3.toBigNumber(4);
 var stuckTip = web3.toBigNumber(2);
 
@@ -139,8 +138,7 @@ check("node-managed signer raises the fees of a stuck transaction", function () 
     var stuck = qrl.sendTransaction(payment(recipient, nonce, stuckFeeCap, stuckTip));
     var failure = null;
     try {
-        // A transaction with normal fees is mined within two blocks, so one
-        // left out of three is stuck, not slow.
+        // Normal fees take at most two blocks.
         waitForBlocks(3);
         requirePooled("stuck transaction", stuck);
         // The pending nonce moved: the transaction has the sender's next
