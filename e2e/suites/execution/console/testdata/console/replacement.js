@@ -44,33 +44,13 @@ function requireUnderpriced(description, transaction) {
     throw new Error(description + " was accepted");
 }
 
-function requireInPool(description, transactionHash) {
+function requireInPool(transactionHash) {
     var transaction = qrl.getTransaction(transactionHash);
     if (transaction === null) {
-        throw new Error(description + " is not in the pool");
+        throw new Error("transaction is not in the pool");
     }
     if (transaction.blockNumber !== null) {
-        throw new Error(description + " was mined");
-    }
-}
-
-function requireNotMined(description, transactionHash) {
-    if (qrl.getTransactionReceipt(transactionHash) !== null) {
-        throw new Error(description + " was mined");
-    }
-}
-
-function requireMined(description, transactionHash) {
-    var receipt = waitForReceipt(transactionHash);
-    if (Number(receipt.status) !== 1) {
-        throw new Error(description + " failed: " + JSON.stringify(receipt));
-    }
-}
-
-function requireReceived(description, recipient, balanceBefore, value) {
-    var received = qrl.getBalance(recipient).minus(balanceBefore);
-    if (received.toString(10) !== String(value)) {
-        throw new Error(description + " received " + received + ", want " + value);
+        throw new Error("transaction was mined");
     }
 }
 
@@ -114,7 +94,7 @@ check("node-managed signer raises the fees of a stuck transaction", function () 
     try {
         // Normal fees take at most two blocks.
         waitForBlocks(3);
-        requireInPool("stuck transaction", stuck);
+        requireInPool(stuck);
         if (qrl.getTransactionCount(sender, "pending") !== nonce + 1) {
             throw new Error("stuck transaction is not executable");
         }
@@ -127,7 +107,7 @@ check("node-managed signer raises the fees of a stuck transaction", function () 
             payment(sender, nonce, feeCap, stuckTip));
         requireUnderpriced("replacement transaction with only the tip raised",
             payment(sender, nonce, stuckFeeCap, stuckFeeCap));
-        requireInPool("stuck transaction", stuck);
+        requireInPool(stuck);
     } catch (error) {
         failure = error;
     }
@@ -135,9 +115,17 @@ check("node-managed signer raises the fees of a stuck transaction", function () 
     // The stuck transaction's payment again, with fees that cover the base
     // fee.
     var raised = sendDespite(failure, payment(recipient, nonce, feeCap, tip));
-    requireMined("raised transaction", raised);
-    requireNotMined("stuck transaction", stuck);
-    requireReceived("recipient", recipient, balanceBefore, 1);
+    var receipt = waitForReceipt(raised);
+    if (Number(receipt.status) !== 1) {
+        throw new Error("raised transaction failed: " + JSON.stringify(receipt));
+    }
+    if (qrl.getTransactionReceipt(stuck) !== null) {
+        throw new Error("stuck transaction was mined");
+    }
+    var received = qrl.getBalance(recipient).minus(balanceBefore);
+    if (received.toString(10) !== "1") {
+        throw new Error("recipient received " + received + ", want 1");
+    }
 });
 
 suite.finish();
