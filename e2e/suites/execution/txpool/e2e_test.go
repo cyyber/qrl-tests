@@ -150,9 +150,7 @@ var _ = ginkgo.Describe(
 			expectInPool(ctx, node, stuck, "stuck")
 		}, ginkgo.SpecTimeout(time.Minute))
 
-		// The sender sends the stuck transaction's payment again, with fees
-		// that cover the base fee.
-		ginkgo.It("mines the payment once its fees cover the base fee", func(ctx ginkgo.SpecContext) {
+		ginkgo.It("mines a replacement transaction whose fees cover the base fee", func(ctx ginkgo.SpecContext) {
 			before := testsuite.MustSucceed(node.Execution.BalanceAt(ctx, recipient, nil))
 			raised := payment(0, recipient, feeCap, tip)
 			gomega.Expect(node.Execution.SendTransaction(ctx, raised)).To(gomega.Succeed())
