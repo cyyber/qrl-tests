@@ -137,9 +137,6 @@ var _ = ginkgo.Describe(
 			gomega.Expect(node.Execution.PendingNonceAt(ctx, senderAddress)).To(gomega.Equal(uint64(1)))
 		}, ginkgo.SpecTimeout(3*time.Minute))
 
-		// With fees of a few planck the price bump rounds down to nothing, and
-		// the pool only asks that both fees are higher. The last spec checks
-		// the price bump itself, with normal fees.
 		ginkgo.It("rejects a replacement transaction that does not raise both fees", func(ctx ginkgo.SpecContext) {
 			for _, fees := range []feeCase{
 				{"the same fees", stuckFeeCap, stuckTip},

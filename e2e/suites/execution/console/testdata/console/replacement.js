@@ -148,9 +148,6 @@ check("node-managed signer raises the fees of a stuck transaction", function () 
             throw new Error("stuck transaction is not executable");
         }
 
-        // With fees of a few planck the price bump rounds down to nothing,
-        // and the pool only asks that both fees are higher. The last check
-        // has the price bump itself, with normal fees.
         requireUnderpriced("replacement transaction with the same fees",
             cancellation(nonce, stuckFeeCap, stuckTip));
         requireUnderpriced("replacement transaction with only the fee cap raised",
