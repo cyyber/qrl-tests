@@ -126,14 +126,7 @@ var _ = ginkgo.Describe(
 		// with a fee cap below the base fee.
 		ginkgo.It("leaves a transaction with a fee cap below the base fee out of blocks", func(ctx ginkgo.SpecContext) {
 			stuck = payment(0, recipient, stuckFeeCap, stuckTip)
-			// The pool accepts it once it has processed the block that funds
-			// the sender.
-			gomega.Eventually(func() error {
-				return node.Execution.SendTransaction(ctx, stuck)
-			}).WithContext(ctx).
-				WithTimeout(time.Minute).
-				WithPolling(pollInterval).
-				Should(gomega.Succeed())
+			gomega.Expect(node.Execution.SendTransaction(ctx, stuck)).To(gomega.Succeed())
 
 			// The pending nonce moves: the transaction has the sender's next
 			// nonce, and only its fees keep it out of a block.
