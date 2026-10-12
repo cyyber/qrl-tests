@@ -86,6 +86,20 @@ function replacementFees() {
     };
 }
 
+// cancellation is a transfer of nothing from an account to itself: it takes a
+// nonce and does nothing else.
+function cancellation(account, nonce, maxFeePerGas, maxPriorityFeePerGas) {
+    return {
+        from: account,
+        to: account,
+        value: 0,
+        nonce: nonce,
+        gas: transferGas,
+        maxFeePerGas: maxFeePerGas,
+        maxPriorityFeePerGas: maxPriorityFeePerGas
+    };
+}
+
 function requireUnderpriced(description, transaction) {
     try {
         qrl.sendTransaction(transaction);
@@ -251,20 +265,64 @@ check("node-managed signer cancels a transaction with a zero-value transfer to i
         failure = error;
     }
 
-    var cancel = sendDespite(failure, {
-        from: sender,
-        to: sender,
-        value: 0,
-        nonce: nonce,
-        gas: transferGas,
-        maxFeePerGas: fees.raisedFeeCap,
-        maxPriorityFeePerGas: fees.raisedTip
-    });
+    var cancel = sendDespite(failure, cancellation(sender, nonce, fees.raisedFeeCap, fees.raisedTip));
     requireHash("cancel transaction hash", cancel);
     if (qrl.getTransaction(mistaken) !== null) {
         throw new Error("mistaken transaction is still in the pool");
     }
 
+    var receipt = waitForReceipt(cancel);
+    if (Number(receipt.status) !== 1) {
+        throw new Error("cancel transaction failed: " + JSON.stringify(receipt));
+    }
+    if (qrl.getTransactionReceipt(mistaken) !== null) {
+        throw new Error("mistaken transaction was mined");
+    }
+    var balanceAfter = qrl.getBalance(recipient);
+    if (balanceAfter.toString(10) !== balanceBefore.toString(10)) {
+        throw new Error("mistaken transaction's recipient received " + balanceAfter.minus(balanceBefore));
+    }
+});
+
+// A transaction sent one nonce ahead waits in the pool's queue, where no block
+// can include it, until the gap is filled. Its sender cancels it there, and
+// the cancelling transfer is mined once the gap is filled.
+check("node-managed signer cancels a transaction sent one nonce ahead", function () {
+    var sender = web3.toChecksumAddress(qrl.accounts[0]);
+    var recipient = web3.toChecksumAddress("Q" + new Array(65).join("a8"));
+    requireAddress("mistaken transaction recipient", recipient);
+    var fees = replacementFees();
+    var nonce = qrl.getTransactionCount(sender, "pending");
+    var balanceBefore = qrl.getBalance(recipient);
+
+    var mistaken = qrl.sendTransaction({
+        from: sender,
+        to: recipient,
+        value: 1,
+        nonce: nonce + 1,
+        gas: transferGas,
+        maxFeePerGas: fees.raisedFeeCap,
+        maxPriorityFeePerGas: fees.raisedTip
+    });
+    requireHash("mistaken transaction hash", mistaken);
+    requirePooled("mistaken transaction", mistaken);
+    if (qrl.getTransactionCount(sender, "pending") !== nonce) {
+        throw new Error("mistaken transaction is not queued behind the nonce gap");
+    }
+
+    requireUnderpriced("cancelling transfer with the same fees",
+        cancellation(sender, nonce + 1, fees.raisedFeeCap, fees.raisedTip));
+    var cancel = qrl.sendTransaction(
+        cancellation(sender, nonce + 1, bumpFee(fees.raisedFeeCap), bumpFee(fees.raisedTip)));
+    requireHash("cancel transaction hash", cancel);
+    if (qrl.getTransaction(mistaken) !== null) {
+        throw new Error("mistaken transaction is still in the pool");
+    }
+    requirePooled("cancel transaction", cancel);
+
+    // Fill the nonce gap, so the cancelling transfer becomes executable.
+    requireHash("gap transaction hash",
+        qrl.sendTransaction(cancellation(sender, nonce, fees.raisedFeeCap, fees.raisedTip)));
     var receipt = waitForReceipt(cancel);
     if (Number(receipt.status) !== 1) {
         throw new Error("cancel transaction failed: " + JSON.stringify(receipt));

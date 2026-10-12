@@ -52,7 +52,8 @@ func TestE2E(t *testing.T) {
 // fees. The devnet cannot be congested on demand, so the specs send a
 // transaction whose fee cap starts below the base fee and then replace it:
 // with higher fees, as a sender who still wants it mined does, and with a
-// transfer of nothing, as a sender who sent it by mistake does.
+// transfer of nothing, as a sender who sent it by mistake does. A mistaken
+// transaction with too high a nonce is cancelled the same way.
 var _ = ginkgo.Describe(
 	"Transaction replacement against a live qrl-package network",
 	ginkgo.Serial,
@@ -132,11 +133,11 @@ var _ = ginkgo.Describe(
 			// fails.
 			sender = testsuite.MustSucceed(qrlwallet.Generate(qrlwallet.ML_DSA_87))
 			senderAddress = common.Address(sender.GetAddress())
-			// The sender has two transactions mined. Each can cost its gas at
-			// the raised fee cap, plus a value of one planck.
-			funding := new(big.Int).Mul(new(big.Int).SetUint64(params.TxGas), raisedFeeCap)
+			// The sender has four transactions mined. Each can cost its gas at
+			// the raised fee cap after a price bump, plus a value of one planck.
+			funding := new(big.Int).Mul(new(big.Int).SetUint64(params.TxGas), bump(raisedFeeCap))
 			funding.Add(funding, big.NewInt(1))
-			funding.Mul(funding, two)
+			funding.Mul(funding, big.NewInt(4))
 			walletNonce := testsuite.MustSucceed(node.Execution.PendingNonceAt(ctx, node.Address))
 			fund := transfer(node.Wallet, walletNonce, senderAddress, funding, raisedFeeCap, raisedTip)
 			gomega.Expect(node.Execution.SendTransaction(ctx, fund)).To(gomega.Succeed())
@@ -252,6 +253,43 @@ var _ = ginkgo.Describe(
 				gomega.Equal(before))
 			gomega.Expect(testsuite.MustSucceed(node.Execution.NonceAt(ctx, senderAddress, receipt.BlockNumber))).To(
 				gomega.Equal(uint64(2)))
+		}, ginkgo.SpecTimeout(2*time.Minute))
+
+		// A transaction sent one nonce ahead waits in the pool's queue, where no
+		// block can include it, until the gap is filled. Its sender cancels it
+		// there, and the cancelling transfer is mined once the gap is filled.
+		ginkgo.It("cancels a transaction sent one nonce ahead", func(ctx ginkgo.SpecContext) {
+			before := testsuite.MustSucceed(node.Execution.BalanceAt(ctx, mistakenRecipient, nil))
+			mistaken := transfer(sender, 3, mistakenRecipient, big.NewInt(1), raisedFeeCap, raisedTip)
+			gomega.Expect(node.Execution.SendTransaction(ctx, mistaken)).To(gomega.Succeed())
+			_, isPending, err := node.Execution.TransactionByHash(ctx, mistaken.Hash())
+			gomega.Expect(err).NotTo(gomega.HaveOccurred(), "the mistaken transaction is not in the pool")
+			gomega.Expect(isPending).To(gomega.BeTrue(), "the mistaken transaction was mined")
+			// The pending nonce does not move: the transaction is queued.
+			gomega.Expect(node.Execution.PendingNonceAt(ctx, senderAddress)).To(gomega.Equal(uint64(2)))
+
+			err = node.Execution.SendTransaction(ctx, transfer(sender, 3, senderAddress, new(big.Int), raisedFeeCap, raisedTip))
+			gomega.Expect(err).To(gomega.MatchError(gomega.ContainSubstring(replaceUnderpriced)),
+				"cancelling transfer with the same fees")
+
+			cancel := transfer(sender, 3, senderAddress, new(big.Int), bump(raisedFeeCap), bump(raisedTip))
+			gomega.Expect(node.Execution.SendTransaction(ctx, cancel)).To(gomega.Succeed())
+			_, _, err = node.Execution.TransactionByHash(ctx, mistaken.Hash())
+			gomega.Expect(err).To(gomega.MatchError(qrl.NotFound), "the mistaken transaction is still in the pool")
+
+			ginkgo.By("filling the nonce gap")
+			filler := transfer(sender, 2, senderAddress, new(big.Int), raisedFeeCap, raisedTip)
+			gomega.Expect(node.Execution.SendTransaction(ctx, filler)).To(gomega.Succeed())
+
+			receipt := testsuite.MustSucceed(bind.WaitMined(ctx, node.Execution, cancel))
+			gomega.Expect(receipt.Status).To(gomega.Equal(types.ReceiptStatusSuccessful))
+
+			_, err = node.Execution.TransactionReceipt(ctx, mistaken.Hash())
+			gomega.Expect(err).To(gomega.MatchError(qrl.NotFound), "the mistaken transaction was mined")
+			gomega.Expect(testsuite.MustSucceed(node.Execution.BalanceAt(ctx, mistakenRecipient, receipt.BlockNumber))).To(
+				gomega.Equal(before))
+			gomega.Expect(testsuite.MustSucceed(node.Execution.NonceAt(ctx, senderAddress, receipt.BlockNumber))).To(
+				gomega.Equal(uint64(4)))
 		}, ginkgo.SpecTimeout(2*time.Minute))
 	},
 )
