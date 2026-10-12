@@ -17,6 +17,7 @@ import (
 	"github.com/theQRL/go-qrl/accounts/abi/bind"
 	"github.com/theQRL/go-qrl/common"
 	"github.com/theQRL/go-qrl/core/types"
+	qrlwallet "github.com/theQRL/go-qrl/crypto/pqcrypto/wallet"
 	"github.com/theQRL/go-qrl/params"
 )
 
@@ -33,6 +34,9 @@ const (
 	pollInterval = 200 * time.Millisecond
 	// replaceAttempts limits the tries to replace an executable transaction before it is mined.
 	replaceAttempts = 3
+	// stuckBlocks is how many blocks must leave a transaction out before a
+	// spec calls it stuck. One that pays the base fee is mined within two.
+	stuckBlocks = 3
 )
 
 func TestE2E(t *testing.T) {
@@ -57,17 +61,26 @@ var _ = ginkgo.Describe(
 			replacementRecipient = common.BytesToAddress([]byte("txpool e2e replacement"))
 		)
 
-		transfer := func(txNonce uint64, to common.Address, gasFeeCap, gasTipCap *big.Int) *types.Transaction {
+		transferFrom := func(
+			wallet qrlwallet.Wallet,
+			txNonce uint64,
+			to common.Address,
+			value, gasFeeCap, gasTipCap *big.Int,
+		) *types.Transaction {
 			ginkgo.GinkgoHelper()
-			return testsuite.MustSucceed(types.SignNewTx(node.Wallet, signer, &types.DynamicFeeTx{
+			return testsuite.MustSucceed(types.SignNewTx(wallet, signer, &types.DynamicFeeTx{
 				ChainID:   node.ChainID,
 				Nonce:     txNonce,
 				GasTipCap: gasTipCap,
 				GasFeeCap: gasFeeCap,
 				Gas:       params.TxGas,
 				To:        &to,
-				Value:     big.NewInt(1),
+				Value:     value,
 			}))
+		}
+		transfer := func(txNonce uint64, to common.Address, gasFeeCap, gasTipCap *big.Int) *types.Transaction {
+			ginkgo.GinkgoHelper()
+			return transferFrom(node.Wallet, txNonce, to, big.NewInt(1), gasFeeCap, gasTipCap)
 		}
 
 		ginkgo.BeforeAll(func(ctx ginkgo.SpecContext) {
@@ -223,6 +236,70 @@ var _ = ginkgo.Describe(
 			}
 			ginkgo.Fail("the original transaction was mined before its replacement in every attempt")
 		}, ginkgo.SpecTimeout(5*time.Minute))
+
+		// A congested network raises the base fee above a waiting transaction's
+		// fee cap, and no block can include the transaction until its sender
+		// raises the fees. The devnet cannot be congested on demand, so the
+		// transaction starts with a fee cap below the base fee. A stuck
+		// transaction blocks its sender's later nonces, so a new account sends
+		// it and the shared wallet stays usable if the spec fails.
+		ginkgo.It("mines a stuck transaction once its fees are raised", func(ctx ginkgo.SpecContext) {
+			sender := testsuite.MustSucceed(qrlwallet.Generate(qrlwallet.ML_DSA_87))
+			senderAddress := common.Address(sender.GetAddress())
+			one := big.NewInt(1)
+
+			ginkgo.By("funding the sender")
+			// The raised transaction can cost its gas at the fee cap, plus its value.
+			funding := new(big.Int).Mul(new(big.Int).SetUint64(params.TxGas), feeCap)
+			funding.Add(funding, one)
+			walletNonce := testsuite.MustSucceed(node.Execution.PendingNonceAt(ctx, node.Address))
+			fund := transferFrom(node.Wallet, walletNonce, senderAddress, funding, feeCap, tip)
+			gomega.Expect(node.Execution.SendTransaction(ctx, fund)).To(gomega.Succeed())
+			testsuite.MustSucceed(bind.WaitMined(ctx, node.Execution, fund))
+
+			ginkgo.By("sending a transaction with a fee cap below the base fee")
+			head := testsuite.MustSucceed(node.Execution.HeaderByNumber(ctx, nil))
+			gomega.Expect(head.BaseFee.Cmp(one)).To(gomega.BeNumerically(">", 0), "no fee cap fits below the base fee")
+			stuck := transferFrom(sender, 0, originalRecipient, one, one, one)
+			// The pool accepts it once it has processed the block that funds
+			// the sender.
+			gomega.Eventually(func() error {
+				return node.Execution.SendTransaction(ctx, stuck)
+			}).WithContext(ctx).
+				WithTimeout(time.Minute).
+				WithPolling(pollInterval).
+				Should(gomega.Succeed())
+
+			// The pending nonce moves: the transaction is executable, and only
+			// its fees keep it out of a block.
+			gomega.Eventually(func(g gomega.Gomega) {
+				g.Expect(node.Execution.PendingNonceAt(ctx, senderAddress)).To(gomega.Equal(uint64(1)))
+			}).WithContext(ctx).
+				WithTimeout(time.Minute).
+				WithPolling(pollInterval).
+				Should(gomega.Succeed())
+
+			ginkgo.By("waiting for blocks that leave it out")
+			for range stuckBlocks {
+				waitForBlock(ctx, node)
+			}
+			_, isPending, err := node.Execution.TransactionByHash(ctx, stuck.Hash())
+			gomega.Expect(err).NotTo(gomega.HaveOccurred(), "the stuck transaction left the pool")
+			gomega.Expect(isPending).To(gomega.BeTrue(), "the stuck transaction was mined")
+
+			ginkgo.By("raising its fees")
+			err = node.Execution.SendTransaction(ctx, transferFrom(sender, 0, replacementRecipient, one, one, one))
+			gomega.Expect(err).To(gomega.MatchError(gomega.ContainSubstring(replaceUnderpriced)),
+				"replacement with the same fees")
+
+			raised := transferFrom(sender, 0, replacementRecipient, one, feeCap, tip)
+			gomega.Expect(node.Execution.SendTransaction(ctx, raised)).To(gomega.Succeed())
+			receipt := testsuite.MustSucceed(bind.WaitMined(ctx, node.Execution, raised))
+			gomega.Expect(receipt.Status).To(gomega.Equal(types.ReceiptStatusSuccessful))
+
+			_, err = node.Execution.TransactionReceipt(ctx, stuck.Hash())
+			gomega.Expect(err).To(gomega.MatchError(qrl.NotFound), "the stuck transaction was mined")
+		}, ginkgo.SpecTimeout(3*time.Minute))
 	},
 )
 
