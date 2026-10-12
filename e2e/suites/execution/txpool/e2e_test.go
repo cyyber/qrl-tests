@@ -152,9 +152,9 @@ var _ = ginkgo.Describe(
 			testsuite.MustSucceed(bind.WaitMined(ctx, node.Execution, fund))
 		}, ginkgo.NodeTimeout(2*time.Minute))
 
-		// Congestion leaves a transaction stuck by raising the base fee above
-		// its fee cap. The devnet cannot be congested on demand, so the
-		// transaction starts with a fee cap below the base fee.
+		// This simulates congestion, which leaves a transaction stuck by
+		// raising the base fee above its fee cap. The transaction starts with
+		// a fee cap below the base fee instead, which the pool treats the same.
 		ginkgo.It("leaves a transaction with a fee cap below the base fee out of blocks", func(ctx ginkgo.SpecContext) {
 			stuck = transfer(sender, 0, stuckRecipient, big.NewInt(1), stuckFeeCap, stuckTip)
 			// The pool accepts it once it has processed the block that funds

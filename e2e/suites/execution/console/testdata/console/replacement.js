@@ -129,9 +129,9 @@ function waitForBlocks(count) {
     throw new Error("chain did not advance " + count + " blocks within timeout");
 }
 
-// Congestion leaves a transaction stuck by raising the base fee above its fee
-// cap. The devnet cannot be congested on demand, so the transaction starts
-// with a fee cap below the base fee.
+// This simulates congestion, which leaves a transaction stuck by raising the
+// base fee above its fee cap. The transaction starts with a fee cap below the
+// base fee instead, which the pool treats the same.
 check("node-managed signer raises the fees of a stuck transaction", function () {
     var sender = web3.toChecksumAddress(qrl.accounts[0]);
     var recipient = web3.toChecksumAddress("Q" + new Array(65).join("a6"));
