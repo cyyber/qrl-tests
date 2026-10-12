@@ -74,7 +74,8 @@ var _ = ginkgo.Describe(
 
 			head := testsuite.MustSucceed(node.Execution.HeaderByNumber(ctx, nil))
 			tip = testsuite.MustSucceed(node.Execution.SuggestGasTipCap(ctx))
-			// Leave room above the tip, so a bumped tip stays below the fee cap.
+			// Twice the tip, so a bumped tip stays below the fee cap and the
+			// replacement is rejected as underpriced, not as invalid.
 			feeCap = new(big.Int).Add(new(big.Int).Lsh(head.BaseFee, 1), new(big.Int).Lsh(tip, 1))
 		}, ginkgo.NodeTimeout(time.Minute))
 
