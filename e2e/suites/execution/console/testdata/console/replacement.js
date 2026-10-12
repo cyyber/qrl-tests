@@ -84,6 +84,18 @@ function requirePooled(description, transactionHash) {
     }
 }
 
+function requireReplaced(description, transactionHash) {
+    if (qrl.getTransaction(transactionHash) !== null) {
+        throw new Error(description + " is still in the pool");
+    }
+}
+
+function requireUnmined(description, transactionHash) {
+    if (qrl.getTransactionReceipt(transactionHash) !== null) {
+        throw new Error(description + " was mined");
+    }
+}
+
 // sendDespite sends a transaction even after an earlier failure, and then
 // rethrows the failure: a stuck transaction blocks every later transaction of
 // its account, so the one that replaces it has to be sent.
@@ -161,9 +173,7 @@ check("node-managed signer raises the fees of a stuck transaction", function () 
         // the fee cap is still below the base fee.
         bumped = qrl.sendTransaction(transfer(2, bumpFee(fees.stuckFeeCap), bumpFee(fees.stuckTip)));
         requireHash("bumped transaction hash", bumped);
-        if (qrl.getTransaction(stuck) !== null) {
-            throw new Error("stuck transaction is still in the pool");
-        }
+        requireReplaced("stuck transaction", stuck);
         requirePooled("bumped transaction", bumped);
     } catch (error) {
         failure = error;
@@ -178,12 +188,8 @@ check("node-managed signer raises the fees of a stuck transaction", function () 
     if (Number(receipt.status) !== 1) {
         throw new Error("raised transaction failed: " + JSON.stringify(receipt));
     }
-    if (qrl.getTransactionReceipt(stuck) !== null) {
-        throw new Error("stuck transaction was mined");
-    }
-    if (qrl.getTransactionReceipt(bumped) !== null) {
-        throw new Error("bumped transaction was mined");
-    }
+    requireUnmined("stuck transaction", stuck);
+    requireUnmined("bumped transaction", bumped);
     var balanceAfter = qrl.getBalance(recipient);
     if (balanceAfter.toString(10) !== balanceBefore.plus(1).toString(10)) {
         throw new Error("recipient received " + balanceAfter.minus(balanceBefore) +
@@ -195,7 +201,7 @@ check("node-managed signer raises the fees of a stuck transaction", function () 
 // nothing to its own sender takes its nonce, so it can never be mined. The
 // mistaken transaction has the stuck fees, so no block includes it before it
 // is replaced.
-check("node-managed signer cancels a transaction with a zero-value transfer to itself", function () {
+check("node-managed signer cancels a stuck transaction with a zero-value transfer to itself", function () {
     var sender = web3.toChecksumAddress(qrl.accounts[0]);
     var recipient = web3.toChecksumAddress("Q" + new Array(65).join("a7"));
     requireAddress("mistaken transaction recipient", recipient);
@@ -214,17 +220,13 @@ check("node-managed signer cancels a transaction with a zero-value transfer to i
 
     var cancel = sendDespite(failure, cancellation(sender, nonce, fees.raisedFeeCap, fees.raisedTip));
     requireHash("cancel transaction hash", cancel);
-    if (qrl.getTransaction(mistaken) !== null) {
-        throw new Error("mistaken transaction is still in the pool");
-    }
+    requireReplaced("mistaken transaction", mistaken);
 
     var receipt = waitForReceipt(cancel);
     if (Number(receipt.status) !== 1) {
         throw new Error("cancel transaction failed: " + JSON.stringify(receipt));
     }
-    if (qrl.getTransactionReceipt(mistaken) !== null) {
-        throw new Error("mistaken transaction was mined");
-    }
+    requireUnmined("mistaken transaction", mistaken);
     var balanceAfter = qrl.getBalance(recipient);
     if (balanceAfter.toString(10) !== balanceBefore.toString(10)) {
         throw new Error("mistaken transaction's recipient received " + balanceAfter.minus(balanceBefore));
@@ -261,9 +263,7 @@ check("node-managed signer cancels a transaction sent one nonce ahead", function
     var cancel = qrl.sendTransaction(
         cancellation(sender, nonce + 1, bumpFee(fees.raisedFeeCap), bumpFee(fees.raisedTip)));
     requireHash("cancel transaction hash", cancel);
-    if (qrl.getTransaction(mistaken) !== null) {
-        throw new Error("mistaken transaction is still in the pool");
-    }
+    requireReplaced("mistaken transaction", mistaken);
     requirePooled("cancel transaction", cancel);
 
     // Fill the nonce gap, so the cancelling transfer becomes executable.
@@ -273,9 +273,7 @@ check("node-managed signer cancels a transaction sent one nonce ahead", function
     if (Number(receipt.status) !== 1) {
         throw new Error("cancel transaction failed: " + JSON.stringify(receipt));
     }
-    if (qrl.getTransactionReceipt(mistaken) !== null) {
-        throw new Error("mistaken transaction was mined");
-    }
+    requireUnmined("mistaken transaction", mistaken);
     var balanceAfter = qrl.getBalance(recipient);
     if (balanceAfter.toString(10) !== balanceBefore.toString(10)) {
         throw new Error("mistaken transaction's recipient received " + balanceAfter.minus(balanceBefore));
