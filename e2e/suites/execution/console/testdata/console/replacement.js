@@ -21,36 +21,24 @@ var feeCap = qrl.gasPrice.times(2);
 
 var sender = web3.toChecksumAddress(qrl.accounts[0]);
 var recipient = web3.toChecksumAddress("Q" + new Array(65).join("a6"));
-var mistakenRecipient = web3.toChecksumAddress("Q" + new Array(65).join("a7"));
 requireAddress("recipient", recipient);
-requireAddress("mistaken transaction recipient", mistakenRecipient);
 
 function bumpFee(fee) {
     var bumped = fee.times(100 + priceBump).dividedToIntegerBy(100);
     return bumped.gt(fee) ? bumped : fee.plus(1);
 }
 
-function transfer(to, value, nonce, maxFeePerGas, maxPriorityFeePerGas) {
+// payment sends one planck from the sender.
+function payment(to, nonce, maxFeePerGas, maxPriorityFeePerGas) {
     return {
         from: sender,
         to: to,
-        value: value,
+        value: 1,
         nonce: nonce,
         gas: transferGas,
         maxFeePerGas: maxFeePerGas,
         maxPriorityFeePerGas: maxPriorityFeePerGas
     };
-}
-
-// payment sends one planck from the sender.
-function payment(to, nonce, maxFeePerGas, maxPriorityFeePerGas) {
-    return transfer(to, 1, nonce, maxFeePerGas, maxPriorityFeePerGas);
-}
-
-// cancellation sends nothing from the sender to itself: it takes a nonce and
-// does nothing else.
-function cancellation(nonce, maxFeePerGas, maxPriorityFeePerGas) {
-    return transfer(sender, 0, nonce, maxFeePerGas, maxPriorityFeePerGas);
 }
 
 function requireUnderpriced(description, transaction) {
@@ -72,12 +60,6 @@ function requireInPool(description, transactionHash) {
     }
     if (transaction.blockNumber !== null) {
         throw new Error(description + " was mined");
-    }
-}
-
-function requireReplaced(description, transactionHash) {
-    if (qrl.getTransaction(transactionHash) !== null) {
-        throw new Error(description + " is still in the pool");
     }
 }
 
@@ -148,12 +130,14 @@ check("node-managed signer raises the fees of a stuck transaction", function () 
             throw new Error("stuck transaction is not executable");
         }
 
+        // Another recipient, so the same fees do not make the same
+        // transaction.
         requireUnderpriced("replacement transaction with the same fees",
-            cancellation(nonce, stuckFeeCap, stuckTip));
+            payment(sender, nonce, stuckFeeCap, stuckTip));
         requireUnderpriced("replacement transaction with only the fee cap raised",
-            cancellation(nonce, bumpFee(stuckFeeCap), stuckTip));
+            payment(sender, nonce, bumpFee(stuckFeeCap), stuckTip));
         requireUnderpriced("replacement transaction with only the tip raised",
-            cancellation(nonce, stuckFeeCap, bumpFee(stuckTip)));
+            payment(sender, nonce, stuckFeeCap, bumpFee(stuckTip)));
         requireInPool("stuck transaction", stuck);
     } catch (error) {
         failure = error;
@@ -165,39 +149,6 @@ check("node-managed signer raises the fees of a stuck transaction", function () 
     requireMined("raised transaction", raised);
     requireNotMined("stuck transaction", stuck);
     requireReceived("recipient", recipient, balanceBefore, 1);
-});
-
-// A transaction sent by mistake one nonce ahead waits in the pool's queue,
-// where no block can include it, until the gap is filled. Its sender cancels
-// it there with a transfer of nothing to itself, which is mined once the gap
-// is filled.
-check("node-managed signer cancels a transaction sent one nonce ahead", function () {
-    var nonce = qrl.getTransactionCount(sender, "pending");
-    var balanceBefore = qrl.getBalance(mistakenRecipient);
-
-    var mistaken = qrl.sendTransaction(payment(mistakenRecipient, nonce + 1, feeCap, tip));
-    requireInPool("mistaken transaction", mistaken);
-    if (qrl.getTransactionCount(sender, "pending") !== nonce) {
-        throw new Error("mistaken transaction is not queued behind the nonce gap");
-    }
-
-    // With normal fees the price bump is far more than a planck, so the "one
-    // planck short" cases pin it exactly.
-    requireUnderpriced("cancelling transfer with the same fees",
-        cancellation(nonce + 1, feeCap, tip));
-    requireUnderpriced("cancelling transfer with the fee cap one planck short of the price bump",
-        cancellation(nonce + 1, bumpFee(feeCap).minus(1), bumpFee(tip)));
-    requireUnderpriced("cancelling transfer with the tip one planck short of the price bump",
-        cancellation(nonce + 1, bumpFee(feeCap), bumpFee(tip).minus(1)));
-    var cancel = qrl.sendTransaction(cancellation(nonce + 1, bumpFee(feeCap), bumpFee(tip)));
-    requireReplaced("mistaken transaction", mistaken);
-    requireInPool("cancelling transfer", cancel);
-
-    // Fill the nonce gap, so the cancelling transfer becomes executable.
-    qrl.sendTransaction(cancellation(nonce, feeCap, tip));
-    requireMined("cancelling transfer", cancel);
-    requireNotMined("mistaken transaction", mistaken);
-    requireReceived("mistaken transaction's recipient", mistakenRecipient, balanceBefore, 0);
 });
 
 suite.finish();

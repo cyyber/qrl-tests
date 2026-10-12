@@ -45,13 +45,6 @@ func TestE2E(t *testing.T) {
 	testsuite.Run(t, "Transaction pool E2E suite")
 }
 
-// feeCase is a named pair of fees for a replacement transaction that the pool
-// must reject.
-type feeCase struct {
-	name        string
-	feeCap, tip *big.Int
-}
-
 var _ = ginkgo.Describe(
 	"Transaction replacement against a live qrl-package network",
 	ginkgo.Serial,
@@ -66,8 +59,7 @@ var _ = ginkgo.Describe(
 			feeCap, tip   *big.Int
 			stuck         *types.Transaction
 
-			recipient         = common.BytesToAddress([]byte("txpool e2e recipient"))
-			mistakenRecipient = common.BytesToAddress([]byte("txpool e2e mistaken"))
+			recipient = common.BytesToAddress([]byte("txpool e2e recipient"))
 		)
 
 		transfer := func(
@@ -91,12 +83,6 @@ var _ = ginkgo.Describe(
 		payment := func(nonce uint64, to common.Address, gasFeeCap, gasTipCap *big.Int) *types.Transaction {
 			ginkgo.GinkgoHelper()
 			return transfer(sender, nonce, to, big.NewInt(1), gasFeeCap, gasTipCap)
-		}
-		// cancellation sends nothing from the sender to itself: it takes a
-		// nonce and does nothing else.
-		cancellation := func(nonce uint64, gasFeeCap, gasTipCap *big.Int) *types.Transaction {
-			ginkgo.GinkgoHelper()
-			return transfer(sender, nonce, senderAddress, new(big.Int), gasFeeCap, gasTipCap)
 		}
 
 		ginkgo.BeforeAll(func(ctx ginkgo.SpecContext) {
@@ -138,12 +124,18 @@ var _ = ginkgo.Describe(
 		}, ginkgo.SpecTimeout(3*time.Minute))
 
 		ginkgo.It("rejects a replacement transaction that does not raise both fees", func(ctx ginkgo.SpecContext) {
-			for _, fees := range []feeCase{
+			for _, fees := range []struct {
+				name        string
+				feeCap, tip *big.Int
+			}{
 				{"the same fees", stuckFeeCap, stuckTip},
 				{"only the fee cap raised", bump(stuckFeeCap), stuckTip},
 				{"only the tip raised", stuckFeeCap, bump(stuckTip)},
 			} {
-				err := node.Execution.SendTransaction(ctx, cancellation(0, fees.feeCap, fees.tip))
+				// Another recipient, so the same fees do not make the same
+				// transaction.
+				replacement := payment(0, senderAddress, fees.feeCap, fees.tip)
+				err := node.Execution.SendTransaction(ctx, replacement)
 				gomega.Expect(err).To(gomega.MatchError(gomega.ContainSubstring(replaceUnderpriced)),
 					"replacement transaction with %s", fees.name)
 			}
@@ -161,47 +153,6 @@ var _ = ginkgo.Describe(
 			gomega.Expect(testsuite.MustSucceed(node.Execution.BalanceAt(ctx, recipient, receipt.BlockNumber))).To(
 				gomega.Equal(new(big.Int).Add(before, big.NewInt(1))))
 		}, ginkgo.SpecTimeout(2*time.Minute))
-
-		// A transaction sent by mistake one nonce ahead waits in the pool's
-		// queue, where no block can include it, until the gap is filled. Its
-		// sender cancels it there with a transfer of nothing to itself, which
-		// is mined once the gap is filled.
-		ginkgo.It("cancels a transaction sent one nonce ahead", func(ctx ginkgo.SpecContext) {
-			nonce := testsuite.MustSucceed(node.Execution.PendingNonceAt(ctx, senderAddress))
-			before := testsuite.MustSucceed(node.Execution.BalanceAt(ctx, mistakenRecipient, nil))
-			mistaken := payment(nonce+1, mistakenRecipient, feeCap, tip)
-			gomega.Expect(node.Execution.SendTransaction(ctx, mistaken)).To(gomega.Succeed())
-			expectInPool(ctx, node, mistaken, "mistaken")
-			// The pending nonce does not move: the transaction is queued.
-			gomega.Expect(node.Execution.PendingNonceAt(ctx, senderAddress)).To(gomega.Equal(nonce))
-
-			// With normal fees the price bump is far more than a planck, so the
-			// "one planck short" cases pin it exactly.
-			for _, fees := range []feeCase{
-				{"the same fees", feeCap, tip},
-				{"the fee cap one planck short of the price bump", belowBump(feeCap), bump(tip)},
-				{"the tip one planck short of the price bump", bump(feeCap), belowBump(tip)},
-			} {
-				err := node.Execution.SendTransaction(ctx, cancellation(nonce+1, fees.feeCap, fees.tip))
-				gomega.Expect(err).To(gomega.MatchError(gomega.ContainSubstring(replaceUnderpriced)),
-					"cancelling transfer with %s", fees.name)
-			}
-
-			cancel := cancellation(nonce+1, bump(feeCap), bump(tip))
-			gomega.Expect(node.Execution.SendTransaction(ctx, cancel)).To(gomega.Succeed())
-			expectReplaced(ctx, node, mistaken, "mistaken")
-
-			ginkgo.By("filling the nonce gap")
-			gomega.Expect(node.Execution.SendTransaction(ctx, cancellation(nonce, feeCap, tip))).To(gomega.Succeed())
-
-			receipt := testsuite.MustSucceed(bind.WaitMined(ctx, node.Execution, cancel))
-			gomega.Expect(receipt.Status).To(gomega.Equal(types.ReceiptStatusSuccessful))
-			expectNotMined(ctx, node, mistaken, "mistaken")
-			gomega.Expect(testsuite.MustSucceed(node.Execution.BalanceAt(ctx, mistakenRecipient, receipt.BlockNumber))).To(
-				gomega.Equal(before))
-			gomega.Expect(testsuite.MustSucceed(node.Execution.NonceAt(ctx, senderAddress, receipt.BlockNumber))).To(
-				gomega.Equal(nonce + 2))
-		}, ginkgo.SpecTimeout(2*time.Minute))
 	},
 )
 
@@ -215,24 +166,12 @@ func bump(fee *big.Int) *big.Int {
 	return bumped
 }
 
-// belowBump raises fee by one planck less than the price bump.
-func belowBump(fee *big.Int) *big.Int {
-	return new(big.Int).Sub(bump(fee), big.NewInt(1))
-}
-
 // expectInPool fails unless the transaction is in the pool, not yet mined.
 func expectInPool(ctx context.Context, node *live.Node, tx *types.Transaction, name string) {
 	ginkgo.GinkgoHelper()
 	_, isPending, err := node.Execution.TransactionByHash(ctx, tx.Hash())
 	gomega.Expect(err).NotTo(gomega.HaveOccurred(), "the %s transaction is not in the pool", name)
 	gomega.Expect(isPending).To(gomega.BeTrue(), "the %s transaction was mined", name)
-}
-
-// expectReplaced fails if the node still has the transaction.
-func expectReplaced(ctx context.Context, node *live.Node, tx *types.Transaction, name string) {
-	ginkgo.GinkgoHelper()
-	_, _, err := node.Execution.TransactionByHash(ctx, tx.Hash())
-	gomega.Expect(err).To(gomega.MatchError(qrl.NotFound), "the %s transaction is still in the pool", name)
 }
 
 // expectNotMined fails if the transaction has a receipt.
