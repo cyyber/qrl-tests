@@ -113,11 +113,8 @@ var _ = ginkgo.Describe(
 			// shared wallet does not send them.
 			sender = testsuite.MustSucceed(qrlwallet.Generate(qrlwallet.ML_DSA_87))
 			senderAddress = common.Address(sender.GetAddress())
-			// Four of its transactions are mined. Each can cost its gas at the
-			// fee cap after a price bump, plus a value of one planck.
-			funding := new(big.Int).Mul(new(big.Int).SetUint64(params.TxGas), bump(feeCap))
-			funding.Add(funding, big.NewInt(1))
-			funding.Mul(funding, big.NewInt(4))
+			// One quanta covers its fees many times over.
+			funding := big.NewInt(params.Quanta)
 			walletNonce := testsuite.MustSucceed(node.Execution.PendingNonceAt(ctx, node.Address))
 			fund := transfer(node.Wallet, walletNonce, senderAddress, funding, feeCap, tip)
 			gomega.Expect(node.Execution.SendTransaction(ctx, fund)).To(gomega.Succeed())
