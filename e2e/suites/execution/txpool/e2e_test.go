@@ -113,7 +113,6 @@ var _ = ginkgo.Describe(
 			// shared wallet does not send them.
 			sender = testsuite.MustSucceed(qrlwallet.Generate(qrlwallet.ML_DSA_87))
 			senderAddress = common.Address(sender.GetAddress())
-			// One quanta covers its fees many times over.
 			funding := big.NewInt(params.Quanta)
 			walletNonce := testsuite.MustSucceed(node.Execution.PendingNonceAt(ctx, node.Address))
 			fund := transfer(node.Wallet, walletNonce, senderAddress, funding, feeCap, tip)
