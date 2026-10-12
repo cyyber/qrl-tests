@@ -80,8 +80,10 @@ var _ = ginkgo.Describe(
 			feeCap = new(big.Int).Add(new(big.Int).Mul(head.BaseFee, two), new(big.Int).Mul(tip, two))
 		}, ginkgo.NodeTimeout(time.Minute))
 
-		// The next nonce is left free, so the transaction waits in the pool
-		// instead of being included in the next block.
+		// The transaction is sent one nonce ahead. The gap keeps it queued,
+		// where no block can include it, so the next specs check every
+		// rejection and the accepted replacement without racing block
+		// production. The last spec replaces an executable transaction.
 		ginkgo.It("keeps a transaction with a future nonce in the pool", func(ctx ginkgo.SpecContext) {
 			original = transfer(nonce+1, originalRecipient, feeCap, tip)
 			gomega.Expect(node.Execution.SendTransaction(ctx, original)).To(gomega.Succeed())
