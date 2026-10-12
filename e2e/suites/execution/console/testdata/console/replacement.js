@@ -22,9 +22,15 @@ function higherFee(first, second) {
 // transaction out of blocks, and raised fees, which cover it.
 function replacementFees() {
     var baseFee = qrl.getBlock("latest").baseFeePerGas;
-    // The base fee falls by an eighth per empty block, so a 32nd of it stays
-    // below it for 25 blocks, even after a price bump. It stops falling at 7
-    // planck, which is above 4 planck after a price bump.
+    // The stuck fee cap has to stay below the base fee until the checks have
+    // replaced the transaction. On an idle chain the base fee drops by 1/8
+    // with every block, so the cap is 1/32 of it: the base fee takes about 25
+    // blocks to drop that far.
+    //
+    // On a chain that has been idle for long, the base fee has dropped to 7
+    // planck and stays there, and 1/32 of it is zero. The cap is then 4
+    // planck, which is below 7, and so is the 5 planck that a check raises it
+    // to.
     var stuckFeeCap = higherFee(baseFee.dividedToIntegerBy(32), web3.toBigNumber(4));
     if (!bumpFee(stuckFeeCap).lt(baseFee)) {
         throw new Error("the base fee " + baseFee + " leaves no room for a stuck fee cap");
@@ -143,7 +149,8 @@ check("node-managed signer raises the fees of a stuck transaction", function () 
     var failure = null;
     try {
         requireHash("stuck transaction hash", stuck);
-        // A transaction that pays the base fee is mined within two blocks.
+        // A transaction with normal fees is mined within two blocks, so one
+        // left out of three is stuck, not slow.
         waitForBlocks(3);
         requirePooled("stuck transaction", stuck);
         // The pending nonce moved: the transaction has the sender's next

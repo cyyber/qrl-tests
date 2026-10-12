@@ -30,16 +30,25 @@ const (
 	// pollInterval is short next to a slot, so a spec acts soon after a block
 	// lands or the pool promotes a transaction.
 	pollInterval = 200 * time.Millisecond
-	// stuckBlocks is how many blocks must leave a transaction out before a
-	// spec calls it stuck. One that pays the base fee is mined within two.
-	stuckBlocks = 3
+	// stuckAfterBlocks is how many blocks the specs wait before they check
+	// that a low-fee transaction is still unmined. A transaction with normal
+	// fees is mined within two blocks, so one left out of three is stuck, not
+	// slow.
+	stuckAfterBlocks = 3
 
-	// stuckFeeFraction divides the base fee into the stuck fee cap. The base
-	// fee falls by an eighth per empty block, so the cap stays below it for
-	// 25 blocks, even after a price bump.
-	stuckFeeFraction = 32
-	// minStuckFeeCap is the lowest stuck fee cap, in planck. The base fee
-	// stops falling at 7, which is above this cap after a price bump.
+	// The stuck transaction's fee cap has to stay below the base fee until the
+	// specs have replaced it. On an idle chain the base fee drops by 1/8 with
+	// every block, so a cap just under it would be above it a block later,
+	// and the transaction would be mined.
+	//
+	// stuckFeeCapDivisor makes the cap 1/32 of the base fee. The base fee
+	// takes about 25 blocks to drop that far, and the suite takes about 10.
+	stuckFeeCapDivisor = 32
+	// minStuckFeeCap is the cap, in planck, when 1/32 of the base fee is
+	// lower. That is the case on a chain that has been idle for long: its
+	// base fee has dropped to 7 planck and stays there, because 1/8 of 7
+	// rounds down to zero. 4 planck is below 7, and so is the 5 planck that a
+	// spec raises the cap to.
 	minStuckFeeCap = 4
 )
 
@@ -114,7 +123,7 @@ var _ = ginkgo.Describe(
 			tip := testsuite.MustSucceed(node.Execution.SuggestGasTipCap(ctx))
 			two := big.NewInt(2)
 
-			stuckFeeCap = new(big.Int).Div(head.BaseFee, big.NewInt(stuckFeeFraction))
+			stuckFeeCap = new(big.Int).Div(head.BaseFee, big.NewInt(stuckFeeCapDivisor))
 			if stuckFeeCap.Cmp(big.NewInt(minStuckFeeCap)) < 0 {
 				stuckFeeCap.SetInt64(minStuckFeeCap)
 			}
@@ -170,7 +179,7 @@ var _ = ginkgo.Describe(
 				WithPolling(pollInterval).
 				Should(gomega.Succeed())
 
-			for range stuckBlocks {
+			for range stuckAfterBlocks {
 				waitForBlock(ctx, node)
 			}
 			expectPooled(ctx, node, stuck, "stuck")
