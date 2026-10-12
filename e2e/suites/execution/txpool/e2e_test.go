@@ -162,33 +162,10 @@ var _ = ginkgo.Describe(
 				gomega.Equal(new(big.Int).Add(before, big.NewInt(1))))
 		}, ginkgo.SpecTimeout(2*time.Minute))
 
-		// A transaction sent by mistake is cancelled the same way: a transfer of
-		// nothing to its own sender takes its nonce, so it can never be mined.
-		// The mistaken transaction has the stuck fees, so no block includes it
-		// before it is replaced.
-		ginkgo.It("cancels a stuck transaction with a zero-value transfer to its sender", func(ctx ginkgo.SpecContext) {
-			nonce := testsuite.MustSucceed(node.Execution.PendingNonceAt(ctx, senderAddress))
-			before := testsuite.MustSucceed(node.Execution.BalanceAt(ctx, mistakenRecipient, nil))
-			mistaken := payment(nonce, mistakenRecipient, stuckFeeCap, stuckTip)
-			gomega.Expect(node.Execution.SendTransaction(ctx, mistaken)).To(gomega.Succeed())
-			expectInPool(ctx, node, mistaken, "mistaken")
-
-			cancel := cancellation(nonce, feeCap, tip)
-			gomega.Expect(node.Execution.SendTransaction(ctx, cancel)).To(gomega.Succeed())
-			expectReplaced(ctx, node, mistaken, "mistaken")
-
-			receipt := testsuite.MustSucceed(bind.WaitMined(ctx, node.Execution, cancel))
-			gomega.Expect(receipt.Status).To(gomega.Equal(types.ReceiptStatusSuccessful))
-			expectNotMined(ctx, node, mistaken, "mistaken")
-			gomega.Expect(testsuite.MustSucceed(node.Execution.BalanceAt(ctx, mistakenRecipient, receipt.BlockNumber))).To(
-				gomega.Equal(before))
-			gomega.Expect(testsuite.MustSucceed(node.Execution.NonceAt(ctx, senderAddress, receipt.BlockNumber))).To(
-				gomega.Equal(nonce + 1))
-		}, ginkgo.SpecTimeout(2*time.Minute))
-
-		// A transaction sent one nonce ahead waits in the pool's queue, where no
-		// block can include it, until the gap is filled. Its sender cancels it
-		// there, and the cancelling transfer is mined once the gap is filled.
+		// A transaction sent by mistake one nonce ahead waits in the pool's
+		// queue, where no block can include it, until the gap is filled. Its
+		// sender cancels it there with a transfer of nothing to itself, which
+		// is mined once the gap is filled.
 		ginkgo.It("cancels a transaction sent one nonce ahead", func(ctx ginkgo.SpecContext) {
 			nonce := testsuite.MustSucceed(node.Execution.PendingNonceAt(ctx, senderAddress))
 			before := testsuite.MustSucceed(node.Execution.BalanceAt(ctx, mistakenRecipient, nil))

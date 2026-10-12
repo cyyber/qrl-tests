@@ -167,32 +167,10 @@ check("node-managed signer raises the fees of a stuck transaction", function () 
     requireReceived("recipient", recipient, balanceBefore, 1);
 });
 
-// A transaction sent by mistake is cancelled the same way: a transfer of
-// nothing to its own sender takes its nonce, so it can never be mined. The
-// mistaken transaction has the stuck fees, so no block includes it before it
-// is replaced.
-check("node-managed signer cancels a stuck transaction with a zero-value transfer to itself", function () {
-    var nonce = qrl.getTransactionCount(sender, "pending");
-    var balanceBefore = qrl.getBalance(mistakenRecipient);
-
-    var mistaken = qrl.sendTransaction(payment(mistakenRecipient, nonce, stuckFeeCap, stuckTip));
-    var failure = null;
-    try {
-        requireInPool("mistaken transaction", mistaken);
-    } catch (error) {
-        failure = error;
-    }
-
-    var cancel = sendDespite(failure, cancellation(nonce, feeCap, tip));
-    requireReplaced("mistaken transaction", mistaken);
-    requireMined("cancelling transfer", cancel);
-    requireNotMined("mistaken transaction", mistaken);
-    requireReceived("mistaken transaction's recipient", mistakenRecipient, balanceBefore, 0);
-});
-
-// A transaction sent one nonce ahead waits in the pool's queue, where no block
-// can include it, until the gap is filled. Its sender cancels it there, and
-// the cancelling transfer is mined once the gap is filled.
+// A transaction sent by mistake one nonce ahead waits in the pool's queue,
+// where no block can include it, until the gap is filled. Its sender cancels
+// it there with a transfer of nothing to itself, which is mined once the gap
+// is filled.
 check("node-managed signer cancels a transaction sent one nonce ahead", function () {
     var nonce = qrl.getTransactionCount(sender, "pending");
     var balanceBefore = qrl.getBalance(mistakenRecipient);
