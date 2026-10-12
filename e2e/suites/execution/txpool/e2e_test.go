@@ -157,7 +157,7 @@ var _ = ginkgo.Describe(
 
 			receipt := testsuite.MustSucceed(bind.WaitMined(ctx, node.Execution, raised))
 			gomega.Expect(receipt.Status).To(gomega.Equal(types.ReceiptStatusSuccessful))
-			expectUnmined(ctx, node, stuck, "stuck")
+			expectNotMined(ctx, node, stuck, "stuck")
 			gomega.Expect(testsuite.MustSucceed(node.Execution.BalanceAt(ctx, recipient, receipt.BlockNumber))).To(
 				gomega.Equal(new(big.Int).Add(before, big.NewInt(1))))
 		}, ginkgo.SpecTimeout(2*time.Minute))
@@ -179,7 +179,7 @@ var _ = ginkgo.Describe(
 
 			receipt := testsuite.MustSucceed(bind.WaitMined(ctx, node.Execution, cancel))
 			gomega.Expect(receipt.Status).To(gomega.Equal(types.ReceiptStatusSuccessful))
-			expectUnmined(ctx, node, mistaken, "mistaken")
+			expectNotMined(ctx, node, mistaken, "mistaken")
 			gomega.Expect(testsuite.MustSucceed(node.Execution.BalanceAt(ctx, mistakenRecipient, receipt.BlockNumber))).To(
 				gomega.Equal(before))
 			gomega.Expect(testsuite.MustSucceed(node.Execution.NonceAt(ctx, senderAddress, receipt.BlockNumber))).To(
@@ -219,7 +219,7 @@ var _ = ginkgo.Describe(
 
 			receipt := testsuite.MustSucceed(bind.WaitMined(ctx, node.Execution, cancel))
 			gomega.Expect(receipt.Status).To(gomega.Equal(types.ReceiptStatusSuccessful))
-			expectUnmined(ctx, node, mistaken, "mistaken")
+			expectNotMined(ctx, node, mistaken, "mistaken")
 			gomega.Expect(testsuite.MustSucceed(node.Execution.BalanceAt(ctx, mistakenRecipient, receipt.BlockNumber))).To(
 				gomega.Equal(before))
 			gomega.Expect(testsuite.MustSucceed(node.Execution.NonceAt(ctx, senderAddress, receipt.BlockNumber))).To(
@@ -258,8 +258,8 @@ func expectReplaced(ctx context.Context, node *live.Node, tx *types.Transaction,
 	gomega.Expect(err).To(gomega.MatchError(qrl.NotFound), "the %s transaction is still in the pool", name)
 }
 
-// expectUnmined fails if the transaction has a receipt.
-func expectUnmined(ctx context.Context, node *live.Node, tx *types.Transaction, name string) {
+// expectNotMined fails if the transaction has a receipt.
+func expectNotMined(ctx context.Context, node *live.Node, tx *types.Transaction, name string) {
 	ginkgo.GinkgoHelper()
 	_, err := node.Execution.TransactionReceipt(ctx, tx.Hash())
 	gomega.Expect(err).To(gomega.MatchError(qrl.NotFound), "the %s transaction was mined", name)

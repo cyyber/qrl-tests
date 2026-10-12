@@ -81,7 +81,7 @@ function requireReplaced(description, transactionHash) {
     }
 }
 
-function requireUnmined(description, transactionHash) {
+function requireNotMined(description, transactionHash) {
     if (qrl.getTransactionReceipt(transactionHash) !== null) {
         throw new Error(description + " was mined");
     }
@@ -163,7 +163,7 @@ check("node-managed signer raises the fees of a stuck transaction", function () 
     // fee.
     var raised = sendDespite(failure, payment(recipient, nonce, feeCap, tip));
     requireMined("raised transaction", raised);
-    requireUnmined("stuck transaction", stuck);
+    requireNotMined("stuck transaction", stuck);
     requireReceived("recipient", recipient, balanceBefore, 1);
 });
 
@@ -186,7 +186,7 @@ check("node-managed signer cancels a stuck transaction with a zero-value transfe
     var cancel = sendDespite(failure, cancellation(nonce, feeCap, tip));
     requireReplaced("mistaken transaction", mistaken);
     requireMined("cancelling transfer", cancel);
-    requireUnmined("mistaken transaction", mistaken);
+    requireNotMined("mistaken transaction", mistaken);
     requireReceived("mistaken transaction's recipient", mistakenRecipient, balanceBefore, 0);
 });
 
@@ -218,7 +218,7 @@ check("node-managed signer cancels a transaction sent one nonce ahead", function
     // Fill the nonce gap, so the cancelling transfer becomes executable.
     qrl.sendTransaction(cancellation(nonce, feeCap, tip));
     requireMined("cancelling transfer", cancel);
-    requireUnmined("mistaken transaction", mistaken);
+    requireNotMined("mistaken transaction", mistaken);
     requireReceived("mistaken transaction's recipient", mistakenRecipient, balanceBefore, 0);
 });
 
