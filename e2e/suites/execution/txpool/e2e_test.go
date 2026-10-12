@@ -83,6 +83,21 @@ var _ = ginkgo.Describe(
 			feeCap = new(big.Int).Add(new(big.Int).Mul(head.BaseFee, two), new(big.Int).Mul(tip, two))
 		}, ginkgo.NodeTimeout(time.Minute))
 
+		// A failed spec can leave the nonce gap open, and the queued transaction
+		// then makes the next run's first spec an underpriced replacement.
+		// Filling the gap lets the queued transaction be mined.
+		ginkgo.AfterAll(func(ctx ginkgo.SpecContext) {
+			if original == nil {
+				return
+			}
+			if testsuite.MustSucceed(node.Execution.PendingNonceAt(ctx, node.Address)) != nonce {
+				return
+			}
+			filler := transfer(nonce, node.Address, feeCap, tip)
+			gomega.Expect(node.Execution.SendTransaction(ctx, filler)).To(gomega.Succeed())
+			testsuite.MustSucceed(bind.WaitMined(ctx, node.Execution, filler))
+		}, ginkgo.NodeTimeout(2*time.Minute))
+
 		// The transaction is sent one nonce ahead. The gap keeps it queued,
 		// where no block can include it, so the next specs check every
 		// rejection and the accepted replacement without racing block
@@ -91,8 +106,9 @@ var _ = ginkgo.Describe(
 			original = transfer(nonce+1, originalRecipient, feeCap, tip)
 			gomega.Expect(node.Execution.SendTransaction(ctx, original)).To(gomega.Succeed())
 
-			_, _, err := node.Execution.TransactionByHash(ctx, original.Hash())
+			_, isPending, err := node.Execution.TransactionByHash(ctx, original.Hash())
 			gomega.Expect(err).NotTo(gomega.HaveOccurred(), "the transaction is not in the pool")
+			gomega.Expect(isPending).To(gomega.BeTrue(), "the transaction was mined")
 			// The pending nonce does not move: the transaction is queued.
 			gomega.Expect(node.Execution.PendingNonceAt(ctx, node.Address)).To(gomega.Equal(nonce))
 		}, ginkgo.SpecTimeout(time.Minute))
@@ -113,8 +129,9 @@ var _ = ginkgo.Describe(
 					"replacement with %s", fees.name)
 			}
 
-			_, _, err := node.Execution.TransactionByHash(ctx, original.Hash())
+			_, isPending, err := node.Execution.TransactionByHash(ctx, original.Hash())
 			gomega.Expect(err).NotTo(gomega.HaveOccurred(), "the original transaction left the pool")
+			gomega.Expect(isPending).To(gomega.BeTrue(), "the original transaction was mined")
 		}, ginkgo.SpecTimeout(time.Minute))
 
 		ginkgo.It("accepts a replacement that raises both fees by the price bump", func(ctx ginkgo.SpecContext) {
@@ -123,8 +140,9 @@ var _ = ginkgo.Describe(
 
 			_, _, err := node.Execution.TransactionByHash(ctx, original.Hash())
 			gomega.Expect(err).To(gomega.MatchError(qrl.NotFound), "the original transaction is still in the pool")
-			_, _, err = node.Execution.TransactionByHash(ctx, replacement.Hash())
+			_, isPending, err := node.Execution.TransactionByHash(ctx, replacement.Hash())
 			gomega.Expect(err).NotTo(gomega.HaveOccurred(), "the replacement is not in the pool")
+			gomega.Expect(isPending).To(gomega.BeTrue(), "the replacement was mined")
 		}, ginkgo.SpecTimeout(time.Minute))
 
 		ginkgo.It("mines the replacement and not the original", func(ctx ginkgo.SpecContext) {
@@ -198,7 +216,7 @@ var _ = ginkgo.Describe(
 				if err == nil {
 					continue
 				}
-				gomega.Expect(err).To(gomega.MatchError(qrl.NotFound))
+				gomega.Expect(err).To(gomega.MatchError(qrl.NotFound), "the original transaction's receipt lookup failed")
 				receipt := testsuite.MustSucceed(node.Execution.TransactionReceipt(ctx, bumped.Hash()))
 				gomega.Expect(receipt.Status).To(gomega.Equal(types.ReceiptStatusSuccessful))
 				return
@@ -218,6 +236,11 @@ func bump(fee *big.Int) *big.Int {
 	return bumped
 }
 
+// belowBump raises fee by one planck less than the price bump.
+func belowBump(fee *big.Int) *big.Int {
+	return new(big.Int).Sub(bump(fee), big.NewInt(1))
+}
+
 // waitForBlock returns once the chain has a new head.
 func waitForBlock(ctx context.Context, node *live.Node) {
 	ginkgo.GinkgoHelper()
@@ -234,9 +257,4 @@ func waitForBlock(ctx context.Context, node *live.Node) {
 // was already used.
 func staleNonce(err error) bool {
 	return err != nil && strings.Contains(err.Error(), nonceTooLow)
-}
-
-// belowBump raises fee by one planck less than the price bump.
-func belowBump(fee *big.Int) *big.Int {
-	return new(big.Int).Sub(bump(fee), big.NewInt(1))
 }

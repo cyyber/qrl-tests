@@ -64,12 +64,14 @@ function requireUnderpriced(description, transaction) {
     throw new Error(description + " was accepted");
 }
 
-check("node-managed signer replaces a pending transaction", function () {
+check("node-managed signer replaces a queued transaction", function () {
     var sender = web3.toChecksumAddress(qrl.accounts[0]);
     var recipient = web3.toChecksumAddress("Q" + new Array(65).join("a6"));
     requireAddress("replacement recipient", recipient);
     var tip = qrl.maxPriorityFeePerGas;
-    // Twice the gas price leaves room for a bumped tip below the fee cap.
+    // Twice the gas price, which includes the tip, so a bumped tip stays below
+    // the fee cap and the replacement is rejected as underpriced, not as
+    // invalid.
     var feeCap = qrl.gasPrice.times(2);
     var transfer = function (transactionNonce, value, maxFeePerGas, maxPriorityFeePerGas) {
         return {
@@ -82,8 +84,9 @@ check("node-managed signer replaces a pending transaction", function () {
         };
     };
 
-    // The next nonce is left free, so the transaction waits in the pool
-    // instead of being included in the next block.
+    // The transaction is sent one nonce ahead. The gap keeps it queued,
+    // where no block can include it, so the check runs every rejection and
+    // the accepted replacement without racing block production.
     var nonce = qrl.getTransactionCount(sender, "pending");
     var balanceBefore = qrl.getBalance(recipient);
     var original = qrl.sendTransaction(transfer(nonce + 1, 1, feeCap, tip));
@@ -105,11 +108,17 @@ check("node-managed signer replaces a pending transaction", function () {
         transfer(nonce + 1, 2, bumpFee(feeCap).minus(1), bumpFee(tip)));
     requireUnderpriced("replacement with the tip one planck short of the price bump",
         transfer(nonce + 1, 2, bumpFee(feeCap), bumpFee(tip).minus(1)));
+    if (qrl.getTransaction(original) === null) {
+        throw new Error("original transaction left the pool");
+    }
 
     var replacement = qrl.sendTransaction(transfer(nonce + 1, 2, bumpFee(feeCap), bumpFee(tip)));
     requireHash("replacement transaction hash", replacement);
     if (qrl.getTransaction(original) !== null) {
         throw new Error("original transaction is still in the pool");
+    }
+    if (qrl.getTransaction(replacement) === null) {
+        throw new Error("replacement transaction is not in the pool");
     }
 
     // Fill the nonce gap, so the replacement becomes executable.
