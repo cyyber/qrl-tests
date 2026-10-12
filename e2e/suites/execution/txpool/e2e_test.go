@@ -113,7 +113,8 @@ var _ = ginkgo.Describe(
 
 			waitForBlocks(ctx, node, stuckAfterBlocks)
 			expectInPool(ctx, node, stuck)
-			gomega.Expect(node.Execution.PendingNonceAt(ctx, senderAddress)).To(gomega.Equal(uint64(1)))
+			gomega.Expect(node.Execution.PendingNonceAt(ctx, senderAddress)).To(gomega.Equal(uint64(1)),
+				"the stuck transaction is not executable")
 		}, ginkgo.SpecTimeout(2*time.Minute))
 
 		ginkgo.It("rejects a replacement transaction that does not raise both fees", func(ctx ginkgo.SpecContext) {
