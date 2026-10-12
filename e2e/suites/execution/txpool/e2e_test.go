@@ -3,6 +3,7 @@
 package txpool
 
 import (
+	"context"
 	"math/big"
 	"strings"
 	"testing"
@@ -27,9 +28,11 @@ const (
 	replaceUnderpriced = "replacement transaction underpriced"
 	nonceTooLow        = "nonce too low"
 
-	pollInterval = time.Second
+	// pollInterval is short next to a slot, so a spec acts soon after a block
+	// lands or the pool promotes a transaction.
+	pollInterval = 200 * time.Millisecond
 	// replaceAttempts limits the tries to replace an executable transaction before it is mined.
-	replaceAttempts = 5
+	replaceAttempts = 3
 )
 
 func TestE2E(t *testing.T) {
@@ -149,9 +152,12 @@ var _ = ginkgo.Describe(
 
 		// A transaction with the next nonce is executable, and the pool replaces
 		// it on a different path than a queued one. The next block also mines
-		// it, so the spec starts over when that happens before the replacement.
+		// it, so each attempt starts right after a block, when the next one is
+		// furthest away, and starts over if the original is mined anyway.
 		ginkgo.It("replaces an executable transaction before it is mined", func(ctx ginkgo.SpecContext) {
 			for range replaceAttempts {
+				waitForBlock(ctx, node)
+
 				next := testsuite.MustSucceed(node.Execution.PendingNonceAt(ctx, node.Address))
 				executable := transfer(next, originalRecipient, feeCap, tip)
 				gomega.Expect(node.Execution.SendTransaction(ctx, executable)).To(gomega.Succeed())
@@ -210,6 +216,18 @@ func bump(fee *big.Int) *big.Int {
 		bumped.Add(fee, big.NewInt(1))
 	}
 	return bumped
+}
+
+// waitForBlock returns once the chain has a new head.
+func waitForBlock(ctx context.Context, node *live.Node) {
+	ginkgo.GinkgoHelper()
+	head := testsuite.MustSucceed(node.Execution.BlockNumber(ctx))
+	gomega.Eventually(func(g gomega.Gomega) {
+		g.Expect(node.Execution.BlockNumber(ctx)).To(gomega.BeNumerically(">", head))
+	}).WithContext(ctx).
+		WithTimeout(time.Minute).
+		WithPolling(pollInterval).
+		Should(gomega.Succeed())
 }
 
 // staleNonce reports whether the pool rejected a transaction because its nonce
