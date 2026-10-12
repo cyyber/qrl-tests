@@ -44,18 +44,22 @@ function replacementFees() {
     };
 }
 
-// cancellation is a transfer of nothing from an account to itself: it takes a
-// nonce and does nothing else.
-function cancellation(account, nonce, maxFeePerGas, maxPriorityFeePerGas) {
+function payment(account, recipient, value, nonce, maxFeePerGas, maxPriorityFeePerGas) {
     return {
         from: account,
-        to: account,
-        value: 0,
+        to: recipient,
+        value: value,
         nonce: nonce,
         gas: transferGas,
         maxFeePerGas: maxFeePerGas,
         maxPriorityFeePerGas: maxPriorityFeePerGas
     };
+}
+
+// cancellation is a transfer of nothing from an account to itself: it takes a
+// nonce and does nothing else.
+function cancellation(account, nonce, maxFeePerGas, maxPriorityFeePerGas) {
+    return payment(account, account, 0, nonce, maxFeePerGas, maxPriorityFeePerGas);
 }
 
 function requireUnderpriced(description, transaction) {
@@ -119,15 +123,7 @@ check("node-managed signer raises the fees of a stuck transaction", function () 
     var nonce = qrl.getTransactionCount(sender, "pending");
     var balanceBefore = qrl.getBalance(recipient);
     var transfer = function (value, maxFeePerGas, maxPriorityFeePerGas) {
-        return {
-            from: sender,
-            to: recipient,
-            value: value,
-            nonce: nonce,
-            gas: transferGas,
-            maxFeePerGas: maxFeePerGas,
-            maxPriorityFeePerGas: maxPriorityFeePerGas
-        };
+        return payment(sender, recipient, value, nonce, maxFeePerGas, maxPriorityFeePerGas);
     };
 
     var stuck = qrl.sendTransaction(transfer(1, fees.stuckFeeCap, fees.stuckTip));
@@ -147,7 +143,8 @@ check("node-managed signer raises the fees of a stuck transaction", function () 
         // Below 10 planck the price bump rounds down to nothing and the pool
         // only asks for a higher fee. On a chain whose base fee has settled,
         // the stuck fees are that low, and the "one planck short" cases
-        // repeat the two before them.
+        // repeat the two before them. The last check has them with fees that
+        // are always large enough.
         requireUnderpriced("replacement with the same fees",
             transfer(2, fees.stuckFeeCap, fees.stuckTip));
         requireUnderpriced("replacement with only the fee cap raised",
@@ -206,15 +203,7 @@ check("node-managed signer cancels a transaction with a zero-value transfer to i
     var nonce = qrl.getTransactionCount(sender, "pending");
     var balanceBefore = qrl.getBalance(recipient);
 
-    var mistaken = qrl.sendTransaction({
-        from: sender,
-        to: recipient,
-        value: 1,
-        nonce: nonce,
-        gas: transferGas,
-        maxFeePerGas: fees.stuckFeeCap,
-        maxPriorityFeePerGas: fees.stuckTip
-    });
+    var mistaken = qrl.sendTransaction(payment(sender, recipient, 1, nonce, fees.stuckFeeCap, fees.stuckTip));
     var failure = null;
     try {
         requireHash("mistaken transaction hash", mistaken);
@@ -253,23 +242,22 @@ check("node-managed signer cancels a transaction sent one nonce ahead", function
     var nonce = qrl.getTransactionCount(sender, "pending");
     var balanceBefore = qrl.getBalance(recipient);
 
-    var mistaken = qrl.sendTransaction({
-        from: sender,
-        to: recipient,
-        value: 1,
-        nonce: nonce + 1,
-        gas: transferGas,
-        maxFeePerGas: fees.raisedFeeCap,
-        maxPriorityFeePerGas: fees.raisedTip
-    });
+    var mistaken = qrl.sendTransaction(
+        payment(sender, recipient, 1, nonce + 1, fees.raisedFeeCap, fees.raisedTip));
     requireHash("mistaken transaction hash", mistaken);
     requirePooled("mistaken transaction", mistaken);
     if (qrl.getTransactionCount(sender, "pending") !== nonce) {
         throw new Error("mistaken transaction is not queued behind the nonce gap");
     }
 
+    // The raised fees are far above 10 planck, so the "one planck short" cases
+    // pin the price bump whatever the base fee is.
     requireUnderpriced("cancelling transfer with the same fees",
         cancellation(sender, nonce + 1, fees.raisedFeeCap, fees.raisedTip));
+    requireUnderpriced("cancelling transfer with the fee cap one planck short of the price bump",
+        cancellation(sender, nonce + 1, bumpFee(fees.raisedFeeCap).minus(1), bumpFee(fees.raisedTip)));
+    requireUnderpriced("cancelling transfer with the tip one planck short of the price bump",
+        cancellation(sender, nonce + 1, bumpFee(fees.raisedFeeCap), bumpFee(fees.raisedTip).minus(1)));
     var cancel = qrl.sendTransaction(
         cancellation(sender, nonce + 1, bumpFee(fees.raisedFeeCap), bumpFee(fees.raisedTip)));
     requireHash("cancel transaction hash", cancel);
