@@ -1,8 +1,6 @@
 var suite = createConsoleSuite("replacement");
 var check = suite.check;
 
-// A plain transfer's gas. It is passed explicitly, because the node cannot
-// estimate the gas of a transaction whose fee cap is below the base fee.
 var transferGas = 21000;
 
 // Fees of a stuck transaction, in planck. The base fee never drops below 7,
