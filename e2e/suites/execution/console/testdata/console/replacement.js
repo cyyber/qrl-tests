@@ -128,10 +128,10 @@ function waitForBlocks(count) {
     throw new Error("chain did not advance " + count + " blocks within timeout");
 }
 
-// This simulates network congestion, where too many transactions raise the
-// base fee above a waiting transaction's fee cap and leave it stuck. The
-// transaction starts with a fee cap below the base fee instead, which the
-// pool treats the same.
+// On a congested network a waiting transaction is first outbid by higher
+// tips, and then left behind for good once the base fee rises above its fee
+// cap. This simulates the second: the transaction starts with a fee cap below
+// the base fee.
 check("node-managed signer raises the fees of a stuck transaction", function () {
     var nonce = qrl.getTransactionCount(sender, "pending");
     var balanceBefore = qrl.getBalance(recipient);
