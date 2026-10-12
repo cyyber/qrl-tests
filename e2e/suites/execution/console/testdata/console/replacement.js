@@ -129,10 +129,9 @@ function waitForBlocks(count) {
     throw new Error("chain did not advance " + count + " blocks within timeout");
 }
 
-// A congested network raises the base fee above a waiting transaction's fee
-// cap, and no block can include the transaction until its sender raises the
-// fees. The devnet cannot be congested on demand, so the check sends a
-// transaction whose fee cap starts below the base fee and then replaces it.
+// Congestion leaves a transaction stuck by raising the base fee above its fee
+// cap. The devnet cannot be congested on demand, so the transaction starts
+// with a fee cap below the base fee.
 check("node-managed signer raises the fees of a stuck transaction", function () {
     var sender = web3.toChecksumAddress(qrl.accounts[0]);
     var recipient = web3.toChecksumAddress("Q" + new Array(65).join("a6"));

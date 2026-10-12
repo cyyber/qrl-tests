@@ -62,13 +62,6 @@ type feeCase struct {
 	feeCap, tip *big.Int
 }
 
-// A congested network raises the base fee above a waiting transaction's fee
-// cap, and no block can include the transaction until its sender raises the
-// fees. The devnet cannot be congested on demand, so the specs send a
-// transaction whose fee cap starts below the base fee and then replace it:
-// with higher fees, as a sender who still wants it mined does, and with a
-// transfer of nothing, as a sender who sent it by mistake does. A mistaken
-// transaction with too high a nonce is cancelled the same way.
 var _ = ginkgo.Describe(
 	"Transaction replacement against a live qrl-package network",
 	ginkgo.Serial,
@@ -159,6 +152,9 @@ var _ = ginkgo.Describe(
 			testsuite.MustSucceed(bind.WaitMined(ctx, node.Execution, fund))
 		}, ginkgo.NodeTimeout(2*time.Minute))
 
+		// Congestion leaves a transaction stuck by raising the base fee above
+		// its fee cap. The devnet cannot be congested on demand, so the
+		// transaction starts with a fee cap below the base fee.
 		ginkgo.It("leaves a transaction with a fee cap below the base fee out of blocks", func(ctx ginkgo.SpecContext) {
 			stuck = transfer(sender, 0, stuckRecipient, big.NewInt(1), stuckFeeCap, stuckTip)
 			// The pool accepts it once it has processed the block that funds
