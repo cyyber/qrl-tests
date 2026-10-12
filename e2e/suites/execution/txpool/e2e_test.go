@@ -74,9 +74,10 @@ var _ = ginkgo.Describe(
 
 			head := testsuite.MustSucceed(node.Execution.HeaderByNumber(ctx, nil))
 			tip = testsuite.MustSucceed(node.Execution.SuggestGasTipCap(ctx))
+			two := big.NewInt(2)
 			// Twice the tip, so a bumped tip stays below the fee cap and the
 			// replacement is rejected as underpriced, not as invalid.
-			feeCap = new(big.Int).Add(new(big.Int).Lsh(head.BaseFee, 1), new(big.Int).Lsh(tip, 1))
+			feeCap = new(big.Int).Add(new(big.Int).Mul(head.BaseFee, two), new(big.Int).Mul(tip, two))
 		}, ginkgo.NodeTimeout(time.Minute))
 
 		// The next nonce is left free, so the transaction waits in the pool
