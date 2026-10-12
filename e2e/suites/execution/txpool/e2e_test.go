@@ -27,8 +27,8 @@ const (
 	// The pool's error text; core/txpool cannot be imported here.
 	replaceUnderpriced = "replacement transaction underpriced"
 
-	// pollInterval is well under a slot, so specs react quickly to new blocks.
-	pollInterval = 200 * time.Millisecond
+	// pollInterval is how often the specs ask the node for a new block.
+	pollInterval = time.Second
 	// stuckAfterBlocks is how many blocks an unmined transaction is left
 	// before it counts as stuck. Normal fees take at most two.
 	stuckAfterBlocks = 3
@@ -128,19 +128,13 @@ var _ = ginkgo.Describe(
 			stuck = payment(0, recipient, stuckFeeCap, stuckTip)
 			gomega.Expect(node.Execution.SendTransaction(ctx, stuck)).To(gomega.Succeed())
 
-			// The pending nonce moves: the transaction has the sender's next
-			// nonce, and only its fees keep it out of a block.
-			gomega.Eventually(func(g gomega.Gomega) {
-				g.Expect(node.Execution.PendingNonceAt(ctx, senderAddress)).To(gomega.Equal(uint64(1)))
-			}).WithContext(ctx).
-				WithTimeout(time.Minute).
-				WithPolling(pollInterval).
-				Should(gomega.Succeed())
-
 			for range stuckAfterBlocks {
 				waitForBlock(ctx, node)
 			}
 			expectInPool(ctx, node, stuck, "stuck")
+			// The pending nonce moved: the transaction has the sender's next
+			// nonce, and only its fees keep it out of a block.
+			gomega.Expect(node.Execution.PendingNonceAt(ctx, senderAddress)).To(gomega.Equal(uint64(1)))
 		}, ginkgo.SpecTimeout(3*time.Minute))
 
 		// With fees of a few planck the price bump rounds down to nothing, and
