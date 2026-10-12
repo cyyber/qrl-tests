@@ -70,7 +70,7 @@ var _ = ginkgo.Describe(
 			).To(gomega.Succeed())
 		})
 
-		ginkgo.It("transfers value and replaces a queued transaction through the node-managed console account", func(ctx ginkgo.SpecContext) {
+		ginkgo.It("transfers value and raises the fees of a stuck transaction through the node-managed console account", func(ctx ginkgo.SpecContext) {
 			scripts := testsuite.MustSucceed(consoleScripts(nil))
 			gomega.Expect(
 				runScenario(ctx, consoleScenario{

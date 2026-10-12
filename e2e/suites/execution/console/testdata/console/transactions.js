@@ -52,6 +52,10 @@ function bumpFee(fee) {
     return bumped.gt(fee) ? bumped : fee.plus(1);
 }
 
+function higherFee(first, second) {
+    return first.gt(second) ? first : second;
+}
+
 function requireUnderpriced(description, transaction) {
     try {
         qrl.sendTransaction(transaction);
@@ -74,70 +78,128 @@ function requirePooled(description, transactionHash) {
     }
 }
 
-check("node-managed signer replaces a queued transaction", function () {
+function waitForBlocks(count) {
+    var target = qrl.blockNumber + count;
+    for (var attempt = 0; attempt < 60; attempt++) {
+        if (qrl.blockNumber >= target) {
+            return;
+        }
+        admin.sleep(1);
+    }
+    throw new Error("chain did not advance " + count + " blocks within timeout");
+}
+
+// A congested network raises the base fee above a waiting transaction's fee
+// cap, and no block can include the transaction until its sender raises the
+// fees. The devnet cannot be congested on demand, so the check sends a
+// transaction whose fee cap starts below the base fee and then replaces it.
+check("node-managed signer raises the fees of a stuck transaction", function () {
     var sender = web3.toChecksumAddress(qrl.accounts[0]);
     var recipient = web3.toChecksumAddress("Q" + new Array(65).join("a6"));
     requireAddress("replacement recipient", recipient);
-    var tip = qrl.maxPriorityFeePerGas;
-    // Twice the gas price, which includes the tip, so a bumped tip stays below
-    // the fee cap and the replacement is rejected as underpriced, not as
-    // invalid.
-    var feeCap = qrl.gasPrice.times(2);
-    var transfer = function (transactionNonce, value, maxFeePerGas, maxPriorityFeePerGas) {
+
+    var baseFee = qrl.getBlock("latest").baseFeePerGas;
+    // The base fee falls by an eighth per empty block, so a 32nd of it stays
+    // below it for 25 blocks, even after a price bump. It stops falling at 7
+    // planck, which is above 4 planck after a price bump.
+    var stuckFeeCap = higherFee(baseFee.dividedToIntegerBy(32), web3.toBigNumber(4));
+    if (!bumpFee(stuckFeeCap).lt(baseFee)) {
+        throw new Error("the base fee " + baseFee + " leaves no room for a stuck fee cap");
+    }
+    // Half the fee cap, so a bumped tip stays below the fee cap and the
+    // replacement is rejected as underpriced, not as invalid.
+    var stuckTip = stuckFeeCap.dividedToIntegerBy(2);
+    // The raised tip is the suggested one, unless the price bump over the
+    // bumped tip asks for more. The fee cap has room for the base fee to
+    // double.
+    var raisedTip = higherFee(qrl.maxPriorityFeePerGas, bumpFee(bumpFee(stuckTip)));
+    var raisedFeeCap = baseFee.times(2).plus(raisedTip);
+
+    var nonce = qrl.getTransactionCount(sender, "pending");
+    var balanceBefore = qrl.getBalance(recipient);
+    var transfer = function (value, maxFeePerGas, maxPriorityFeePerGas) {
         return {
             from: sender,
             to: recipient,
             value: value,
-            nonce: transactionNonce,
+            nonce: nonce,
+            // The node cannot estimate the gas of a transaction whose fee cap
+            // is below the base fee.
+            gas: 21000,
             maxFeePerGas: maxFeePerGas,
             maxPriorityFeePerGas: maxPriorityFeePerGas
         };
     };
 
-    // The transaction is sent one nonce ahead. The gap keeps it queued,
-    // where no block can include it, so the check runs every rejection and
-    // the accepted replacement without racing block production.
-    var nonce = qrl.getTransactionCount(sender, "pending");
-    var balanceBefore = qrl.getBalance(recipient);
-    var original = qrl.sendTransaction(transfer(nonce + 1, 1, feeCap, tip));
-    requireHash("original transaction hash", original);
-    requirePooled("original transaction", original);
-    if (qrl.getTransactionCount(sender, "pending") !== nonce) {
-        throw new Error("original transaction is not queued behind the nonce gap");
+    var stuck = qrl.sendTransaction(transfer(1, stuckFeeCap, stuckTip));
+    var bumped = null;
+    var failure = null;
+    try {
+        requireHash("stuck transaction hash", stuck);
+        // A transaction that pays the base fee is mined within two blocks.
+        waitForBlocks(3);
+        requirePooled("stuck transaction", stuck);
+        // The pending nonce moved: the transaction has the sender's next
+        // nonce, and only its fees keep it out of a block.
+        if (qrl.getTransactionCount(sender, "pending") !== nonce + 1) {
+            throw new Error("stuck transaction is not executable");
+        }
+
+        // Below 10 planck the price bump rounds down to nothing and the pool
+        // only asks for a higher fee. On a chain whose base fee has settled,
+        // the stuck fees are that low, and the "one planck short" cases
+        // repeat the two before them.
+        requireUnderpriced("replacement with the same fees",
+            transfer(2, stuckFeeCap, stuckTip));
+        requireUnderpriced("replacement with only the fee cap raised",
+            transfer(2, bumpFee(stuckFeeCap), stuckTip));
+        requireUnderpriced("replacement with only the tip raised",
+            transfer(2, stuckFeeCap, bumpFee(stuckTip)));
+        requireUnderpriced("replacement with the fee cap one planck short of the price bump",
+            transfer(2, bumpFee(stuckFeeCap).minus(1), bumpFee(stuckTip)));
+        requireUnderpriced("replacement with the tip one planck short of the price bump",
+            transfer(2, bumpFee(stuckFeeCap), bumpFee(stuckTip).minus(1)));
+        requirePooled("stuck transaction", stuck);
+
+        // Raising both fees by the price bump replaces the transaction, but
+        // the fee cap is still below the base fee.
+        bumped = qrl.sendTransaction(transfer(2, bumpFee(stuckFeeCap), bumpFee(stuckTip)));
+        requireHash("bumped transaction hash", bumped);
+        if (qrl.getTransaction(stuck) !== null) {
+            throw new Error("stuck transaction is still in the pool");
+        }
+        requirePooled("bumped transaction", bumped);
+    } catch (error) {
+        failure = error;
     }
 
-    requireUnderpriced("replacement with the same fees",
-        transfer(nonce + 1, 2, feeCap, tip));
-    requireUnderpriced("replacement with only the fee cap raised",
-        transfer(nonce + 1, 2, bumpFee(feeCap), tip));
-    requireUnderpriced("replacement with only the tip raised",
-        transfer(nonce + 1, 2, feeCap, bumpFee(tip)));
-    requireUnderpriced("replacement with the fee cap one planck short of the price bump",
-        transfer(nonce + 1, 2, bumpFee(feeCap).minus(1), bumpFee(tip)));
-    requireUnderpriced("replacement with the tip one planck short of the price bump",
-        transfer(nonce + 1, 2, bumpFee(feeCap), bumpFee(tip).minus(1)));
-    requirePooled("original transaction", original);
-
-    var replacement = qrl.sendTransaction(transfer(nonce + 1, 2, bumpFee(feeCap), bumpFee(tip)));
-    requireHash("replacement transaction hash", replacement);
-    if (qrl.getTransaction(original) !== null) {
-        throw new Error("original transaction is still in the pool");
+    // The raised transaction is sent even after a failure: a stuck transaction
+    // blocks every later transaction of the account.
+    var raised;
+    try {
+        raised = qrl.sendTransaction(transfer(3, raisedFeeCap, raisedTip));
+    } catch (error) {
+        throw failure !== null ? failure : error;
     }
-    requirePooled("replacement transaction", replacement);
+    if (failure !== null) {
+        throw failure;
+    }
+    requireHash("raised transaction hash", raised);
 
-    // Fill the nonce gap, so the replacement becomes executable.
-    requireHash("gap transaction hash", qrl.sendTransaction(transfer(nonce, 0, feeCap, tip)));
-    var receipt = waitForReceipt(replacement);
+    var receipt = waitForReceipt(raised);
     if (Number(receipt.status) !== 1) {
-        throw new Error("replacement failed: " + JSON.stringify(receipt));
+        throw new Error("raised transaction failed: " + JSON.stringify(receipt));
     }
-    if (qrl.getTransactionReceipt(original) !== null) {
-        throw new Error("original transaction was mined");
+    if (qrl.getTransactionReceipt(stuck) !== null) {
+        throw new Error("stuck transaction was mined");
+    }
+    if (qrl.getTransactionReceipt(bumped) !== null) {
+        throw new Error("bumped transaction was mined");
     }
     var balanceAfter = qrl.getBalance(recipient);
-    if (balanceAfter.toString(10) !== balanceBefore.plus(2).toString(10)) {
+    if (balanceAfter.toString(10) !== balanceBefore.plus(3).toString(10)) {
         throw new Error("recipient received " + balanceAfter.minus(balanceBefore) +
-            ", want the replacement's value 2");
+            ", want the raised transaction's value 3");
     }
 });
 
