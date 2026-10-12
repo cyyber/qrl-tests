@@ -1,10 +1,6 @@
 var suite = createConsoleSuite("replacement");
 var check = suite.check;
 
-// The pool's default --txpool.pricebump: a replacement transaction must raise
-// both fees by this percentage.
-var priceBump = 10;
-
 // A plain transfer's gas. It is passed explicitly, because the node cannot
 // estimate the gas of a transaction whose fee cap is below the base fee.
 var transferGas = 21000;
@@ -22,11 +18,6 @@ var feeCap = qrl.gasPrice.times(2);
 var sender = web3.toChecksumAddress(qrl.accounts[0]);
 var recipient = web3.toChecksumAddress("Q" + new Array(65).join("a6"));
 requireAddress("recipient", recipient);
-
-function bumpFee(fee) {
-    var bumped = fee.times(100 + priceBump).dividedToIntegerBy(100);
-    return bumped.gt(fee) ? bumped : fee.plus(1);
-}
 
 // payment sends one planck from the sender.
 function payment(to, nonce, maxFeePerGas, maxPriorityFeePerGas) {
@@ -135,9 +126,9 @@ check("node-managed signer raises the fees of a stuck transaction", function () 
         requireUnderpriced("replacement transaction with the same fees",
             payment(sender, nonce, stuckFeeCap, stuckTip));
         requireUnderpriced("replacement transaction with only the fee cap raised",
-            payment(sender, nonce, bumpFee(stuckFeeCap), stuckTip));
+            payment(sender, nonce, feeCap, stuckTip));
         requireUnderpriced("replacement transaction with only the tip raised",
-            payment(sender, nonce, stuckFeeCap, bumpFee(stuckTip)));
+            payment(sender, nonce, stuckFeeCap, stuckFeeCap));
         requireInPool("stuck transaction", stuck);
     } catch (error) {
         failure = error;

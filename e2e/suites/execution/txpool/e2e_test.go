@@ -21,9 +21,6 @@ import (
 )
 
 const (
-	// priceBump is the pool's default --txpool.pricebump, in percent.
-	priceBump = 10
-
 	// The pool's error text; core/txpool cannot be imported here.
 	replaceUnderpriced = "replacement transaction underpriced"
 
@@ -114,14 +111,12 @@ var _ = ginkgo.Describe(
 			stuck = payment(0, recipient, stuckFeeCap, stuckTip)
 			gomega.Expect(node.Execution.SendTransaction(ctx, stuck)).To(gomega.Succeed())
 
-			for range stuckAfterBlocks {
-				waitForBlock(ctx, node)
-			}
-			expectInPool(ctx, node, stuck, "stuck")
+			waitForBlocks(ctx, node, stuckAfterBlocks)
+			expectInPool(ctx, node, stuck)
 			// The pending nonce moved: the transaction has the sender's next
 			// nonce, and only its fees keep it out of a block.
 			gomega.Expect(node.Execution.PendingNonceAt(ctx, senderAddress)).To(gomega.Equal(uint64(1)))
-		}, ginkgo.SpecTimeout(3*time.Minute))
+		}, ginkgo.SpecTimeout(2*time.Minute))
 
 		ginkgo.It("rejects a replacement transaction that does not raise both fees", func(ctx ginkgo.SpecContext) {
 			for _, fees := range []struct {
@@ -129,8 +124,8 @@ var _ = ginkgo.Describe(
 				feeCap, tip *big.Int
 			}{
 				{"the same fees", stuckFeeCap, stuckTip},
-				{"only the fee cap raised", bump(stuckFeeCap), stuckTip},
-				{"only the tip raised", stuckFeeCap, bump(stuckTip)},
+				{"only the fee cap raised", feeCap, stuckTip},
+				{"only the tip raised", stuckFeeCap, stuckFeeCap},
 			} {
 				// Another recipient, so the same fees do not make the same
 				// transaction.
@@ -139,7 +134,7 @@ var _ = ginkgo.Describe(
 				gomega.Expect(err).To(gomega.MatchError(gomega.ContainSubstring(replaceUnderpriced)),
 					"replacement transaction with %s", fees.name)
 			}
-			expectInPool(ctx, node, stuck, "stuck")
+			expectInPool(ctx, node, stuck)
 		}, ginkgo.SpecTimeout(time.Minute))
 
 		ginkgo.It("mines a replacement transaction whose fees cover the base fee", func(ctx ginkgo.SpecContext) {
@@ -149,44 +144,28 @@ var _ = ginkgo.Describe(
 
 			receipt := testsuite.MustSucceed(bind.WaitMined(ctx, node.Execution, raised))
 			gomega.Expect(receipt.Status).To(gomega.Equal(types.ReceiptStatusSuccessful))
-			expectNotMined(ctx, node, stuck, "stuck")
+			_, err := node.Execution.TransactionReceipt(ctx, stuck.Hash())
+			gomega.Expect(err).To(gomega.MatchError(qrl.NotFound), "the stuck transaction was mined")
 			gomega.Expect(testsuite.MustSucceed(node.Execution.BalanceAt(ctx, recipient, receipt.BlockNumber))).To(
 				gomega.Equal(new(big.Int).Add(before, big.NewInt(1))))
 		}, ginkgo.SpecTimeout(2*time.Minute))
 	},
 )
 
-// bump raises fee by the price bump, and by at least one planck.
-func bump(fee *big.Int) *big.Int {
-	bumped := new(big.Int).Mul(fee, big.NewInt(100+priceBump))
-	bumped.Div(bumped, big.NewInt(100))
-	if bumped.Cmp(fee) <= 0 {
-		bumped.Add(fee, big.NewInt(1))
-	}
-	return bumped
-}
-
 // expectInPool fails unless the transaction is in the pool, not yet mined.
-func expectInPool(ctx context.Context, node *live.Node, tx *types.Transaction, name string) {
+func expectInPool(ctx context.Context, node *live.Node, tx *types.Transaction) {
 	ginkgo.GinkgoHelper()
 	_, isPending, err := node.Execution.TransactionByHash(ctx, tx.Hash())
-	gomega.Expect(err).NotTo(gomega.HaveOccurred(), "the %s transaction is not in the pool", name)
-	gomega.Expect(isPending).To(gomega.BeTrue(), "the %s transaction was mined", name)
+	gomega.Expect(err).NotTo(gomega.HaveOccurred(), "the transaction is not in the pool")
+	gomega.Expect(isPending).To(gomega.BeTrue(), "the transaction was mined")
 }
 
-// expectNotMined fails if the transaction has a receipt.
-func expectNotMined(ctx context.Context, node *live.Node, tx *types.Transaction, name string) {
+// waitForBlocks returns once the chain has grown by count blocks.
+func waitForBlocks(ctx context.Context, node *live.Node, count uint64) {
 	ginkgo.GinkgoHelper()
-	_, err := node.Execution.TransactionReceipt(ctx, tx.Hash())
-	gomega.Expect(err).To(gomega.MatchError(qrl.NotFound), "the %s transaction was mined", name)
-}
-
-// waitForBlock returns once the chain has a new head.
-func waitForBlock(ctx context.Context, node *live.Node) {
-	ginkgo.GinkgoHelper()
-	head := testsuite.MustSucceed(node.Execution.BlockNumber(ctx))
+	target := testsuite.MustSucceed(node.Execution.BlockNumber(ctx)) + count
 	gomega.Eventually(func(g gomega.Gomega) {
-		g.Expect(node.Execution.BlockNumber(ctx)).To(gomega.BeNumerically(">", head))
+		g.Expect(node.Execution.BlockNumber(ctx)).To(gomega.BeNumerically(">=", target))
 	}).WithContext(ctx).
 		WithTimeout(time.Minute).
 		WithPolling(pollInterval).
