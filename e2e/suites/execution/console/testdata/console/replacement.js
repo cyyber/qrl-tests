@@ -65,7 +65,7 @@ function requireUnderpriced(description, transaction) {
     throw new Error(description + " was accepted");
 }
 
-function requirePooled(description, transactionHash) {
+function requireInPool(description, transactionHash) {
     var transaction = qrl.getTransaction(transactionHash);
     if (transaction === null) {
         throw new Error(description + " is not in the pool");
@@ -141,7 +141,7 @@ check("node-managed signer raises the fees of a stuck transaction", function () 
     try {
         // Normal fees take at most two blocks.
         waitForBlocks(3);
-        requirePooled("stuck transaction", stuck);
+        requireInPool("stuck transaction", stuck);
         // The pending nonce moved: the transaction has the sender's next
         // nonce, and only its fees keep it out of a block.
         if (qrl.getTransactionCount(sender, "pending") !== nonce + 1) {
@@ -157,7 +157,7 @@ check("node-managed signer raises the fees of a stuck transaction", function () 
             cancellation(nonce, bumpFee(stuckFeeCap), stuckTip));
         requireUnderpriced("replacement transaction with only the tip raised",
             cancellation(nonce, stuckFeeCap, bumpFee(stuckTip)));
-        requirePooled("stuck transaction", stuck);
+        requireInPool("stuck transaction", stuck);
     } catch (error) {
         failure = error;
     }
@@ -181,7 +181,7 @@ check("node-managed signer cancels a stuck transaction with a zero-value transfe
     var mistaken = qrl.sendTransaction(payment(mistakenRecipient, nonce, stuckFeeCap, stuckTip));
     var failure = null;
     try {
-        requirePooled("mistaken transaction", mistaken);
+        requireInPool("mistaken transaction", mistaken);
     } catch (error) {
         failure = error;
     }
@@ -201,7 +201,7 @@ check("node-managed signer cancels a transaction sent one nonce ahead", function
     var balanceBefore = qrl.getBalance(mistakenRecipient);
 
     var mistaken = qrl.sendTransaction(payment(mistakenRecipient, nonce + 1, feeCap, tip));
-    requirePooled("mistaken transaction", mistaken);
+    requireInPool("mistaken transaction", mistaken);
     if (qrl.getTransactionCount(sender, "pending") !== nonce) {
         throw new Error("mistaken transaction is not queued behind the nonce gap");
     }
@@ -216,7 +216,7 @@ check("node-managed signer cancels a transaction sent one nonce ahead", function
         cancellation(nonce + 1, bumpFee(feeCap), bumpFee(tip).minus(1)));
     var cancel = qrl.sendTransaction(cancellation(nonce + 1, bumpFee(feeCap), bumpFee(tip)));
     requireReplaced("mistaken transaction", mistaken);
-    requirePooled("cancelling transfer", cancel);
+    requireInPool("cancelling transfer", cancel);
 
     // Fill the nonce gap, so the cancelling transfer becomes executable.
     qrl.sendTransaction(cancellation(nonce, feeCap, tip));

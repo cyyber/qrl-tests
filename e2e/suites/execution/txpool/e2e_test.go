@@ -140,7 +140,7 @@ var _ = ginkgo.Describe(
 			for range stuckAfterBlocks {
 				waitForBlock(ctx, node)
 			}
-			expectPooled(ctx, node, stuck, "stuck")
+			expectInPool(ctx, node, stuck, "stuck")
 		}, ginkgo.SpecTimeout(3*time.Minute))
 
 		// With fees of a few planck the price bump rounds down to nothing, and
@@ -156,7 +156,7 @@ var _ = ginkgo.Describe(
 				gomega.Expect(err).To(gomega.MatchError(gomega.ContainSubstring(replaceUnderpriced)),
 					"replacement transaction with %s", fees.name)
 			}
-			expectPooled(ctx, node, stuck, "stuck")
+			expectInPool(ctx, node, stuck, "stuck")
 		}, ginkgo.SpecTimeout(time.Minute))
 
 		// The sender sends the stuck transaction's payment again, with fees
@@ -182,7 +182,7 @@ var _ = ginkgo.Describe(
 			before := testsuite.MustSucceed(node.Execution.BalanceAt(ctx, mistakenRecipient, nil))
 			mistaken := payment(nonce, mistakenRecipient, stuckFeeCap, stuckTip)
 			gomega.Expect(node.Execution.SendTransaction(ctx, mistaken)).To(gomega.Succeed())
-			expectPooled(ctx, node, mistaken, "mistaken")
+			expectInPool(ctx, node, mistaken, "mistaken")
 
 			cancel := cancellation(nonce, feeCap, tip)
 			gomega.Expect(node.Execution.SendTransaction(ctx, cancel)).To(gomega.Succeed())
@@ -205,7 +205,7 @@ var _ = ginkgo.Describe(
 			before := testsuite.MustSucceed(node.Execution.BalanceAt(ctx, mistakenRecipient, nil))
 			mistaken := payment(nonce+1, mistakenRecipient, feeCap, tip)
 			gomega.Expect(node.Execution.SendTransaction(ctx, mistaken)).To(gomega.Succeed())
-			expectPooled(ctx, node, mistaken, "mistaken")
+			expectInPool(ctx, node, mistaken, "mistaken")
 			// The pending nonce does not move: the transaction is queued.
 			gomega.Expect(node.Execution.PendingNonceAt(ctx, senderAddress)).To(gomega.Equal(nonce))
 
@@ -254,8 +254,8 @@ func belowBump(fee *big.Int) *big.Int {
 	return new(big.Int).Sub(bump(fee), big.NewInt(1))
 }
 
-// expectPooled fails unless the pool holds the transaction, unmined.
-func expectPooled(ctx context.Context, node *live.Node, tx *types.Transaction, name string) {
+// expectInPool fails unless the transaction is in the pool, not yet mined.
+func expectInPool(ctx context.Context, node *live.Node, tx *types.Transaction, name string) {
 	ginkgo.GinkgoHelper()
 	_, isPending, err := node.Execution.TransactionByHash(ctx, tx.Hash())
 	gomega.Expect(err).NotTo(gomega.HaveOccurred(), "the %s transaction is not in the pool", name)
