@@ -70,13 +70,24 @@ var _ = ginkgo.Describe(
 			).To(gomega.Succeed())
 		})
 
-		ginkgo.It("transfers value, then speeds up and cancels waiting transactions through the node-managed console account", func(ctx ginkgo.SpecContext) {
+		ginkgo.It("transfers value through the node-managed console account", func(ctx ginkgo.SpecContext) {
 			scripts := testsuite.MustSucceed(consoleScripts(nil))
 			gomega.Expect(
 				runScenario(ctx, consoleScenario{
 					image:       node.ExecutionImage,
 					endpointURL: node.ExecutionRPCURL,
 					scenario:    "transactions",
+				}, scripts),
+			).To(gomega.Succeed())
+		})
+
+		ginkgo.It("replaces stuck and queued transactions through the node-managed console account", func(ctx ginkgo.SpecContext) {
+			scripts := testsuite.MustSucceed(consoleScripts(nil))
+			gomega.Expect(
+				runScenario(ctx, consoleScenario{
+					image:       node.ExecutionImage,
+					endpointURL: node.ExecutionRPCURL,
+					scenario:    "replacement",
 				}, scripts),
 			).To(gomega.Succeed())
 		})
