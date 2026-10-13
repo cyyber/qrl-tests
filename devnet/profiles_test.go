@@ -23,6 +23,10 @@ func TestParseProfile(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, ProfileSingle, profile)
 
+	profile, err = ParseProfile("multi")
+	require.NoError(t, err)
+	require.Equal(t, ProfileMulti, profile)
+
 	_, err = ParseProfile("unknown")
 	require.ErrorContains(t, err, "unknown development-network profile")
 }

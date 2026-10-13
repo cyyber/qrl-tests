@@ -153,3 +153,10 @@ func TestStarlarkErrorKinds(t *testing.T) {
 		})
 	}
 }
+
+func TestServiceInstructionScript(t *testing.T) {
+	require.Equal(t,
+		"def run(plan):\n    plan.stop_service(name=\"vc-1\")\n    plan.stop_service(name=\"el-1\")\n",
+		serviceInstructionScript("stop_service", []string{"vc-1", "el-1"}),
+	)
+}

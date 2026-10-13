@@ -10,6 +10,7 @@ import (
 	"maps"
 	"net"
 	"strconv"
+	"strings"
 
 	"github.com/kurtosis-tech/kurtosis/api/golang/core/kurtosis_core_rpc_api_bindings"
 	"github.com/kurtosis-tech/kurtosis/api/golang/core/lib/services"
@@ -124,6 +125,59 @@ func (client *EnclaveClient) Services(ctx context.Context, enclaveName string) (
 
 func (client *EnclaveClient) DestroyEnclave(ctx context.Context, name string) error {
 	return client.engine.DestroyEnclave(ctx, name)
+}
+
+// StopServices stops the named services in order. A stopped service keeps
+// its container, so StartServices resumes it with its data and its flags.
+func (client *EnclaveClient) StopServices(ctx context.Context, enclaveName string, names []string) error {
+	return client.runServiceInstruction(ctx, enclaveName, "stop_service", names)
+}
+
+// StartServices starts the named stopped services in order. Kurtosis
+// publishes a started service on new host ports.
+func (client *EnclaveClient) StartServices(ctx context.Context, enclaveName string, names []string) error {
+	return client.runServiceInstruction(ctx, enclaveName, "start_service", names)
+}
+
+func (client *EnclaveClient) runServiceInstruction(
+	ctx context.Context,
+	enclaveName,
+	instruction string,
+	names []string,
+) error {
+	if len(names) == 0 {
+		return nil
+	}
+	enclave, err := client.engine.GetEnclaveContext(ctx, enclaveName)
+	if err != nil {
+		return err
+	}
+
+	result, err := enclave.RunStarlarkScriptBlocking(
+		ctx, serviceInstructionScript(instruction, names), starlark_run_config.NewRunStarlarkConfig(),
+	)
+	if err != nil {
+		return err
+	}
+	switch {
+	case result.InterpretationError != nil:
+		return errors.New(result.InterpretationError.GetErrorMessage())
+	case len(result.ValidationErrors) > 0:
+		return errors.New(result.ValidationErrors[0].GetErrorMessage())
+	case result.ExecutionError != nil:
+		return errors.New(result.ExecutionError.GetErrorMessage())
+	}
+	return nil
+}
+
+// serviceInstructionScript applies one plan instruction to each service.
+func serviceInstructionScript(instruction string, names []string) string {
+	var script strings.Builder
+	script.WriteString("def run(plan):\n")
+	for _, name := range names {
+		fmt.Fprintf(&script, "    plan.%s(name=%q)\n", instruction, name)
+	}
+	return script.String()
 }
 
 type serviceContext interface {

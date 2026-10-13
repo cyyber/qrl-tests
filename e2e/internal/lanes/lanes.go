@@ -25,6 +25,7 @@ const (
 	suiteExecutionConsole          SuiteID = "execution-console"
 	suiteConsensusStakingAutomated SuiteID = "consensus-staking-automated"
 	suiteConsensusStakingOperator  SuiteID = "consensus-staking-operator"
+	suiteConsensusNetworkRestart   SuiteID = "consensus-network-restart"
 )
 
 var suitePackages = map[SuiteID]string{
@@ -32,6 +33,7 @@ var suitePackages = map[SuiteID]string{
 	suiteExecutionConsole:          "./e2e/suites/execution/console",
 	suiteConsensusStakingAutomated: "./e2e/suites/consensus/stakingautomated",
 	suiteConsensusStakingOperator:  "./e2e/suites/consensus/stakingoperator",
+	suiteConsensusNetworkRestart:   "./e2e/suites/consensus/networkrestart",
 }
 
 var registry = []Lane{
@@ -57,6 +59,14 @@ var registry = []Lane{
 		Profile: devnet.ProfileSingle,
 		Suites:  []SuiteID{suiteConsensusStakingOperator},
 		Timeout: 95 * time.Minute,
+	},
+	{
+		// Finality before the outage, the outage and finality after it take
+		// about a dozen 40-second epochs.
+		Name:    "consensus-network-restart",
+		Profile: devnet.ProfileMulti,
+		Suites:  []SuiteID{suiteConsensusNetworkRestart},
+		Timeout: 25 * time.Minute,
 	},
 }
 

@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"math/big"
+	"slices"
 
 	"github.com/cyyber/qrl-tests/devnet"
 	"github.com/cyyber/qrl-tests/e2e/internal/beacon"
@@ -74,6 +75,19 @@ func (runtime *Runtime) PrimaryNode(ctx context.Context) (*Node, error) {
 	return runtime.open(ctx, participant, false)
 }
 
+// Nodes opens every participant, lowest index first.
+func (runtime *Runtime) Nodes(ctx context.Context) ([]*Node, error) {
+	nodes := make([]*Node, len(runtime.environment.Participants))
+	for index, participant := range runtime.environment.Participants {
+		node, err := runtime.open(ctx, participant, false)
+		if err != nil {
+			return nil, err
+		}
+		nodes[index] = node
+	}
+	return nodes, nil
+}
+
 func (runtime *Runtime) PrimaryWithWebSocket(ctx context.Context) (*Node, error) {
 	participant, err := runtime.environment.Primary()
 	if err != nil {
@@ -122,6 +136,46 @@ func (runtime *Runtime) open(ctx context.Context, participant devnet.Participant
 
 	runtime.nodes = append(runtime.nodes, node)
 	return node, nil
+}
+
+// StopParticipants stops every participant's validator client, beacon node
+// and execution client. They keep their data.
+func (runtime *Runtime) StopParticipants(ctx context.Context) error {
+	var services []string
+	for _, participant := range runtime.environment.Participants {
+		services = append(services, participant.Validator.Name, participant.Consensus.Name, participant.Execution.Name)
+	}
+	return devnet.NewManager().StopServices(ctx, runtime.environment.EnclaveName, named(services))
+}
+
+// StartParticipants starts the services that StopParticipants stopped,
+// execution clients first. A started service is published on other host
+// ports, so the environment is read again and the nodes opened before the
+// restart are closed.
+func (runtime *Runtime) StartParticipants(ctx context.Context) error {
+	var services []string
+	for _, participant := range runtime.environment.Participants {
+		services = append(services, participant.Execution.Name, participant.Consensus.Name, participant.Validator.Name)
+	}
+	manager := devnet.NewManager()
+	name := runtime.environment.EnclaveName
+	if err := manager.StartServices(ctx, name, named(services)); err != nil {
+		return err
+	}
+
+	environment, err := manager.Environment(ctx, name)
+	if err != nil {
+		return err
+	}
+	environment.Backend = runtime.environment.Backend
+	runtime.Close()
+	runtime.environment = environment
+	return nil
+}
+
+// named drops the services a participant does not run.
+func named(services []string) []string {
+	return slices.DeleteFunc(services, func(name string) bool { return name == "" })
 }
 
 func (runtime *Runtime) Close() {

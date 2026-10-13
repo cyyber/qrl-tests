@@ -1,0 +1,129 @@
+//go:build e2e
+
+package networkrestart
+
+import (
+	"context"
+	"strconv"
+	"testing"
+	"time"
+
+	"github.com/cyyber/qrl-tests/e2e/internal/beacon"
+	"github.com/cyyber/qrl-tests/e2e/internal/chaininfo"
+	"github.com/cyyber/qrl-tests/e2e/internal/live"
+	"github.com/cyyber/qrl-tests/e2e/internal/testsuite"
+	ginkgo "github.com/onsi/ginkgo/v2"
+	gomega "github.com/onsi/gomega"
+)
+
+const (
+	// outageEpochs is how long every node stays down.
+	outageEpochs = 1
+	// finalityEpochs bounds the wait for a finalized checkpoint, from genesis
+	// and again after the restart. Finality needs three epochs at best.
+	finalityEpochs = 8
+)
+
+func TestE2E(t *testing.T) {
+	testsuite.Run(t, "Network restart E2E suite")
+}
+
+// A beacon node normally starts from the justified checkpoint. When every
+// beacon node of a network restarts together, none of them has the blocks
+// after it to offer, and the execution clients refuse to go back, so no block
+// is ever proposed again. Beacon nodes run with --sync-from=head start from
+// their stored head instead, and the network resumes.
+var _ = ginkgo.Describe(
+	"A network whose nodes all stop at once",
+	ginkgo.Serial,
+	ginkgo.Ordered,
+	ginkgo.Label("e2e", "consensus", "network-restart"),
+	func() {
+		var (
+			runtime *live.Runtime
+			nodes   []*live.Node
+			chain   chaininfo.Info
+			// head is the last block seen before the outage.
+			head beacon.BlockHeader
+		)
+
+		epochs := func(count uint64) time.Duration {
+			return time.Duration(count*chain.SlotsPerEpoch) * chain.SlotDuration
+		}
+		finalizedEpoch := func(node *live.Node) func(context.Context) (uint64, error) {
+			return func(ctx context.Context) (uint64, error) {
+				checkpoints, err := node.Beacon.FinalityCheckpoints(ctx)
+				return checkpoints.Finalized.Epoch, err
+			}
+		}
+
+		ginkgo.BeforeAll(func(ctx ginkgo.SpecContext) {
+			runtime = testsuite.LoadRuntime()
+			nodes = testsuite.MustSucceed(runtime.Nodes(ctx))
+			gomega.Expect(len(nodes)).To(gomega.BeNumerically(">", 1), "the scenario needs several participants")
+			chain = testsuite.MustSucceed(chaininfo.Load(ctx, nodes[0].Beacon))
+		}, ginkgo.NodeTimeout(time.Minute))
+
+		ginkgo.It("finalizes before the outage", func(ctx ginkgo.SpecContext) {
+			gomega.Eventually(finalizedEpoch(nodes[0])).WithContext(ctx).
+				WithTimeout(epochs(finalityEpochs)).
+				WithPolling(chain.SlotDuration).
+				Should(gomega.BeNumerically(">", 0))
+			head = testsuite.MustSucceed(nodes[0].Beacon.BlockHeader(ctx, "head"))
+		}, ginkgo.SpecTimeout(10*time.Minute))
+
+		ginkgo.It("stops every node", func(ctx ginkgo.SpecContext) {
+			gomega.Expect(runtime.StopParticipants(ctx)).To(gomega.Succeed())
+			for index, node := range nodes {
+				_, err := node.Beacon.HeadSlot(ctx)
+				gomega.Expect(err).To(gomega.HaveOccurred(), "the beacon node of participant %d still answers", index+1)
+			}
+
+			select {
+			case <-time.After(epochs(outageEpochs)):
+			case <-ctx.Done():
+			}
+		}, ginkgo.SpecTimeout(5*time.Minute))
+
+		ginkgo.It("proposes again after the restart", func(ctx ginkgo.SpecContext) {
+			gomega.Expect(runtime.StartParticipants(ctx)).To(gomega.Succeed())
+			nodes = testsuite.MustSucceed(runtime.Nodes(ctx))
+
+			for index, node := range nodes {
+				// No block was proposed during the outage, so a head beyond
+				// it is a block proposed since the restart.
+				gomega.Eventually(node.Beacon.HeadSlot).WithContext(ctx).
+					WithTimeout(epochs(2)).
+					WithPolling(chain.SlotDuration).
+					Should(gomega.BeNumerically(">", head.Slot+outageEpochs*chain.SlotsPerEpoch),
+						"participant %d", index+1)
+
+				// The chain continues from the head it had, not from an
+				// earlier checkpoint.
+				kept := testsuite.MustSucceed(node.Beacon.BlockHeader(ctx, strconv.FormatUint(head.Slot, 10)))
+				gomega.Expect(kept.Root).To(gomega.Equal(head.Root),
+					"participant %d changed the block at the old head slot", index+1)
+			}
+		}, ginkgo.SpecTimeout(5*time.Minute))
+
+		ginkgo.It("finalizes again on one chain", func(ctx ginkgo.SpecContext) {
+			for index, node := range nodes {
+				// An epoch after the outage began can only be finalized by
+				// votes cast since the restart.
+				gomega.Eventually(finalizedEpoch(node)).WithContext(ctx).
+					WithTimeout(epochs(finalityEpochs)).
+					WithPolling(chain.SlotDuration).
+					Should(gomega.BeNumerically(">", head.Slot/chain.SlotsPerEpoch), "participant %d", index+1)
+			}
+
+			finalized := testsuite.MustSucceed(nodes[0].Beacon.BlockHeader(ctx, "finalized"))
+			for index, node := range nodes[1:] {
+				same := testsuite.MustSucceed(node.Beacon.BlockHeader(ctx, strconv.FormatUint(finalized.Slot, 10)))
+				gomega.Expect(same.Root).To(gomega.Equal(finalized.Root),
+					"participant %d is on another chain than participant 1", index+2)
+			}
+			gomega.Expect(testsuite.MustSucceed(nodes[0].Beacon.SlashedValidators(ctx))).To(gomega.BeEmpty(),
+				"a validator was slashed")
+		}, ginkgo.SpecTimeout(10*time.Minute))
+	},
+)

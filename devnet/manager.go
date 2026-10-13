@@ -33,6 +33,8 @@ type enclaveClient interface {
 	CreateEnclave(ctx context.Context, name string) error
 	RunRemotePackage(ctx context.Context, enclaveName, locator, serializedParams string) error
 	Services(ctx context.Context, enclaveName string) (map[string]kurtosis.Service, error)
+	StopServices(ctx context.Context, enclaveName string, names []string) error
+	StartServices(ctx context.Context, enclaveName string, names []string) error
 	DestroyEnclave(ctx context.Context, name string) error
 }
 
@@ -74,7 +76,9 @@ func NewManager() *Manager {
 	}
 }
 
-func (manager *Manager) Inspect(ctx context.Context, name string) (Environment, error) {
+// Environment resolves the services of a running network. Unlike Inspect it
+// does not check that the chain advances.
+func (manager *Manager) Environment(ctx context.Context, name string) (Environment, error) {
 	client, err := manager.newEnclaveClient()
 	if err != nil {
 		return Environment{}, err
@@ -86,8 +90,11 @@ func (manager *Manager) Inspect(ctx context.Context, name string) (Environment, 
 	if !found {
 		return Environment{}, fmt.Errorf("network %q is not running", name)
 	}
+	return resolveEnvironment(ctx, client, name)
+}
 
-	environment, err := resolveEnvironment(ctx, client, name)
+func (manager *Manager) Inspect(ctx context.Context, name string) (Environment, error) {
+	environment, err := manager.Environment(ctx, name)
 	if err != nil {
 		return Environment{}, err
 	}
@@ -200,6 +207,32 @@ func (manager *Manager) Stop(ctx context.Context, name string) error {
 		return nil
 	}
 	return manager.destroyAndConfirm(ctx, client, name)
+}
+
+// StopServices stops the named services of a running network, in order. They
+// keep their data and flags until StartServices starts them again.
+func (manager *Manager) StopServices(ctx context.Context, name string, services []string) error {
+	client, err := manager.newEnclaveClient()
+	if err != nil {
+		return err
+	}
+	if err := client.StopServices(ctx, name, services); err != nil {
+		return fmt.Errorf("stop services %v: %w", services, err)
+	}
+	return nil
+}
+
+// StartServices starts the named stopped services, in order. They come back
+// on new host ports, so the environment has to be inspected again.
+func (manager *Manager) StartServices(ctx context.Context, name string, services []string) error {
+	client, err := manager.newEnclaveClient()
+	if err != nil {
+		return err
+	}
+	if err := client.StartServices(ctx, name, services); err != nil {
+		return fmt.Errorf("start services %v: %w", services, err)
+	}
+	return nil
 }
 
 func (manager *Manager) destroyAndConfirm(ctx context.Context, client enclaveClient, name string) error {

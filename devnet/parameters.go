@@ -89,7 +89,7 @@ func profileParameters(address string, options StartOptions) (string, error) {
 			ELImage:                 images.Execution,
 			ELExtraParams:           participantParameters(configuration.elExtraParams, "--graphql", "--graphql.vhosts=*"),
 			CLImage:                 images.Consensus,
-			CLExtraParams:           participantParameters(configuration.clExtraParams, "--min-sync-peers=0", "--minimum-peers-per-subnet=0"),
+			CLExtraParams:           participantParameters(configuration.clExtraParams, defaultCLExtraParams...),
 			VCImage:                 images.Validator,
 			VCExtraParams:           participantParameters(configuration.vcExtraParams),
 			UseRemoteSigner:         true,
