@@ -56,12 +56,14 @@ func TestMultiProfileParameters(t *testing.T) {
 	for index, entry := range participants {
 		participant := entry.(map[string]any)
 		require.Equal(t, float64(32), participant["validator_count"])
-		require.Equal(t,
-			[]any{"--min-sync-peers=0", "--minimum-peers-per-subnet=0", "--sync-from=head"},
-			participant["cl_extra_params"],
-		)
 		require.Equal(t, strconv.Itoa(index+1), participant["el_extra_labels"].(map[string]any)[participantLabel])
 	}
+	// Only the first participant is the anchor of a full-outage recovery.
+	require.Equal(t,
+		[]any{"--min-sync-peers=0", "--minimum-peers-per-subnet=0", "--sync-from=head"},
+		participants[0].(map[string]any)["cl_extra_params"],
+	)
+	require.Equal(t, []any{"--minimum-peers-per-subnet=0"}, participants[1].(map[string]any)["cl_extra_params"])
 	// The profile adds to the defaults without changing them for others.
 	require.Equal(t, []string{"--min-sync-peers=0", "--minimum-peers-per-subnet=0"}, defaultCLExtraParams)
 }

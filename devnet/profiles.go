@@ -10,17 +10,19 @@ type Profile string
 
 var (
 	// defaultCLExtraParams let a beacon node without peers count as synced.
-	defaultCLExtraParams      = []string{"--min-sync-peers=0", "--minimum-peers-per-subnet=0"}
-	syncFromHeadCLExtraParams = append(slices.Clone(defaultCLExtraParams), "--sync-from=head")
+	defaultCLExtraParams = []string{"--min-sync-peers=0", "--minimum-peers-per-subnet=0"}
+	anchorCLExtraParams  = append(slices.Clone(defaultCLExtraParams), "--sync-from=head")
 )
 
 // Further profiles arrive together with the lanes that exercise them.
 const (
 	ProfileSingle Profile = "single"
-	// ProfileMulti has two participants that share the validators. Their
-	// beacon nodes start from the stored head: by default a beacon node
-	// starts from the justified checkpoint, and a network whose beacon nodes
-	// all stopped never proposes again.
+	// ProfileMulti has two participants that share the validators. The first
+	// is the anchor of a full-outage recovery: its beacon node counts as
+	// synced without peers and starts from its stored head. By default a
+	// beacon node starts from the justified checkpoint, and a network whose
+	// beacon nodes all stopped never proposes again. The second keeps the
+	// package's sync settings, so it follows the anchor.
 	ProfileMulti Profile = "multi"
 )
 
@@ -39,8 +41,8 @@ type participantSpec struct {
 var profileSpecs = map[Profile]profileSpec{
 	ProfileSingle: {participants: []participantSpec{{validatorCount: 64}}},
 	ProfileMulti: {participants: []participantSpec{
-		{validatorCount: 32, clExtraParams: syncFromHeadCLExtraParams},
-		{validatorCount: 32, clExtraParams: syncFromHeadCLExtraParams},
+		{validatorCount: 32, clExtraParams: anchorCLExtraParams},
+		{validatorCount: 32, clExtraParams: []string{"--minimum-peers-per-subnet=0"}},
 	}},
 }
 

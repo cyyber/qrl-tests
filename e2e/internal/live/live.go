@@ -138,28 +138,25 @@ func (runtime *Runtime) open(ctx context.Context, participant devnet.Participant
 	return node, nil
 }
 
-// StopParticipants stops every participant's validator client, beacon node
-// and execution client. They keep their data.
+// StopParticipants stops every validator client, then every beacon node,
+// then every execution client. They keep their data.
 func (runtime *Runtime) StopParticipants(ctx context.Context) error {
-	var services []string
-	for _, participant := range runtime.environment.Participants {
-		services = append(services, participant.Validator.Name, participant.Consensus.Name, participant.Execution.Name)
-	}
-	return devnet.NewManager().StopServices(ctx, runtime.environment.EnclaveName, named(services))
+	validators, beacons, executions := runtime.services()
+	services := slices.Concat(validators, beacons, executions)
+	return devnet.NewManager().StopServices(ctx, runtime.environment.EnclaveName, services)
 }
 
-// StartParticipants starts the services that StopParticipants stopped,
-// execution clients first. A started service is published on other host
-// ports, so the environment is read again and the nodes opened before the
-// restart are closed.
+// StartParticipants starts the services that StopParticipants stopped, in
+// the order of a full-outage recovery: every execution client, the beacon
+// nodes from the first participant on, then every validator client. A
+// started service is published on other host ports, so the environment is
+// read again and the nodes opened before the restart are closed.
 func (runtime *Runtime) StartParticipants(ctx context.Context) error {
-	var services []string
-	for _, participant := range runtime.environment.Participants {
-		services = append(services, participant.Execution.Name, participant.Consensus.Name, participant.Validator.Name)
-	}
+	validators, beacons, executions := runtime.services()
+	services := slices.Concat(executions, beacons, validators)
 	manager := devnet.NewManager()
 	name := runtime.environment.EnclaveName
-	if err := manager.StartServices(ctx, name, named(services)); err != nil {
+	if err := manager.StartServices(ctx, name, services); err != nil {
 		return err
 	}
 
@@ -173,9 +170,18 @@ func (runtime *Runtime) StartParticipants(ctx context.Context) error {
 	return nil
 }
 
-// named drops the services a participant does not run.
-func named(services []string) []string {
-	return slices.DeleteFunc(services, func(name string) bool { return name == "" })
+// services lists the participants' services by kind, lowest participant
+// first, without the ones a participant does not run.
+func (runtime *Runtime) services() (validators, beacons, executions []string) {
+	for _, participant := range runtime.environment.Participants {
+		validators = append(validators, participant.Validator.Name)
+		beacons = append(beacons, participant.Consensus.Name)
+		executions = append(executions, participant.Execution.Name)
+	}
+	named := func(names []string) []string {
+		return slices.DeleteFunc(names, func(name string) bool { return name == "" })
+	}
+	return named(validators), named(beacons), named(executions)
 }
 
 func (runtime *Runtime) Close() {

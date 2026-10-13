@@ -19,6 +19,9 @@ import (
 const (
 	// outageEpochs is how long every node stays down.
 	outageEpochs = 1
+	// restartEpochs bounds the wait for a head past the outage. The anchor
+	// proposes within slots; the other beacon node first has to sync from it.
+	restartEpochs = 4
 	// finalityEpochs bounds the wait for a finalized checkpoint, from genesis
 	// and again after the restart. Finality needs three epochs at best.
 	finalityEpochs = 8
@@ -31,8 +34,10 @@ func TestE2E(t *testing.T) {
 // A beacon node normally starts from the justified checkpoint. When every
 // beacon node of a network restarts together, none of them has the blocks
 // after it to offer, and the execution clients refuse to go back, so no block
-// is ever proposed again. Beacon nodes run with --sync-from=head start from
-// their stored head instead, and the network resumes.
+// is ever proposed again. The recovery relies on an anchor: a beacon node
+// run with --sync-from=head starts from its stored head instead, and the
+// others sync from it. The services come back in the order of that recovery:
+// execution clients, the anchor, the other beacon nodes, then validators.
 var _ = ginkgo.Describe(
 	"A network whose nodes all stop at once",
 	ginkgo.Serial,
@@ -93,7 +98,7 @@ var _ = ginkgo.Describe(
 				// No block was proposed during the outage, so a head beyond
 				// it is a block proposed since the restart.
 				gomega.Eventually(node.Beacon.HeadSlot).WithContext(ctx).
-					WithTimeout(epochs(2)).
+					WithTimeout(epochs(restartEpochs)).
 					WithPolling(chain.SlotDuration).
 					Should(gomega.BeNumerically(">", head.Slot+outageEpochs*chain.SlotsPerEpoch),
 						"participant %d", index+1)
