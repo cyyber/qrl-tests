@@ -72,7 +72,7 @@ func TestLaneWithSuites(t *testing.T) {
 	require.True(t, operator.NeedsQrysmAlltoolsImage())
 	require.False(t, operator.NeedsExecutionImage())
 
-	restart, err := Named("consensus-network-restart")
+	restart, err := Named("resilience-network-restart")
 	require.NoError(t, err)
 	require.Equal(t, devnet.ProfileMulti, restart.Profile)
 	require.False(t, restart.NeedsValidatorImage())

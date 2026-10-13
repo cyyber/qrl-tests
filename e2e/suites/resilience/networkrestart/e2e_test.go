@@ -42,7 +42,7 @@ var _ = ginkgo.Describe(
 	"A network whose nodes all stop at once",
 	ginkgo.Serial,
 	ginkgo.Ordered,
-	ginkgo.Label("e2e", "consensus", "network-restart"),
+	ginkgo.Label("e2e", "resilience", "network-restart"),
 	func() {
 		var (
 			runtime *live.Runtime
