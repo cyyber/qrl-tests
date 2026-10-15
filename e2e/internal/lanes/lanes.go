@@ -23,6 +23,7 @@ type SuiteID string
 const (
 	suiteExecutionABI              SuiteID = "execution-abi"
 	suiteExecutionConsole          SuiteID = "execution-console"
+	suiteExecutionTxpool           SuiteID = "execution-txpool"
 	suiteConsensusStakingAutomated SuiteID = "consensus-staking-automated"
 	suiteConsensusStakingOperator  SuiteID = "consensus-staking-operator"
 )
@@ -30,6 +31,7 @@ const (
 var suitePackages = map[SuiteID]string{
 	suiteExecutionABI:              "./e2e/suites/execution/abi",
 	suiteExecutionConsole:          "./e2e/suites/execution/console",
+	suiteExecutionTxpool:           "./e2e/suites/execution/txpool",
 	suiteConsensusStakingAutomated: "./e2e/suites/consensus/stakingautomated",
 	suiteConsensusStakingOperator:  "./e2e/suites/consensus/stakingoperator",
 }
@@ -38,7 +40,7 @@ var registry = []Lane{
 	{
 		Name:    "execution",
 		Profile: devnet.ProfileSingle,
-		Suites:  []SuiteID{suiteExecutionABI, suiteExecutionConsole},
+		Suites:  []SuiteID{suiteExecutionABI, suiteExecutionConsole, suiteExecutionTxpool},
 		Timeout: 20 * time.Minute,
 	},
 	{

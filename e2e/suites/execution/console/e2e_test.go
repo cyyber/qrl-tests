@@ -81,6 +81,17 @@ var _ = ginkgo.Describe(
 			).To(gomega.Succeed())
 		})
 
+		ginkgo.It("replaces stuck and queued transactions through the node-managed console account", func(ctx ginkgo.SpecContext) {
+			scripts := testsuite.MustSucceed(consoleScripts(nil))
+			gomega.Expect(
+				runScenario(ctx, consoleScenario{
+					image:       node.ExecutionImage,
+					endpointURL: node.ExecutionRPCURL,
+					scenario:    "replacement",
+				}, scripts),
+			).To(gomega.Succeed())
+		})
+
 		ginkgo.It("deploys a contract through the embedded web3 contract factory", func(ctx ginkgo.SpecContext) {
 			ginkgo.By("preparing the constructor fixture")
 			bytecode := testsuite.MustSucceed(contracts.ConsoleProbeBytecode())
