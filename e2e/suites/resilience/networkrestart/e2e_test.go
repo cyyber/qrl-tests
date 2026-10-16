@@ -31,13 +31,6 @@ func TestE2E(t *testing.T) {
 	testsuite.Run(t, "Network restart E2E suite")
 }
 
-// A beacon node normally starts from the justified checkpoint. When every
-// beacon node of a network restarts together, none of them has the blocks
-// after it to offer, and the execution clients refuse to go back, so no block
-// is ever proposed again. The recovery relies on an anchor: a beacon node
-// run with --sync-from=head starts from its stored head instead, and the
-// others sync from it. The services come back in the order of that recovery:
-// execution clients, the anchor, the other beacon nodes, then validators.
 var _ = ginkgo.Describe(
 	"A network whose nodes all stop at once",
 	ginkgo.Serial,
