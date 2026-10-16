@@ -66,11 +66,12 @@ var registry = []Lane{
 	},
 	{
 		// Finality before the outage, the outage and finality after it take
-		// about a dozen 40-second epochs.
+		// about a dozen 40-second epochs. The suite's node timeouts add up
+		// to 28 minutes, so a slow spec reports its own failure first.
 		Name:             "resilience-network-restart",
 		Profile:          devnet.ProfileMulti,
 		Suites:           []SuiteID{suiteResilienceNetworkRestart},
-		Timeout:          25 * time.Minute,
+		Timeout:          30 * time.Minute,
 		RestartsServices: true,
 	},
 }

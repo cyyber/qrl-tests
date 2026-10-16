@@ -127,8 +127,9 @@ func (client *EnclaveClient) DestroyEnclave(ctx context.Context, name string) er
 	return client.engine.DestroyEnclave(ctx, name)
 }
 
-// StopServices stops the named services in order. A stopped service keeps
-// its container, so StartServices resumes it with its data and its flags.
+// StopServices stops the named services in order. On Docker a stopped
+// service keeps its container, so StartServices resumes it with its data and
+// its flags.
 func (client *EnclaveClient) StopServices(ctx context.Context, enclaveName string, names []string) error {
 	return client.runServiceInstruction(ctx, enclaveName, "stop_service", names)
 }
@@ -153,21 +154,14 @@ func (client *EnclaveClient) runServiceInstruction(
 		return err
 	}
 
-	result, err := enclave.RunStarlarkScriptBlocking(
+	stream, cancel, err := enclave.RunStarlarkScript(
 		ctx, serviceInstructionScript(instruction, names), starlark_run_config.NewRunStarlarkConfig(),
 	)
 	if err != nil {
 		return err
 	}
-	switch {
-	case result.InterpretationError != nil:
-		return errors.New(result.InterpretationError.GetErrorMessage())
-	case len(result.ValidationErrors) > 0:
-		return errors.New(result.ValidationErrors[0].GetErrorMessage())
-	case result.ExecutionError != nil:
-		return errors.New(result.ExecutionError.GetErrorMessage())
-	}
-	return nil
+	defer cancel()
+	return consumeStarlarkCompletion(stream)
 }
 
 // serviceInstructionScript applies one plan instruction to each service.

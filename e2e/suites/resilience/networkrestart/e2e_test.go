@@ -84,14 +84,14 @@ var _ = ginkgo.Describe(
 			if runtime != nil && runtime.HasStoppedParticipants() {
 				gomega.Expect(runtime.StartParticipants(ctx)).To(gomega.Succeed())
 			}
-		}, ginkgo.NodeTimeout(5*time.Minute))
+		}, ginkgo.NodeTimeout(3*time.Minute))
 
 		ginkgo.It("finalizes before the outage", func(ctx ginkgo.SpecContext) {
 			gomega.Eventually(finalizedEpoch(nodes[0])).WithContext(ctx).
 				WithTimeout(epochs(finalityEpochs)).
 				WithPolling(chain.SlotDuration).
 				Should(gomega.BeNumerically(">", 0))
-		}, ginkgo.SpecTimeout(10*time.Minute))
+		}, ginkgo.SpecTimeout(7*time.Minute))
 
 		ginkgo.It("stops every node", func(ctx ginkgo.SpecContext) {
 			gomega.Expect(runtime.StopValidators(ctx)).To(gomega.Succeed())
@@ -120,7 +120,7 @@ var _ = ginkgo.Describe(
 			}
 
 			pause(ctx, epochs(outageEpochs))
-		}, ginkgo.SpecTimeout(5*time.Minute))
+		}, ginkgo.SpecTimeout(4*time.Minute))
 
 		ginkgo.It("proposes again after the restart", func(ctx ginkgo.SpecContext) {
 			gomega.Expect(runtime.StartParticipants(ctx)).To(gomega.Succeed())
@@ -141,7 +141,7 @@ var _ = ginkgo.Describe(
 				gomega.Expect(kept.Root).To(gomega.Equal(head.Root),
 					"participant %d changed the block at the old head slot", index+1)
 			}
-		}, ginkgo.SpecTimeout(5*time.Minute))
+		}, ginkgo.SpecTimeout(6*time.Minute))
 
 		ginkgo.It("finalizes again on one chain", func(ctx ginkgo.SpecContext) {
 			for index, node := range nodes {
@@ -161,6 +161,6 @@ var _ = ginkgo.Describe(
 			}
 			gomega.Expect(testsuite.MustSucceed(nodes[0].Beacon.SlashedValidators(ctx))).To(gomega.BeEmpty(),
 				"a validator was slashed")
-		}, ginkgo.SpecTimeout(10*time.Minute))
+		}, ginkgo.SpecTimeout(7*time.Minute))
 	},
 )

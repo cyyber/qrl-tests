@@ -19,7 +19,9 @@ Run one lane with a fresh network:
 make e2e-run
 ```
 
-Run a lane against an existing matching network:
+Run a lane against an existing matching network (except
+`resilience-network-restart`, which stops and restarts every service and so
+only runs on a network it provisions itself, on the Docker backend):
 
 ```bash
 make network-start
