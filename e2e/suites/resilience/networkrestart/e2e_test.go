@@ -19,12 +19,12 @@ import (
 const (
 	// outageEpochs is how long every node stays down.
 	outageEpochs = 1
-	// restartEpochs bounds the wait for a head past the outage. The anchor
-	// proposes within slots; the other beacon node first has to sync from it.
-	restartEpochs = 4
-	// finalityEpochs bounds the wait for a finalized checkpoint, from genesis
-	// and again after the restart. Finality needs three epochs at best.
-	finalityEpochs = 8
+	// resumeTimeoutEpochs bounds the wait for blocks after the restart; the
+	// other beacon node first has to sync from the anchor.
+	resumeTimeoutEpochs = 4
+	// finalityTimeoutEpochs bounds each wait for finality. It needs three
+	// epochs at best.
+	finalityTimeoutEpochs = 8
 )
 
 func TestE2E(t *testing.T) {
@@ -78,7 +78,7 @@ var _ = ginkgo.Describe(
 
 		ginkgo.It("finalizes before the outage", func(ctx ginkgo.SpecContext) {
 			gomega.Eventually(finalizedEpoch(nodes[0])).WithContext(ctx).
-				WithTimeout(finalityEpochs * chain.EpochDuration).
+				WithTimeout(finalityTimeoutEpochs * chain.EpochDuration).
 				WithPolling(chain.SlotDuration).
 				Should(gomega.BeNumerically(">", 0))
 		}, ginkgo.SpecTimeout(7*time.Minute))
@@ -120,7 +120,7 @@ var _ = ginkgo.Describe(
 				// No block was proposed during the outage, so a head beyond
 				// it is a block proposed since the restart.
 				gomega.Eventually(node.Beacon.HeadSlot).WithContext(ctx).
-					WithTimeout(restartEpochs*chain.EpochDuration).
+					WithTimeout(resumeTimeoutEpochs*chain.EpochDuration).
 					WithPolling(chain.SlotDuration).
 					Should(gomega.BeNumerically(">", head.Slot+outageEpochs*chain.SlotsPerEpoch),
 						"participant %d", index+1)
@@ -138,7 +138,7 @@ var _ = ginkgo.Describe(
 				// An epoch after the outage began can only be finalized by
 				// votes cast since the restart.
 				gomega.Eventually(finalizedEpoch(node)).WithContext(ctx).
-					WithTimeout(finalityEpochs*chain.EpochDuration).
+					WithTimeout(finalityTimeoutEpochs*chain.EpochDuration).
 					WithPolling(chain.SlotDuration).
 					Should(gomega.BeNumerically(">", chain.Epoch(head.Slot)), "participant %d", index+1)
 			}
