@@ -82,7 +82,7 @@ var _ = ginkgo.Describe(
 				Should(gomega.BeNumerically(">", 0))
 		}, ginkgo.SpecTimeout(7*time.Minute))
 
-		ginkgo.It("stops every node", func(ctx ginkgo.SpecContext) {
+		ginkgo.It("agrees on a head once its validators stop", func(ctx ginkgo.SpecContext) {
 			gomega.Expect(runtime.StopValidators(ctx)).To(gomega.Succeed())
 			// Without validators, only a block already in flight can still
 			// change the head. Once a slot has passed and every participant
@@ -101,7 +101,9 @@ var _ = ginkgo.Describe(
 				WithTimeout(chain.EpochDuration).
 				WithPolling(chain.SlotDuration).
 				Should(gomega.Succeed())
+		}, ginkgo.SpecTimeout(2*time.Minute))
 
+		ginkgo.It("stops every node", func(ctx ginkgo.SpecContext) {
 			gomega.Expect(runtime.StopNodes(ctx)).To(gomega.Succeed())
 			for index, node := range nodes {
 				_, err := node.Beacon.HeadSlot(ctx)
@@ -109,12 +111,14 @@ var _ = ginkgo.Describe(
 			}
 
 			pause(ctx, outageEpochs*chain.EpochDuration)
-		}, ginkgo.SpecTimeout(4*time.Minute))
+		}, ginkgo.SpecTimeout(2*time.Minute))
 
-		ginkgo.It("proposes again after the restart", func(ctx ginkgo.SpecContext) {
+		ginkgo.It("starts every node again", func(ctx ginkgo.SpecContext) {
 			gomega.Expect(runtime.StartParticipants(ctx)).To(gomega.Succeed())
 			nodes = testsuite.MustSucceed(runtime.Nodes(ctx))
+		}, ginkgo.SpecTimeout(2*time.Minute))
 
+		ginkgo.It("proposes again from the old head", func(ctx ginkgo.SpecContext) {
 			for index, node := range nodes {
 				// No block was proposed during the outage, so a head beyond
 				// it is a block proposed since the restart.
@@ -130,7 +134,7 @@ var _ = ginkgo.Describe(
 				gomega.Expect(kept.Root).To(gomega.Equal(head.Root),
 					"participant %d changed the block at the old head slot", index+1)
 			}
-		}, ginkgo.SpecTimeout(6*time.Minute))
+		}, ginkgo.SpecTimeout(4*time.Minute))
 
 		ginkgo.It("finalizes again on one chain", func(ctx ginkgo.SpecContext) {
 			for index, node := range nodes {
@@ -148,8 +152,10 @@ var _ = ginkgo.Describe(
 				gomega.Expect(same.Root).To(gomega.Equal(finalized.Root),
 					"participant %d is on another chain than participant 1", index+2)
 			}
-			gomega.Expect(testsuite.MustSucceed(nodes[0].Beacon.SlashedValidators(ctx))).To(gomega.BeEmpty(),
-				"a validator was slashed")
-		}, ginkgo.SpecTimeout(7*time.Minute))
+		}, ginkgo.SpecTimeout(6*time.Minute))
+
+		ginkgo.It("slashes no validator", func(ctx ginkgo.SpecContext) {
+			gomega.Expect(testsuite.MustSucceed(nodes[0].Beacon.SlashedValidators(ctx))).To(gomega.BeEmpty())
+		}, ginkgo.SpecTimeout(time.Minute))
 	},
 )
