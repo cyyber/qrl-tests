@@ -55,7 +55,7 @@ func (configuration Config) withDefaults() Config {
 type networkManager interface {
 	Start(ctx context.Context, options devnet.StartOptions) (devnet.Environment, error)
 	Inspect(ctx context.Context, name string) (devnet.Environment, error)
-	Probe(ctx context.Context, environment devnet.Environment) error
+	CheckReady(ctx context.Context, environment devnet.Environment) error
 	Stop(ctx context.Context, name string) error
 	CollectDiagnostics(ctx context.Context, enclaveName, outputDir string) error
 }

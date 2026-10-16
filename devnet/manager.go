@@ -77,7 +77,7 @@ func NewManager() *Manager {
 }
 
 // Inspect resolves the services of a running network. It does not wait for
-// the network; Probe checks that it is ready.
+// the network; CheckReady checks that it is ready.
 func (manager *Manager) Inspect(ctx context.Context, name string) (Environment, error) {
 	client, err := manager.newEnclaveClient()
 	if err != nil {
@@ -93,9 +93,9 @@ func (manager *Manager) Inspect(ctx context.Context, name string) (Environment, 
 	return resolveEnvironment(ctx, client, name)
 }
 
-// Probe checks that the chain of the network advances and that the
+// CheckReady checks that the chain of the network advances and that the
 // development wallet is funded.
-func (manager *Manager) Probe(ctx context.Context, environment Environment) error {
+func (manager *Manager) CheckReady(ctx context.Context, environment Environment) error {
 	primary, err := environment.Primary()
 	if err != nil {
 		return err

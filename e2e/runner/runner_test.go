@@ -35,12 +35,12 @@ type recordingNetworks struct {
 	mutex                     sync.Mutex
 	started                   devnet.StartOptions
 	inspected                 string
-	probed                    string
+	checked                   string
 	stopped                   []string
 	collected                 []string
 	events                    []string
 	startErr                  error
-	probeErr                  error
+	readyErr                  error
 	stopErr                   error
 	collectErr                error
 	observeStopContext        func(context.Context)
@@ -79,11 +79,11 @@ func (networks *recordingNetworks) Inspect(_ context.Context, name string) (devn
 	return testEnvironment(name, ""), nil
 }
 
-func (networks *recordingNetworks) Probe(_ context.Context, environment devnet.Environment) error {
+func (networks *recordingNetworks) CheckReady(_ context.Context, environment devnet.Environment) error {
 	networks.mutex.Lock()
 	defer networks.mutex.Unlock()
-	networks.probed = environment.EnclaveName
-	return networks.probeErr
+	networks.checked = environment.EnclaveName
+	return networks.readyErr
 }
 
 func (networks *recordingNetworks) Stop(ctx context.Context, name string) error {
@@ -658,7 +658,7 @@ func TestAttachBuildsCommandWithoutProvisioning(t *testing.T) {
 
 	require.NoError(t, runner.Test(t.Context(), executionLaneName))
 	require.Equal(t, "qrl-tests", networks.inspected)
-	require.Equal(t, "qrl-tests", networks.probed)
+	require.Equal(t, "qrl-tests", networks.checked)
 	require.Empty(t, networks.started.EnclaveName, "attaching must not provision")
 	require.Empty(t, networks.stopped, "attaching must not stop the network")
 	require.Contains(t, command.Args, "./e2e/suites/execution/abi")
@@ -669,7 +669,7 @@ func TestAttachBuildsCommandWithoutProvisioning(t *testing.T) {
 }
 
 func TestAttachFailsWhenTheNetworkIsNotReady(t *testing.T) {
-	networks := &recordingNetworks{probeErr: errors.New("chain did not advance")}
+	networks := &recordingNetworks{readyErr: errors.New("chain did not advance")}
 	runner := New(Config{BaseName: "qrl-tests", ReportDir: t.TempDir()}, io.Discard, io.Discard)
 	runner.networks = networks
 	runner.runCommand = func(context.Context, commandSpec) error {
@@ -677,7 +677,7 @@ func TestAttachFailsWhenTheNetworkIsNotReady(t *testing.T) {
 		return nil
 	}
 
-	require.ErrorContains(t, runner.Test(t.Context(), executionLaneName), "probe network: chain did not advance")
+	require.ErrorContains(t, runner.Test(t.Context(), executionLaneName), "network not ready: chain did not advance")
 }
 
 func TestAttachRejectsCustomParameters(t *testing.T) {

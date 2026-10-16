@@ -322,7 +322,7 @@ func TestStopAndStartServices(t *testing.T) {
 	require.ErrorContains(t, manager.StartServices(t.Context(), "network", []string{"el-1"}), "start services [el-1]: engine unavailable")
 }
 
-func TestProbe(t *testing.T) {
+func TestCheckReady(t *testing.T) {
 	client := &fakeEnclaveClient{exists: true, services: singleParticipant()}
 	manager := testManager(client)
 	var probedURL string
@@ -335,7 +335,7 @@ func TestProbe(t *testing.T) {
 	require.NoError(t, err, "inspecting must not probe")
 	require.Empty(t, probedURL)
 
-	require.ErrorContains(t, manager.Probe(t.Context(), environment), "chain does not advance")
+	require.ErrorContains(t, manager.CheckReady(t.Context(), environment), "chain does not advance")
 	require.Equal(t, environment.Participants[0].Execution.RPCURL, probedURL)
-	require.ErrorContains(t, manager.Probe(t.Context(), Environment{}), "no participants")
+	require.ErrorContains(t, manager.CheckReady(t.Context(), Environment{}), "no participants")
 }
