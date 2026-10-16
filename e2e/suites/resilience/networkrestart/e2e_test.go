@@ -117,7 +117,9 @@ var _ = ginkgo.Describe(
 
 				// The chain continues from the head it had, not from an
 				// earlier checkpoint.
-				kept := testsuite.MustSucceed(node.Beacon.BlockHeader(ctx, strconv.FormatUint(head.Slot, 10)))
+				kept, err := node.Beacon.BlockHeader(ctx, strconv.FormatUint(head.Slot, 10))
+				gomega.Expect(err).NotTo(gomega.HaveOccurred(),
+					"participant %d has no block at the old head slot %d", index+1, head.Slot)
 				gomega.Expect(kept.Root).To(gomega.Equal(head.Root),
 					"participant %d changed the block at the old head slot", index+1)
 			}
