@@ -27,7 +27,6 @@ type Runtime struct {
 
 	environment devnet.Environment
 	nodes       []*Node
-	stopped     []string
 }
 
 // Node is an open handle to one network participant: its execution and
@@ -143,26 +142,14 @@ func (runtime *Runtime) open(ctx context.Context, participant devnet.Participant
 // is signed after it returns.
 func (runtime *Runtime) StopValidators(ctx context.Context) error {
 	validators, _, _ := runtime.services()
-	return runtime.stopServices(ctx, validators)
+	return devnet.NewManager().StopServices(ctx, runtime.environment.EnclaveName, validators)
 }
 
 // StopNodes stops every beacon node, then every execution client. They keep
 // their data.
 func (runtime *Runtime) StopNodes(ctx context.Context) error {
 	_, beacons, executions := runtime.services()
-	return runtime.stopServices(ctx, slices.Concat(beacons, executions))
-}
-
-func (runtime *Runtime) stopServices(ctx context.Context, services []string) error {
-	// Recorded first: a failed stop may still have stopped some of them.
-	runtime.stopped = append(runtime.stopped, services...)
-	return devnet.NewManager().StopServices(ctx, runtime.environment.EnclaveName, services)
-}
-
-// HasStoppedParticipants reports whether a service stopped through the
-// runtime has not been started again.
-func (runtime *Runtime) HasStoppedParticipants() bool {
-	return len(runtime.stopped) > 0
+	return devnet.NewManager().StopServices(ctx, runtime.environment.EnclaveName, slices.Concat(beacons, executions))
 }
 
 // StartParticipants starts the services that StopValidators and StopNodes
@@ -174,18 +161,12 @@ func (runtime *Runtime) HasStoppedParticipants() bool {
 // old ones, so a lane that restarts services runs a single suite.
 func (runtime *Runtime) StartParticipants(ctx context.Context) error {
 	validators, beacons, executions := runtime.services()
-	services := slices.DeleteFunc(slices.Concat(executions, beacons, validators), func(name string) bool {
-		return !slices.Contains(runtime.stopped, name)
-	})
-	if len(services) == 0 {
-		return nil
-	}
+	services := slices.Concat(executions, beacons, validators)
 	manager := devnet.NewManager()
 	name := runtime.environment.EnclaveName
 	if err := manager.StartServices(ctx, name, services); err != nil {
 		return err
 	}
-	runtime.stopped = nil
 
 	environment, err := manager.Inspect(ctx, name)
 	if err != nil {

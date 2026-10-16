@@ -62,14 +62,6 @@ var _ = ginkgo.Describe(
 			chain = testsuite.MustSucceed(chaininfo.Load(ctx, nodes[0].Beacon))
 		}, ginkgo.NodeTimeout(time.Minute))
 
-		// A failed spec skips the rest; whatever it left stopped is started
-		// here, so the diagnostics of a failed run see a running network.
-		ginkgo.AfterAll(func(ctx ginkgo.SpecContext) {
-			if runtime != nil && runtime.HasStoppedParticipants() {
-				gomega.Expect(runtime.StartParticipants(ctx)).To(gomega.Succeed())
-			}
-		}, ginkgo.NodeTimeout(3*time.Minute))
-
 		ginkgo.It("finalizes before the outage", func(ctx ginkgo.SpecContext) {
 			gomega.Eventually(finalizedEpoch(nodes[0])).WithContext(ctx).
 				WithTimeout(finalityTimeoutEpochs * chain.EpochDuration).
