@@ -666,36 +666,46 @@ func TestAttachBuildsCommandWithoutProvisioning(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, devnet.BackendDocker, written.Environment.Backend)
 	require.Empty(t, written.ExecutionImage)
-}
 
-func TestAttachFailsWhenTheNetworkIsNotReady(t *testing.T) {
-	networks := &recordingNetworks{readyErr: errors.New("chain did not advance")}
-	runner := New(Config{BaseName: "qrl-tests", ReportDir: t.TempDir()}, io.Discard, io.Discard)
-	runner.networks = networks
+	networks.readyErr = errors.New("chain did not advance")
 	runner.runCommand = func(context.Context, commandSpec) error {
 		t.Fatal("a network that is not ready must not run suites")
 		return nil
 	}
-
 	require.ErrorContains(t, runner.Test(t.Context(), executionLaneName), "network not ready: chain did not advance")
 }
 
-func TestAttachRejectsCustomParameters(t *testing.T) {
-	runner := New(Config{Parameters: []byte(`{}`)}, io.Discard, io.Discard)
-	require.ErrorContains(t, runner.Test(t.Context(), executionLaneName), "existing network")
-}
+func TestRejectsBeforeTouchingTheNetwork(t *testing.T) {
+	for name, check := range map[string]struct {
+		parameters []byte
+		run        func(*Runner) error
+		want       string
+	}{
+		"attach with parameters": {
+			parameters: []byte(`{}`),
+			run:        func(runner *Runner) error { return runner.Test(t.Context(), executionLaneName) },
+			want:       "existing network",
+		},
+		"restart lane on an existing network": {
+			run:  func(runner *Runner) error { return runner.Test(t.Context(), "resilience-network-restart") },
+			want: "not an existing one",
+		},
+		"restart lane with parameters": {
+			parameters: []byte(`{}`),
+			run:        func(runner *Runner) error { return runner.Run(t.Context(), "resilience-network-restart") },
+			want:       "not custom parameters",
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			networks := new(recordingNetworks)
+			runner := New(Config{ReportDir: t.TempDir(), Parameters: check.parameters}, io.Discard, io.Discard)
+			runner.networks = networks
 
-func TestRestartingLaneNeedsItsOwnNetwork(t *testing.T) {
-	networks := new(recordingNetworks)
-	runner := New(Config{ReportDir: t.TempDir()}, io.Discard, io.Discard)
-	runner.networks = networks
-	require.ErrorContains(t, runner.Test(t.Context(), "resilience-network-restart"), "not an existing one")
-
-	runner = New(Config{ReportDir: t.TempDir(), Parameters: []byte(`{}`)}, io.Discard, io.Discard)
-	runner.networks = networks
-	require.ErrorContains(t, runner.Run(t.Context(), "resilience-network-restart"), "not custom parameters")
-	require.Empty(t, networks.inspected)
-	require.Empty(t, networks.started.EnclaveName)
+			require.ErrorContains(t, check.run(runner), check.want)
+			require.Empty(t, networks.inspected)
+			require.Empty(t, networks.started.EnclaveName)
+		})
+	}
 }
 
 func testLaneRuns(t *testing.T, reports string, count int) runPlan {
