@@ -105,7 +105,7 @@ var _ = ginkgo.Describe(
 			nodes = testsuite.MustSucceed(runtime.Nodes(ctx))
 		}, ginkgo.SpecTimeout(2*time.Minute))
 
-		ginkgo.It("proposes again from the old head", func(ctx ginkgo.SpecContext) {
+		ginkgo.It("resumes from its old head", func(ctx ginkgo.SpecContext) {
 			for index, node := range nodes {
 				// No block was proposed during the outage, so a head beyond
 				// it is a block proposed since the restart.
