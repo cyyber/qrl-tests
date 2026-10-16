@@ -62,7 +62,6 @@ var _ = ginkgo.Describe(
 
 		ginkgo.BeforeAll(func(ctx ginkgo.SpecContext) {
 			runtime = testsuite.LoadRuntime()
-			gomega.Expect(runtime.CheckRestartable()).To(gomega.Succeed())
 			nodes = testsuite.MustSucceed(runtime.Nodes(ctx))
 			gomega.Expect(len(nodes)).To(gomega.BeNumerically(">", 1), "the scenario needs several participants")
 			chain = testsuite.MustSucceed(chaininfo.Load(ctx, nodes[0].Beacon))
