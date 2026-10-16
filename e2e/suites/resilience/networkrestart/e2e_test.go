@@ -76,14 +76,14 @@ var _ = ginkgo.Describe(
 			// agrees on it, no later block can replace it.
 			pause(ctx, chain.SlotDuration)
 			gomega.Eventually(func(g gomega.Gomega, ctx context.Context) {
-				anchor, err := nodes[0].Beacon.BlockHeader(ctx, "head")
+				anchorHead, err := nodes[0].Beacon.BlockHeader(ctx, "head")
 				g.Expect(err).NotTo(gomega.HaveOccurred())
 				for index, node := range nodes[1:] {
-					other, err := node.Beacon.BlockHeader(ctx, "head")
+					otherHead, err := node.Beacon.BlockHeader(ctx, "head")
 					g.Expect(err).NotTo(gomega.HaveOccurred())
-					g.Expect(other).To(gomega.Equal(anchor), "participant %d has another head", index+2)
+					g.Expect(otherHead).To(gomega.Equal(anchorHead), "participant %d has another head", index+2)
 				}
-				head = anchor
+				head = anchorHead
 			}).WithContext(ctx).
 				WithTimeout(chain.EpochDuration).
 				WithPolling(chain.SlotDuration).
