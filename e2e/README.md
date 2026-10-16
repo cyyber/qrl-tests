@@ -19,15 +19,17 @@ Run one lane with a fresh network:
 make e2e-run
 ```
 
-Run a lane against an existing matching network (except
-`resilience-network-restart`, which stops and restarts every service and so
-only runs on a network it provisions itself, on the Docker backend):
+Run a lane against an existing matching network:
 
 ```bash
 make network-start
 make e2e
 make network-stop
 ```
+
+`resilience-network-restart` stops and restarts every service, so it runs only
+on a network the runner provisions (`make e2e-run` or `run-all`), on the Docker
+backend and without a parameters file.
 
 The Ginkgo runner writes its JSON report, output log and resolved environment
 manifest under `reports/lanes/<lane>/`, next to the run manifest and result
