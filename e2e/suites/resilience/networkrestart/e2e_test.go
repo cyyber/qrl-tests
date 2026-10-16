@@ -17,13 +17,8 @@ import (
 )
 
 const (
-	// outageEpochs is how long every node stays down.
-	outageEpochs = 1
-	// resumeTimeoutEpochs bounds the wait for blocks after the restart; the
-	// other beacon node first has to sync from the anchor.
-	resumeTimeoutEpochs = 4
-	// finalityTimeoutEpochs bounds each wait for finality. It needs three
-	// epochs at best.
+	outageEpochs          = 1
+	resumeTimeoutEpochs   = 4
 	finalityTimeoutEpochs = 8
 )
 
