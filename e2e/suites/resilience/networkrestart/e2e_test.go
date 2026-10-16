@@ -46,9 +46,6 @@ var _ = ginkgo.Describe(
 			head beacon.BlockHeader
 		)
 
-		epochs := func(count uint64) time.Duration {
-			return time.Duration(count*chain.SlotsPerEpoch) * chain.SlotDuration
-		}
 		finalizedEpoch := func(node *live.Node) func(context.Context) (uint64, error) {
 			return func(ctx context.Context) (uint64, error) {
 				checkpoints, err := node.Beacon.FinalityCheckpoints(ctx)
@@ -81,7 +78,7 @@ var _ = ginkgo.Describe(
 
 		ginkgo.It("finalizes before the outage", func(ctx ginkgo.SpecContext) {
 			gomega.Eventually(finalizedEpoch(nodes[0])).WithContext(ctx).
-				WithTimeout(epochs(finalityEpochs)).
+				WithTimeout(chain.Epochs(finalityEpochs)).
 				WithPolling(chain.SlotDuration).
 				Should(gomega.BeNumerically(">", 0))
 		}, ginkgo.SpecTimeout(7*time.Minute))
@@ -102,7 +99,7 @@ var _ = ginkgo.Describe(
 				}
 				head = anchor
 			}).WithContext(ctx).
-				WithTimeout(epochs(1)).
+				WithTimeout(chain.Epochs(1)).
 				WithPolling(chain.SlotDuration).
 				Should(gomega.Succeed())
 
@@ -112,7 +109,7 @@ var _ = ginkgo.Describe(
 				gomega.Expect(err).To(gomega.HaveOccurred(), "the beacon node of participant %d still answers", index+1)
 			}
 
-			pause(ctx, epochs(outageEpochs))
+			pause(ctx, chain.Epochs(outageEpochs))
 		}, ginkgo.SpecTimeout(4*time.Minute))
 
 		ginkgo.It("proposes again after the restart", func(ctx ginkgo.SpecContext) {
@@ -123,7 +120,7 @@ var _ = ginkgo.Describe(
 				// No block was proposed during the outage, so a head beyond
 				// it is a block proposed since the restart.
 				gomega.Eventually(node.Beacon.HeadSlot).WithContext(ctx).
-					WithTimeout(epochs(restartEpochs)).
+					WithTimeout(chain.Epochs(restartEpochs)).
 					WithPolling(chain.SlotDuration).
 					Should(gomega.BeNumerically(">", head.Slot+outageEpochs*chain.SlotsPerEpoch),
 						"participant %d", index+1)
@@ -141,9 +138,9 @@ var _ = ginkgo.Describe(
 				// An epoch after the outage began can only be finalized by
 				// votes cast since the restart.
 				gomega.Eventually(finalizedEpoch(node)).WithContext(ctx).
-					WithTimeout(epochs(finalityEpochs)).
+					WithTimeout(chain.Epochs(finalityEpochs)).
 					WithPolling(chain.SlotDuration).
-					Should(gomega.BeNumerically(">", head.Slot/chain.SlotsPerEpoch), "participant %d", index+1)
+					Should(gomega.BeNumerically(">", chain.Epoch(head.Slot)), "participant %d", index+1)
 			}
 
 			finalized := testsuite.MustSucceed(nodes[0].Beacon.BlockHeader(ctx, "finalized"))
