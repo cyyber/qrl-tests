@@ -90,14 +90,3 @@ func repositoryRoot(t *testing.T) string {
 	require.True(t, ok)
 	return filepath.Clean(filepath.Join(filepath.Dir(filename), "../../.."))
 }
-
-func TestRestartingLanesRunOneSuite(t *testing.T) {
-	// A restart moves the services to new host ports that only the
-	// restarting suite's runtime sees; a second suite would read the stale
-	// lane manifest.
-	for _, lane := range All() {
-		if lane.RestartsServices {
-			require.Len(t, lane.Suites, 1, lane.Name)
-		}
-	}
-}

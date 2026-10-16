@@ -16,9 +16,7 @@ type Lane struct {
 	Profile devnet.Profile
 	Suites  []SuiteID
 	Timeout time.Duration
-	// RestartsServices marks a lane whose suites stop and restart the
-	// services of its network. It only recovers on a network provisioned
-	// from its own profile.
+
 	RestartsServices bool
 }
 
