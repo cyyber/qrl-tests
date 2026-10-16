@@ -35,10 +35,12 @@ type recordingNetworks struct {
 	mutex                     sync.Mutex
 	started                   devnet.StartOptions
 	inspected                 string
+	probed                    string
 	stopped                   []string
 	collected                 []string
 	events                    []string
 	startErr                  error
+	probeErr                  error
 	stopErr                   error
 	collectErr                error
 	observeStopContext        func(context.Context)
@@ -75,6 +77,13 @@ func (networks *recordingNetworks) Inspect(_ context.Context, name string) (devn
 	defer networks.mutex.Unlock()
 	networks.inspected = name
 	return testEnvironment(name, ""), nil
+}
+
+func (networks *recordingNetworks) Probe(_ context.Context, environment devnet.Environment) error {
+	networks.mutex.Lock()
+	defer networks.mutex.Unlock()
+	networks.probed = environment.EnclaveName
+	return networks.probeErr
 }
 
 func (networks *recordingNetworks) Stop(ctx context.Context, name string) error {
@@ -649,6 +658,7 @@ func TestAttachBuildsCommandWithoutProvisioning(t *testing.T) {
 
 	require.NoError(t, runner.Test(t.Context(), executionLaneName))
 	require.Equal(t, "qrl-tests", networks.inspected)
+	require.Equal(t, "qrl-tests", networks.probed)
 	require.Empty(t, networks.started.EnclaveName, "attaching must not provision")
 	require.Empty(t, networks.stopped, "attaching must not stop the network")
 	require.Contains(t, command.Args, "./e2e/suites/execution/abi")
@@ -656,6 +666,18 @@ func TestAttachBuildsCommandWithoutProvisioning(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, devnet.BackendDocker, written.Environment.Backend)
 	require.Empty(t, written.ExecutionImage)
+}
+
+func TestAttachFailsWhenTheNetworkIsNotReady(t *testing.T) {
+	networks := &recordingNetworks{probeErr: errors.New("chain did not advance")}
+	runner := New(Config{BaseName: "qrl-tests", ReportDir: t.TempDir()}, io.Discard, io.Discard)
+	runner.networks = networks
+	runner.runCommand = func(context.Context, commandSpec) error {
+		t.Fatal("a network that is not ready must not run suites")
+		return nil
+	}
+
+	require.ErrorContains(t, runner.Test(t.Context(), executionLaneName), "probe network: chain did not advance")
 }
 
 func TestAttachRejectsCustomParameters(t *testing.T) {

@@ -44,6 +44,9 @@ func (runner *Runner) acquireLane(ctx context.Context, plan runPlan, lane laneRu
 		if err != nil {
 			return laneLease{}, fmt.Errorf("inspect network: %w", err)
 		}
+		if err := runner.networks.Probe(ctx, environment); err != nil {
+			return laneLease{}, fmt.Errorf("probe network: %w", err)
+		}
 		if environment.Backend == "" {
 			environment.Backend = runner.configuration.Backend
 		}

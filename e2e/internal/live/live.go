@@ -202,7 +202,7 @@ func (runtime *Runtime) StartParticipants(ctx context.Context) error {
 	}
 	runtime.stopped = nil
 
-	environment, err := manager.Environment(ctx, name)
+	environment, err := manager.Inspect(ctx, name)
 	if err != nil {
 		return err
 	}

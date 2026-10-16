@@ -76,9 +76,9 @@ func NewManager() *Manager {
 	}
 }
 
-// Environment resolves the services of a running network. Unlike Inspect it
-// does not check that the chain advances.
-func (manager *Manager) Environment(ctx context.Context, name string) (Environment, error) {
+// Inspect resolves the services of a running network. It does not wait for
+// the network; Probe checks that it is ready.
+func (manager *Manager) Inspect(ctx context.Context, name string) (Environment, error) {
 	client, err := manager.newEnclaveClient()
 	if err != nil {
 		return Environment{}, err
@@ -93,21 +93,14 @@ func (manager *Manager) Environment(ctx context.Context, name string) (Environme
 	return resolveEnvironment(ctx, client, name)
 }
 
-func (manager *Manager) Inspect(ctx context.Context, name string) (Environment, error) {
-	environment, err := manager.Environment(ctx, name)
-	if err != nil {
-		return Environment{}, err
-	}
-
+// Probe checks that the chain of the network advances and that the
+// development wallet is funded.
+func (manager *Manager) Probe(ctx context.Context, environment Environment) error {
 	primary, err := environment.Primary()
 	if err != nil {
-		return Environment{}, err
+		return err
 	}
-	if err := manager.probe(ctx, primary.Execution.RPCURL, devwallet.Address); err != nil {
-		return Environment{}, err
-	}
-
-	return environment, nil
+	return manager.probe(ctx, primary.Execution.RPCURL, devwallet.Address)
 }
 
 func (manager *Manager) Start(ctx context.Context, options StartOptions) (environment Environment, err error) {
