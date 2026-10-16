@@ -45,8 +45,8 @@ func TestDefaultParameters(t *testing.T) {
 	require.Equal(t, "2000000QRL", prefund["balance"])
 }
 
-func TestMultiProfileParameters(t *testing.T) {
-	payload, err := resolveParameters("Q"+strings.Repeat("a", 128), StartOptions{Profile: ProfileMulti})
+func TestAnchoredProfileParameters(t *testing.T) {
+	payload, err := resolveParameters("Q"+strings.Repeat("a", 128), StartOptions{Profile: ProfileAnchored})
 	require.NoError(t, err)
 
 	var parameters map[string]any

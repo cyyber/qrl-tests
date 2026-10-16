@@ -74,7 +74,7 @@ func TestLaneWithSuites(t *testing.T) {
 
 	restart, err := Named("resilience-network-restart")
 	require.NoError(t, err)
-	require.Equal(t, devnet.ProfileMulti, restart.Profile)
+	require.Equal(t, devnet.ProfileAnchored, restart.Profile)
 	require.False(t, restart.NeedsValidatorImage())
 	require.False(t, restart.NeedsExecutionImage())
 	require.True(t, restart.RestartsServices)
@@ -89,4 +89,15 @@ func repositoryRoot(t *testing.T) string {
 	_, filename, _, ok := runtime.Caller(0)
 	require.True(t, ok)
 	return filepath.Clean(filepath.Join(filepath.Dir(filename), "../../.."))
+}
+
+func TestRestartingLanesRunOneSuite(t *testing.T) {
+	// A restart moves the services to new host ports that only the
+	// restarting suite's runtime sees; a second suite would read the stale
+	// lane manifest.
+	for _, lane := range All() {
+		if lane.RestartsServices {
+			require.Len(t, lane.Suites, 1, lane.Name)
+		}
+	}
 }

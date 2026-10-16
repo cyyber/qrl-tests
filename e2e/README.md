@@ -11,7 +11,7 @@ endpoints; suites do not provision infrastructure.
 | `execution` | `single` | Execution ABI calls, events, errors, and WebSocket filters |
 | `consensus-staking-automated` | `single` | Staking through contract deposits and the keymanager API |
 | `consensus-staking-operator` | `single` | Staking through the deposit and validator CLIs |
-| `resilience-network-restart` | `multi` | Every node stopping at once, then proposing and finalizing again |
+| `resilience-network-restart` | `anchored` | Every node stopping at once, then proposing and finalizing again |
 
 Run one lane with a fresh network:
 

@@ -544,7 +544,7 @@ func TestRunAllProvisionsPerLane(t *testing.T) {
 	require.NoError(t, runner.RunAll(t.Context()))
 	// Every registered lane provisions its own enclave and runs its own suites.
 	require.Equal(t, "qrl-tests-resilience-network-restart", networks.started.EnclaveName)
-	require.Equal(t, devnet.ProfileMulti, networks.started.Profile)
+	require.Equal(t, devnet.ProfileAnchored, networks.started.Profile)
 	require.Equal(t, []string{
 		"qrl-tests-execution", "qrl-tests-consensus-staking-automated", "qrl-tests-consensus-staking-operator",
 		"qrl-tests-resilience-network-restart",

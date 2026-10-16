@@ -185,7 +185,8 @@ func (runtime *Runtime) HasStoppedParticipants() bool {
 // the beacon nodes from the first participant on, then every validator
 // client. A started service is published on other host ports, so the
 // environment is read again and the nodes opened before the restart are
-// closed.
+// closed. Only this runtime sees the new ports: the lane manifest keeps the
+// old ones, so a lane that restarts services runs a single suite.
 func (runtime *Runtime) StartParticipants(ctx context.Context) error {
 	validators, beacons, executions := runtime.services()
 	services := slices.DeleteFunc(slices.Concat(executions, beacons, validators), func(name string) bool {
