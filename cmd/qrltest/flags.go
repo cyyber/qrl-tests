@@ -20,7 +20,7 @@ func enclaveNameFlag() *cli.StringFlag {
 func backendFlag() *cli.StringFlag {
 	return &cli.StringFlag{
 		Name:    "backend",
-		Usage:   "Kurtosis backend: docker or kubernetes",
+		Usage:   "Kurtosis backend: docker (the only one for now)",
 		Value:   string(devnet.BackendDocker),
 		EnvVars: []string{"DEVNET_BACKEND"},
 	}

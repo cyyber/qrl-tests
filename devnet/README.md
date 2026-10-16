@@ -2,8 +2,8 @@
 
 This directory provides a reusable package for a Kurtosis-backed QRL
 development network, driven by the `qrltest` CLI in
-[`cmd/qrltest`](../cmd/qrltest). It supports Docker and Kubernetes backends
-with Kurtosis CLI 1.20.x.
+[`cmd/qrltest`](../cmd/qrltest). It runs on Kurtosis's Docker backend with
+Kurtosis CLI 1.20.x.
 
 ## Run
 
@@ -15,35 +15,11 @@ make network-stop
 `network-start` uses the configured existing images, runs the pinned qrl-package,
 and waits for readiness. It does not build images or run the test suites.
 
-## Kubernetes
-
-For Kubernetes, select the Kurtosis cluster and run its gateway:
-
-```bash
-kurtosis cluster set <cluster>
-kurtosis gateway
-```
-
-In another terminal, start the network with a parameters file containing image
-references available to the cluster:
-
-```bash
-DEVNET_BACKEND=kubernetes \
-DEVNET_PARAMS_FILE=/path/to/network_params.yaml \
-make network-start
-
-DEVNET_BACKEND=kubernetes make e2e
-make network-stop
-```
-
-The configured images and image-pull credentials must be available to the
-cluster. The commands use the currently selected Kurtosis context.
-
 ## Configuration
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `DEVNET_BACKEND` | `docker` | Kurtosis backend: `docker` or `kubernetes` |
+| `DEVNET_BACKEND` | `docker` | Kurtosis backend: `docker`, the only one for now |
 | `DEVNET_ENCLAVE_NAME` | `go-qrl-devnet` | Kurtosis enclave |
 | `DEVNET_EXECUTION_IMAGE` | `local/go-qrl:devnet` | Execution client image reference |
 | `DEVNET_CLEF_IMAGE` | `local/go-qrl-clef:devnet` | Clef signer image reference |
@@ -85,12 +61,8 @@ remain supported. Image flags and `DEVNET_PROFILE` are ignored when the file is
 set.
 
 The checked-in [`network_params.yaml`](network_params.yaml) is a complete
-single-participant example. Kubernetes configurations must reference images the
-cluster can resolve — registry-backed, or preloaded onto the nodes (for
-example with `kind load docker-image`) — instead of the Docker-local image
-defaults. Custom files
-must pre-fund the checked-in development wallet used by readiness checks and
-the E2E suites.
+single-participant example. Custom files must pre-fund the checked-in
+development wallet used by readiness checks and the E2E suites.
 
 Start the network with the custom parameters:
 

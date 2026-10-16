@@ -28,8 +28,8 @@ make network-stop
 ```
 
 `resilience-network-restart` stops and restarts every service, so it runs only
-on a network the runner provisions (`make e2e-run` or `run-all`), on the Docker
-backend and without a parameters file.
+on a network the runner provisions (`make e2e-run` or `run-all`), without a
+parameters file.
 
 The Ginkgo runner writes its JSON report, output log and resolved environment
 manifest under `reports/lanes/<lane>/`, next to the run manifest and result

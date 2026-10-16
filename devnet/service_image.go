@@ -34,9 +34,6 @@ func ResolveValidatorImage(ctx context.Context, environment Environment) (string
 // Docker host. Sidecars do not pull, so an image that no service of the
 // network runs has to be there already.
 func ResolveLocalImage(ctx context.Context, environment Environment, imageReference string) (string, error) {
-	if environment.Backend != BackendDocker {
-		return "", fmt.Errorf("backend %q is not Docker", environment.Backend)
-	}
 	client, err := dockerapi.New()
 	if err != nil {
 		return "", fmt.Errorf("create Docker client: %w", err)
@@ -81,9 +78,6 @@ func resolvePrimaryServiceImage(
 }
 
 func primaryServiceID(environment Environment, role string, serviceID func(Participant) string) (string, error) {
-	if environment.Backend != BackendDocker {
-		return "", fmt.Errorf("backend %q is not Docker", environment.Backend)
-	}
 	primary, err := environment.Primary()
 	if err != nil {
 		return "", fmt.Errorf("select primary participant: %w", err)
