@@ -27,8 +27,7 @@ type Runtime struct {
 
 	environment devnet.Environment
 	nodes       []*Node
-	// stopped holds the services stopped and not yet started again.
-	stopped []string
+	stopped     []string
 }
 
 // Node is an open handle to one network participant: its execution and
