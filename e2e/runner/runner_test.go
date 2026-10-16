@@ -675,7 +675,7 @@ func TestAttachBuildsCommandWithoutProvisioning(t *testing.T) {
 	require.ErrorContains(t, runner.Test(t.Context(), executionLaneName), "network not ready: chain did not advance")
 }
 
-func TestRejectsBeforeTouchingTheNetwork(t *testing.T) {
+func TestRejectsUnsupportedNetworks(t *testing.T) {
 	for name, check := range map[string]struct {
 		parameters []byte
 		run        func(*Runner) error
