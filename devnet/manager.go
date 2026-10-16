@@ -205,28 +205,25 @@ func (manager *Manager) Stop(ctx context.Context, name string) error {
 // StopServices stops the named services of a running network, in order. They
 // keep their data and flags until StartServices starts them again.
 func (manager *Manager) StopServices(ctx context.Context, name string, services []string) error {
-	return manager.changeServices(ctx, name, services, "stop", enclaveClient.StopServices)
+	client, err := manager.newEnclaveClient()
+	if err != nil {
+		return err
+	}
+	if err := client.StopServices(ctx, name, services); err != nil {
+		return fmt.Errorf("stop services %v: %w", services, err)
+	}
+	return nil
 }
 
 // StartServices starts the named stopped services, in order. They come back
 // on new host ports, so the environment has to be inspected again.
 func (manager *Manager) StartServices(ctx context.Context, name string, services []string) error {
-	return manager.changeServices(ctx, name, services, "start", enclaveClient.StartServices)
-}
-
-func (manager *Manager) changeServices(
-	ctx context.Context,
-	name string,
-	services []string,
-	verb string,
-	change func(enclaveClient, context.Context, string, []string) error,
-) error {
 	client, err := manager.newEnclaveClient()
 	if err != nil {
 		return err
 	}
-	if err := change(client, ctx, name, services); err != nil {
-		return fmt.Errorf("%s services %v: %w", verb, services, err)
+	if err := client.StartServices(ctx, name, services); err != nil {
+		return fmt.Errorf("start services %v: %w", services, err)
 	}
 	return nil
 }
