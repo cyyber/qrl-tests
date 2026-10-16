@@ -140,19 +140,19 @@ func (runtime *Runtime) open(ctx context.Context, participant devnet.Participant
 	return node, nil
 }
 
-// CanRestartParticipants reports whether the participants keep their data
-// across StopValidators, StopNodes and StartParticipants. Kurtosis keeps a
-// stopped service's container only on Docker; on Kubernetes it deletes the
-// pod, and the restarted nodes start empty.
-func (runtime *Runtime) CanRestartParticipants() error {
+// CheckRestartable reports an error when the participants would lose their
+// data across StopValidators, StopNodes and StartParticipants. Kurtosis
+// keeps a stopped service's container only on Docker; on Kubernetes it
+// deletes the pod, and the restarted nodes start empty.
+func (runtime *Runtime) CheckRestartable() error {
 	if backend := runtime.environment.Backend; backend != devnet.BackendDocker {
 		return fmt.Errorf("restarting participants needs the %s backend, not %q", devnet.BackendDocker, backend)
 	}
 	return nil
 }
 
-// StopValidators stops every validator client, so no block is proposed
-// after it returns.
+// StopValidators stops every validator client, so no block or attestation
+// is signed after it returns.
 func (runtime *Runtime) StopValidators(ctx context.Context) error {
 	validators, _, _ := runtime.services()
 	return runtime.stopServices(ctx, validators)
@@ -166,7 +166,7 @@ func (runtime *Runtime) StopNodes(ctx context.Context) error {
 }
 
 func (runtime *Runtime) stopServices(ctx context.Context, services []string) error {
-	if err := runtime.CanRestartParticipants(); err != nil {
+	if err := runtime.CheckRestartable(); err != nil {
 		return err
 	}
 	// Recorded first: a failed stop may still have stopped some of them.

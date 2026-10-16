@@ -207,7 +207,7 @@ func consumeStarlarkCompletion(stream <-chan *kurtosis_core_rpc_api_bindings.Sta
 				if runErr != nil {
 					return runErr
 				}
-				return errors.New("Kurtosis Starlark package run failed without a structured error")
+				return errors.New("Kurtosis Starlark run failed without a structured error")
 			}
 			return nil
 		}
@@ -228,5 +228,5 @@ func starlarkError(responseErr *kurtosis_core_rpc_api_bindings.StarlarkError) er
 	if detail := responseErr.GetExecutionError(); detail != nil {
 		return fmt.Errorf("Kurtosis Starlark execution failed: %s", detail.GetErrorMessage())
 	}
-	return errors.New("Kurtosis Starlark package run failed with an unknown structured error")
+	return errors.New("Kurtosis Starlark run failed with an unknown structured error")
 }

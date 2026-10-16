@@ -72,14 +72,14 @@ var _ = ginkgo.Describe(
 
 		ginkgo.BeforeAll(func(ctx ginkgo.SpecContext) {
 			runtime = testsuite.LoadRuntime()
-			gomega.Expect(runtime.CanRestartParticipants()).To(gomega.Succeed())
+			gomega.Expect(runtime.CheckRestartable()).To(gomega.Succeed())
 			nodes = testsuite.MustSucceed(runtime.Nodes(ctx))
 			gomega.Expect(len(nodes)).To(gomega.BeNumerically(">", 1), "the scenario needs several participants")
 			chain = testsuite.MustSucceed(chaininfo.Load(ctx, nodes[0].Beacon))
 		}, ginkgo.NodeTimeout(time.Minute))
 
-		// A failed spec skips the rest, so whatever it left stopped is
-		// started here, before diagnostics read the services' logs.
+		// A failed spec skips the rest; whatever it left stopped is started
+		// here, so the diagnostics of a failed run see a running network.
 		ginkgo.AfterAll(func(ctx ginkgo.SpecContext) {
 			if runtime != nil && runtime.HasStoppedParticipants() {
 				gomega.Expect(runtime.StartParticipants(ctx)).To(gomega.Succeed())

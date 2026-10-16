@@ -83,7 +83,7 @@ func TestConsumeStarlarkCompletion(t *testing.T) {
 		},
 		"failure without a structured error": {
 			lines:   []*kurtosis_core_rpc_api_bindings.StarlarkRunResponseLine{finishLine(false)},
-			wantErr: "Kurtosis Starlark package run failed without a structured error",
+			wantErr: "Kurtosis Starlark run failed without a structured error",
 		},
 		"truncated stream after an error": {
 			lines:   []*kurtosis_core_rpc_api_bindings.StarlarkRunResponseLine{errorLine("boom")},
@@ -145,7 +145,7 @@ func TestStarlarkErrorKinds(t *testing.T) {
 		},
 		"unknown": {
 			input: &kurtosis_core_rpc_api_bindings.StarlarkError{},
-			want:  "Kurtosis Starlark package run failed with an unknown structured error",
+			want:  "Kurtosis Starlark run failed with an unknown structured error",
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
