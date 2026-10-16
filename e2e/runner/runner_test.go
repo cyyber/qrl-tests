@@ -27,6 +27,7 @@ const (
 	executionLaneName     = "execution"
 	consensusLaneName     = "consensus-staking-automated"
 	operatorLaneName      = "consensus-staking-operator"
+	restartLaneName       = "resilience-network-restart"
 	executionABISuite     = "execution-abi"
 	executionConsoleSuite = "execution-console"
 )
@@ -676,32 +677,34 @@ func TestAttachBuildsCommandWithoutProvisioning(t *testing.T) {
 }
 
 func TestRejectsUnsupportedNetworks(t *testing.T) {
-	for name, check := range map[string]struct {
-		parameters []byte
-		run        func(*Runner) error
+	for _, test := range []struct {
+		name       string
+		lane       string
+		attach     bool // Test attaches to a running network; Run provisions one.
+		parameters bool
 		want       string
 	}{
-		"attach with parameters": {
-			parameters: []byte(`{}`),
-			run:        func(runner *Runner) error { return runner.Test(t.Context(), executionLaneName) },
-			want:       "existing network",
-		},
-		"restart lane on an existing network": {
-			run:  func(runner *Runner) error { return runner.Test(t.Context(), "resilience-network-restart") },
-			want: "not an existing one",
-		},
-		"restart lane with parameters": {
-			parameters: []byte(`{}`),
-			run:        func(runner *Runner) error { return runner.Run(t.Context(), "resilience-network-restart") },
-			want:       "not custom parameters",
-		},
+		{"attach with parameters", executionLaneName, true, true,
+			"custom parameters cannot be used with an existing network"},
+		{"restart lane on an existing network", restartLaneName, true, false,
+			"needs a network provisioned from profile anchored, not an existing one"},
+		{"restart lane with parameters", restartLaneName, false, true,
+			"needs profile anchored, not custom parameters"},
 	} {
-		t.Run(name, func(t *testing.T) {
+		t.Run(test.name, func(t *testing.T) {
+			configuration := Config{ReportDir: t.TempDir()}
+			if test.parameters {
+				configuration.Parameters = []byte(`{}`)
+			}
 			networks := new(recordingNetworks)
-			runner := New(Config{ReportDir: t.TempDir(), Parameters: check.parameters}, io.Discard, io.Discard)
+			runner := New(configuration, io.Discard, io.Discard)
 			runner.networks = networks
 
-			require.ErrorContains(t, check.run(runner), check.want)
+			run := runner.Run
+			if test.attach {
+				run = runner.Test
+			}
+			require.ErrorContains(t, run(t.Context(), test.lane), test.want)
 			require.Empty(t, networks.inspected)
 			require.Empty(t, networks.started.EnclaveName)
 		})
