@@ -77,6 +77,8 @@ func TestLaneWithSuites(t *testing.T) {
 	require.Equal(t, devnet.ProfileMulti, restart.Profile)
 	require.False(t, restart.NeedsValidatorImage())
 	require.False(t, restart.NeedsExecutionImage())
+	require.True(t, restart.RestartsServices)
+	require.False(t, execution.RestartsServices)
 
 	_, err = execution.WithSuites([]string{"unknown"})
 	require.ErrorContains(t, err, "unknown E2E suite")

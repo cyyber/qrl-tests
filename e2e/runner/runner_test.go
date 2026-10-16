@@ -663,6 +663,19 @@ func TestAttachRejectsCustomParameters(t *testing.T) {
 	require.ErrorContains(t, runner.Test(t.Context(), executionLaneName), "existing network")
 }
 
+func TestRestartingLaneNeedsItsOwnNetwork(t *testing.T) {
+	networks := new(recordingNetworks)
+	runner := New(Config{ReportDir: t.TempDir()}, io.Discard, io.Discard)
+	runner.networks = networks
+	require.ErrorContains(t, runner.Test(t.Context(), "resilience-network-restart"), "not an existing one")
+
+	runner = New(Config{ReportDir: t.TempDir(), Parameters: []byte(`{}`)}, io.Discard, io.Discard)
+	runner.networks = networks
+	require.ErrorContains(t, runner.Run(t.Context(), "resilience-network-restart"), "not custom parameters")
+	require.Empty(t, networks.inspected)
+	require.Empty(t, networks.started.EnclaveName)
+}
+
 func testLaneRuns(t *testing.T, reports string, count int) runPlan {
 	t.Helper()
 	lane, err := lanes.Named(executionLaneName)

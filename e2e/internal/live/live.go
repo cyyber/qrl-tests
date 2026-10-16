@@ -27,6 +27,8 @@ type Runtime struct {
 
 	environment devnet.Environment
 	nodes       []*Node
+	// stopped holds the services stopped and not yet started again.
+	stopped []string
 }
 
 // Node is an open handle to one network participant: its execution and
@@ -138,27 +140,66 @@ func (runtime *Runtime) open(ctx context.Context, participant devnet.Participant
 	return node, nil
 }
 
-// StopParticipants stops every validator client, then every beacon node,
-// then every execution client. They keep their data.
-func (runtime *Runtime) StopParticipants(ctx context.Context) error {
-	validators, beacons, executions := runtime.services()
-	services := slices.Concat(validators, beacons, executions)
+// CanRestartParticipants reports whether the participants keep their data
+// across StopValidators, StopNodes and StartParticipants. Kurtosis keeps a
+// stopped service's container only on Docker; on Kubernetes it deletes the
+// pod, and the restarted nodes start empty.
+func (runtime *Runtime) CanRestartParticipants() error {
+	if backend := runtime.environment.Backend; backend != devnet.BackendDocker {
+		return fmt.Errorf("restarting participants needs the %s backend, not %q", devnet.BackendDocker, backend)
+	}
+	return nil
+}
+
+// StopValidators stops every validator client, so no block is proposed
+// after it returns.
+func (runtime *Runtime) StopValidators(ctx context.Context) error {
+	validators, _, _ := runtime.services()
+	return runtime.stopServices(ctx, validators)
+}
+
+// StopNodes stops every beacon node, then every execution client. They keep
+// their data.
+func (runtime *Runtime) StopNodes(ctx context.Context) error {
+	_, beacons, executions := runtime.services()
+	return runtime.stopServices(ctx, slices.Concat(beacons, executions))
+}
+
+func (runtime *Runtime) stopServices(ctx context.Context, services []string) error {
+	if err := runtime.CanRestartParticipants(); err != nil {
+		return err
+	}
+	// Recorded first: a failed stop may still have stopped some of them.
+	runtime.stopped = append(runtime.stopped, services...)
 	return devnet.NewManager().StopServices(ctx, runtime.environment.EnclaveName, services)
 }
 
-// StartParticipants starts the services that StopParticipants stopped, in
-// the order of a full-outage recovery: every execution client, the beacon
-// nodes from the first participant on, then every validator client. A
-// started service is published on other host ports, so the environment is
-// read again and the nodes opened before the restart are closed.
+// HasStoppedParticipants reports whether a service stopped through the
+// runtime has not been started again.
+func (runtime *Runtime) HasStoppedParticipants() bool {
+	return len(runtime.stopped) > 0
+}
+
+// StartParticipants starts the services that StopValidators and StopNodes
+// stopped, in the order of a full-outage recovery: every execution client,
+// the beacon nodes from the first participant on, then every validator
+// client. A started service is published on other host ports, so the
+// environment is read again and the nodes opened before the restart are
+// closed.
 func (runtime *Runtime) StartParticipants(ctx context.Context) error {
 	validators, beacons, executions := runtime.services()
-	services := slices.Concat(executions, beacons, validators)
+	services := slices.DeleteFunc(slices.Concat(executions, beacons, validators), func(name string) bool {
+		return !slices.Contains(runtime.stopped, name)
+	})
+	if len(services) == 0 {
+		return nil
+	}
 	manager := devnet.NewManager()
 	name := runtime.environment.EnclaveName
 	if err := manager.StartServices(ctx, name, services); err != nil {
 		return err
 	}
+	runtime.stopped = nil
 
 	environment, err := manager.Environment(ctx, name)
 	if err != nil {

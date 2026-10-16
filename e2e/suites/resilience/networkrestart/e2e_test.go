@@ -48,7 +48,8 @@ var _ = ginkgo.Describe(
 			runtime *live.Runtime
 			nodes   []*live.Node
 			chain   chaininfo.Info
-			// head is the last block seen before the outage.
+			// head is the head every participant agreed on once the
+			// validators stopped.
 			head beacon.BlockHeader
 		)
 
@@ -62,32 +63,63 @@ var _ = ginkgo.Describe(
 			}
 		}
 
+		pause := func(ctx context.Context, duration time.Duration) {
+			select {
+			case <-time.After(duration):
+			case <-ctx.Done():
+			}
+		}
+
 		ginkgo.BeforeAll(func(ctx ginkgo.SpecContext) {
 			runtime = testsuite.LoadRuntime()
+			gomega.Expect(runtime.CanRestartParticipants()).To(gomega.Succeed())
 			nodes = testsuite.MustSucceed(runtime.Nodes(ctx))
 			gomega.Expect(len(nodes)).To(gomega.BeNumerically(">", 1), "the scenario needs several participants")
 			chain = testsuite.MustSucceed(chaininfo.Load(ctx, nodes[0].Beacon))
 		}, ginkgo.NodeTimeout(time.Minute))
+
+		// A failed spec skips the rest, so whatever it left stopped is
+		// started here, before diagnostics read the services' logs.
+		ginkgo.AfterAll(func(ctx ginkgo.SpecContext) {
+			if runtime != nil && runtime.HasStoppedParticipants() {
+				gomega.Expect(runtime.StartParticipants(ctx)).To(gomega.Succeed())
+			}
+		}, ginkgo.NodeTimeout(5*time.Minute))
 
 		ginkgo.It("finalizes before the outage", func(ctx ginkgo.SpecContext) {
 			gomega.Eventually(finalizedEpoch(nodes[0])).WithContext(ctx).
 				WithTimeout(epochs(finalityEpochs)).
 				WithPolling(chain.SlotDuration).
 				Should(gomega.BeNumerically(">", 0))
-			head = testsuite.MustSucceed(nodes[0].Beacon.BlockHeader(ctx, "head"))
 		}, ginkgo.SpecTimeout(10*time.Minute))
 
 		ginkgo.It("stops every node", func(ctx ginkgo.SpecContext) {
-			gomega.Expect(runtime.StopParticipants(ctx)).To(gomega.Succeed())
+			gomega.Expect(runtime.StopValidators(ctx)).To(gomega.Succeed())
+			// Without validators, only a block already in flight can still
+			// change the head. Once a slot has passed and every participant
+			// agrees on it, no later block can replace it.
+			pause(ctx, chain.SlotDuration)
+			gomega.Eventually(func(g gomega.Gomega, ctx context.Context) {
+				anchor, err := nodes[0].Beacon.BlockHeader(ctx, "head")
+				g.Expect(err).NotTo(gomega.HaveOccurred())
+				for index, node := range nodes[1:] {
+					other, err := node.Beacon.BlockHeader(ctx, "head")
+					g.Expect(err).NotTo(gomega.HaveOccurred())
+					g.Expect(other).To(gomega.Equal(anchor), "participant %d has another head", index+2)
+				}
+				head = anchor
+			}).WithContext(ctx).
+				WithTimeout(epochs(1)).
+				WithPolling(chain.SlotDuration).
+				Should(gomega.Succeed())
+
+			gomega.Expect(runtime.StopNodes(ctx)).To(gomega.Succeed())
 			for index, node := range nodes {
 				_, err := node.Beacon.HeadSlot(ctx)
 				gomega.Expect(err).To(gomega.HaveOccurred(), "the beacon node of participant %d still answers", index+1)
 			}
 
-			select {
-			case <-time.After(epochs(outageEpochs)):
-			case <-ctx.Done():
-			}
+			pause(ctx, epochs(outageEpochs))
 		}, ginkgo.SpecTimeout(5*time.Minute))
 
 		ginkgo.It("proposes again after the restart", func(ctx ginkgo.SpecContext) {

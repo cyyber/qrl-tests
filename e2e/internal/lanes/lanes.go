@@ -16,6 +16,10 @@ type Lane struct {
 	Profile devnet.Profile
 	Suites  []SuiteID
 	Timeout time.Duration
+	// RestartsServices marks a lane whose suites stop and restart the
+	// services of its network. It only recovers on a network provisioned
+	// from its own profile.
+	RestartsServices bool
 }
 
 type SuiteID string
@@ -63,10 +67,11 @@ var registry = []Lane{
 	{
 		// Finality before the outage, the outage and finality after it take
 		// about a dozen 40-second epochs.
-		Name:    "resilience-network-restart",
-		Profile: devnet.ProfileMulti,
-		Suites:  []SuiteID{suiteResilienceNetworkRestart},
-		Timeout: 25 * time.Minute,
+		Name:             "resilience-network-restart",
+		Profile:          devnet.ProfileMulti,
+		Suites:           []SuiteID{suiteResilienceNetworkRestart},
+		Timeout:          25 * time.Minute,
+		RestartsServices: true,
 	},
 }
 
