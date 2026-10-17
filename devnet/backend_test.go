@@ -11,10 +11,6 @@ func TestParseBackend(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, BackendDocker, backend)
 
-	backend, err = ParseBackend("kubernetes")
-	require.NoError(t, err)
-	require.Equal(t, BackendKubernetes, backend)
-
 	backend, err = ParseBackend("  docker  ")
 	require.NoError(t, err)
 	require.Equal(t, BackendDocker, backend)
@@ -22,6 +18,9 @@ func TestParseBackend(t *testing.T) {
 	backend, err = ParseBackend("   ")
 	require.NoError(t, err)
 	require.Equal(t, BackendDocker, backend)
+
+	_, err = ParseBackend("kubernetes")
+	require.ErrorContains(t, err, "only docker is supported")
 
 	_, err = ParseBackend("unknown")
 	require.Error(t, err)

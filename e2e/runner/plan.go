@@ -69,6 +69,9 @@ func planLanes(configuration Config, selected []lanes.Lane, mode runMode) (runPl
 
 	laneRuns := make([]laneRun, len(selected))
 	for index, lane := range selected {
+		if err := checkServiceRestarts(configuration, lane, mode); err != nil {
+			return runPlan{}, err
+		}
 		enclaveName := configuration.BaseName
 		if mode.suffixesEnclave() {
 			enclaveName += "-" + lane.Name
@@ -90,4 +93,19 @@ func planLanes(configuration Config, selected []lanes.Lane, mode runMode) (runPl
 		}
 	}
 	return runPlan{testsDir: testsDir, reportRoot: reportRoot, mode: mode, lanes: laneRuns}, nil
+}
+
+// checkServiceRestarts refuses to run a lane that restarts services on a
+// network it did not provision from its profile: without the profile's
+// recovery settings, such a network never proposes again.
+func checkServiceRestarts(configuration Config, lane lanes.Lane, mode runMode) error {
+	switch {
+	case !lane.RestartsServices:
+		return nil
+	case !mode.provisionsNetwork():
+		return fmt.Errorf("lane %s restarts every service of its network and needs a network provisioned from profile %s, not an existing one", lane.Name, lane.Profile)
+	case len(configuration.Parameters) != 0:
+		return fmt.Errorf("lane %s restarts every service of its network and needs profile %s, not custom parameters", lane.Name, lane.Profile)
+	}
+	return nil
 }

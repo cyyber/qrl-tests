@@ -23,6 +23,7 @@ type Source interface {
 type Info struct {
 	SlotsPerEpoch uint64
 	SlotDuration  time.Duration
+	EpochDuration time.Duration
 	// ExecutionVotingPeriod is how long the beacon chain votes on one
 	// execution-data snapshot; deposits only count once a vote settles.
 	ExecutionVotingPeriod time.Duration
@@ -65,7 +66,8 @@ func Load(ctx context.Context, source Source) (Info, error) {
 		return Info{}, err
 	}
 	chain.SlotDuration = time.Duration(secondsPerSlot) * time.Second
-	chain.ExecutionVotingPeriod = time.Duration(votingEpochs*chain.SlotsPerEpoch) * chain.SlotDuration
+	chain.EpochDuration = time.Duration(chain.SlotsPerEpoch) * chain.SlotDuration
+	chain.ExecutionVotingPeriod = time.Duration(votingEpochs) * chain.EpochDuration
 	chain.ExecutionFollowDistance = time.Duration(followBlocks*secondsPerBlock) * time.Second
 	return chain, nil
 }
@@ -82,8 +84,7 @@ func (chain Info) Epoch(slot uint64) uint64 {
 // least two follow distances after genesis; before that, votes keep the
 // genesis execution data.
 func (chain Info) DepositWait() time.Duration {
-	epoch := time.Duration(chain.SlotsPerEpoch) * chain.SlotDuration
-	return chain.ExecutionFollowDistance + chain.ExecutionVotingPeriod*3/2 + 4*epoch
+	return chain.ExecutionFollowDistance + chain.ExecutionVotingPeriod*3/2 + 4*chain.EpochDuration
 }
 
 // GenesisForkVersion is the fork version deposits are signed for, as

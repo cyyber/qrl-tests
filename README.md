@@ -52,8 +52,7 @@ List registered lanes and suites with:
 go run ./cmd/qrltest list
 ```
 
-Docker and Kubernetes are supported. Kubernetes requires registry-backed images
-and an active Kurtosis gateway.
+Networks run on Kurtosis's Docker backend.
 
 See [development network configuration](devnet/README.md) and the
 [end-to-end suites](e2e/README.md).

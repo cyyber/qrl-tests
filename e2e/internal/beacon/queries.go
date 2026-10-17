@@ -32,14 +32,45 @@ func (client *Client) SpecUint(ctx context.Context, name string) (uint64, error)
 }
 
 func (client *Client) HeadSlot(ctx context.Context) (uint64, error) {
-	head, err := getData[struct {
+	head, err := client.BlockHeader(ctx, "head")
+	return head.Slot, err
+}
+
+// BlockHeader returns the slot and root of a canonical block. blockID is
+// "head", "finalized", a slot or a 0x-prefixed root. A slot without a block
+// is reported through IsNotFound.
+func (client *Client) BlockHeader(ctx context.Context, blockID string) (BlockHeader, error) {
+	header, err := getData[struct {
+		Root   string `json:"root"`
 		Header struct {
 			Message struct {
 				Slot uint64 `json:"slot,string"`
 			} `json:"message"`
 		} `json:"header"`
-	}](ctx, client, "/qrl/v1/beacon/headers/head")
-	return head.Header.Message.Slot, err
+	}](ctx, client, "/qrl/v1/beacon/headers/"+url.PathEscape(blockID))
+	return BlockHeader{Slot: header.Header.Message.Slot, Root: header.Root}, err
+}
+
+// FinalityCheckpoints returns the justified and finalized checkpoints of the
+// head state.
+func (client *Client) FinalityCheckpoints(ctx context.Context) (FinalityCheckpoints, error) {
+	return getData[FinalityCheckpoints](ctx, client, "/qrl/v1/beacon/states/head/finality_checkpoints")
+}
+
+// SlashedValidators returns the validators of the head state that have been
+// slashed.
+func (client *Client) SlashedValidators(ctx context.Context) ([]Validator, error) {
+	records, err := getData[[]validatorWire](
+		ctx, client, "/qrl/v1/beacon/states/head/validators?status=active_slashed&status=exited_slashed",
+	)
+	if err != nil {
+		return nil, err
+	}
+	validators := make([]Validator, len(records))
+	for index, record := range records {
+		validators[index] = record.validator()
+	}
+	return validators, nil
 }
 
 type validatorWire struct {
@@ -67,6 +98,10 @@ func (client *Client) Validator(ctx context.Context, validatorID string) (Valida
 	if err != nil {
 		return Validator{}, err
 	}
+	return record.validator(), nil
+}
+
+func (record validatorWire) validator() Validator {
 	return Validator{
 		Index:               record.Index,
 		Balance:             record.Balance,
@@ -79,7 +114,7 @@ func (client *Client) Validator(ctx context.Context, validatorID string) (Valida
 		ActivationEpoch:     record.Validator.ActivationEpoch,
 		ExitEpoch:           record.Validator.ExitEpoch,
 		WithdrawableEpoch:   record.Validator.WithdrawableEpoch,
-	}, nil
+	}
 }
 
 type blockWire struct {

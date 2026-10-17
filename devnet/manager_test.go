@@ -21,6 +21,9 @@ type fakeEnclaveClient struct {
 	packageLocator string
 	destroyed      bool
 	onDestroy      func(context.Context)
+	stopped        []string
+	started        []string
+	serviceErr     error
 }
 
 func (client *fakeEnclaveClient) EnclaveExists(context.Context, string) (bool, error) {
@@ -39,6 +42,16 @@ func (client *fakeEnclaveClient) RunRemotePackage(_ context.Context, _, locator,
 
 func (client *fakeEnclaveClient) Services(context.Context, string) (map[string]kurtosis.Service, error) {
 	return client.services, nil
+}
+
+func (client *fakeEnclaveClient) StopServices(_ context.Context, _ string, names []string) error {
+	client.stopped = append(client.stopped, names...)
+	return client.serviceErr
+}
+
+func (client *fakeEnclaveClient) StartServices(_ context.Context, _ string, names []string) error {
+	client.started = append(client.started, names...)
+	return client.serviceErr
 }
 
 func (client *fakeEnclaveClient) DestroyEnclave(ctx context.Context, _ string) error {
@@ -293,4 +306,36 @@ func TestStop(t *testing.T) {
 	running := &fakeEnclaveClient{exists: true}
 	require.NoError(t, testManager(running).Stop(t.Context(), "running"))
 	require.True(t, running.destroyed)
+}
+
+func TestStopAndStartServices(t *testing.T) {
+	client := &fakeEnclaveClient{exists: true}
+	manager := testManager(client)
+
+	require.NoError(t, manager.StopServices(t.Context(), "network", []string{"vc-1", "cl-1", "el-1"}))
+	require.NoError(t, manager.StartServices(t.Context(), "network", []string{"el-1", "cl-1", "vc-1"}))
+	require.Equal(t, []string{"vc-1", "cl-1", "el-1"}, client.stopped)
+	require.Equal(t, []string{"el-1", "cl-1", "vc-1"}, client.started)
+
+	client.serviceErr = errors.New("engine unavailable")
+	require.ErrorContains(t, manager.StopServices(t.Context(), "network", []string{"el-1"}), "stop services [el-1]: engine unavailable")
+	require.ErrorContains(t, manager.StartServices(t.Context(), "network", []string{"el-1"}), "start services [el-1]: engine unavailable")
+}
+
+func TestCheckReady(t *testing.T) {
+	client := &fakeEnclaveClient{exists: true, services: singleParticipant()}
+	manager := testManager(client)
+	var probedURL string
+	manager.probe = func(_ context.Context, rpcURL, _ string) error {
+		probedURL = rpcURL
+		return errors.New("chain does not advance")
+	}
+
+	environment, err := manager.Inspect(t.Context(), "network")
+	require.NoError(t, err, "inspecting must not probe")
+	require.Empty(t, probedURL)
+
+	require.ErrorContains(t, manager.CheckReady(t.Context(), environment), "chain does not advance")
+	require.Equal(t, environment.Participants[0].Execution.RPCURL, probedURL)
+	require.ErrorContains(t, manager.CheckReady(t.Context(), Environment{}), "no participants")
 }

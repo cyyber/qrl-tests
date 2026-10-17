@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cyyber/qrl-tests/devnet"
 	"github.com/stretchr/testify/require"
 )
 
@@ -70,6 +71,14 @@ func TestLaneWithSuites(t *testing.T) {
 	require.True(t, operator.NeedsValidatorImage())
 	require.True(t, operator.NeedsQrysmAlltoolsImage())
 	require.False(t, operator.NeedsExecutionImage())
+
+	restart, err := Named("resilience-network-restart")
+	require.NoError(t, err)
+	require.Equal(t, devnet.ProfileAnchored, restart.Profile)
+	require.False(t, restart.NeedsValidatorImage())
+	require.False(t, restart.NeedsExecutionImage())
+	require.True(t, restart.RestartsServices)
+	require.False(t, execution.RestartsServices)
 
 	_, err = execution.WithSuites([]string{"unknown"})
 	require.ErrorContains(t, err, "unknown E2E suite")

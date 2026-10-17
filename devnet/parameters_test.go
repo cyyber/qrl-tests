@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -42,6 +43,29 @@ func TestDefaultParameters(t *testing.T) {
 	require.Equal(t, "1337", network["network_id"])
 	require.Equal(t, address, network["withdrawal_address"])
 	require.Equal(t, "2000000QRL", prefund["balance"])
+}
+
+func TestAnchoredProfileParameters(t *testing.T) {
+	payload, err := resolveParameters("Q"+strings.Repeat("a", 128), StartOptions{Profile: ProfileAnchored})
+	require.NoError(t, err)
+
+	var parameters map[string]any
+	require.NoError(t, json.Unmarshal([]byte(payload), &parameters))
+	participants := parameters["participants"].([]any)
+	require.Len(t, participants, 2)
+	for index, entry := range participants {
+		participant := entry.(map[string]any)
+		require.Equal(t, float64(32), participant["validator_count"])
+		require.Equal(t, strconv.Itoa(index+1), participant["el_extra_labels"].(map[string]any)[participantLabel])
+	}
+	// Only the first participant is the anchor of a full-outage recovery.
+	require.Equal(t,
+		[]any{"--min-sync-peers=0", "--minimum-peers-per-subnet=0", "--sync-from=head"},
+		participants[0].(map[string]any)["cl_extra_params"],
+	)
+	require.Equal(t, []any{"--minimum-peers-per-subnet=0"}, participants[1].(map[string]any)["cl_extra_params"])
+	// The profile adds to the defaults without changing them for others.
+	require.Equal(t, []string{"--min-sync-peers=0", "--minimum-peers-per-subnet=0"}, defaultCLExtraParams)
 }
 
 func TestFileParametersPassThroughUnchanged(t *testing.T) {

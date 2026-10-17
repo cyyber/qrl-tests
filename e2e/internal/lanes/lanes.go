@@ -16,6 +16,8 @@ type Lane struct {
 	Profile devnet.Profile
 	Suites  []SuiteID
 	Timeout time.Duration
+
+	RestartsServices bool
 }
 
 type SuiteID string
@@ -26,6 +28,7 @@ const (
 	suiteExecutionTxpool           SuiteID = "execution-txpool"
 	suiteConsensusStakingAutomated SuiteID = "consensus-staking-automated"
 	suiteConsensusStakingOperator  SuiteID = "consensus-staking-operator"
+	suiteResilienceNetworkRestart  SuiteID = "resilience-network-restart"
 )
 
 var suitePackages = map[SuiteID]string{
@@ -34,6 +37,7 @@ var suitePackages = map[SuiteID]string{
 	suiteExecutionTxpool:           "./e2e/suites/execution/txpool",
 	suiteConsensusStakingAutomated: "./e2e/suites/consensus/stakingautomated",
 	suiteConsensusStakingOperator:  "./e2e/suites/consensus/stakingoperator",
+	suiteResilienceNetworkRestart:  "./e2e/suites/resilience/networkrestart",
 }
 
 var registry = []Lane{
@@ -59,6 +63,15 @@ var registry = []Lane{
 		Profile: devnet.ProfileSingle,
 		Suites:  []SuiteID{suiteConsensusStakingOperator},
 		Timeout: 95 * time.Minute,
+	},
+	{
+		// Finality, the outage and finality again take about a dozen
+		// 40-second epochs.
+		Name:             "resilience-network-restart",
+		Profile:          devnet.ProfileAnchored,
+		Suites:           []SuiteID{suiteResilienceNetworkRestart},
+		Timeout:          30 * time.Minute,
+		RestartsServices: true,
 	},
 }
 

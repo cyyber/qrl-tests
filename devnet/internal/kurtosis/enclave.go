@@ -10,6 +10,7 @@ import (
 	"maps"
 	"net"
 	"strconv"
+	"strings"
 
 	"github.com/kurtosis-tech/kurtosis/api/golang/core/kurtosis_core_rpc_api_bindings"
 	"github.com/kurtosis-tech/kurtosis/api/golang/core/lib/services"
@@ -126,6 +127,53 @@ func (client *EnclaveClient) DestroyEnclave(ctx context.Context, name string) er
 	return client.engine.DestroyEnclave(ctx, name)
 }
 
+// StopServices stops the named services in order. On Docker a stopped
+// service keeps its container, so StartServices resumes it with its data and
+// its flags.
+func (client *EnclaveClient) StopServices(ctx context.Context, enclaveName string, names []string) error {
+	return client.runServiceInstruction(ctx, enclaveName, "stop_service", names)
+}
+
+// StartServices starts the named stopped services in order. Kurtosis
+// publishes a started service on new host ports.
+func (client *EnclaveClient) StartServices(ctx context.Context, enclaveName string, names []string) error {
+	return client.runServiceInstruction(ctx, enclaveName, "start_service", names)
+}
+
+func (client *EnclaveClient) runServiceInstruction(
+	ctx context.Context,
+	enclaveName,
+	instruction string,
+	names []string,
+) error {
+	if len(names) == 0 {
+		return nil
+	}
+	enclave, err := client.engine.GetEnclaveContext(ctx, enclaveName)
+	if err != nil {
+		return err
+	}
+
+	stream, cancel, err := enclave.RunStarlarkScript(
+		ctx, serviceInstructionScript(instruction, names), starlark_run_config.NewRunStarlarkConfig(),
+	)
+	if err != nil {
+		return err
+	}
+	defer cancel()
+	return consumeStarlarkCompletion(stream)
+}
+
+// serviceInstructionScript applies one plan instruction to each service.
+func serviceInstructionScript(instruction string, names []string) string {
+	var script strings.Builder
+	script.WriteString("def run(plan):\n")
+	for _, name := range names {
+		fmt.Fprintf(&script, "    plan.%s(name=%q)\n", instruction, name)
+	}
+	return script.String()
+}
+
 type serviceContext interface {
 	GetServiceUUID() services.ServiceUUID
 	GetPrivateIPAddress() string
@@ -159,7 +207,7 @@ func consumeStarlarkCompletion(stream <-chan *kurtosis_core_rpc_api_bindings.Sta
 				if runErr != nil {
 					return runErr
 				}
-				return errors.New("Kurtosis Starlark package run failed without a structured error")
+				return errors.New("Kurtosis Starlark run failed without a structured error")
 			}
 			return nil
 		}
@@ -180,5 +228,5 @@ func starlarkError(responseErr *kurtosis_core_rpc_api_bindings.StarlarkError) er
 	if detail := responseErr.GetExecutionError(); detail != nil {
 		return fmt.Errorf("Kurtosis Starlark execution failed: %s", detail.GetErrorMessage())
 	}
-	return errors.New("Kurtosis Starlark package run failed with an unknown structured error")
+	return errors.New("Kurtosis Starlark run failed with an unknown structured error")
 }

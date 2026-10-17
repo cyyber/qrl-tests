@@ -11,6 +11,7 @@ endpoints; suites do not provision infrastructure.
 | `execution` | `single` | Execution client: contract ABI, gqrl console, and transaction pool |
 | `consensus-staking-automated` | `single` | Staking through contract deposits and the keymanager API |
 | `consensus-staking-operator` | `single` | Staking through the deposit and validator CLIs |
+| `resilience-network-restart` | `anchored` | Recovery from a full outage: proposing and finalizing after every node stops at once |
 
 Run one lane with a fresh network:
 
@@ -25,6 +26,10 @@ make network-start
 make e2e
 make network-stop
 ```
+
+`resilience-network-restart` stops and restarts every service, so it runs only
+on a network the runner provisions (`make e2e-run` or `run-all`), without a
+parameters file.
 
 The Ginkgo runner writes its JSON report, output log and resolved environment
 manifest under `reports/lanes/<lane>/`, next to the run manifest and result

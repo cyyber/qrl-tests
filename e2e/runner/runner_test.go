@@ -27,6 +27,7 @@ const (
 	executionLaneName     = "execution"
 	consensusLaneName     = "consensus-staking-automated"
 	operatorLaneName      = "consensus-staking-operator"
+	restartLaneName       = "resilience-network-restart"
 	executionABISuite     = "execution-abi"
 	executionConsoleSuite = "execution-console"
 )
@@ -35,10 +36,12 @@ type recordingNetworks struct {
 	mutex                     sync.Mutex
 	started                   devnet.StartOptions
 	inspected                 string
+	checked                   string
 	stopped                   []string
 	collected                 []string
 	events                    []string
 	startErr                  error
+	readyErr                  error
 	stopErr                   error
 	collectErr                error
 	observeStopContext        func(context.Context)
@@ -75,6 +78,13 @@ func (networks *recordingNetworks) Inspect(_ context.Context, name string) (devn
 	defer networks.mutex.Unlock()
 	networks.inspected = name
 	return testEnvironment(name, ""), nil
+}
+
+func (networks *recordingNetworks) CheckReady(_ context.Context, environment devnet.Environment) error {
+	networks.mutex.Lock()
+	defer networks.mutex.Unlock()
+	networks.checked = environment.EnclaveName
+	return networks.readyErr
 }
 
 func (networks *recordingNetworks) Stop(ctx context.Context, name string) error {
@@ -543,19 +553,22 @@ func TestRunAllProvisionsPerLane(t *testing.T) {
 
 	require.NoError(t, runner.RunAll(t.Context()))
 	// Every registered lane provisions its own enclave and runs its own suites.
-	require.Equal(t, "qrl-tests-consensus-staking-operator", networks.started.EnclaveName)
-	require.Equal(t, devnet.ProfileSingle, networks.started.Profile)
+	require.Equal(t, "qrl-tests-resilience-network-restart", networks.started.EnclaveName)
+	require.Equal(t, devnet.ProfileAnchored, networks.started.Profile)
 	require.Equal(t, []string{
 		"qrl-tests-execution", "qrl-tests-consensus-staking-automated", "qrl-tests-consensus-staking-operator",
+		"qrl-tests-resilience-network-restart",
 	}, networks.stopped)
-	require.Len(t, commands, 3)
+	require.Len(t, commands, 4)
 	require.Contains(t, commands[0].Args, "./e2e/suites/execution/abi")
 	require.Contains(t, commands[1].Args, "./e2e/suites/consensus/stakingautomated")
 	require.Contains(t, commands[2].Args, "./e2e/suites/consensus/stakingoperator")
+	require.Contains(t, commands[3].Args, "./e2e/suites/resilience/networkrestart")
 	record := testutil.ReadJSON[runmanifest.Manifest](t, filepath.Join(reports, runmanifest.FileName))
 	require.Equal(t, "qrl-tests-execution", record.Lanes[0].Enclave)
 	require.Equal(t, "qrl-tests-consensus-staking-automated", record.Lanes[1].Enclave)
 	require.Equal(t, "qrl-tests-consensus-staking-operator", record.Lanes[2].Enclave)
+	require.Equal(t, "qrl-tests-resilience-network-restart", record.Lanes[3].Enclave)
 }
 
 func TestRunReturnsCleanupFailure(t *testing.T) {
@@ -646,6 +659,7 @@ func TestAttachBuildsCommandWithoutProvisioning(t *testing.T) {
 
 	require.NoError(t, runner.Test(t.Context(), executionLaneName))
 	require.Equal(t, "qrl-tests", networks.inspected)
+	require.Equal(t, "qrl-tests", networks.checked)
 	require.Empty(t, networks.started.EnclaveName, "attaching must not provision")
 	require.Empty(t, networks.stopped, "attaching must not stop the network")
 	require.Contains(t, command.Args, "./e2e/suites/execution/abi")
@@ -653,11 +667,48 @@ func TestAttachBuildsCommandWithoutProvisioning(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, devnet.BackendDocker, written.Environment.Backend)
 	require.Empty(t, written.ExecutionImage)
+
+	networks.readyErr = errors.New("chain did not advance")
+	runner.runCommand = func(context.Context, commandSpec) error {
+		t.Fatal("a network that is not ready must not run suites")
+		return nil
+	}
+	require.ErrorContains(t, runner.Test(t.Context(), executionLaneName), "network not ready: chain did not advance")
 }
 
-func TestAttachRejectsCustomParameters(t *testing.T) {
-	runner := New(Config{Parameters: []byte(`{}`)}, io.Discard, io.Discard)
-	require.ErrorContains(t, runner.Test(t.Context(), executionLaneName), "existing network")
+func TestRejectsUnsupportedNetworks(t *testing.T) {
+	for _, test := range []struct {
+		name       string
+		lane       string
+		attach     bool // Test attaches to a running network; Run provisions one.
+		parameters bool
+		want       string
+	}{
+		{"attach with parameters", executionLaneName, true, true,
+			"custom parameters cannot be used with an existing network"},
+		{"restart lane on an existing network", restartLaneName, true, false,
+			"needs a network provisioned from profile anchored, not an existing one"},
+		{"restart lane with parameters", restartLaneName, false, true,
+			"needs profile anchored, not custom parameters"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			configuration := Config{ReportDir: t.TempDir()}
+			if test.parameters {
+				configuration.Parameters = []byte(`{}`)
+			}
+			networks := new(recordingNetworks)
+			runner := New(configuration, io.Discard, io.Discard)
+			runner.networks = networks
+
+			run := runner.Run
+			if test.attach {
+				run = runner.Test
+			}
+			require.ErrorContains(t, run(t.Context(), test.lane), test.want)
+			require.Empty(t, networks.inspected)
+			require.Empty(t, networks.started.EnclaveName)
+		})
+	}
 }
 
 func testLaneRuns(t *testing.T, reports string, count int) runPlan {

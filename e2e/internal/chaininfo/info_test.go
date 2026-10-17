@@ -48,6 +48,7 @@ func TestLoad(t *testing.T) {
 	require.Equal(t, uint64(128), chain.SlotsPerEpoch)
 	require.Equal(t, uint64(2), chain.Epoch(300))
 	require.Equal(t, 12*time.Second, chain.SlotDuration)
+	require.Equal(t, 128*12*time.Second, chain.EpochDuration)
 	require.Equal(t, 4*128*12*time.Second, chain.ExecutionVotingPeriod)
 	// The follow distance counts execution blocks, not slots.
 	require.Equal(t, 16*14*time.Second, chain.ExecutionFollowDistance)

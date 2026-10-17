@@ -41,9 +41,6 @@ func TestResolveLocalImage(t *testing.T) {
 
 	_, err = resolveLocalImage(t.Context(), "local/qrysm-alltools:devnet", &fakeDocker{imageID: "not-an-id"})
 	require.ErrorContains(t, err, `invalid Docker image ID "not-an-id"`)
-
-	_, err = ResolveLocalImage(t.Context(), Environment{Backend: BackendKubernetes}, "local/qrysm-alltools:devnet")
-	require.ErrorContains(t, err, "is not Docker")
 }
 
 func TestResolveContainerImageErrors(t *testing.T) {
@@ -101,13 +98,6 @@ func TestPrimaryServiceIDs(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "primary-validator-service", serviceID)
 
-	environment.Backend = BackendKubernetes
-	_, err = primaryServiceID(environment, "validator", func(participant Participant) string {
-		return participant.Validator.ID
-	})
-	require.ErrorContains(t, err, "is not Docker")
-
-	environment.Backend = BackendDocker
 	environment.Participants[0].Validator.ID = ""
 	_, err = primaryServiceID(environment, "validator", func(participant Participant) string {
 		return participant.Validator.ID
