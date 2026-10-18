@@ -152,13 +152,23 @@ func (runtime *Runtime) StopNodes(ctx context.Context) error {
 	return devnet.NewManager().StopServices(ctx, runtime.environment.EnclaveName, slices.Concat(beacons, executions))
 }
 
-// StartParticipants starts the services that StopValidators and StopNodes
-// stopped, in the order of a full-outage recovery: every execution client,
-// the beacon nodes from the first participant on, then every validator
-// client. A started service is published on other host ports, so the
-// environment is read again and the nodes opened before the restart are
-// closed. Only this runtime sees the new ports: the lane manifest keeps the
-// old ones, so a lane that restarts services runs a single suite.
+// KillParticipants kills every validator client, beacon node and execution
+// client without letting them shut down, as a power loss would. They keep
+// whatever they had written to disk.
+func (runtime *Runtime) KillParticipants(ctx context.Context) error {
+	validators, beacons, executions := runtime.services()
+	return devnet.NewManager().KillServices(
+		ctx, runtime.environment.EnclaveName, slices.Concat(validators, beacons, executions),
+	)
+}
+
+// StartParticipants starts the services taken down by StopValidators and
+// StopNodes or by KillParticipants, in the order of a full-outage recovery:
+// every execution client, the beacon nodes from the first participant on,
+// then every validator client. A started service is published on other host
+// ports, so the environment is read again and the nodes opened before the
+// restart are closed. Only this runtime sees the new ports: the lane manifest
+// keeps the old ones, so a lane that restarts services runs a single suite.
 func (runtime *Runtime) StartParticipants(ctx context.Context) error {
 	validators, beacons, executions := runtime.services()
 	services := slices.Concat(executions, beacons, validators)

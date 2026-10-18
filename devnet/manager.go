@@ -11,6 +11,8 @@ import (
 
 	"github.com/cyyber/qrl-tests/devnet/internal/kurtosis"
 	"github.com/cyyber/qrl-tests/internal/devwallet"
+	"github.com/cyyber/qrl-tests/internal/dockerapi"
+	dockerclient "github.com/moby/moby/client"
 )
 
 const (
@@ -36,6 +38,11 @@ type enclaveClient interface {
 	StopServices(ctx context.Context, enclaveName string, names []string) error
 	StartServices(ctx context.Context, enclaveName string, names []string) error
 	DestroyEnclave(ctx context.Context, name string) error
+}
+
+type containerKiller interface {
+	containerLister
+	ContainerKill(context.Context, string, dockerclient.ContainerKillOptions) (dockerclient.ContainerKillResult, error)
 }
 
 type StartOptions struct {
@@ -213,6 +220,67 @@ func (manager *Manager) StopServices(ctx context.Context, name string, services 
 		return fmt.Errorf("stop services %v: %w", services, err)
 	}
 	return nil
+}
+
+// KillServices kills the named services of a running network, in order,
+// without letting them shut down. They keep their data and flags until
+// StartServices starts them again.
+func (manager *Manager) KillServices(ctx context.Context, name string, services []string) error {
+	docker, err := dockerapi.New()
+	if err != nil {
+		return fmt.Errorf("kill services %v: create Docker client: %w", services, err)
+	}
+	defer func() { _ = docker.Close() }()
+
+	if err := manager.killServices(ctx, docker, name, services); err != nil {
+		return fmt.Errorf("kill services %v: %w", services, err)
+	}
+	return nil
+}
+
+func (manager *Manager) killServices(ctx context.Context, docker containerKiller, name string, services []string) error {
+	client, err := manager.newEnclaveClient()
+	if err != nil {
+		return err
+	}
+	running, err := client.Services(ctx, name)
+	if err != nil {
+		return err
+	}
+
+	killed, err := killContainers(ctx, docker, name, running, services)
+
+	// Kurtosis still records the killed services as running, and it only
+	// starts services it stopped. Stopping a container that has already
+	// exited does nothing else. Mark them stopped even if a later kill
+	// failed, so they can still be started again.
+	if len(killed) > 0 {
+		if stopErr := client.StopServices(ctx, name, killed); stopErr != nil {
+			return errors.Join(err, stopErr)
+		}
+	}
+	return err
+}
+
+// killContainers kills the container of each service in order, and returns
+// the services it killed before any error.
+func killContainers(ctx context.Context, docker containerKiller, name string, running map[string]kurtosis.Service, services []string) ([]string, error) {
+	var killed []string
+	for _, service := range services {
+		info, found := running[service]
+		if !found {
+			return killed, fmt.Errorf("network %q has no service %q", name, service)
+		}
+		container, err := serviceContainer(ctx, docker, info.UUID)
+		if err != nil {
+			return killed, fmt.Errorf("find %s container: %w", service, err)
+		}
+		if _, err := docker.ContainerKill(ctx, container.ID, dockerclient.ContainerKillOptions{Signal: "SIGKILL"}); err != nil {
+			return killed, fmt.Errorf("kill %s: %w", service, err)
+		}
+		killed = append(killed, service)
+	}
+	return killed, nil
 }
 
 // StartServices starts the named stopped services, in order. They come back

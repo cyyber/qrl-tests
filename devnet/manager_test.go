@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/cyyber/qrl-tests/devnet/internal/kurtosis"
+	containertypes "github.com/moby/moby/api/types/container"
+	dockerclient "github.com/moby/moby/client"
 	"github.com/stretchr/testify/require"
 )
 
@@ -306,6 +308,87 @@ func TestStop(t *testing.T) {
 	running := &fakeEnclaveClient{exists: true}
 	require.NoError(t, testManager(running).Stop(t.Context(), "running"))
 	require.True(t, running.destroyed)
+}
+
+// fakeContainerKiller runs one container per Kurtosis service UUID.
+type fakeContainerKiller struct {
+	containers map[string]string // container ID by service UUID
+	killErr    error
+	killed     []string
+	signals    []string
+}
+
+func (client *fakeContainerKiller) ContainerList(_ context.Context, options dockerclient.ContainerListOptions) (dockerclient.ContainerListResult, error) {
+	var result dockerclient.ContainerListResult
+	for uuid, id := range client.containers {
+		if options.Filters["label"][kurtosisServiceUUIDDockerLabel+"="+uuid] {
+			result.Items = append(result.Items, containertypes.Summary{ID: id})
+		}
+	}
+	return result, nil
+}
+
+func (client *fakeContainerKiller) ContainerKill(_ context.Context, id string, options dockerclient.ContainerKillOptions) (dockerclient.ContainerKillResult, error) {
+	client.killed = append(client.killed, id)
+	client.signals = append(client.signals, options.Signal)
+	return dockerclient.ContainerKillResult{}, client.killErr
+}
+
+func TestKillServices(t *testing.T) {
+	newNetwork := func() (*Manager, *fakeEnclaveClient, *fakeContainerKiller) {
+		client := &fakeEnclaveClient{exists: true, services: map[string]kurtosis.Service{
+			"vc-1": {UUID: "uuid-vc-1"},
+			"cl-1": {UUID: "uuid-cl-1"},
+			"el-1": {UUID: "uuid-el-1"},
+		}}
+		docker := &fakeContainerKiller{containers: map[string]string{
+			"uuid-vc-1": "container-vc-1",
+			"uuid-cl-1": "container-cl-1",
+			"uuid-el-1": "container-el-1",
+		}}
+		return testManager(client), client, docker
+	}
+
+	t.Run("kills, then marks stopped", func(t *testing.T) {
+		manager, client, docker := newNetwork()
+		require.NoError(t, manager.killServices(t.Context(), docker, "network", []string{"vc-1", "cl-1", "el-1"}))
+		require.Equal(t, []string{"container-vc-1", "container-cl-1", "container-el-1"}, docker.killed)
+		require.Equal(t, []string{"SIGKILL", "SIGKILL", "SIGKILL"}, docker.signals)
+		require.Equal(t, []string{"vc-1", "cl-1", "el-1"}, client.stopped)
+	})
+
+	t.Run("unknown service after a kill", func(t *testing.T) {
+		manager, client, docker := newNetwork()
+		require.EqualError(t, manager.killServices(t.Context(), docker, "network", []string{"vc-1", "vc-2"}),
+			`network "network" has no service "vc-2"`)
+		require.Equal(t, []string{"container-vc-1"}, docker.killed)
+		require.Equal(t, []string{"vc-1"}, client.stopped)
+	})
+
+	t.Run("no running container", func(t *testing.T) {
+		manager, client, docker := newNetwork()
+		delete(docker.containers, "uuid-cl-1")
+		require.EqualError(t, manager.killServices(t.Context(), docker, "network", []string{"cl-1"}),
+			`find cl-1 container: expected one running Docker container for service "uuid-cl-1", found 0`)
+		require.Empty(t, client.stopped)
+	})
+
+	t.Run("kill fails", func(t *testing.T) {
+		manager, client, docker := newNetwork()
+		docker.killErr = errors.New("daemon unavailable")
+		require.EqualError(t, manager.killServices(t.Context(), docker, "network", []string{"el-1"}),
+			"kill el-1: daemon unavailable")
+		require.Empty(t, client.stopped)
+	})
+
+	t.Run("stop fails", func(t *testing.T) {
+		manager, client, docker := newNetwork()
+		client.serviceErr = errors.New("engine unavailable")
+		require.EqualError(t, manager.killServices(t.Context(), docker, "network", []string{"el-1"}),
+			"engine unavailable")
+		require.Equal(t, []string{"container-el-1"}, docker.killed)
+		require.Equal(t, []string{"el-1"}, client.stopped)
+	})
 }
 
 func TestStopAndStartServices(t *testing.T) {
