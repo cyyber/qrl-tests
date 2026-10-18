@@ -1,4 +1,4 @@
-.PHONY: lint network-preflight network-start network-stop e2e e2e-run
+.PHONY: lint network-preflight network-start network-stop e2e e2e-run soak soak-run
 
 GOLANGCI_LINT_VERSION ?= v2.12.2
 DEVNET_BACKEND ?= docker
@@ -11,7 +11,8 @@ lint:
 network-preflight:
 	@case "$(DEVNET_BACKEND)" in \
 		docker) docker info >/dev/null 2>&1 || { echo "Docker is required and its daemon must be running" >&2; exit 1; } ;; \
-		*) echo "DEVNET_BACKEND must be docker" >&2; exit 2 ;; \
+		kubernetes) ;; \
+		*) echo "DEVNET_BACKEND must be docker or kubernetes" >&2; exit 2 ;; \
 	esac
 	@kurtosis version 2>/dev/null | grep -Eq '^CLI Version:[[:space:]]+1\.20\.' || { \
 		echo "Kurtosis CLI 1.20.x is required (https://docs.kurtosis.com/upgrade)" >&2; \
@@ -30,3 +31,9 @@ e2e:
 
 e2e-run: network-preflight
 	go run ./cmd/qrltest run $(E2E_SUITE_ARGS) "$(E2E_LANE)"
+
+soak:
+	go run ./cmd/qrltest soak --existing
+
+soak-run: network-preflight
+	go run ./cmd/qrltest soak

@@ -3,7 +3,7 @@
 This directory provides a reusable package for a Kurtosis-backed QRL
 development network, driven by the `qrltest` CLI in
 [`cmd/qrltest`](../cmd/qrltest). It runs on Kurtosis's Docker backend with
-Kurtosis CLI 1.20.x.
+Kurtosis CLI 1.20.x; the soak also runs on Kubernetes.
 
 ## Run
 
@@ -19,7 +19,7 @@ and waits for readiness. It does not build images or run the test suites.
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `DEVNET_BACKEND` | `docker` | Kurtosis backend: `docker`, the only one for now |
+| `DEVNET_BACKEND` | `docker` | Kurtosis backend: `docker`, or `kubernetes` for the soak |
 | `DEVNET_ENCLAVE_NAME` | `go-qrl-devnet` | Kurtosis enclave |
 | `DEVNET_EXECUTION_IMAGE` | `local/go-qrl:devnet` | Execution client image reference |
 | `DEVNET_CLEF_IMAGE` | `local/go-qrl-clef:devnet` | Clef signer image reference |
@@ -27,9 +27,16 @@ and waits for readiness. It does not build images or run the test suites.
 | `DEVNET_VALIDATOR_IMAGE` | `local/qrysm-validator:devnet` | Validator client image reference |
 | `DEVNET_GENESIS_IMAGE` | `local/qrl-genesis-generator:devnet` | Genesis generator image reference |
 | `DEVNET_QRYSM_ALLTOOLS_IMAGE` | `local/qrysm-alltools:devnet` | Qrysm all-tools image reference, for E2E lanes that run its command-line tools; it is not pulled |
+| `DEVNET_TX_SPAMMER_IMAGE` | `local/qrl-tx-spammer:devnet` | Transaction spammer image (soak profile) |
+| `DEVNET_METRICS_EXPORTER_IMAGE` | `local/qrl-metrics-exporter:devnet` | Metrics exporter image (soak profile) |
 | `DEVNET_PROFILE` | `single` | Built-in profile used by `network-start` |
+| `DEVNET_ENDPOINT_MODE` | `public` | `public` (gateway/published ports) or `cluster` (in-network) |
 | `DEVNET_START_TIMEOUT` | `5m` | Network startup budget |
 | `DEVNET_PARAMS_FILE` | unset | Complete qrl-package YAML parameters |
+| `SOAK_DURATION` | `4h` | Steady-state window of `qrltest soak` |
+| `SOAK_LOAD_PERCENT` | `30` | Share of block gas the soak spammer targets; `0` is idle |
+| `SOAK_ENFORCE` | unset | Fail `qrltest soak` when a gate is breached |
+| `KEEP_NETWORK` | unset | Leave the provisioned soak network running |
 
 `e2e-run` derives its network profile from `E2E_LANE` and does not use
 `DEVNET_PROFILE`.

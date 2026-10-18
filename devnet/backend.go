@@ -5,18 +5,23 @@ import (
 	"strings"
 )
 
-// BackendDocker is the only backend for now.
-const BackendDocker Backend = "docker"
+// The E2E lanes run on Docker; the soak runs on either.
+const (
+	BackendDocker     Backend = "docker"
+	BackendKubernetes Backend = "kubernetes"
+)
 
 type Backend string
 
 // ParseBackend validates the raw value, resolving the empty value to the
-// Docker backend; only a verified value becomes a Backend.
+// default Docker backend; only a verified value becomes a Backend.
 func ParseBackend(value string) (Backend, error) {
 	switch trimmed := strings.TrimSpace(value); trimmed {
-	case "", string(BackendDocker):
+	case "":
 		return BackendDocker, nil
+	case string(BackendDocker), string(BackendKubernetes):
+		return Backend(trimmed), nil
 	default:
-		return "", fmt.Errorf("unsupported Kurtosis backend %q; only %s is supported", value, BackendDocker)
+		return "", fmt.Errorf("unsupported Kurtosis backend %q", value)
 	}
 }

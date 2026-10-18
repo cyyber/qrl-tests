@@ -1,0 +1,72 @@
+# Soak gate thresholds. Bump `version` whenever a value changes so a verdict
+# can always be traced to the exact rules it was judged against; the version
+# is written into results.json and run-manifest.json.
+#
+# Sizing assumptions: 5 s slots, 8 slots per epoch, four participants, a
+# 30 M gas block, sampling every 30 s. Rates are expressed per sample window
+# unless a unit says otherwise.
+version: 1
+
+warmup:
+  # Gates start counting once every participant has finalized this many
+  # epochs and the load generator has been running for a full sampling window.
+  finalized_epochs: 2
+  timeout: 20m
+
+chain:
+  # Blocks per minute at 5 s slots is 12; allow a third of slots to be missed
+  # in a window before calling the chain stalled.
+  min_head_blocks_per_minute: 8
+  # Rate of slots without a block over the whole steady window.
+  max_missed_slot_rate: 0.10
+  # Head epoch minus finalized epoch; two is the protocol minimum.
+  max_finality_lag_epochs: 4
+  # Consecutive samples with no head progress on a participant.
+  max_stalled_samples: 4
+
+peers:
+  # -1 means "all other participants" (participants - 1).
+  min_execution_peers: -1
+  min_consensus_peers: -1
+  # Share of samples a participant may be under-peered.
+  max_breach_rate: 0.05
+
+rpc:
+  # Failed probe calls over all probe calls in the steady window.
+  max_error_rate: 0.01
+
+consensus:
+  # Samples where participants disagreed on the hash or state root of the
+  # same finalized-distance reference block.
+  max_split_samples: 0
+
+canary:
+  # Inclusion latency of the deterministic canary transfer, send to receipt.
+  p50_max: 15s
+  p95_max: 30s
+  # Canaries neither included nor reverted within the timeout are failures.
+  timeout: 60s
+  max_failure_rate: 0.02
+
+memory:
+  # Linear-regression slopes over the steady window. Client heaps grow with
+  # chain state; these bounds catch leaks, not legitimate state growth.
+  execution_rss_slope_max_mb_per_hour: 96
+  consensus_rss_slope_max_mb_per_hour: 96
+  validator_rss_slope_max_mb_per_hour: 48
+  heap_slope_max_mb_per_hour: 64
+  goroutine_slope_max_per_hour: 200
+  # Container working set (cgroup) via metrics.k8s.io; Kubernetes only.
+  working_set_slope_max_mb_per_hour: 128
+  # Working set as a share of the container memory limit at any sample.
+  max_working_set_share_of_limit: 0.85
+  # Fewer samples than this and the memory gates report "insufficient data"
+  # instead of a verdict.
+  min_samples: 20
+
+metrics:
+  # Prometheus metric names read from each client's metrics endpoint; the
+  # first present name wins so go-qrl and Qrysm naming can drift separately.
+  rss: [process_resident_memory_bytes, system_memory_used]
+  heap: [go_memstats_heap_inuse_bytes, go_memstats_heap_alloc_bytes]
+  goroutines: [go_goroutines]

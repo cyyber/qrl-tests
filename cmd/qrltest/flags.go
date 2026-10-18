@@ -20,7 +20,7 @@ func enclaveNameFlag() *cli.StringFlag {
 func backendFlag() *cli.StringFlag {
 	return &cli.StringFlag{
 		Name:    "backend",
-		Usage:   "Kurtosis backend: docker (the only one for now)",
+		Usage:   "Kurtosis backend: docker, or kubernetes for the soak",
 		Value:   string(devnet.BackendDocker),
 		EnvVars: []string{"DEVNET_BACKEND"},
 	}
@@ -79,15 +79,47 @@ func imageFlags() []cli.Flag {
 			Value:   images.Genesis,
 			EnvVars: []string{"DEVNET_GENESIS_IMAGE"},
 		},
+		&cli.StringFlag{
+			Name:    "tx-spammer-image",
+			Usage:   "transaction spammer image reference",
+			Value:   images.TxSpammer,
+			EnvVars: []string{"DEVNET_TX_SPAMMER_IMAGE"},
+		},
+		&cli.StringFlag{
+			Name:    "metrics-exporter-image",
+			Usage:   "qrl-metrics-exporter image reference",
+			Value:   images.MetricsExporter,
+			EnvVars: []string{"DEVNET_METRICS_EXPORTER_IMAGE"},
+		},
 	}
 }
 
 func imagesFromFlags(command *cli.Context) devnet.Images {
 	return devnet.Images{
-		Execution: command.String("execution-image"),
-		Clef:      command.String("clef-image"),
-		Consensus: command.String("consensus-image"),
-		Validator: command.String("validator-image"),
-		Genesis:   command.String("genesis-image"),
+		Execution:       command.String("execution-image"),
+		Clef:            command.String("clef-image"),
+		Consensus:       command.String("consensus-image"),
+		Validator:       command.String("validator-image"),
+		Genesis:         command.String("genesis-image"),
+		TxSpammer:       command.String("tx-spammer-image"),
+		MetricsExporter: command.String("metrics-exporter-image"),
+	}
+}
+
+func endpointModeFlag() *cli.StringFlag {
+	return &cli.StringFlag{
+		Name:    "endpoint-mode",
+		Usage:   "service endpoint resolution: public or cluster",
+		Value:   string(devnet.EndpointModePublic),
+		EnvVars: []string{"DEVNET_ENDPOINT_MODE"},
+	}
+}
+
+func loadPercentFlag() *cli.IntFlag {
+	return &cli.IntFlag{
+		Name:    "load-percent",
+		Usage:   "share of block gas capacity the soak load generator targets; 0 disables it",
+		Value:   devnet.DefaultLoadPercent,
+		EnvVars: []string{"SOAK_LOAD_PERCENT"},
 	}
 }
