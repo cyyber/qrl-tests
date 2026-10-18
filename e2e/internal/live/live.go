@@ -22,6 +22,7 @@ type Runtime struct {
 	Address            common.Address
 	ChainID            *big.Int
 	ExecutionImage     string
+	ConsensusImage     string
 	ValidatorImage     string
 	QrysmAlltoolsImage string
 
@@ -33,6 +34,7 @@ type Runtime struct {
 // beacon clients plus the shared suite Runtime.
 type Node struct {
 	*Runtime
+	Participant           devnet.Participant
 	ExecutionRPCURL       string
 	ExecutionWebSocketURL string
 	Execution             *qrlclient.Client
@@ -60,6 +62,7 @@ func Load() (*Runtime, error) {
 		Wallet:             wallet,
 		Address:            common.Address(wallet.GetAddress()),
 		ExecutionImage:     suiteManifest.ExecutionImage,
+		ConsensusImage:     suiteManifest.ConsensusImage,
 		ValidatorImage:     suiteManifest.ValidatorImage,
 		QrysmAlltoolsImage: suiteManifest.QrysmAlltoolsImage,
 		environment:        suiteManifest.Environment,
@@ -118,6 +121,7 @@ func (runtime *Runtime) open(ctx context.Context, participant devnet.Participant
 
 	node := &Node{
 		Runtime:               runtime,
+		Participant:           participant,
 		ExecutionRPCURL:       participant.Execution.RPCURL,
 		ExecutionWebSocketURL: participant.Execution.WebSocketURL,
 		Execution:             client,

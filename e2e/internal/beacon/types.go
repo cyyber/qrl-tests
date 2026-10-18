@@ -15,6 +15,19 @@ type BlockHeader struct {
 	Root string
 }
 
+type SyncStatus struct {
+	HeadSlot     uint64 `json:"head_slot,string"`
+	SyncDistance uint64 `json:"sync_distance,string"`
+	IsSyncing    bool   `json:"is_syncing"`
+	IsOptimistic bool   `json:"is_optimistic"`
+	ELOffline    bool   `json:"el_offline"`
+}
+
+type Identity struct {
+	PeerID       string   `json:"peer_id"`
+	P2PAddresses []string `json:"p2p_addresses"`
+}
+
 type Checkpoint struct {
 	Epoch uint64 `json:"epoch,string"`
 	Root  string `json:"root"`
