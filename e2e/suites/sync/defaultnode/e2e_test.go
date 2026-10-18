@@ -35,10 +35,11 @@ func TestE2E(t *testing.T) {
 	testsuite.Run(t, "Default sync E2E suite")
 }
 
-// The node with gqrl's default snap mode and the node in full mode sync on
-// their own, so a failure of one still runs the other and the restart.
+// Every node syncs on its own, so a failure of one still runs the others.
+// The two from genesis run first, then the restart of the full-mode one,
+// then the one from a checkpoint, each against the same source and history.
 var _ = ginkgo.Describe(
-	"A new node syncing from genesis",
+	"A new node syncing from genesis or from a checkpoint",
 	ginkgo.Serial,
 	ginkgo.Ordered,
 	ginkgo.ContinueOnFailure,
@@ -53,17 +54,37 @@ var _ = ginkgo.Describe(
 			// fullNode runs gqrl in full mode and is the one restarted.
 			snapNode *syncnode.Node
 			fullNode *syncnode.Node
+			// checkpointNode syncs from a checkpoint.
+			checkpointNode *syncnode.Node
 		)
 
-		startNode := func(ctx ginkgo.SpecContext, name, syncMode string) *syncnode.Node {
+		startNode := func(ctx ginkgo.SpecContext, name, syncMode string, origin syncnode.BeaconOrigin) *syncnode.Node {
 			ginkgo.GinkgoHelper()
 			return testsuite.MustSucceed(syncnode.Start(ctx, syncnode.Config{
 				Name:           name,
 				ExecutionImage: runtime.ExecutionImage,
 				ConsensusImage: runtime.ConsensusImage,
 				SyncMode:       syncMode,
+				BeaconOrigin:   origin,
 				Source:         source.Participant,
 			}))
+		}
+
+		// startFromCheckpoint starts a node whose beacon node fetches the
+		// source's finalized checkpoint, and returns the slot of that
+		// checkpoint's block: the node's finalized block right after it
+		// starts, which only moves once the source finalizes further.
+		startFromCheckpoint := func(ctx ginkgo.SpecContext, name, syncMode string) (*syncnode.Node, uint64) {
+			ginkgo.GinkgoHelper()
+			finalizedBefore := testsuite.MustSucceed(source.Beacon.FinalityCheckpoints(ctx)).Finalized
+			node := startNode(ctx, name, syncMode, syncnode.Checkpoint)
+			origin := testsuite.MustSucceed(node.Beacon.BlockHeader(ctx, "finalized"))
+			finalizedAfter := testsuite.MustSucceed(source.Beacon.FinalityCheckpoints(ctx)).Finalized
+			gomega.Expect(origin.Root).To(gomega.BeElementOf(finalizedBefore.Root, finalizedAfter.Root),
+				"the node did not start from the source's finalized checkpoint")
+			gomega.Expect(origin.Slot).To(gomega.BeNumerically(">", 0), "the node started from genesis")
+			ginkgo.AddReportEntry("checkpoint slot", origin.Slot)
+			return node, origin.Slot
 		}
 
 		ginkgo.BeforeAll(func(ctx ginkgo.SpecContext) {
@@ -81,6 +102,7 @@ var _ = ginkgo.Describe(
 		ginkgo.AfterEach(func() {
 			testsuite.ReportLogsOnFailure("snap-mode node", snapNode)
 			testsuite.ReportLogsOnFailure("full-mode node", fullNode)
+			testsuite.ReportLogsOnFailure("checkpoint node", checkpointNode)
 		})
 
 		ginkgo.It("has a finalized history to sync", func(ctx ginkgo.SpecContext) {
@@ -99,7 +121,7 @@ var _ = ginkgo.Describe(
 
 		ginkgo.It("syncs with the default settings: gqrl in snap mode, Qrysm from genesis", func(ctx ginkgo.SpecContext) {
 			gomega.Expect(written.Transactions).NotTo(gomega.BeEmpty(), "there is no history to sync")
-			snapNode = startNode(ctx, "sync-snap", "snap")
+			snapNode = startNode(ctx, "sync-snap", "snap", syncnode.Genesis)
 			// Removed at the end of the spec, so it holds no memory while the
 			// full-mode node runs.
 			ginkgo.DeferCleanup(func() {
@@ -107,26 +129,32 @@ var _ = ginkgo.Describe(
 				snapNode = nil
 			})
 
-			path := waitForHead(ctx, snapNode, source, chain)
+			run := waitForHead(ctx, snapNode, source, chain)
 			// On the genesis route, gqrl in snap mode may still import every
 			// block it is handed: that depends on how far behind the head the
 			// first one is. Either way the node must end up the same. Until
 			// cyyber/go-qrl#278 is fixed it marks block 1 invalid instead.
-			ginkgo.AddReportEntry("execution sync path", path.String())
-			expectSynced(ctx, snapNode, source, chain, written)
+			ginkgo.AddReportEntry("execution sync path", run.path.String())
+			expectSynced(ctx, snapNode, source, chain, written, wholeHistory)
 		}, ginkgo.SpecTimeout(15*time.Minute))
 
 		ginkgo.It("syncs with gqrl in full mode and Qrysm from genesis", func(ctx ginkgo.SpecContext) {
 			gomega.Expect(written.Transactions).NotTo(gomega.BeEmpty(), "there is no history to sync")
-			fullNode = startNode(ctx, "sync-full", "full")
+			fullNode = startNode(ctx, "sync-full", "full", syncnode.Genesis)
 
-			path := waitForHead(ctx, fullNode, source, chain)
-			ginkgo.AddReportEntry("execution sync path", path.String())
-			expectSynced(ctx, fullNode, source, chain, written)
+			run := waitForHead(ctx, fullNode, source, chain)
+			ginkgo.AddReportEntry("execution sync path", run.path.String())
+			expectSynced(ctx, fullNode, source, chain, written, wholeHistory)
 		}, ginkgo.SpecTimeout(15*time.Minute))
 
 		ginkgo.It("catches up after it stops for two epochs past a new finalized checkpoint", func(ctx ginkgo.SpecContext) {
 			gomega.Expect(fullNode).NotTo(gomega.BeNil(), "the full-mode node never started")
+			// Removed at the end of the spec, the last one that needs it, so
+			// it holds no memory while the checkpoint nodes run.
+			ginkgo.DeferCleanup(func() {
+				gomega.Expect(fullNode.Close()).To(gomega.Succeed())
+				fullNode = nil
+			})
 			stoppedAt := testsuite.MustSucceed(fullNode.Execution.BlockNumber(ctx))
 			finalizedBefore := testsuite.MustSucceed(source.Beacon.FinalityCheckpoints(ctx)).Finalized.Epoch
 			gomega.Expect(fullNode.Stop(ctx)).To(gomega.Succeed())
@@ -149,9 +177,30 @@ var _ = ginkgo.Describe(
 			gomega.Expect(nodeHead.Slot+chain.SlotsPerEpoch).To(gomega.BeNumerically("<", sourceHead.Slot),
 				"the restarted node is not behind")
 
-			path := waitForHead(ctx, fullNode, source, chain)
-			ginkgo.AddReportEntry("execution sync path after the restart", path.String())
-			expectSynced(ctx, fullNode, source, chain, written)
+			run := waitForHead(ctx, fullNode, source, chain)
+			ginkgo.AddReportEntry("execution sync path after the restart", run.path.String())
+			expectSynced(ctx, fullNode, source, chain, written, wholeHistory)
+		}, ginkgo.SpecTimeout(15*time.Minute))
+
+		// The checkpoint is past block 200, so the head the beacon node
+		// hands gqrl is one it has to download over devp2p: the state at
+		// the pivot 64 blocks behind it, and the chain back to genesis. The
+		// beacon node serves blocks from the checkpoint slot on, and none
+		// before.
+		ginkgo.It("syncs with gqrl in snap mode and Qrysm from a checkpoint", func(ctx ginkgo.SpecContext) {
+			gomega.Expect(written.Transactions).NotTo(gomega.BeEmpty(), "there is no history to sync")
+			var checkpointSlot uint64
+			checkpointNode, checkpointSlot = startFromCheckpoint(ctx, "sync-snap-checkpoint", "snap")
+			ginkgo.DeferCleanup(func() {
+				gomega.Expect(checkpointNode.Close()).To(gomega.Succeed())
+				checkpointNode = nil
+			})
+
+			run := waitForHead(ctx, checkpointNode, source, chain)
+			ginkgo.AddReportEntry("execution sync path", run.path.String())
+			gomega.Expect(run.path.downloaded).To(gomega.BeTrue(),
+				"neither qrl_syncing nor the log shows the execution client downloading the chain")
+			expectSynced(ctx, checkpointNode, source, chain, written, served{firstSlot: checkpointSlot})
 		}, ginkgo.SpecTimeout(15*time.Minute))
 	},
 )

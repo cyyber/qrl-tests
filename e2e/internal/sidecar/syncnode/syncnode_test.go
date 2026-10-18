@@ -10,6 +10,7 @@ import (
 	"net/netip"
 	"net/url"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 
@@ -49,6 +50,7 @@ func testSource(context.Context, devnet.Participant) (source, error) {
 		networkID:  "1337",
 		qnode:      sourceQnode,
 		beaconPeer: "/ip4/172.16.0.12/tcp/13000/p2p/16Uiu2",
+		beaconAPI:  "http://172.16.0.12:3500",
 	}, nil
 }
 
@@ -124,6 +126,10 @@ func TestStartLaunchesBothClients(t *testing.T) {
 	require.Contains(t, consensus.Config.Cmd, "--execution-endpoint=http://qrl-tests-sync-node-execution:8551")
 	require.Contains(t, consensus.Config.Cmd, "--peer=/ip4/172.16.0.12/tcp/13000/p2p/16Uiu2")
 	require.Contains(t, consensus.Config.Cmd, "--min-sync-peers=1")
+	require.Contains(t, consensus.Config.Cmd, "--genesis-state="+genesisStatePath)
+	for _, flag := range consensus.Config.Cmd {
+		require.NotContains(t, flag, "--checkpoint-sync-url", "a node syncing from genesis has no checkpoint")
+	}
 	require.Equal(t, containertypes.NetworkMode("kt-devnet"), consensus.HostConfig.NetworkMode)
 
 	require.Equal(t, []string{sourceQnode}, *addedPeers)
@@ -151,6 +157,11 @@ func TestStartFailures(t *testing.T) {
 			name:    "bad sync mode",
 			edit:    func(config *Config, _ *sidecartest.Docker) { config.SyncMode = "light" },
 			wantErr: `sync mode "light" is not snap or full`,
+		},
+		{
+			name:    "bad beacon origin",
+			edit:    func(config *Config, _ *sidecartest.Docker) { config.BeaconOrigin = "backfill" },
+			wantErr: `beacon origin "backfill" is not genesis or checkpoint`,
 		},
 		{
 			name:    "name is not a DNS label",
@@ -234,8 +245,29 @@ func TestJWTSecret(t *testing.T) {
 	require.Regexp(t, `^0x[0-9a-f]{64}$`, string(secret))
 }
 
+func TestStartFromCheckpoint(t *testing.T) {
+	docker, _ := newDocker(t)
+	config := testConfig()
+	config.BeaconOrigin = Checkpoint
+
+	node, err := start(t.Context(), config, docker, testSource)
+	require.NoError(t, err)
+	defer func() { require.NoError(t, node.Close()) }()
+	require.Len(t, docker.Creates, 2)
+
+	command := docker.Creates[1].Config.Cmd
+	require.Contains(t, command, "--checkpoint-sync-url=http://172.16.0.12:3500")
+	require.Contains(t, command, "--genesis-state="+genesisStatePath, "the genesis state is loaded along with the checkpoint")
+}
+
 func TestBeaconCommandReachesExecutionByAlias(t *testing.T) {
-	command := beaconCommand("qrl-tests-a-execution", "/ip4/172.16.0.12/tcp/13000/p2p/16Uiu2")
-	require.Contains(t, command, "--execution-endpoint=http://"+net.JoinHostPort("qrl-tests-a-execution", "8551"))
-	require.Contains(t, command, "--no-discovery")
+	peer, err := testSource(t.Context(), devnet.Participant{})
+	require.NoError(t, err)
+	for _, origin := range []BeaconOrigin{"", Genesis, Checkpoint} {
+		command := beaconCommand("qrl-tests-a-execution", peer, origin)
+		require.Contains(t, command, "--execution-endpoint=http://"+net.JoinHostPort("qrl-tests-a-execution", "8551"))
+		require.Contains(t, command, "--peer=/ip4/172.16.0.12/tcp/13000/p2p/16Uiu2")
+		require.Contains(t, command, "--no-discovery")
+		require.Equal(t, origin == Checkpoint, slices.Contains(command, "--checkpoint-sync-url=http://172.16.0.12:3500"), "origin %q", origin)
+	}
 }

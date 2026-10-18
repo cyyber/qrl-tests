@@ -36,13 +36,27 @@ const (
 	headPolling  = 500 * time.Millisecond
 )
 
-// syncPath is how the execution client reached the head, as qrl_syncing
-// reported along the way. It answers false all along when the beacon node
-// hands it every block in order, since only its downloader sets a target.
+// syncRun is what a node reported on its way to the head, over its API
+// while it synced and in its logs after. The logs matter: a devnet's chain
+// downloads in well under a second, between two polls.
+type syncRun struct {
+	path syncPath
+}
+
+// syncPath is how the execution client reached the head. Both are false
+// when the beacon node hands it every block in order: only its downloader
+// sets a qrl_syncing target and logs that a synchronisation started.
 type syncPath struct {
 	downloaded bool
 	snap       bool
 }
+
+// Log lines of gqrl's downloader, for both of its modes, and of its snap
+// sync.
+const (
+	downloaderLogLine = "Block synchronisation started"
+	snapSyncLogLine   = "Syncing: state download in progress"
+)
 
 func (path syncPath) String() string {
 	switch {
@@ -55,16 +69,28 @@ func (path syncPath) String() string {
 	}
 }
 
+// served is the part of the source's history a node is expected to hold.
+type served struct {
+	// firstSlot is the first slot the beacon node holds a block for: 0 from
+	// genesis, the origin block's slot after a checkpoint sync, since Qrysm
+	// does not backfill. The execution chain is whole either way: gqrl
+	// downloads the headers back to genesis on both of its sync paths, and
+	// the bodies and receipts with them.
+	firstSlot uint64
+}
+
+var wholeHistory = served{}
+
 // waitForHead waits until both of the node's clients have the source's head.
-func waitForHead(ctx context.Context, node *syncnode.Node, source *live.Node, chain chaininfo.Info) syncPath {
+func waitForHead(ctx context.Context, node *syncnode.Node, source *live.Node, chain chaininfo.Info) syncRun {
 	ginkgo.GinkgoHelper()
-	var path syncPath
+	var run syncRun
 	gomega.Eventually(func(g gomega.Gomega) {
 		progress, err := node.Execution.SyncProgress(ctx)
 		g.Expect(err).NotTo(gomega.HaveOccurred())
 		if progress != nil {
-			path.downloaded = path.downloaded || progress.HighestBlock > 0
-			path.snap = path.snap || progress.SyncedAccounts > 0 || progress.SyncedStorage > 0
+			run.path.downloaded = run.path.downloaded || progress.HighestBlock > 0
+			run.path.snap = run.path.snap || progress.SyncedAccounts > 0 || progress.SyncedStorage > 0
 		}
 
 		// Within one block: the source may have just imported the next.
@@ -86,13 +112,17 @@ func waitForHead(ctx context.Context, node *syncnode.Node, source *live.Node, ch
 		WithTimeout(syncTimeout).
 		WithPolling(headPolling).
 		Should(gomega.Succeed())
-	return path
+
+	executionLog := testsuite.MustSucceed(node.ExecutionLog())
+	run.path.downloaded = run.path.downloaded || strings.Contains(executionLog, downloaderLogLine)
+	run.path.snap = run.path.snap || strings.Contains(executionLog, snapSyncLogLine)
+	return run
 }
 
 // expectSynced checks a node that has reached the source's head: that it
-// says it is synced, holds the same chain, state and history, keeps up, and
-// passes on transactions.
-func expectSynced(ctx context.Context, node *syncnode.Node, source *live.Node, chain chaininfo.Info, written history.History) {
+// says it is synced, holds the same chain, state and history over the range
+// it serves, keeps up, and passes on transactions.
+func expectSynced(ctx context.Context, node *syncnode.Node, source *live.Node, chain chaininfo.Info, written history.History, holds served) {
 	ginkgo.GinkgoHelper()
 
 	ginkgo.By("reporting synced")
@@ -116,8 +146,16 @@ func expectSynced(ctx context.Context, node *syncnode.Node, source *live.Node, c
 		gomega.Expect(nodeHeader.Hash()).To(gomega.Equal(sourceHeader.Hash()), "block %d", number)
 	}
 	headSlot := testsuite.MustSucceed(node.Beacon.HeadSlot(ctx))
-	for _, slot := range sampled(headSlot) {
+	gomega.Expect(headSlot).To(gomega.BeNumerically(">=", holds.firstSlot), "the head is before the first slot the node serves")
+	for _, slot := range sampledRange(holds.firstSlot, headSlot) {
 		expectSameBlockAtSlot(ctx, node.Beacon, source.Beacon, slot)
+	}
+	if holds.firstSlot > 0 {
+		// Before its checkpoint the node has nothing, and must not have
+		// anything else.
+		for _, slot := range sampledRange(0, holds.firstSlot-1) {
+			expectNoOtherBlockAtSlot(ctx, node.Beacon, source.Beacon, slot)
+		}
 	}
 	gomega.Eventually(func(g gomega.Gomega) {
 		nodeCheckpoints, err := node.Beacon.FinalityCheckpoints(ctx)
@@ -129,8 +167,9 @@ func expectSynced(ctx context.Context, node *syncnode.Node, source *live.Node, c
 	}).WithContext(ctx).WithTimeout(chain.EpochDuration).WithPolling(chain.SlotDuration).Should(gomega.Succeed())
 
 	ginkgo.By("holding the source's state")
-	// The node's head, which the source has the state of too: a full node
-	// keeps the last 128 blocks of state.
+	// The node's head, which both have the state of: a full node keeps the
+	// last 128 blocks of state, and a snap-synced one has none before its
+	// pivot, 64 blocks behind the head it started from.
 	at := new(big.Int).SetUint64(head)
 	for _, account := range append([]common.Address{source.Address}, written.Recipients...) {
 		gomega.Expect(node.Execution.BalanceAt(ctx, account, at)).To(
@@ -207,6 +246,21 @@ func expectSameBlockAtSlot(ctx context.Context, node, source *beacon.Client, slo
 	gomega.Expect(nodeHeader).To(gomega.Equal(sourceHeader), "slot %d", slot)
 }
 
+// expectNoOtherBlockAtSlot fails if the node has a block at slot that the
+// source does not have: a node that does not serve a slot answers not found.
+func expectNoOtherBlockAtSlot(ctx context.Context, node, source *beacon.Client, slot uint64) {
+	ginkgo.GinkgoHelper()
+	blockID := strconv.FormatUint(slot, 10)
+	nodeHeader, nodeErr := node.BlockHeader(ctx, blockID)
+	if beacon.IsNotFound(nodeErr) {
+		return
+	}
+	gomega.Expect(nodeErr).NotTo(gomega.HaveOccurred(), "slot %d", slot)
+	sourceHeader, err := source.BlockHeader(ctx, blockID)
+	gomega.Expect(err).NotTo(gomega.HaveOccurred(), "slot %d has a block on the node but not on the source", slot)
+	gomega.Expect(nodeHeader).To(gomega.Equal(sourceHeader), "slot %d", slot)
+}
+
 // expectRelayed sends a transfer to the node and waits for the source to
 // include it.
 func expectRelayed(ctx context.Context, node *syncnode.Node, source *live.Node) {
@@ -270,9 +324,18 @@ func summarize(receipt *types.Receipt) receiptSummary {
 
 // sampled spreads about samples values from 0 to last, both included.
 func sampled(last uint64) []uint64 {
-	step := max(last/samples, 1)
+	return sampledRange(0, last)
+}
+
+// sampledRange spreads about samples values from first to last, both
+// included.
+func sampledRange(first, last uint64) []uint64 {
+	if first > last {
+		return nil
+	}
+	step := max((last-first)/samples, 1)
 	var values []uint64
-	for value := uint64(0); value < last; value += step {
+	for value := first; value < last; value += step {
 		values = append(values, value)
 	}
 	return append(values, last)

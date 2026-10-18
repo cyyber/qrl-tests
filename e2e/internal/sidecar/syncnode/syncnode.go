@@ -86,9 +86,24 @@ type Config struct {
 	ConsensusImage string
 	// SyncMode is gqrl's --syncmode, "snap" or "full".
 	SyncMode string
+	// BeaconOrigin is where the beacon node starts syncing from: Genesis,
+	// the default, or Checkpoint, the source's finalized checkpoint.
+	BeaconOrigin BeaconOrigin
 	// Source is the participant the node syncs from.
 	Source devnet.Participant
 }
+
+// BeaconOrigin is where a beacon node starts syncing from.
+type BeaconOrigin string
+
+const (
+	// Genesis replays every block from the genesis state.
+	Genesis BeaconOrigin = "genesis"
+	// Checkpoint downloads the source's finalized state and block over its
+	// REST API and starts from there. Qrysm does not backfill, so the node
+	// never holds the blocks before that checkpoint.
+	Checkpoint BeaconOrigin = "checkpoint"
+)
 
 // Node is a running node that the caller must Close.
 type Node struct {
@@ -131,6 +146,9 @@ type source struct {
 	// on the enclave network.
 	qnode      string
 	beaconPeer string
+	// beaconAPI is the source's beacon REST API on the enclave network,
+	// where a checkpoint-synced node fetches its origin from.
+	beaconAPI string
 }
 
 type sourceQuery func(context.Context, devnet.Participant) (source, error)
@@ -182,7 +200,7 @@ func start(ctx context.Context, config Config, client dockerClient, query source
 	node.consensus, err = sidecar.Start(ctx, client, sidecar.Spec{
 		Name:  config.Name + " beacon node",
 		Image: config.ConsensusImage,
-		Cmd:   beaconCommand(executionAlias, peer.beaconPeer),
+		Cmd:   beaconCommand(executionAlias, peer, config.BeaconOrigin),
 		Files: []sidecar.File{
 			{Name: chainConfigPath, Body: files.chainConfig},
 			{Name: genesisStatePath, Body: files.genesisState},
@@ -207,6 +225,9 @@ func validate(config Config) error {
 	if config.SyncMode != "snap" && config.SyncMode != "full" {
 		return fmt.Errorf("sync mode %q is not snap or full", config.SyncMode)
 	}
+	if config.BeaconOrigin != "" && config.BeaconOrigin != Genesis && config.BeaconOrigin != Checkpoint {
+		return fmt.Errorf("beacon origin %q is not genesis or checkpoint", config.BeaconOrigin)
+	}
 	if config.Name == "" || strings.Trim(config.Name, "abcdefghijklmnopqrstuvwxyz0123456789-") != "" {
 		return fmt.Errorf("sync node name %q is not a DNS label", config.Name)
 	}
@@ -227,9 +248,10 @@ func executionEnv(networkID, syncMode string) []string {
 
 // beaconCommand runs the image's beacon-chain entrypoint. A beacon node with
 // --min-sync-peers=0, as the devnet's own run, counts as synced before it has
-// synced anything, so the node waits for its one peer.
-func beaconCommand(executionHost, peer string) []string {
-	return []string{
+// synced anything, so the node waits for its one peer. The genesis state is
+// always loaded: a checkpoint-synced node still needs it to know the chain.
+func beaconCommand(executionHost string, peer source, origin BeaconOrigin) []string {
+	command := []string{
 		"--accept-terms-of-use=true",
 		"--datadir=" + beaconDataDir,
 		"--execution-endpoint=http://" + net.JoinHostPort(executionHost, strconv.Itoa(enginePort)),
@@ -240,10 +262,14 @@ func beaconCommand(executionHost, peer string) []string {
 		"--grpc-gateway-host=0.0.0.0",
 		"--grpc-gateway-port=" + strconv.Itoa(beaconPort),
 		"--no-discovery",
-		"--peer=" + peer,
+		"--peer=" + peer.beaconPeer,
 		"--min-sync-peers=1",
 		"--minimum-peers-per-subnet=0",
 	}
+	if origin == Checkpoint {
+		command = append(command, "--checkpoint-sync-url="+peer.beaconAPI)
+	}
+	return command
 }
 
 type networkFiles struct {
@@ -318,7 +344,12 @@ func querySource(ctx context.Context, participant devnet.Participant) (source, e
 	if err != nil {
 		return source{}, err
 	}
-	return source{networkID: networkID.String(), qnode: qnode, beaconPeer: peer}, nil
+	return source{
+		networkID:  networkID.String(),
+		qnode:      qnode,
+		beaconPeer: peer,
+		beaconAPI:  "http://" + net.JoinHostPort(participant.Consensus.PrivateIP, strconv.Itoa(beaconPort)),
+	}, nil
 }
 
 // privateQnode points a qnode URL at privateIP, keeping its node ID and
