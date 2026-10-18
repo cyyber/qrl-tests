@@ -35,6 +35,8 @@ func TestE2E(t *testing.T) {
 	testsuite.Run(t, "Default sync E2E suite")
 }
 
+// The node with gqrl's default snap mode and the node in full mode sync on
+// their own, so a failure of one still runs the other and the restart.
 var _ = ginkgo.Describe(
 	"A new node syncing from genesis",
 	ginkgo.Serial,
@@ -43,10 +45,13 @@ var _ = ginkgo.Describe(
 	ginkgo.Label("e2e", "sync", "sync-default-node"),
 	func() {
 		var (
-			runtime  *live.Runtime
-			source   *live.Node
-			chain    chaininfo.Info
-			written  history.History
+			runtime *live.Runtime
+			source  *live.Node
+			chain   chaininfo.Info
+			written history.History
+			// snapNode runs gqrl's and Qrysm's default sync settings;
+			// fullNode runs gqrl in full mode and is the one restarted.
+			snapNode *syncnode.Node
 			fullNode *syncnode.Node
 		)
 
@@ -74,6 +79,7 @@ var _ = ginkgo.Describe(
 		})
 
 		ginkgo.AfterEach(func() {
+			testsuite.ReportLogsOnFailure("snap-mode node", snapNode)
 			testsuite.ReportLogsOnFailure("full-mode node", fullNode)
 		})
 
@@ -90,6 +96,25 @@ var _ = ginkgo.Describe(
 				WithPolling(chain.SlotDuration).
 				Should(gomega.Succeed())
 		}, ginkgo.SpecTimeout(30*time.Minute))
+
+		ginkgo.It("syncs with the default settings: gqrl in snap mode, Qrysm from genesis", func(ctx ginkgo.SpecContext) {
+			gomega.Expect(written.Transactions).NotTo(gomega.BeEmpty(), "there is no history to sync")
+			snapNode = startNode(ctx, "sync-snap", "snap")
+			// Removed at the end of the spec, so it holds no memory while the
+			// full-mode node runs.
+			ginkgo.DeferCleanup(func() {
+				gomega.Expect(snapNode.Close()).To(gomega.Succeed())
+				snapNode = nil
+			})
+
+			path := waitForHead(ctx, snapNode, source, chain)
+			// On the genesis route, gqrl in snap mode may still import every
+			// block it is handed: that depends on how far behind the head the
+			// first one is. Either way the node must end up the same. Until
+			// cyyber/go-qrl#278 is fixed it marks block 1 invalid instead.
+			ginkgo.AddReportEntry("execution sync path", path.String())
+			expectSynced(ctx, snapNode, source, chain, written)
+		}, ginkgo.SpecTimeout(15*time.Minute))
 
 		ginkgo.It("syncs with gqrl in full mode and Qrysm from genesis", func(ctx ginkgo.SpecContext) {
 			gomega.Expect(written.Transactions).NotTo(gomega.BeEmpty(), "there is no history to sync")

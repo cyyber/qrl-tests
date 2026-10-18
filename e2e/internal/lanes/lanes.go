@@ -77,8 +77,9 @@ var registry = []Lane{
 	},
 	{
 		// About 200 blocks of history and their finality come first, at
-		// five-second slots. Then a full-mode node syncs, stops for two epochs
-		// past a new finalized checkpoint, and catches up.
+		// five-second slots. Then a snap-mode node and a full-mode node sync,
+		// and the full-mode one stops for two epochs past a new finalized
+		// checkpoint and catches up.
 		Name:    "sync",
 		Profile: devnet.ProfileSingle,
 		Suites:  []SuiteID{suiteSyncDefaultNode},

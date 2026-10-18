@@ -12,7 +12,7 @@ endpoints; suites do not provision infrastructure.
 | `consensus-staking-automated` | `single` | Staking through contract deposits and the keymanager API |
 | `consensus-staking-operator` | `single` | Staking through the deposit and validator CLIs |
 | `resilience-network-restart` | `anchored` | Recovery from a full outage: proposing and finalizing after every node stops at once |
-| `sync` | `single` | A new node with gqrl in full mode syncing from genesis, then catching up after it stops |
+| `sync` | `single` | New nodes syncing from genesis, with gqrl's default snap mode and in full mode, and the full-mode one catching up after it stops |
 
 Run one lane with a fresh network:
 
