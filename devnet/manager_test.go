@@ -120,7 +120,7 @@ func TestStartCleansUpFailedEnclave(t *testing.T) {
 		{
 			name:      "endpoint resolution",
 			client:    new(fakeEnclaveClient),
-			wantError: "resolve network endpoints: no qrl-package participants found",
+			wantError: "resolve network endpoints: no qrl-package participants found (enclave listed no services)",
 		},
 	}
 

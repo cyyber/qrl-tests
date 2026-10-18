@@ -34,6 +34,7 @@ type ParticipantSample struct {
 
 	// Execution layer.
 	Head           uint64 `json:"head"`
+	TxInHead       uint64 `json:"tx_in_head,omitempty"`
 	ReferenceHash  string `json:"reference_hash,omitempty"`
 	ReferenceState string `json:"reference_state_root,omitempty"`
 	ExecutionPeers int    `json:"execution_peers"`
@@ -66,6 +67,9 @@ type ClientMetrics struct {
 	RSSBytes   float64 `json:"rss_bytes,omitempty"`
 	HeapBytes  float64 `json:"heap_bytes,omitempty"`
 	Goroutines float64 `json:"goroutines,omitempty"`
+	OpenFDs    float64 `json:"open_fds,omitempty"`
+	GCPauseSec float64 `json:"gc_pause_seconds,omitempty"`
+	GCCount    float64 `json:"gc_count,omitempty"`
 	Scraped    bool    `json:"scraped"`
 }
 

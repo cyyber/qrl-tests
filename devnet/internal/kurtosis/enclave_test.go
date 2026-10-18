@@ -1,6 +1,7 @@
 package kurtosis
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/kurtosis-tech/kurtosis/api/golang/core/kurtosis_core_rpc_api_bindings"
@@ -70,6 +71,10 @@ func TestServiceEndpoints(t *testing.T) {
 	private, err := service.PrivateEndpoint("rpc", "http")
 	require.NoError(t, err)
 	require.Equal(t, "http://10.0.0.7:8545", private)
+
+	hostPort, err := service.PrivateHostPort("rpc")
+	require.NoError(t, err)
+	require.Equal(t, "10.0.0.7:8545", hostPort)
 
 	_, err = service.PrivateEndpoint("ws", "ws")
 	require.ErrorContains(t, err, `no private "ws" port`)
@@ -148,6 +153,12 @@ func TestConsumeStarlarkCompletion(t *testing.T) {
 			require.EqualError(t, err, test.wantErr)
 		})
 	}
+}
+
+func TestTransientKurtosisError(t *testing.T) {
+	require.False(t, transientKurtosisError(nil))
+	require.False(t, transientKurtosisError(errors.New("no qrl-package participants found")))
+	require.True(t, transientKurtosisError(errors.New("rpc error: code = Unavailable desc = error reading from server: EOF")))
 }
 
 func TestStarlarkErrorKinds(t *testing.T) {

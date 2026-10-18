@@ -124,6 +124,9 @@ func Enrich(ctx context.Context, testsDir string, manifest Manifest) Manifest {
 
 func enrich(ctx context.Context, testsDir string, manifest Manifest, deps dependencies) Manifest {
 	testsRevision, _ := deps.probe(ctx, "git", "-C", testsDir, "rev-parse", "HEAD")
+	if testsRevision == "" {
+		testsRevision = deps.getenv("GITHUB_SHA")
+	}
 
 	manifest.Sources = Sources{
 		GoQRL:     deps.getenv(sourceGoQRLEnv),

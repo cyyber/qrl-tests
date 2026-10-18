@@ -118,8 +118,17 @@ func endpointModeFlag() *cli.StringFlag {
 func loadPercentFlag() *cli.IntFlag {
 	return &cli.IntFlag{
 		Name:    "load-percent",
-		Usage:   "share of block gas capacity the soak load generator targets; 0 disables it",
+		Usage:   "share of block gas capacity the soak load generator targets; 0 disables it (kubernetes accepts only 0: tx_spammer cannot tolerate the work taint)",
 		Value:   devnet.DefaultLoadPercent,
 		EnvVars: []string{"SOAK_LOAD_PERCENT"},
+	}
+}
+
+func participantCountFlag() *cli.IntFlag {
+	return &cli.IntFlag{
+		Name:    "participants",
+		Usage:   "soak participants to provision (1-4); default 1 until the 16 vCPU On-Demand cap is raised",
+		Value:   1,
+		EnvVars: []string{"SOAK_PARTICIPANTS"},
 	}
 }

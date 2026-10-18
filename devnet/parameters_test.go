@@ -90,7 +90,7 @@ func TestSoakParametersKubernetes(t *testing.T) {
 		Images:      soakImages(),
 		Profile:     ProfileSoak,
 		Backend:     BackendKubernetes,
-		LoadPercent: DefaultLoadPercent,
+		LoadPercent: 0,
 	})
 	require.NoError(t, err)
 
@@ -118,14 +118,41 @@ func TestSoakParametersKubernetes(t *testing.T) {
 		require.Equal(t, participant["el_min_mem"], participant["el_max_mem"])
 		require.Equal(t, participant["cl_min_mem"], participant["cl_max_mem"])
 	}
-	require.Equal(t, []any{"prometheus_grafana", "tx_spammer"}, parameters["additional_services"])
-	require.Equal(t, true, parameters["qrl_metrics_exporter_enabled"])
-	spammer := parameters["tx_spammer_params"].(map[string]any)
-	require.Equal(t, soakImages().TxSpammer, spammer["image"])
-	require.Equal(t, float64(SoakThroughput(DefaultLoadPercent)), spammer["throughput"])
+	require.NotContains(t, parameters, "additional_services", "prometheus cannot tolerate the work taint and an idle soak runs no spammer")
+	require.NotContains(t, parameters, "tx_spammer_params")
+	require.NotContains(t, parameters, "qrl_metrics_exporter_enabled")
+	require.NotContains(t, parameters, "prometheus_params")
 	network := parameters["network_params"].(map[string]any)
 	require.Equal(t, float64(soakGenesisGasLimit), network["genesis_gaslimit"])
 	require.Equal(t, float64(soakGenesisDelaySeconds), network["genesis_delay"])
+}
+
+func TestSoakParametersParticipantCount(t *testing.T) {
+	payload, err := resolveParameters(devwallet.Address, StartOptions{
+		Images:           soakImages(),
+		Profile:          ProfileSoak,
+		Backend:          BackendKubernetes,
+		ParticipantCount: 1,
+	})
+	require.NoError(t, err)
+	var parameters map[string]any
+	require.NoError(t, json.Unmarshal([]byte(payload), &parameters))
+	require.Len(t, parameters["participants"].([]any), 1)
+}
+
+func TestSoakParametersKubernetesRejectsLoad(t *testing.T) {
+	_, err := resolveParameters(devwallet.Address, StartOptions{
+		Images:      soakImages(),
+		Profile:     ProfileSoak,
+		Backend:     BackendKubernetes,
+		LoadPercent: DefaultLoadPercent,
+	})
+	require.ErrorContains(t, err, "load 30% is not supported on the kubernetes backend")
+	require.ErrorContains(t, err, "tx_spammer cannot tolerate")
+
+	require.NoError(t, CheckLoad(BackendKubernetes, 0))
+	require.NoError(t, CheckLoad(BackendDocker, DefaultLoadPercent))
+	require.Error(t, CheckLoad(BackendKubernetes, 1))
 }
 
 func TestSoakParametersDockerAndIdle(t *testing.T) {
@@ -145,6 +172,22 @@ func TestSoakParametersDockerAndIdle(t *testing.T) {
 	require.NotContains(t, participant, "el_min_cpu")
 	require.Equal(t, []any{"prometheus_grafana"}, parameters["additional_services"], "an idle baseline runs no spammer")
 	require.NotContains(t, parameters, "tx_spammer_params")
+}
+
+func TestSoakParametersDockerLoadKeepsSpammer(t *testing.T) {
+	payload, err := resolveParameters(devwallet.Address, StartOptions{
+		Images:      soakImages(),
+		Profile:     ProfileSoak,
+		Backend:     BackendDocker,
+		LoadPercent: DefaultLoadPercent,
+	})
+	require.NoError(t, err)
+	var parameters map[string]any
+	require.NoError(t, json.Unmarshal([]byte(payload), &parameters))
+	require.Equal(t, []any{"prometheus_grafana", "tx_spammer"}, parameters["additional_services"])
+	spammer := parameters["tx_spammer_params"].(map[string]any)
+	require.Equal(t, soakImages().TxSpammer, spammer["image"])
+	require.Equal(t, float64(SoakThroughput(DefaultLoadPercent)), spammer["throughput"])
 }
 
 func TestSoakThroughput(t *testing.T) {

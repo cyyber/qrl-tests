@@ -27,7 +27,7 @@ func newApp(network networkController) *cli.App {
 		HideHelpCommand: true,
 		Action:          rootAction,
 		Commands: append(
-			[]*cli.Command{networkCommand(network), soakCommand()},
+			[]*cli.Command{networkCommand(network), soakCommand(), soakCompareCommand()},
 			runnerCommands()...,
 		),
 	}

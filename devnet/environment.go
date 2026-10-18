@@ -24,6 +24,8 @@ const (
 
 	// executionMetricsPath is where go-qrl serves Prometheus metrics.
 	executionMetricsPath = "/debug/metrics/prometheus"
+	// consensusMetricsPath is Qrysm's Prometheus path on the metrics port.
+	consensusMetricsPath = "/metrics"
 
 	// prometheusServiceName and prometheusPortID come from the Kurtosis
 	// prometheus package qrl-package launches for the prometheus_grafana
@@ -158,7 +160,7 @@ func (resolver endpointResolver) optionalHostPort(service kurtosis.Service, port
 func (resolver endpointResolver) participantsFromServices(services map[string]kurtosis.Service) ([]Participant, error) {
 	byIndex := make(map[int]*Participant)
 	for name, service := range services {
-		clientType := service.Labels[clientTypeLabel]
+		clientType := clientTypeOf(name, service.Labels)
 		if clientType != "execution" && clientType != "beacon" && clientType != "validator" {
 			continue
 		}
@@ -197,15 +199,27 @@ func (resolver endpointResolver) participantsFromServices(services map[string]ku
 				return nil, fmt.Errorf("consensus service %q: %w", name, err)
 			}
 			participant.Consensus.GRPC = resolver.optionalHostPort(service, rpcPortID)
-			participant.Consensus.MetricsURL = resolver.optionalEndpoint(service, metricsPortID, "http")
+			if metrics := resolver.optionalEndpoint(service, metricsPortID, "http"); metrics != "" {
+				participant.Consensus.MetricsURL = metrics + consensusMetricsPath
+			}
 		case "validator":
 			participant.Validator.ServiceInfo = info
 			participant.Validator.URL = resolver.optionalEndpoint(service, validatorHTTPPortID, "http")
-			participant.Validator.MetricsURL = resolver.optionalEndpoint(service, metricsPortID, "http")
+			if metrics := resolver.optionalEndpoint(service, metricsPortID, "http"); metrics != "" {
+				participant.Validator.MetricsURL = metrics + consensusMetricsPath
+			}
 		}
 	}
 	if len(byIndex) == 0 {
-		return nil, errors.New("no qrl-package participants found")
+		names := make([]string, 0, len(services))
+		for name := range services {
+			names = append(names, name)
+		}
+		slices.Sort(names)
+		if len(names) == 0 {
+			return nil, errors.New("no qrl-package participants found (enclave listed no services)")
+		}
+		return nil, fmt.Errorf("no qrl-package participants found (services: %s)", strings.Join(names, ", "))
 	}
 
 	participants := make([]Participant, 0, len(byIndex))
@@ -218,6 +232,24 @@ func (resolver endpointResolver) participantsFromServices(services map[string]ku
 
 	slices.SortFunc(participants, func(left, right Participant) int { return cmp.Compare(left.Index, right.Index) })
 	return participants, nil
+}
+
+func clientTypeOf(name string, labels map[string]string) string {
+	if clientType := labels[clientTypeLabel]; clientType != "" {
+		return clientType
+	}
+	// Kubernetes GetLabels is often empty even when qrl-package stamped the
+	// pod; fall back to the service-name prefix the package always uses.
+	switch {
+	case strings.HasPrefix(name, "el-"):
+		return "execution"
+	case strings.HasPrefix(name, "cl-"):
+		return "beacon"
+	case strings.HasPrefix(name, "vc-"):
+		return "validator"
+	default:
+		return ""
+	}
 }
 
 func participantIndex(name string, labels map[string]string) (int, error) {

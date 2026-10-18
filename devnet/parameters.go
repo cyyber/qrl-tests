@@ -138,10 +138,17 @@ func profileParameters(address string, options StartOptions) (string, error) {
 	}
 	spec := profileSpecs[options.Profile]
 	pinned := spec.pinnedPlacement && options.Backend == BackendKubernetes
+	wanted := spec.participants
+	if options.ParticipantCount > 0 {
+		if options.ParticipantCount > len(wanted) {
+			return "", fmt.Errorf("participant count %d exceeds profile %s (%d)", options.ParticipantCount, options.Profile, len(wanted))
+		}
+		wanted = wanted[:options.ParticipantCount]
+	}
 
-	participants := make([]participant, len(spec.participants))
+	participants := make([]participant, len(wanted))
 	for index := range participants {
-		configuration := spec.participants[index]
+		configuration := wanted[index]
 		labels := map[string]string{
 			participantLabel: strconv.Itoa(index + 1),
 			// Alternate halves for the network-partition lanes.
@@ -194,7 +201,11 @@ func profileParameters(address string, options StartOptions) (string, error) {
 		parameters.PrometheusParams = &prometheusParams{RetentionTime: "2d", RetentionSize: "4GB"}
 		parameters.GlobalLogLevel = "info"
 	}
-	if spec.metricsExporter {
+	if spec.metricsExporter && options.Backend != BackendKubernetes {
+		// qrl-package copies the participant node selector onto the
+		// exporter but not the work-pool taint, so the pod cannot
+		// schedule on Kubernetes. Native EL/CL /metrics are enough
+		// for soak gates.
 		parameters.QRLMetricsExporterEnabled = true
 	}
 	if pinned {
@@ -210,6 +221,12 @@ func profileParameters(address string, options StartOptions) (string, error) {
 			Value:    WorkPool,
 			Effect:   kubernetesTaintEffect,
 		}}
+		// kurtosis-tech/prometheus-package applies global_node_selectors
+		// and leaves tolerations empty, so prometheus/grafana cannot
+		// land on NoSchedule work nodes. Drop them on Kubernetes;
+		// native EL/CL /metrics still feed the soak gates.
+		parameters.AdditionalServices = withoutService(parameters.AdditionalServices, "prometheus_grafana")
+		parameters.PrometheusParams = nil
 	}
 	if spec.loadGenerator {
 		throughput := SoakThroughput(options.LoadPercent)
@@ -226,6 +243,11 @@ func profileParameters(address string, options StartOptions) (string, error) {
 			}
 		}
 	}
+	if spec.loadGenerator {
+		if err := CheckLoad(options.Backend, options.LoadPercent); err != nil {
+			return "", err
+		}
+	}
 
 	payload, err := json.Marshal(parameters)
 	if err != nil {
@@ -233,6 +255,21 @@ func profileParameters(address string, options StartOptions) (string, error) {
 	}
 
 	return string(payload), nil
+}
+
+// CheckLoad rejects a load generator the backend cannot schedule. On
+// Kubernetes qrl-package hands tx_spammer global_node_selectors (the
+// work-shared node) but no tolerations, and Kurtosis applies its
+// cluster-level tolerations only to its own engine and logs pods, never to
+// user services; the spammer would sit Pending against the work-pool
+// NoSchedule taint and the soak would run idle while claiming load.
+// Refusing up front keeps the run honest until the package passes
+// global_tolerations to additional services.
+func CheckLoad(backend Backend, loadPercent int) error {
+	if backend != BackendKubernetes || SoakThroughput(loadPercent) == 0 {
+		return nil
+	}
+	return fmt.Errorf("load %d%% is not supported on the kubernetes backend: tx_spammer cannot tolerate the %s=%s taint (qrl-package passes it node selectors but no tolerations); run idle with load 0 or use the docker backend", loadPercent, PoolLabel, WorkPool)
 }
 
 // pin places the participant on its own node and requests guaranteed

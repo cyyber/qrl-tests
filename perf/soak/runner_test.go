@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/cyyber/qrl-tests/devnet"
+	"github.com/cyyber/qrl-tests/internal/runmanifest"
 	"github.com/cyyber/qrl-tests/internal/testutil"
 	"github.com/stretchr/testify/require"
 )
@@ -119,6 +120,10 @@ func TestRunProvisionsWritesReportsAndStops(t *testing.T) {
 	require.FileExists(t, filepath.Join(reports, ResultsFile))
 	require.FileExists(t, filepath.Join(reports, SummaryFile))
 	require.FileExists(t, filepath.Join(reports, OutputLog))
+	require.FileExists(t, filepath.Join(reports, runmanifest.FileName))
+	results := testutil.ReadJSON[Evaluation](t, filepath.Join(reports, ResultsFile))
+	require.Equal(t, devnet.PackageLocator, results.PackageLocator)
+	require.NotEmpty(t, results.Images["execution"])
 }
 
 func TestRunExistingDoesNotStop(t *testing.T) {

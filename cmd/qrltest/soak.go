@@ -39,6 +39,7 @@ func soakFlags() []cli.Flag {
 		backendFlag(),
 		endpointModeFlag(),
 		loadPercentFlag(),
+		participantCountFlag(),
 		&cli.DurationFlag{
 			Name:    "start-timeout",
 			Usage:   "network start budget",
@@ -104,20 +105,29 @@ func soakConfig(command *cli.Context) (soak.Config, error) {
 		return soak.Config{}, err
 	}
 
+	// Fail before any node is scaled or enclave created; an existing
+	// network was provisioned elsewhere and only gets sampled here.
+	if !command.Bool("existing") && parameters == nil {
+		if err := devnet.CheckLoad(backend, command.Int("load-percent")); err != nil {
+			return soak.Config{}, err
+		}
+	}
+
 	return soak.Config{
-		EnclaveName:    command.String("enclave-name"),
-		ReportDir:      command.String("report-dir"),
-		Backend:        backend,
-		EndpointMode:   endpointMode,
-		LoadPercent:    command.Int("load-percent"),
-		StartTimeout:   command.Duration("start-timeout"),
-		Duration:       duration,
-		Interval:       command.Duration("interval"),
-		Enforce:        command.Bool("enforce"),
-		KeepNetwork:    command.Bool("keep-network"),
-		Existing:       command.Bool("existing"),
-		ThresholdsPath: command.String("thresholds"),
-		Parameters:     parameters,
-		Images:         imagesFromFlags(command),
+		EnclaveName:      command.String("enclave-name"),
+		ReportDir:        command.String("report-dir"),
+		Backend:          backend,
+		EndpointMode:     endpointMode,
+		LoadPercent:      command.Int("load-percent"),
+		ParticipantCount: command.Int("participants"),
+		StartTimeout:     command.Duration("start-timeout"),
+		Duration:         duration,
+		Interval:         command.Duration("interval"),
+		Enforce:          command.Bool("enforce"),
+		KeepNetwork:      command.Bool("keep-network"),
+		Existing:         command.Bool("existing"),
+		ThresholdsPath:   command.String("thresholds"),
+		Parameters:       parameters,
+		Images:           imagesFromFlags(command),
 	}, nil
 }
