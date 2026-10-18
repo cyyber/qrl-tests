@@ -1,0 +1,5 @@
+# Build context of the qrl-tests-runner image: the source checkout only.
+.git
+.build
+reports
+*.log
