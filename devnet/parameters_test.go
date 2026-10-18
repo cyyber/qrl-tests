@@ -63,7 +63,7 @@ func TestAnchoredProfileParameters(t *testing.T) {
 		[]any{"--min-sync-peers=0", "--minimum-peers-per-subnet=0", "--sync-from=head"},
 		participants[0].(map[string]any)["cl_extra_params"],
 	)
-	require.Equal(t, []any{"--minimum-peers-per-subnet=0"}, participants[1].(map[string]any)["cl_extra_params"])
+	require.Equal(t, []any{"--minimum-peers-per-subnet=0", "--slasher"}, participants[1].(map[string]any)["cl_extra_params"])
 	// The profile adds to the defaults without changing them for others.
 	require.Equal(t, []string{"--min-sync-peers=0", "--minimum-peers-per-subnet=0"}, defaultCLExtraParams)
 }

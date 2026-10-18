@@ -22,7 +22,8 @@ const (
 	// as synced without peers and starts from its stored head. By default a
 	// beacon node starts from the justified checkpoint, and a network whose
 	// beacon nodes all stopped never proposes again. The second keeps the
-	// package's sync settings, so it follows the anchor.
+	// package's sync settings, so it follows the anchor, and runs a slasher,
+	// so a validator that signs twice after a restart gets slashed.
 	ProfileAnchored Profile = "anchored"
 )
 
@@ -42,7 +43,7 @@ var profileSpecs = map[Profile]profileSpec{
 	ProfileSingle: {participants: []participantSpec{{validatorCount: 64}}},
 	ProfileAnchored: {participants: []participantSpec{
 		{validatorCount: 32, clExtraParams: anchorCLExtraParams},
-		{validatorCount: 32, clExtraParams: []string{"--minimum-peers-per-subnet=0"}},
+		{validatorCount: 32, clExtraParams: []string{"--minimum-peers-per-subnet=0", "--slasher"}},
 	}},
 }
 
