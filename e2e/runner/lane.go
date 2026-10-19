@@ -155,6 +155,7 @@ func (runner *Runner) executeLane(ctx context.Context, plan runPlan, lane laneRu
 		Profile:            definition.Profile,
 		Environment:        lease.environment,
 		ExecutionImage:     images.execution,
+		ConsensusImage:     images.consensus,
 		ValidatorImage:     images.validator,
 		QrysmAlltoolsImage: images.qrysmAlltools,
 	}); err != nil {
@@ -183,6 +184,7 @@ func (runner *Runner) executeLane(ctx context.Context, plan runPlan, lane laneRu
 // sidecarImages are the images a lane's suites start sidecars from.
 type sidecarImages struct {
 	execution     string
+	consensus     string
 	validator     string
 	qrysmAlltools string
 }
@@ -195,6 +197,11 @@ func (runner *Runner) resolveImages(
 ) (images sidecarImages, err error) {
 	if definition.NeedsExecutionImage() {
 		if images.execution, err = resolveImage(ctx, "execution", environment, runner.resolveExecutionImage); err != nil {
+			return sidecarImages{}, err
+		}
+	}
+	if definition.NeedsConsensusImage() {
+		if images.consensus, err = resolveImage(ctx, "consensus", environment, runner.resolveConsensusImage); err != nil {
 			return sidecarImages{}, err
 		}
 	}

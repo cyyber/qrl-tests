@@ -31,6 +31,16 @@ func (client *Client) SpecUint(ctx context.Context, name string) (uint64, error)
 	return parsed, nil
 }
 
+// SyncStatus reports how far the node is from the head of the chain.
+func (client *Client) SyncStatus(ctx context.Context) (SyncStatus, error) {
+	return getData[SyncStatus](ctx, client, "/qrl/v1/node/syncing")
+}
+
+// Identity returns the node's libp2p peer ID and the addresses it listens on.
+func (client *Client) Identity(ctx context.Context) (Identity, error) {
+	return getData[Identity](ctx, client, "/qrl/v1/node/identity")
+}
+
 func (client *Client) HeadSlot(ctx context.Context) (uint64, error) {
 	head, err := client.BlockHeader(ctx, "head")
 	return head.Slot, err

@@ -34,8 +34,8 @@ func TestStartScriptVariablesAreSet(t *testing.T) {
 func TestStartWaitsForKeymanager(t *testing.T) {
 	validator, docker := startWithKeymanager(t)
 	require.NotNil(t, validator.Keymanager)
-	require.Contains(t, docker.Created.Config.Env, "BEACON_REST_API_PROVIDER=http://host.docker.internal:3500")
-	require.Contains(t, docker.Created.Config.Env, "BEACON_RPC_PROVIDER=host.docker.internal:4000")
+	require.Contains(t, docker.LastCreated().Config.Env, "BEACON_REST_API_PROVIDER=http://host.docker.internal:3500")
+	require.Contains(t, docker.LastCreated().Config.Env, "BEACON_RPC_PROVIDER=host.docker.internal:4000")
 	require.Len(t, docker.Listed, 1)
 	require.Equal(t, dockerclient.Filters{"label": {"com.kurtosistech.guid=consensus-service": true}}, docker.Listed[0].Filters)
 

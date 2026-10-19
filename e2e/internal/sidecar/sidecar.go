@@ -1,5 +1,6 @@
 // Package sidecar runs helper containers next to the Kurtosis devnet.
-// Sidecars reach the devnet through its host-published ports. They are not
+// Sidecars reach the devnet through its host-published ports, or join the
+// enclave's Docker network to reach its services directly. They are not
 // Kurtosis services, so the lane diagnostics don't collect their logs; errors
 // include the end of a sidecar's output instead.
 package sidecar
@@ -43,6 +44,7 @@ type Client interface {
 	ContainerLogs(context.Context, string, dockerclient.ContainerLogsOptions) (dockerclient.ContainerLogsResult, error)
 	ContainerRemove(context.Context, string, dockerclient.ContainerRemoveOptions) (dockerclient.ContainerRemoveResult, error)
 	ContainerStart(context.Context, string, dockerclient.ContainerStartOptions) (dockerclient.ContainerStartResult, error)
+	ContainerStop(context.Context, string, dockerclient.ContainerStopOptions) (dockerclient.ContainerStopResult, error)
 	ContainerWait(context.Context, string, dockerclient.ContainerWaitOptions) dockerclient.ContainerWaitResult
 	CopyFromContainer(context.Context, string, dockerclient.CopyFromContainerOptions) (dockerclient.CopyFromContainerResult, error)
 	CopyToContainer(context.Context, string, dockerclient.CopyToContainerOptions) (dockerclient.CopyToContainerResult, error)
@@ -81,6 +83,11 @@ type Spec struct {
 	Stdin bool
 	// Port, when set, is published on 127.0.0.1 at a free host port.
 	Port uint16
+	// Network, when set, is the Docker network the container joins instead of
+	// the default bridge, such as a Kurtosis enclave's network. Aliases are its
+	// DNS names there.
+	Network string
+	Aliases []string
 }
 
 // Container is a sidecar container. Close removes it.
@@ -97,7 +104,7 @@ func Start(ctx context.Context, client Client, spec Spec) (*Container, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := container.start(ctx); err != nil {
+	if err := container.Start(ctx); err != nil {
 		return nil, container.abort(err)
 	}
 	return container, nil
@@ -198,12 +205,25 @@ func (container *Container) startWatched(ctx context.Context) (dockerclient.Cont
 		}
 	default:
 	}
-	return waiter, container.start(ctx)
+	return waiter, container.Start(ctx)
 }
 
-func (container *Container) start(ctx context.Context) error {
+// Start starts the container, or starts it again after Stop. A restarted
+// container keeps its files and its published host port.
+func (container *Container) Start(ctx context.Context) error {
 	if _, err := container.client.ContainerStart(ctx, container.id, dockerclient.ContainerStartOptions{}); err != nil {
 		return fmt.Errorf("start %s container: %w", container.name, err)
+	}
+	return nil
+}
+
+// Stop sends the container's process SIGTERM and kills it once timeout has
+// passed; a zero timeout kills it at once. The container and its files stay
+// until Close.
+func (container *Container) Stop(ctx context.Context, timeout time.Duration) error {
+	seconds := int(timeout / time.Second)
+	if _, err := container.client.ContainerStop(ctx, container.id, dockerclient.ContainerStopOptions{Timeout: &seconds}); err != nil {
+		return fmt.Errorf("stop %s container: %w", container.name, err)
 	}
 	return nil
 }
@@ -242,7 +262,19 @@ func create(ctx context.Context, client Client, spec Spec, attached bool) (*Cont
 		hostConfig.PortBindings = network.PortMap{port: {{HostIP: netip.MustParseAddr("127.0.0.1"), HostPort: hostPort}}}
 	}
 
-	created, err := client.ContainerCreate(ctx, dockerclient.ContainerCreateOptions{Config: config, HostConfig: hostConfig})
+	var networking *network.NetworkingConfig
+	if spec.Network != "" {
+		hostConfig.NetworkMode = containertypes.NetworkMode(spec.Network)
+		networking = &network.NetworkingConfig{EndpointsConfig: map[string]*network.EndpointSettings{
+			spec.Network: {Aliases: spec.Aliases},
+		}}
+	}
+
+	created, err := client.ContainerCreate(ctx, dockerclient.ContainerCreateOptions{
+		Config:           config,
+		HostConfig:       hostConfig,
+		NetworkingConfig: networking,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("create %s container: %w", spec.Name, err)
 	}
@@ -350,15 +382,20 @@ func (container *Container) WithLogs(err error) error {
 	}
 }
 
-// Logs returns the last lines of the container's output. It reads on its own
-// deadline, since logs matter most once the caller's context has run out.
+// Logs returns the last lines of the container's output, or all of it when
+// lines is not positive. It reads on its own deadline, since logs matter most
+// once the caller's context has run out.
 func (container *Container) Logs(lines int) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), logTimeout)
 	defer cancel()
+	tail := "all"
+	if lines > 0 {
+		tail = strconv.Itoa(lines)
+	}
 	logs, err := container.client.ContainerLogs(ctx, container.id, dockerclient.ContainerLogsOptions{
 		ShowStdout: true,
 		ShowStderr: true,
-		Tail:       strconv.Itoa(lines),
+		Tail:       tail,
 	})
 	if err != nil {
 		return "", err

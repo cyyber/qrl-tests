@@ -29,6 +29,7 @@ const (
 	suiteConsensusStakingAutomated SuiteID = "consensus-staking-automated"
 	suiteConsensusStakingOperator  SuiteID = "consensus-staking-operator"
 	suiteResilienceNetworkRestart  SuiteID = "resilience-network-restart"
+	suiteSyncGenesis               SuiteID = "sync-genesis"
 )
 
 var suitePackages = map[SuiteID]string{
@@ -38,6 +39,7 @@ var suitePackages = map[SuiteID]string{
 	suiteConsensusStakingAutomated: "./e2e/suites/consensus/stakingautomated",
 	suiteConsensusStakingOperator:  "./e2e/suites/consensus/stakingoperator",
 	suiteResilienceNetworkRestart:  "./e2e/suites/resilience/networkrestart",
+	suiteSyncGenesis:               "./e2e/suites/sync/genesis",
 }
 
 var registry = []Lane{
@@ -72,6 +74,15 @@ var registry = []Lane{
 		Suites:           []SuiteID{suiteResilienceNetworkRestart},
 		Timeout:          30 * time.Minute,
 		RestartsServices: true,
+	},
+	{
+		// About 200 blocks of history and their finality come first, at
+		// five-second slots. Then a full-mode node syncs, stops for two epochs
+		// past a new finalized checkpoint, and catches up.
+		Name:    "sync",
+		Profile: devnet.ProfileSingle,
+		Suites:  []SuiteID{suiteSyncGenesis},
+		Timeout: 60 * time.Minute,
 	},
 }
 
@@ -124,7 +135,12 @@ func (lane Lane) Packages() []string {
 }
 
 func (lane Lane) NeedsExecutionImage() bool {
-	return slices.Contains(lane.Suites, suiteExecutionConsole)
+	return slices.Contains(lane.Suites, suiteExecutionConsole) ||
+		slices.Contains(lane.Suites, suiteSyncGenesis)
+}
+
+func (lane Lane) NeedsConsensusImage() bool {
+	return slices.Contains(lane.Suites, suiteSyncGenesis)
 }
 
 func (lane Lane) NeedsValidatorImage() bool {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/hex"
 	"fmt"
+	"net/netip"
 	"strings"
 
 	"github.com/cyyber/qrl-tests/internal/containerfiles"
@@ -19,6 +20,14 @@ const kurtosisServiceUUIDDockerLabel = "com.kurtosistech.guid"
 func ResolveExecutionImage(ctx context.Context, environment Environment) (string, error) {
 	return resolvePrimaryServiceImage(ctx, environment, "execution", func(participant Participant) string {
 		return participant.Execution.ID
+	})
+}
+
+// ResolveConsensusImage returns the immutable Docker image ID used by the
+// primary beacon service's running container.
+func ResolveConsensusImage(ctx context.Context, environment Environment) (string, error) {
+	return resolvePrimaryServiceImage(ctx, environment, "consensus", func(participant Participant) string {
+		return participant.Consensus.ID
 	})
 }
 
@@ -148,4 +157,26 @@ func ReadServiceFile(ctx context.Context, client ServiceFileClient, serviceID, f
 		return nil, fmt.Errorf("find container: %w", err)
 	}
 	return containerfiles.ReadFile(ctx, client, container.ID, filePath)
+}
+
+// ServiceNetwork returns the Docker network on which a Kurtosis service has
+// its private IP, which is the enclave's network. A sidecar that joins it
+// reaches the service at that IP and its own ports.
+func ServiceNetwork(ctx context.Context, client ServiceFileClient, service ServiceInfo) (string, error) {
+	privateIP, err := netip.ParseAddr(strings.TrimSpace(service.PrivateIP))
+	if err != nil {
+		return "", fmt.Errorf("service %q private IP: %w", service.Name, err)
+	}
+	container, err := serviceContainer(ctx, client, service.ID)
+	if err != nil {
+		return "", fmt.Errorf("find container: %w", err)
+	}
+	if container.NetworkSettings != nil {
+		for name, endpoint := range container.NetworkSettings.Networks {
+			if endpoint != nil && endpoint.IPAddress == privateIP {
+				return name, nil
+			}
+		}
+	}
+	return "", fmt.Errorf("service %q has no Docker network with its private IP %s", service.Name, privateIP)
 }

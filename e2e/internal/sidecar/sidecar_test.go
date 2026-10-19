@@ -42,12 +42,12 @@ func TestStartCreatesPublishedContainer(t *testing.T) {
 
 	port, ok := network.PortFrom(7500, network.TCP)
 	require.True(t, ok)
-	require.Equal(t, "sidecar:test", docker.Created.Config.Image)
-	require.Equal(t, []string{"/bin/sh", "/start.sh"}, docker.Created.Config.Entrypoint)
-	require.Equal(t, []string{"MODE=test"}, docker.Created.Config.Env)
-	require.Equal(t, []string{"host.docker.internal:host-gateway"}, docker.Created.HostConfig.ExtraHosts)
-	require.Equal(t, map[string]string{"qrl-tests.sidecar": "test sidecar"}, docker.Created.Config.Labels)
-	bindings := docker.Created.HostConfig.PortBindings[port]
+	require.Equal(t, "sidecar:test", docker.LastCreated().Config.Image)
+	require.Equal(t, []string{"/bin/sh", "/start.sh"}, docker.LastCreated().Config.Entrypoint)
+	require.Equal(t, []string{"MODE=test"}, docker.LastCreated().Config.Env)
+	require.Equal(t, []string{"host.docker.internal:host-gateway"}, docker.LastCreated().HostConfig.ExtraHosts)
+	require.Equal(t, map[string]string{"qrl-tests.sidecar": "test sidecar"}, docker.LastCreated().Config.Labels)
+	bindings := docker.LastCreated().HostConfig.PortBindings[port]
 	require.Len(t, bindings, 1)
 	require.Equal(t, netip.MustParseAddr("127.0.0.1"), bindings[0].HostIP)
 	require.NotEmpty(t, bindings[0].HostPort)
@@ -62,6 +62,44 @@ func TestStartCreatesPublishedContainer(t *testing.T) {
 
 	require.NoError(t, container.Close())
 	require.Equal(t, []string{sidecartest.ContainerID}, docker.Removed)
+}
+
+func TestStartNetwork(t *testing.T) {
+	docker := sidecartest.NewDocker()
+
+	_, err := Start(t.Context(), docker, testSpec())
+	require.NoError(t, err)
+	require.Empty(t, docker.LastCreated().HostConfig.NetworkMode, "the default network has no mode")
+	require.Nil(t, docker.LastCreated().NetworkingConfig)
+
+	spec := testSpec()
+	spec.Network = "kt-devnet"
+	spec.Aliases = []string{"sync-execution"}
+	_, err = Start(t.Context(), docker, spec)
+	require.NoError(t, err)
+	require.Equal(t, containertypes.NetworkMode("kt-devnet"), docker.LastCreated().HostConfig.NetworkMode)
+	require.Equal(t, map[string]*network.EndpointSettings{
+		"kt-devnet": {Aliases: []string{"sync-execution"}},
+	}, docker.LastCreated().NetworkingConfig.EndpointsConfig)
+}
+
+func TestStopAndStartAgain(t *testing.T) {
+	docker := sidecartest.NewDocker()
+	container, err := Start(t.Context(), docker, testSpec())
+	require.NoError(t, err)
+
+	require.NoError(t, container.Stop(t.Context(), 30*time.Second))
+	require.NoError(t, container.Stop(t.Context(), 0))
+	require.Len(t, docker.Stopped, 2)
+	require.Equal(t, 30, *docker.Stopped[0].Timeout)
+	require.Equal(t, 0, *docker.Stopped[1].Timeout, "a zero timeout kills the container")
+
+	require.NoError(t, container.Start(t.Context()))
+	require.Equal(t, 2, docker.Started)
+	require.Empty(t, docker.Removed, "a stopped container keeps its files")
+
+	docker.Fail["ContainerStop"] = errors.New("daemon unavailable")
+	require.EqualError(t, container.Stop(t.Context(), time.Second), "stop test sidecar container: daemon unavailable")
 }
 
 func TestStartRemovesContainerOnFailure(t *testing.T) {
@@ -198,12 +236,12 @@ func TestAttachStreamsTheProcess(t *testing.T) {
 
 			process, err := Attach(t.Context(), docker, spec)
 			require.NoError(t, err)
-			require.Equal(t, []string{"--mode", "test"}, docker.Created.Config.Cmd)
-			require.True(t, docker.Created.Config.AttachStdout)
-			require.True(t, docker.Created.Config.AttachStderr)
-			require.Equal(t, test.stdin, docker.Created.Config.AttachStdin)
-			require.Equal(t, test.stdin, docker.Created.Config.OpenStdin)
-			require.Equal(t, test.stdin, docker.Created.Config.StdinOnce)
+			require.Equal(t, []string{"--mode", "test"}, docker.LastCreated().Config.Cmd)
+			require.True(t, docker.LastCreated().Config.AttachStdout)
+			require.True(t, docker.LastCreated().Config.AttachStderr)
+			require.Equal(t, test.stdin, docker.LastCreated().Config.AttachStdin)
+			require.Equal(t, test.stdin, docker.LastCreated().Config.OpenStdin)
+			require.Equal(t, test.stdin, docker.LastCreated().Config.StdinOnce)
 			require.Equal(t, dockerclient.ContainerAttachOptions{Stream: true, Stdin: test.stdin, Stdout: true, Stderr: true}, docker.Attached)
 
 			var output bytes.Buffer
@@ -449,6 +487,10 @@ func TestLogs(t *testing.T) {
 	logs, err := container.Logs(10)
 	require.NoError(t, err)
 	require.Equal(t, "imported the key\nwaiting for activation", logs)
+
+	_, err = container.Logs(0)
+	require.NoError(t, err)
+	require.Equal(t, []string{"10", "all"}, docker.LogTails)
 
 	docker.Fail["ContainerLogs"] = errors.New("daemon unavailable")
 	_, err = container.Logs(10)

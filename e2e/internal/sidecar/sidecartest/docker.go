@@ -53,10 +53,13 @@ type Docker struct {
 	Fail map[string]error
 
 	// Recorded calls.
-	Created  dockerclient.ContainerCreateOptions
+	Created  []dockerclient.ContainerCreateOptions
 	Attached dockerclient.ContainerAttachOptions
 	archive  []byte
 	Execs    [][]string
+	Stopped  []dockerclient.ContainerStopOptions
+	LogTails []string
+	Started  int
 	Removed  []string
 	Listed   []dockerclient.ContainerListOptions
 }
@@ -83,17 +86,30 @@ func (docker *Docker) ContainerAttach(_ context.Context, _ string, options docke
 }
 
 func (docker *Docker) ContainerCreate(_ context.Context, options dockerclient.ContainerCreateOptions) (dockerclient.ContainerCreateResult, error) {
-	docker.Created = options
+	docker.Created = append(docker.Created, options)
 	return dockerclient.ContainerCreateResult{ID: ContainerID}, nil
 }
 
+// LastCreated returns the last container created.
+func (docker *Docker) LastCreated() dockerclient.ContainerCreateOptions {
+	if len(docker.Created) == 0 {
+		return dockerclient.ContainerCreateOptions{}
+	}
+	return docker.Created[len(docker.Created)-1]
+}
+
 func (docker *Docker) ContainerInspect(context.Context, string, dockerclient.ContainerInspectOptions) (dockerclient.ContainerInspectResult, error) {
+	// Every container shares the one state, so each publishes the ports of
+	// all of them.
 	ports := network.PortMap{}
-	if docker.Created.Config != nil {
-		for port := range docker.Created.Config.ExposedPorts {
+	for _, created := range docker.Created {
+		if created.Config == nil {
+			continue
+		}
+		for port := range created.Config.ExposedPorts {
 			hostPort := docker.HostPort
 			if hostPort == "" {
-				hostPort = docker.Created.HostConfig.PortBindings[port][0].HostPort
+				hostPort = created.HostConfig.PortBindings[port][0].HostPort
 			}
 			ports[port] = []network.PortBinding{{HostPort: hostPort}}
 		}
@@ -104,7 +120,8 @@ func (docker *Docker) ContainerInspect(context.Context, string, dockerclient.Con
 	}}, nil
 }
 
-func (docker *Docker) ContainerLogs(context.Context, string, dockerclient.ContainerLogsOptions) (dockerclient.ContainerLogsResult, error) {
+func (docker *Docker) ContainerLogs(_ context.Context, _ string, options dockerclient.ContainerLogsOptions) (dockerclient.ContainerLogsResult, error) {
+	docker.LogTails = append(docker.LogTails, options.Tail)
 	if err := docker.Fail["ContainerLogs"]; err != nil {
 		return nil, err
 	}
@@ -117,7 +134,13 @@ func (docker *Docker) ContainerRemove(_ context.Context, containerID string, _ d
 }
 
 func (docker *Docker) ContainerStart(context.Context, string, dockerclient.ContainerStartOptions) (dockerclient.ContainerStartResult, error) {
+	docker.Started++
 	return dockerclient.ContainerStartResult{}, docker.Fail["ContainerStart"]
+}
+
+func (docker *Docker) ContainerStop(_ context.Context, _ string, options dockerclient.ContainerStopOptions) (dockerclient.ContainerStopResult, error) {
+	docker.Stopped = append(docker.Stopped, options)
+	return dockerclient.ContainerStopResult{}, docker.Fail["ContainerStop"]
 }
 
 func (docker *Docker) ContainerWait(ctx context.Context, _ string, _ dockerclient.ContainerWaitOptions) dockerclient.ContainerWaitResult {
