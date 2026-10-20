@@ -12,7 +12,7 @@ endpoints; suites do not provision infrastructure.
 | `consensus-staking-automated` | `single` | Staking through contract deposits and the keymanager API |
 | `consensus-staking-operator` | `single` | Staking through the deposit and validator CLIs |
 | `resilience-network-restart` | `anchored` | Recovery from a full outage: proposing and finalizing after every node stops at once |
-| `sync` | `single` | A new full-mode node syncs from genesis, then catches up after a stop |
+| `sync` | `single` | New full-mode nodes sync from genesis and from a checkpoint, each catching up after a stop |
 
 Run one lane with a fresh network:
 
