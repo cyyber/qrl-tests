@@ -72,8 +72,17 @@ type Config struct {
 	ConsensusImage string
 	// SyncMode is gqrl's --syncmode, "snap" or "full".
 	SyncMode string
-	Source   devnet.Participant
+	// BeaconOrigin is where the beacon node starts from, Genesis by default.
+	BeaconOrigin BeaconOrigin
+	Source       devnet.Participant
 }
+
+type BeaconOrigin string
+
+const (
+	Genesis    BeaconOrigin = ""
+	Checkpoint BeaconOrigin = "checkpoint"
+)
 
 // Node is a running node that the caller must Close.
 type Node struct {
@@ -98,7 +107,7 @@ func Start(ctx context.Context, config Config) (*Node, error) {
 	if err != nil {
 		return nil, fmt.Errorf("create Docker client: %w", err)
 	}
-	node, err := start(ctx, config, client, querySourcePeers)
+	node, err := start(ctx, config, client, querySourceEndpoints)
 	if err != nil {
 		return nil, errors.Join(err, client.Close())
 	}
@@ -106,19 +115,20 @@ func Start(ctx context.Context, config Config) (*Node, error) {
 	return node, nil
 }
 
-type sourcePeers struct {
+type sourceEndpoints struct {
 	networkID  string
 	qnode      string
 	beaconPeer string
+	beaconAPI  string
 }
 
-type sourcePeersQuery func(context.Context, devnet.Participant) (sourcePeers, error)
+type sourceEndpointsQuery func(context.Context, devnet.Participant) (sourceEndpoints, error)
 
-func start(ctx context.Context, config Config, client dockerClient, query sourcePeersQuery) (*Node, error) {
+func start(ctx context.Context, config Config, client dockerClient, querySource sourceEndpointsQuery) (*Node, error) {
 	if err := validate(config); err != nil {
 		return nil, err
 	}
-	peer, err := query(ctx, config.Source)
+	endpoints, err := querySource(ctx, config.Source)
 	if err != nil {
 		return nil, fmt.Errorf("query source participant %d: %w", config.Source.Index, err)
 	}
@@ -135,13 +145,13 @@ func start(ctx context.Context, config Config, client dockerClient, query source
 		return nil, err
 	}
 
-	node := &Node{sourceQnode: peer.qnode}
+	node := &Node{sourceQnode: endpoints.qnode}
 	executionAlias := "qrl-tests-" + config.Name + "-execution"
 	node.execution, err = sidecar.Start(ctx, client, sidecar.Spec{
 		Name:       config.Name + " execution client",
 		Image:      config.ExecutionImage,
 		Entrypoint: []string{"/bin/sh", startScriptPath},
-		Env:        executionEnv(peer.networkID, config.SyncMode),
+		Env:        executionEnv(endpoints.networkID, config.SyncMode),
 		Files: []sidecar.File{
 			{Name: startScriptPath, Body: []byte(startScript), Mode: 0o755},
 			{Name: genesisPath, Body: files.genesis},
@@ -161,7 +171,7 @@ func start(ctx context.Context, config Config, client dockerClient, query source
 	node.consensus, err = sidecar.Start(ctx, client, sidecar.Spec{
 		Name:  config.Name + " beacon node",
 		Image: config.ConsensusImage,
-		Cmd:   beaconCommand(executionAlias, peer.beaconPeer),
+		Cmd:   beaconCommand(executionAlias, endpoints, config.BeaconOrigin),
 		Files: []sidecar.File{
 			{Name: chainConfigPath, Body: files.chainConfig},
 			{Name: genesisStatePath, Body: files.genesisState},
@@ -186,6 +196,9 @@ func validate(config Config) error {
 	if config.SyncMode != "snap" && config.SyncMode != "full" {
 		return fmt.Errorf("sync mode %q is not snap or full", config.SyncMode)
 	}
+	if config.BeaconOrigin != Genesis && config.BeaconOrigin != Checkpoint {
+		return fmt.Errorf("beacon origin %q is not genesis or checkpoint", config.BeaconOrigin)
+	}
 	if config.Name == "" || strings.Trim(config.Name, "abcdefghijklmnopqrstuvwxyz0123456789-") != "" {
 		return fmt.Errorf("sync node name %q is not a DNS label", config.Name)
 	}
@@ -204,8 +217,8 @@ func executionEnv(networkID, syncMode string) []string {
 	}
 }
 
-func beaconCommand(executionHost, peer string) []string {
-	return []string{
+func beaconCommand(executionHost string, endpoints sourceEndpoints, origin BeaconOrigin) []string {
+	command := []string{
 		"--accept-terms-of-use=true",
 		"--datadir=" + beaconDataDir,
 		"--execution-endpoint=http://" + net.JoinHostPort(executionHost, strconv.Itoa(enginePort)),
@@ -215,10 +228,14 @@ func beaconCommand(executionHost, peer string) []string {
 		"--grpc-gateway-host=0.0.0.0",
 		"--grpc-gateway-port=" + strconv.Itoa(beaconPort),
 		"--no-discovery",
-		"--peer=" + peer,
+		"--peer=" + endpoints.beaconPeer,
 		"--min-sync-peers=1",
 		"--minimum-peers-per-subnet=0",
 	}
+	if origin == Checkpoint {
+		command = append(command, "--checkpoint-sync-url="+endpoints.beaconAPI)
+	}
+	return command
 }
 
 type networkFiles struct {
@@ -258,40 +275,45 @@ func newJWTSecret() ([]byte, error) {
 	return []byte(hexutil.Encode(secret)), nil
 }
 
-// querySourcePeers reads the source's network ID and the addresses its clients
+// querySourceEndpoints reads the source's network ID and the addresses its clients
 // listen on, rewritten to their private IPs on the enclave network.
-func querySourcePeers(ctx context.Context, participant devnet.Participant) (sourcePeers, error) {
+func querySourceEndpoints(ctx context.Context, participant devnet.Participant) (sourceEndpoints, error) {
 	execution, err := qrlclient.DialContext(ctx, participant.Execution.RPCURL)
 	if err != nil {
-		return sourcePeers{}, fmt.Errorf("dial execution client: %w", err)
+		return sourceEndpoints{}, fmt.Errorf("dial execution client: %w", err)
 	}
 	defer execution.Close()
 	networkID, err := execution.NetworkID(ctx)
 	if err != nil {
-		return sourcePeers{}, fmt.Errorf("read network ID: %w", err)
+		return sourceEndpoints{}, fmt.Errorf("read network ID: %w", err)
 	}
 	var info p2p.NodeInfo
 	if err := execution.Client().CallContext(ctx, &info, "admin_nodeInfo"); err != nil {
-		return sourcePeers{}, fmt.Errorf("read execution node info: %w", err)
+		return sourceEndpoints{}, fmt.Errorf("read execution node info: %w", err)
 	}
 	qnode, err := privateQnode(info.Qnode, participant.Execution.PrivateIP)
 	if err != nil {
-		return sourcePeers{}, err
+		return sourceEndpoints{}, err
 	}
 
 	beaconClient, err := beacon.New(participant.Consensus.URL)
 	if err != nil {
-		return sourcePeers{}, err
+		return sourceEndpoints{}, err
 	}
 	identity, err := beaconClient.Identity(ctx)
 	if err != nil {
-		return sourcePeers{}, fmt.Errorf("read beacon identity: %w", err)
+		return sourceEndpoints{}, fmt.Errorf("read beacon identity: %w", err)
 	}
 	peer, err := privateBeaconPeer(identity, participant.Consensus.PrivateIP)
 	if err != nil {
-		return sourcePeers{}, err
+		return sourceEndpoints{}, err
 	}
-	return sourcePeers{networkID: networkID.String(), qnode: qnode, beaconPeer: peer}, nil
+	return sourceEndpoints{
+		networkID:  networkID.String(),
+		qnode:      qnode,
+		beaconPeer: peer,
+		beaconAPI:  "http://" + net.JoinHostPort(participant.Consensus.PrivateIP, strconv.Itoa(beaconPort)),
+	}, nil
 }
 
 // privateQnode points a qnode URL at privateIP, keeping its node ID and
@@ -407,6 +429,10 @@ func (node *Node) Resume(ctx context.Context) error {
 
 func (node *Node) ExecutionLog() (string, error) {
 	return node.execution.Logs(0)
+}
+
+func (node *Node) BeaconLog() (string, error) {
+	return node.consensus.Logs(0)
 }
 
 // Logs returns the end of both clients' output, and nothing for a node that
