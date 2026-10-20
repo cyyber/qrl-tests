@@ -43,11 +43,12 @@ func testConfig() Config {
 	}
 }
 
-func testSourcePeers(context.Context, devnet.Participant) (sourcePeers, error) {
-	return sourcePeers{
+func testSourceEndpoints(context.Context, devnet.Participant) (sourceEndpoints, error) {
+	return sourceEndpoints{
 		networkID:  "1337",
 		qnode:      sourceQnode,
 		beaconPeer: "/ip4/172.16.0.12/tcp/13000/p2p/16Uiu2",
+		beaconAPI:  "http://172.16.0.12:3500",
 	}, nil
 }
 
@@ -105,7 +106,7 @@ func TestStartScriptVariablesAreSet(t *testing.T) {
 func TestStartLaunchesBothClients(t *testing.T) {
 	docker, addedPeers := newDocker(t)
 
-	node, err := start(t.Context(), testConfig(), docker, testSourcePeers)
+	node, err := start(t.Context(), testConfig(), docker, testSourceEndpoints)
 	require.NoError(t, err)
 	require.Len(t, docker.Created, 2)
 
@@ -142,7 +143,7 @@ func TestStartFailures(t *testing.T) {
 	for _, test := range []struct {
 		name    string
 		edit    func(*Config, *sidecartest.Docker)
-		query   sourcePeersQuery
+		query   sourceEndpointsQuery
 		wantErr string
 		created int
 	}{
@@ -157,14 +158,19 @@ func TestStartFailures(t *testing.T) {
 			wantErr: `sync mode "light" is not snap or full`,
 		},
 		{
+			name:    "bad beacon origin",
+			edit:    func(config *Config, _ *sidecartest.Docker) { config.BeaconOrigin = "backfill" },
+			wantErr: `beacon origin "backfill" is not genesis or checkpoint`,
+		},
+		{
 			name:    "name is not a DNS label",
 			edit:    func(config *Config, _ *sidecartest.Docker) { config.Name = "Sync Node" },
 			wantErr: `sync node name "Sync Node" is not a DNS label`,
 		},
 		{
 			name: "source does not answer",
-			query: func(context.Context, devnet.Participant) (sourcePeers, error) {
-				return sourcePeers{}, errors.New("connection refused")
+			query: func(context.Context, devnet.Participant) (sourceEndpoints, error) {
+				return sourceEndpoints{}, errors.New("connection refused")
 			},
 			wantErr: "query source participant 1: connection refused",
 		},
@@ -191,7 +197,7 @@ func TestStartFailures(t *testing.T) {
 			}
 			query := test.query
 			if query == nil {
-				query = testSourcePeers
+				query = testSourceEndpoints
 			}
 
 			_, err := start(t.Context(), config, docker, query)
