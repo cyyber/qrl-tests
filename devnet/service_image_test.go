@@ -5,11 +5,13 @@ import (
 	"context"
 	"errors"
 	"io"
+	"net/netip"
 	"strings"
 	"testing"
 
 	"github.com/cyyber/qrl-tests/internal/containerfiles"
 	containertypes "github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/api/types/network"
 	dockerclient "github.com/moby/moby/client"
 	"github.com/stretchr/testify/require"
 )
@@ -140,6 +142,40 @@ func TestReadServiceFileErrors(t *testing.T) {
 			require.EqualError(t, err, testCase.wantErr)
 		})
 	}
+}
+
+func TestServiceNetwork(t *testing.T) {
+	service := ServiceInfo{Name: "cl-1-qrysm-gqrl", ID: "consensus-service", PrivateIP: "172.16.0.12"}
+	withNetworks := func(networks map[string]*network.EndpointSettings) *fakeDocker {
+		return &fakeDocker{containers: []containertypes.Summary{{
+			ID:              "consensus-container",
+			NetworkSettings: &containertypes.NetworkSettingsSummary{Networks: networks},
+		}}}
+	}
+
+	client := withNetworks(map[string]*network.EndpointSettings{
+		"bridge":    {IPAddress: netip.MustParseAddr("172.17.0.3")},
+		"kt-devnet": {IPAddress: netip.MustParseAddr("172.16.0.12")},
+	})
+	name, err := ServiceNetwork(t.Context(), client, service)
+	require.NoError(t, err)
+	require.Equal(t, "kt-devnet", name)
+	require.Equal(t, dockerclient.Filters{
+		"label": {kurtosisServiceUUIDDockerLabel + "=consensus-service": true},
+	}, client.listed.Filters)
+
+	client = withNetworks(map[string]*network.EndpointSettings{
+		"bridge": {IPAddress: netip.MustParseAddr("172.17.0.3")},
+	})
+	_, err = ServiceNetwork(t.Context(), client, service)
+	require.EqualError(t, err, `service "cl-1-qrysm-gqrl" has no Docker network with its private IP 172.16.0.12`)
+
+	_, err = ServiceNetwork(t.Context(), &fakeDocker{}, service)
+	require.ErrorContains(t, err, "find container: expected one running Docker container")
+
+	service.PrivateIP = ""
+	_, err = ServiceNetwork(t.Context(), client, service)
+	require.ErrorContains(t, err, `service "cl-1-qrysm-gqrl" private IP`)
 }
 
 // fakeDocker serves ContainerList and CopyFromContainer from memory.

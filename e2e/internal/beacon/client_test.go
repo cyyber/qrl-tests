@@ -25,6 +25,10 @@ func TestClientDecodesQrysmResponses(t *testing.T) {
 			_, _ = writer.Write([]byte(`{"data":{"chain_id":"32382","address":"Q4242424242424242424242424242424242424242"}}`))
 		case "/qrl/v1/config/spec":
 			_, _ = writer.Write([]byte(`{"data":{"SLOTS_PER_EPOCH":"128","DEPOSIT_CONTRACT_ADDRESS":"Q4242424242424242424242424242424242424242"}}`))
+		case "/qrl/v1/node/syncing":
+			_, _ = writer.Write([]byte(`{"data":{"head_slot":"17","sync_distance":"3","is_syncing":true,"is_optimistic":true,"el_offline":false}}`))
+		case "/qrl/v1/node/identity":
+			_, _ = writer.Write([]byte(`{"data":{"peer_id":"16Uiu2","qnr":"qnr:-","p2p_addresses":["/ip4/172.16.0.12/tcp/13000/p2p/16Uiu2"],"discovery_addresses":[],"metadata":{"seq_number":"1","attnets":"0x00"}}}`))
 		case "/qrl/v1/beacon/headers/head":
 			_, _ = writer.Write([]byte(`{"data":{"root":"0xab","header":{"message":{"slot":"17"}}}}`))
 		case "/qrl/v1/beacon/states/head/validators/64":
@@ -73,6 +77,14 @@ func TestClientDecodesQrysmResponses(t *testing.T) {
 	require.ErrorContains(t, err, "does not define MISSING")
 	_, err = client.SpecUint(t.Context(), "DEPOSIT_CONTRACT_ADDRESS")
 	require.ErrorContains(t, err, "parse spec value DEPOSIT_CONTRACT_ADDRESS")
+
+	syncStatus, err := client.SyncStatus(t.Context())
+	require.NoError(t, err)
+	require.Equal(t, SyncStatus{HeadSlot: 17, SyncDistance: 3, IsSyncing: true, IsOptimistic: true}, syncStatus)
+
+	identity, err := client.Identity(t.Context())
+	require.NoError(t, err)
+	require.Equal(t, Identity{PeerID: "16Uiu2", P2PAddresses: []string{"/ip4/172.16.0.12/tcp/13000/p2p/16Uiu2"}}, identity)
 
 	headSlot, err := client.HeadSlot(t.Context())
 	require.NoError(t, err)

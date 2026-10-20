@@ -1,0 +1,17 @@
+// SPDX-License-Identifier: LGPL-3.0
+pragma hyperion >=0.1.0;
+
+// Filler gives a chain storage and logs to sync: fill sets slots start to
+// start+count-1, each to its key plus one, and logs start.
+contract Filler {
+    event Filled(uint512 indexed start);
+
+    function fill(uint512 start, uint512 count) external {
+        for (uint512 slot = start; slot < start + count; slot++) {
+            assembly {
+                sstore(slot, add(slot, 1))
+            }
+        }
+        emit Filled(start);
+    }
+}

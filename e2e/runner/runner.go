@@ -89,6 +89,7 @@ type Runner struct {
 	configuration             Config
 	networks                  networkManager
 	resolveExecutionImage     func(context.Context, devnet.Environment) (string, error)
+	resolveConsensusImage     func(context.Context, devnet.Environment) (string, error)
 	resolveValidatorImage     func(context.Context, devnet.Environment) (string, error)
 	resolveQrysmAlltoolsImage func(context.Context, devnet.Environment) (string, error)
 	runCommand                func(context.Context, commandSpec) error
@@ -103,6 +104,7 @@ func New(configuration Config, stdout, stderr io.Writer) *Runner {
 		configuration:         configuration,
 		networks:              devnet.NewManager(),
 		resolveExecutionImage: devnet.ResolveExecutionImage,
+		resolveConsensusImage: devnet.ResolveConsensusImage,
 		resolveValidatorImage: devnet.ResolveValidatorImage,
 		resolveQrysmAlltoolsImage: func(ctx context.Context, environment devnet.Environment) (string, error) {
 			return devnet.ResolveLocalImage(ctx, environment, configuration.QrysmAlltoolsImage)

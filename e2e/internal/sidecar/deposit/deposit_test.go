@@ -138,7 +138,7 @@ func TestRunReadsDepositOutput(t *testing.T) {
 	require.Len(t, result.Keystores, 1)
 	require.Equal(t, "Successfully sent all validator deposits!", result.Output)
 
-	created := docker.Created.Config
+	created := docker.LastCreated().Config
 	require.Equal(t, "deposit:test", created.Image)
 	require.Equal(t, []string{"/bin/sh", "/run-deposit.sh"}, created.Entrypoint)
 	require.Equal(t, []string{

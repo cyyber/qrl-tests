@@ -15,6 +15,7 @@ func TestManifestRoundTrip(t *testing.T) {
 		Lane:               "execution",
 		Profile:            devnet.ProfileSingle,
 		ExecutionImage:     "registry.example/go-qrl@sha256:digest",
+		ConsensusImage:     "registry.example/qrysm-beacon@sha256:digest",
 		ValidatorImage:     "registry.example/qrysm-validator@sha256:digest",
 		QrysmAlltoolsImage: "registry.example/qrysm-alltools@sha256:digest",
 		Environment: devnet.Environment{

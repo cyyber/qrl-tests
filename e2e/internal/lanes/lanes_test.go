@@ -54,6 +54,7 @@ func TestLaneWithSuites(t *testing.T) {
 	require.Equal(t, []SuiteID{suiteExecutionABI, suiteExecutionConsole}, selected.Suites)
 	require.True(t, selected.NeedsExecutionImage())
 	require.False(t, selected.NeedsValidatorImage())
+	require.False(t, selected.NeedsConsensusImage())
 
 	selected, err = execution.WithSuites([]string{string(suiteExecutionABI)})
 	require.NoError(t, err)
@@ -79,6 +80,13 @@ func TestLaneWithSuites(t *testing.T) {
 	require.False(t, restart.NeedsExecutionImage())
 	require.True(t, restart.RestartsServices)
 	require.False(t, execution.RestartsServices)
+
+	sync, err := Named("sync")
+	require.NoError(t, err)
+	require.Equal(t, devnet.ProfileSingle, sync.Profile)
+	require.True(t, sync.NeedsExecutionImage())
+	require.True(t, sync.NeedsConsensusImage())
+	require.False(t, sync.NeedsValidatorImage())
 
 	_, err = execution.WithSuites([]string{"unknown"})
 	require.ErrorContains(t, err, "unknown E2E suite")
