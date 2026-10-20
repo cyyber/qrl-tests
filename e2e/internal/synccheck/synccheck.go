@@ -167,8 +167,9 @@ func ExpectSynced(ctx context.Context, node *syncnode.Node, source *live.Node, c
 	}).WithContext(ctx).WithTimeout(chain.EpochDuration).WithPolling(chain.SlotDuration).Should(gomega.Succeed())
 
 	ginkgo.By("holding the source's state")
-	// State is read at the node's head, recent enough for the source to still
-	// have it: a full node keeps the state of its last 128 blocks.
+	// State is read at the node's head, which both have: a full node keeps the
+	// state of its last 128 blocks, and a snap-synced one has none before its
+	// pivot, 64 blocks behind the head it started from.
 	at := new(big.Int).SetUint64(head)
 	for _, account := range append([]common.Address{source.Address}, written.Recipients...) {
 		gomega.Expect(node.Execution.BalanceAt(ctx, account, at)).To(
