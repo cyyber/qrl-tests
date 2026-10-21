@@ -11,6 +11,7 @@ import (
 	"github.com/cyyber/qrl-tests/e2e/internal/history"
 	"github.com/cyyber/qrl-tests/e2e/internal/live"
 	"github.com/cyyber/qrl-tests/e2e/internal/sidecar/syncnode"
+	"github.com/cyyber/qrl-tests/e2e/internal/synccheck"
 	"github.com/cyyber/qrl-tests/e2e/internal/testsuite"
 	ginkgo "github.com/onsi/ginkgo/v2"
 	gomega "github.com/onsi/gomega"
@@ -88,9 +89,9 @@ var _ = ginkgo.Describe(
 			gomega.Expect(written.Transactions).NotTo(gomega.BeEmpty(), "there is no history to sync")
 			fullNode = startNode(ctx, "sync-full", "full")
 
-			path := waitForHead(ctx, fullNode, source, chain)
-			ginkgo.AddReportEntry("execution sync path", path.String())
-			expectSynced(ctx, fullNode, source, chain, written)
+			sync := synccheck.WaitForHead(ctx, fullNode, source, chain)
+			ginkgo.AddReportEntry("execution sync path", sync.Path.String())
+			synccheck.ExpectSynced(ctx, fullNode, source, chain, written, synccheck.Genesis)
 		}, ginkgo.SpecTimeout(15*time.Minute))
 
 		ginkgo.It("catches up after the source finalizes two more epochs while it is stopped", func(ctx ginkgo.SpecContext) {
@@ -111,9 +112,9 @@ var _ = ginkgo.Describe(
 			gomega.Expect(fullNode.Execution.BlockNumber(ctx)).To(gomega.BeNumerically(">=", stoppedBlock),
 				"the execution client lost blocks it had")
 
-			path := waitForHead(ctx, fullNode, source, chain)
-			ginkgo.AddReportEntry("execution sync path after the restart", path.String())
-			expectSynced(ctx, fullNode, source, chain, written)
+			sync := synccheck.WaitForHead(ctx, fullNode, source, chain)
+			ginkgo.AddReportEntry("execution sync path after the restart", sync.Path.String())
+			synccheck.ExpectSynced(ctx, fullNode, source, chain, written, synccheck.Genesis)
 		}, ginkgo.SpecTimeout(15*time.Minute))
 	},
 )
