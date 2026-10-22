@@ -283,7 +283,7 @@ func TestStartUsesPinnedPackage(t *testing.T) {
 
 	_, err := testManager(client).Start(t.Context(), startOptions())
 	require.NoError(t, err)
-	require.Regexp(t, `^github\.com/cyyber/qrl-package@[0-9a-f]{40}$`, PackageLocator)
+	require.Regexp(t, `^github\.com/theQRL/qrl-package@[0-9a-f]{40}$`, PackageLocator)
 	require.Equal(t, PackageLocator, client.packageLocator)
 }
 
