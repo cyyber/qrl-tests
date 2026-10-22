@@ -31,6 +31,15 @@ make network-stop
 runs only on a network the runner provisions (`make e2e-run` or `run-all`),
 without a parameters file.
 
+Its kill happens once at each of four phases of a slot. `RESILIENCE_KILL_PHASES`
+narrows a run to some of them, as a comma-separated list of phase keys
+(`slot-start`, `slot-third`, `slot-two-thirds`, `epoch-end`) or 1-based
+positions; unset, as in the nightly, the run executes every phase:
+
+```bash
+RESILIENCE_KILL_PHASES=epoch-end E2E_LANE=resilience-network-restart make e2e-run
+```
+
 The Ginkgo runner writes its JSON report, output log and resolved environment
 manifest under `reports/lanes/<lane>/`, next to the run manifest and result
 summaries at the report root. Every run records its Ginkgo seed in
