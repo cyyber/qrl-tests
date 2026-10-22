@@ -101,33 +101,55 @@ func TestSlotClock(t *testing.T) {
 	require.Equal(t, "slot 2 at 3.000s", SlotPoint{Slot: 2, Offset: 3 * time.Second}.String())
 
 	t.Run("later in the same slot", func(t *testing.T) {
-		next, err := chain.NextSlotOffset(genesis.Add(27*time.Second), 4*time.Second)
+		next, err := chain.NextSlotOffset(genesis.Add(27*time.Second), 4*time.Second, AnySlot)
 		require.NoError(t, err)
 		require.Equal(t, genesis.Add(28*time.Second), next)
 	})
 
 	t.Run("already at the offset", func(t *testing.T) {
-		next, err := chain.NextSlotOffset(genesis.Add(27*time.Second), 3*time.Second)
+		next, err := chain.NextSlotOffset(genesis.Add(27*time.Second), 3*time.Second, AnySlot)
 		require.NoError(t, err)
 		require.Equal(t, genesis.Add(27*time.Second), next)
 	})
 
 	t.Run("past the offset, so in the next slot", func(t *testing.T) {
-		next, err := chain.NextSlotOffset(genesis.Add(27*time.Second), 2*time.Second)
+		next, err := chain.NextSlotOffset(genesis.Add(27*time.Second), 2*time.Second, AnySlot)
 		require.NoError(t, err)
 		require.Equal(t, genesis.Add(38*time.Second), next)
 	})
 
 	t.Run("before genesis", func(t *testing.T) {
-		next, err := chain.NextSlotOffset(genesis.Add(-5*time.Second), 2*time.Second)
+		next, err := chain.NextSlotOffset(genesis.Add(-5*time.Second), 2*time.Second, AnySlot)
 		require.NoError(t, err)
 		require.Equal(t, genesis.Add(2*time.Second), next)
 	})
 
+	t.Run("last slot of the epoch", func(t *testing.T) {
+		// 128 slots of 12 s per epoch: the last slot of epoch 0 starts at
+		// 127 * 12 s = 1524 s.
+		require.False(t, chain.LastSlotOfEpoch(126))
+		require.True(t, chain.LastSlotOfEpoch(127))
+		require.True(t, chain.LastSlotOfEpoch(255))
+
+		next, err := chain.NextSlotOffset(genesis.Add(27*time.Second), 10*time.Second, chain.LastSlotOfEpoch)
+		require.NoError(t, err)
+		require.Equal(t, genesis.Add(1534*time.Second), next)
+
+		// Already past the offset in the last slot: the next epoch's.
+		next, err = chain.NextSlotOffset(genesis.Add(1535*time.Second), 10*time.Second, chain.LastSlotOfEpoch)
+		require.NoError(t, err)
+		require.Equal(t, genesis.Add((1534+128*12)*time.Second), next)
+	})
+
+	t.Run("filter accepts nothing", func(t *testing.T) {
+		_, err := chain.NextSlotOffset(genesis.Add(27*time.Second), time.Second, func(uint64) bool { return false })
+		require.EqualError(t, err, "no slot accepted in the epoch after slot 2 at 3.000s")
+	})
+
 	t.Run("offset outside the slot", func(t *testing.T) {
-		_, err := chain.NextSlotOffset(genesis, 12*time.Second)
+		_, err := chain.NextSlotOffset(genesis, 12*time.Second, AnySlot)
 		require.EqualError(t, err, "slot offset 12s is outside a 12s slot")
-		_, err = chain.NextSlotOffset(genesis, -time.Second)
+		_, err = chain.NextSlotOffset(genesis, -time.Second, AnySlot)
 		require.EqualError(t, err, "slot offset -1s is outside a 12s slot")
 	})
 }
@@ -140,16 +162,16 @@ func TestWaitForSlotOffset(t *testing.T) {
 	chain.GenesisTime = time.Now()
 	chain.SlotDuration = 200 * time.Millisecond
 
-	point, err := chain.WaitForSlotOffset(t.Context(), 100*time.Millisecond)
+	point, err := chain.WaitForSlotOffset(t.Context(), 100*time.Millisecond, AnySlot)
 	require.NoError(t, err)
 	require.GreaterOrEqual(t, point.Offset, 100*time.Millisecond)
 	require.Less(t, point.Offset, 150*time.Millisecond)
 
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
-	_, err = chain.WaitForSlotOffset(ctx, 100*time.Millisecond)
+	_, err = chain.WaitForSlotOffset(ctx, 100*time.Millisecond, AnySlot)
 	require.ErrorIs(t, err, context.Canceled)
 
-	_, err = chain.WaitForSlotOffset(t.Context(), time.Second)
+	_, err = chain.WaitForSlotOffset(t.Context(), time.Second, AnySlot)
 	require.EqualError(t, err, "slot offset 1s is outside a 200ms slot")
 }

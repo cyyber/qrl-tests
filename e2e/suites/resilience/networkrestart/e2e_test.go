@@ -31,20 +31,40 @@ const (
 
 // killPhase is the point within a slot at which every node is killed. A
 // validator proposes at the start of its slot, attests a third of the way in
-// and aggregates two thirds in, so what each node has on disk and in flight
-// depends on where the kill lands.
+// and aggregates two thirds in, and at the end of the last slot of an epoch
+// the beacon node runs the epoch transition, so what each node has on disk
+// and in flight depends on where the kill lands.
 type killPhase struct {
 	name string
-	// thirds is the offset into the slot, in thirds of a slot.
-	thirds int64
+	// The offset into the slot, as the fraction numerator/denominator.
+	numerator, denominator int64
+	// lastSlotOfEpoch kills in the last slot of an epoch only.
+	lastSlotOfEpoch bool
 }
 
 var killPhases = []killPhase{
-	{name: "at the start of a slot, while the block is proposed", thirds: 0},
+	{name: "at the start of a slot, while the block is proposed", numerator: 0, denominator: 1},
+	{name: "a third into a slot, while attestations are made", numerator: 1, denominator: 3},
+	{name: "two thirds into a slot, while attestations are aggregated", numerator: 2, denominator: 3},
+	// Nine tenths in, so that the kills, which land up to 0.3 s after they
+	// are sent on Docker Desktop, still fall in the slot. The restart then
+	// loads the state the epoch transition was about to save.
+	{
+		name: "at the end of an epoch's last slot, while the epoch transition with its justification " +
+			"and finalization updates and the state save a restart loads from are in flight",
+		numerator: 9, denominator: 10, lastSlotOfEpoch: true,
+	},
 }
 
 func (phase killPhase) offset(chain chaininfo.Info) time.Duration {
-	return time.Duration(phase.thirds) * chain.SlotDuration / 3
+	return time.Duration(phase.numerator) * chain.SlotDuration / time.Duration(phase.denominator)
+}
+
+func (phase killPhase) slots(chain chaininfo.Info) chaininfo.SlotFilter {
+	if phase.lastSlotOfEpoch {
+		return chain.LastSlotOfEpoch
+	}
+	return chaininfo.AnySlot
 }
 
 func TestE2E(t *testing.T) {
@@ -53,10 +73,13 @@ func TestE2E(t *testing.T) {
 
 // The outages run in one ordered Describe because a restarted service is
 // published on new host ports that only the runtime that restarted it knows.
+// A failed recovery does not end the run: the later outages still happen, so
+// one run tells which phases of a slot the network recovers from.
 var _ = ginkgo.Describe(
 	"A network whose nodes all go down at once",
 	ginkgo.Serial,
 	ginkgo.Ordered,
+	ginkgo.ContinueOnFailure,
 	ginkgo.Label("e2e", "resilience", "network-restart"),
 	func() {
 		var (
@@ -208,8 +231,10 @@ var _ = ginkgo.Describe(
 			}, ginkgo.SpecTimeout(time.Minute))
 		})
 
-		// A kill at a known phase of a slot, since what a node had written
-		// and what it was doing when the power went depend on it.
+		// A kill at each phase of a slot, since what a node had written and
+		// what it was doing when the power went differ between them. The
+		// last one lands in the last slot of an epoch, so a restart loads
+		// the state of an epoch transition the kill cut short.
 		for _, phase := range killPhases {
 			ginkgo.Context("when every node is killed "+phase.name, func() {
 				var (
@@ -229,7 +254,7 @@ var _ = ginkgo.Describe(
 					// follow the chosen moment as closely as Docker allows.
 					exits, err := runtime.KillParticipants(ctx, func(ctx context.Context) error {
 						var err error
-						killed, err = chain.WaitForSlotOffset(ctx, phase.offset(chain))
+						killed, err = chain.WaitForSlotOffset(ctx, phase.offset(chain), phase.slots(chain))
 						return err
 					})
 					gomega.Expect(err).NotTo(gomega.HaveOccurred())
@@ -242,8 +267,9 @@ var _ = ginkgo.Describe(
 						exited = append(exited, exit.Name+" at "+chain.SlotPointAt(exit.ExitedAt).String())
 					}
 					record := fmt.Sprintf(
-						"killed every node %s: SIGKILL sent at %s (target offset %s); exited: %s; head was slot %d, finalized slot %d",
-						phase.name, killed, phase.offset(chain), strings.Join(exited, ", "), head.Slot, finalized.Slot,
+						"killed every node %s: SIGKILL sent at %s (target offset %s, epoch slot %d of %d); exited: %s; head was slot %d, finalized slot %d",
+						phase.name, killed, phase.offset(chain), killed.Slot%chain.SlotsPerEpoch, chain.SlotsPerEpoch,
+						strings.Join(exited, ", "), head.Slot, finalized.Slot,
 					)
 					ginkgo.GinkgoWriter.Println(record)
 					ginkgo.AddReportEntry("kill", record)

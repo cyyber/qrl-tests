@@ -65,12 +65,14 @@ var registry = []Lane{
 		Timeout: 95 * time.Minute,
 	},
 	{
-		// Finality, a graceful outage, finality again, an outage without
-		// shutdown, then finality again take about fifteen 40-second epochs.
+		// Finality, a graceful outage, then an outage without shutdown at
+		// each of four phases of a slot, each followed by finality again,
+		// take about thirty 40-second epochs; a recovery that fails costs
+		// its timeouts, about twelve epochs, and the run goes on.
 		Name:             "resilience-network-restart",
 		Profile:          devnet.ProfileAnchored,
 		Suites:           []SuiteID{suiteResilienceNetworkRestart},
-		Timeout:          40 * time.Minute,
+		Timeout:          62 * time.Minute,
 		RestartsServices: true,
 	},
 }

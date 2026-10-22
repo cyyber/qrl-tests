@@ -144,7 +144,7 @@ jobs:
       source-qrysm: ${{ needs.images.outputs.qrysm-sha }}
       source-generator: ${{ needs.images.outputs.generator-sha }}
       lane: ${{ matrix.lane }}
-      timeout-minutes: ${{ fromJSON('{"execution":30,"consensus-staking-automated":110,"consensus-staking-operator":110,"resilience-network-restart":50}')[matrix.lane] }}
+      timeout-minutes: ${{ fromJSON('{"execution":30,"consensus-staking-automated":110,"consensus-staking-operator":110,"resilience-network-restart":72}')[matrix.lane] }}
 
   image-failure-summary:
     needs: images

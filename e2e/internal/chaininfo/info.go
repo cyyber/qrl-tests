@@ -98,24 +98,45 @@ func (chain Info) SlotPointAt(at time.Time) SlotPoint {
 	return SlotPoint{Slot: uint64(elapsed / chain.SlotDuration), Offset: elapsed % chain.SlotDuration}
 }
 
+// SlotFilter says which slots a wait may end in.
+type SlotFilter func(slot uint64) bool
+
+// AnySlot accepts every slot.
+func AnySlot(uint64) bool { return true }
+
+// LastSlotOfEpoch accepts the last slot of each epoch. At its end the epoch
+// transition runs, with the justification and finalization updates and the
+// state save a restart loads from.
+func (chain Info) LastSlotOfEpoch(slot uint64) bool {
+	return slot%chain.SlotsPerEpoch == chain.SlotsPerEpoch-1
+}
+
 // NextSlotOffset returns the first time at or after from that is offset into
-// a slot. offset must be at least zero and shorter than a slot.
-func (chain Info) NextSlotOffset(from time.Time, offset time.Duration) (time.Time, error) {
+// a slot the filter accepts. offset must be at least zero and shorter than a
+// slot, and the filter must accept a slot in every epoch.
+func (chain Info) NextSlotOffset(from time.Time, offset time.Duration, accept SlotFilter) (time.Time, error) {
 	if offset < 0 || offset >= chain.SlotDuration {
 		return time.Time{}, fmt.Errorf("slot offset %s is outside a %s slot", offset, chain.SlotDuration)
 	}
 	point := chain.SlotPointAt(from)
-	if point.Offset <= offset {
-		return from.Add(offset - point.Offset), nil
+	next := from.Add(offset - point.Offset)
+	if point.Offset > offset {
+		next = next.Add(chain.SlotDuration)
 	}
-	return from.Add(chain.SlotDuration - point.Offset + offset), nil
+	for range chain.SlotsPerEpoch {
+		if accept(chain.SlotPointAt(next).Slot) {
+			return next, nil
+		}
+		next = next.Add(chain.SlotDuration)
+	}
+	return time.Time{}, fmt.Errorf("no slot accepted in the epoch after %s", chain.SlotPointAt(from))
 }
 
 // WaitForSlotOffset waits until the wall clock next reaches offset into a
-// slot, and returns where on the chain's clock it woke up: the slot it
-// waited for, a little past the offset.
-func (chain Info) WaitForSlotOffset(ctx context.Context, offset time.Duration) (SlotPoint, error) {
-	deadline, err := chain.NextSlotOffset(time.Now(), offset)
+// slot the filter accepts, and returns where on the chain's clock it woke
+// up: the slot it waited for, a little past the offset.
+func (chain Info) WaitForSlotOffset(ctx context.Context, offset time.Duration, accept SlotFilter) (SlotPoint, error) {
+	deadline, err := chain.NextSlotOffset(time.Now(), offset, accept)
 	if err != nil {
 		return SlotPoint{}, err
 	}
