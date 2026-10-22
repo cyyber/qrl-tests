@@ -4,7 +4,9 @@ package networkrestart
 
 import (
 	"context"
+	"fmt"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -26,6 +28,24 @@ const (
 	resumeTimeoutEpochs   = 4
 	finalityTimeoutEpochs = 8
 )
+
+// killPhase is the point within a slot at which every node is killed. A
+// validator proposes at the start of its slot, attests a third of the way in
+// and aggregates two thirds in, so what each node has on disk and in flight
+// depends on where the kill lands.
+type killPhase struct {
+	name string
+	// thirds is the offset into the slot, in thirds of a slot.
+	thirds int64
+}
+
+var killPhases = []killPhase{
+	{name: "at the start of a slot, while the block is proposed", thirds: 0},
+}
+
+func (phase killPhase) offset(chain chaininfo.Info) time.Duration {
+	return time.Duration(phase.thirds) * chain.SlotDuration / 3
+}
 
 func TestE2E(t *testing.T) {
 	testsuite.Run(t, "Network restart E2E suite")
@@ -188,41 +208,71 @@ var _ = ginkgo.Describe(
 			}, ginkgo.SpecTimeout(time.Minute))
 		})
 
-		ginkgo.Context("when every node is killed without shutdown", func() {
-			var (
-				// head is the latest head participant 1 saw before the kill.
-				// The validators are killed while they propose, so a block
-				// may still land in the slot after it.
-				head beacon.BlockHeader
-				// finalized is the block participant 1 had finalized before
-				// the kill. No participant may lose it.
-				finalized beacon.BlockHeader
-			)
+		// A kill at a known phase of a slot, since what a node had written
+		// and what it was doing when the power went depend on it.
+		for _, phase := range killPhases {
+			ginkgo.Context("when every node is killed "+phase.name, func() {
+				var (
+					// killed is the point of the chain's clock at which the
+					// first kill was sent. No block can be proposed after its
+					// slot before the restart.
+					killed chaininfo.SlotPoint
+					// finalized is the block participant 1 had finalized before
+					// the kill. No participant may lose it.
+					finalized beacon.BlockHeader
+				)
 
-			ginkgo.It("kills every node while it proposes", func(ctx ginkgo.SpecContext) {
-				finalized = testsuite.MustSucceed(nodes[0].Beacon.BlockHeader(ctx, "finalized"))
-				head = testsuite.MustSucceed(nodes[0].Beacon.BlockHeader(ctx, "head"))
-				gomega.Expect(runtime.KillParticipants(ctx)).To(gomega.Succeed())
-				expectDown(ctx)
-				pause(ctx, killOutageEpochs*chain.EpochDuration)
-			}, ginkgo.SpecTimeout(2*time.Minute))
+				ginkgo.It("kills every node", func(ctx ginkgo.SpecContext) {
+					finalized = testsuite.MustSucceed(nodes[0].Beacon.BlockHeader(ctx, "finalized"))
+					head := testsuite.MustSucceed(nodes[0].Beacon.BlockHeader(ctx, "head"))
+					// The containers are found before the wait, so the kills
+					// follow the chosen moment as closely as Docker allows.
+					exits, err := runtime.KillParticipants(ctx, func(ctx context.Context) error {
+						var err error
+						killed, err = chain.WaitForSlotOffset(ctx, phase.offset(chain))
+						return err
+					})
+					gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-			ginkgo.It("starts every node again", func(ctx ginkgo.SpecContext) {
-				startParticipants(ctx)
-			}, ginkgo.SpecTimeout(2*time.Minute))
+					// Tie a failure of the specs that follow to the phase. The
+					// exit times are the Docker host's, which may run a little
+					// apart from this clock.
+					var exited []string
+					for _, exit := range exits {
+						exited = append(exited, exit.Name+" at "+chain.SlotPointAt(exit.ExitedAt).String())
+					}
+					record := fmt.Sprintf(
+						"killed every node %s: SIGKILL sent at %s (target offset %s); exited: %s; head was slot %d, finalized slot %d",
+						phase.name, killed, phase.offset(chain), strings.Join(exited, ", "), head.Slot, finalized.Slot,
+					)
+					ginkgo.GinkgoWriter.Println(record)
+					ginkgo.AddReportEntry("kill", record)
+					for _, exit := range exits {
+						gomega.Expect(chain.SlotPointAt(exit.ExitedAt).Slot).To(gomega.Equal(killed.Slot),
+							"%s did not exit in the slot the kill was timed for", exit.Name)
+					}
 
-			ginkgo.It("proposes again and keeps its finalized blocks", func(ctx ginkgo.SpecContext) {
-				expectProposing(ctx, head.Slot, killOutageEpochs)
-				expectBlock(ctx, finalized, "finalized")
-			}, ginkgo.SpecTimeout(4*time.Minute))
+					expectDown(ctx)
+					pause(ctx, killOutageEpochs*chain.EpochDuration)
+				}, ginkgo.SpecTimeout(2*time.Minute))
 
-			ginkgo.It("finalizes again on one chain", func(ctx ginkgo.SpecContext) {
-				expectFinalizing(ctx, head.Slot)
-			}, ginkgo.SpecTimeout(6*time.Minute))
+				ginkgo.It("starts every node again", func(ctx ginkgo.SpecContext) {
+					startParticipants(ctx)
+				}, ginkgo.SpecTimeout(2*time.Minute))
 
-			ginkgo.It("slashes no validator", func(ctx ginkgo.SpecContext) {
-				expectNoSlashing(ctx)
-			}, ginkgo.SpecTimeout(time.Minute))
-		})
+				ginkgo.It("proposes again and keeps its finalized blocks", func(ctx ginkgo.SpecContext) {
+					expectProposing(ctx, killed.Slot, killOutageEpochs)
+					expectBlock(ctx, finalized, "finalized")
+				}, ginkgo.SpecTimeout(4*time.Minute))
+
+				ginkgo.It("finalizes again on one chain", func(ctx ginkgo.SpecContext) {
+					expectFinalizing(ctx, killed.Slot)
+				}, ginkgo.SpecTimeout(6*time.Minute))
+
+				ginkgo.It("slashes no validator", func(ctx ginkgo.SpecContext) {
+					expectNoSlashing(ctx)
+				}, ginkgo.SpecTimeout(time.Minute))
+			})
+		}
 	},
 )

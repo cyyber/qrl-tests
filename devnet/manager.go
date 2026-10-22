@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/cyyber/qrl-tests/devnet/internal/kurtosis"
@@ -43,6 +44,14 @@ type enclaveClient interface {
 type containerKiller interface {
 	containerLister
 	ContainerKill(context.Context, string, dockerclient.ContainerKillOptions) (dockerclient.ContainerKillResult, error)
+	ContainerInspect(context.Context, string, dockerclient.ContainerInspectOptions) (dockerclient.ContainerInspectResult, error)
+}
+
+// KilledService is a service KillServices killed, with when its container
+// exited on the Docker host's clock.
+type KilledService struct {
+	Name     string
+	ExitedAt time.Time
 }
 
 type StartOptions struct {
@@ -222,65 +231,137 @@ func (manager *Manager) StopServices(ctx context.Context, name string, services 
 	return nil
 }
 
-// KillServices kills the named services of a running network, in order,
+// KillServices kills the named services of a running network at once,
 // without letting them shut down. They keep their data and flags until
-// StartServices starts them again.
-func (manager *Manager) KillServices(ctx context.Context, name string, services []string) error {
+// StartServices starts them again. Once every container is found and right
+// before the kills, it calls ready, if set, and kills nothing if that fails:
+// a caller uses it to pick the moment the kills land. It reports when each
+// service exited.
+func (manager *Manager) KillServices(
+	ctx context.Context, name string, services []string, ready func(context.Context) error,
+) ([]KilledService, error) {
 	docker, err := dockerapi.New()
 	if err != nil {
-		return fmt.Errorf("kill services %v: create Docker client: %w", services, err)
+		return nil, fmt.Errorf("kill services %v: create Docker client: %w", services, err)
 	}
 	defer func() { _ = docker.Close() }()
 
-	if err := manager.killServices(ctx, docker, name, services); err != nil {
-		return fmt.Errorf("kill services %v: %w", services, err)
+	killed, err := manager.killServices(ctx, docker, name, services, ready)
+	if err != nil {
+		return nil, fmt.Errorf("kill services %v: %w", services, err)
 	}
-	return nil
+	return killed, nil
 }
 
-func (manager *Manager) killServices(ctx context.Context, docker containerKiller, name string, services []string) error {
+func (manager *Manager) killServices(
+	ctx context.Context, docker containerKiller, name string, services []string, ready func(context.Context) error,
+) ([]KilledService, error) {
 	client, err := manager.newEnclaveClient()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	running, err := client.Services(ctx, name)
 	if err != nil {
-		return err
+		return nil, err
+	}
+	containers, err := serviceContainers(ctx, docker, name, running, services)
+	if err != nil {
+		return nil, err
+	}
+	if ready != nil {
+		if err := ready(ctx); err != nil {
+			return nil, err
+		}
 	}
 
-	killed, err := killContainers(ctx, docker, name, running, services)
+	killed, err := killContainers(ctx, docker, services, containers)
 
 	// Kurtosis still records the killed services as running, and it only
 	// starts services it stopped. Stopping a container that has already
-	// exited does nothing else. Mark them stopped even if a later kill
+	// exited does nothing else. Mark them stopped even if another kill
 	// failed, so they can still be started again.
 	if len(killed) > 0 {
-		if stopErr := client.StopServices(ctx, name, killed); stopErr != nil {
-			return errors.Join(err, stopErr)
+		names := make([]string, len(killed))
+		for index, service := range killed {
+			names[index] = service.Name
+		}
+		if stopErr := client.StopServices(ctx, name, names); stopErr != nil {
+			return nil, errors.Join(err, stopErr)
 		}
 	}
-	return err
+	if err != nil {
+		return nil, err
+	}
+	return killed, nil
 }
 
-// killContainers kills the container of each service in order, and returns
-// the services it killed before any error.
-func killContainers(ctx context.Context, docker containerKiller, name string, running map[string]kurtosis.Service, services []string) ([]string, error) {
-	var killed []string
-	for _, service := range services {
+// serviceContainers finds the container of each service, in order, so that
+// the kills that follow need no further lookup.
+func serviceContainers(
+	ctx context.Context, docker containerLister, name string, running map[string]kurtosis.Service, services []string,
+) ([]string, error) {
+	containers := make([]string, len(services))
+	for index, service := range services {
 		info, found := running[service]
 		if !found {
-			return killed, fmt.Errorf("network %q has no service %q", name, service)
+			return nil, fmt.Errorf("network %q has no service %q", name, service)
 		}
 		container, err := serviceContainer(ctx, docker, info.UUID)
 		if err != nil {
-			return killed, fmt.Errorf("find %s container: %w", service, err)
+			return nil, fmt.Errorf("find %s container: %w", service, err)
 		}
-		if _, err := docker.ContainerKill(ctx, container.ID, dockerclient.ContainerKillOptions{Signal: "SIGKILL"}); err != nil {
-			return killed, fmt.Errorf("kill %s: %w", service, err)
-		}
-		killed = append(killed, service)
+		containers[index] = container.ID
 	}
-	return killed, nil
+	return containers, nil
+}
+
+// killContainers kills the container of every service at once, as a power
+// loss would, and returns the services it killed, in the given order, with
+// the errors of the kills that failed. Docker reports a kill once the
+// container has exited; the exit time it recorded is kept, as the kills of
+// several containers land some time apart.
+func killContainers(ctx context.Context, docker containerKiller, services, containers []string) ([]KilledService, error) {
+	exits := make([]time.Time, len(services))
+	killErrs := make([]error, len(services))
+	inspectErrs := make([]error, len(services))
+	var kills sync.WaitGroup
+	for index, service := range services {
+		kills.Go(func() {
+			if _, err := docker.ContainerKill(ctx, containers[index], dockerclient.ContainerKillOptions{Signal: "SIGKILL"}); err != nil {
+				killErrs[index] = fmt.Errorf("kill %s: %w", service, err)
+				return
+			}
+			if exitedAt, err := containerExit(ctx, docker, containers[index]); err != nil {
+				inspectErrs[index] = fmt.Errorf("inspect killed %s: %w", service, err)
+			} else {
+				exits[index] = exitedAt
+			}
+		})
+	}
+	kills.Wait()
+
+	var killed []KilledService
+	for index, service := range services {
+		if killErrs[index] == nil {
+			killed = append(killed, KilledService{Name: service, ExitedAt: exits[index]})
+		}
+	}
+	return killed, errors.Join(errors.Join(killErrs...), errors.Join(inspectErrs...))
+}
+
+func containerExit(ctx context.Context, docker containerKiller, container string) (time.Time, error) {
+	inspection, err := docker.ContainerInspect(ctx, container, dockerclient.ContainerInspectOptions{})
+	if err != nil {
+		return time.Time{}, err
+	}
+	if inspection.Container.State == nil {
+		return time.Time{}, errors.New("no container state")
+	}
+	exitedAt, err := time.Parse(time.RFC3339Nano, inspection.Container.State.FinishedAt)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("parse exit time: %w", err)
+	}
+	return exitedAt, nil
 }
 
 // StartServices starts the named stopped services, in order. They come back

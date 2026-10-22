@@ -153,12 +153,14 @@ func (runtime *Runtime) StopNodes(ctx context.Context) error {
 }
 
 // KillParticipants kills every validator client, beacon node and execution
-// client without letting them shut down, as a power loss would. They keep
-// whatever they had written to disk.
-func (runtime *Runtime) KillParticipants(ctx context.Context) error {
+// client at once without letting them shut down, as a power loss would. They
+// keep whatever they had written to disk. The kills are sent right after
+// ready returns, if it is set, and not at all if it fails. It reports when
+// each service exited.
+func (runtime *Runtime) KillParticipants(ctx context.Context, ready func(context.Context) error) ([]devnet.KilledService, error) {
 	validators, beacons, executions := runtime.services()
 	return devnet.NewManager().KillServices(
-		ctx, runtime.environment.EnclaveName, slices.Concat(validators, beacons, executions),
+		ctx, runtime.environment.EnclaveName, slices.Concat(validators, beacons, executions), ready,
 	)
 }
 

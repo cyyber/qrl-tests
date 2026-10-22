@@ -21,6 +21,7 @@ type Source interface {
 
 // Info describes a live chain: its genesis fork version and its timing.
 type Info struct {
+	GenesisTime   time.Time
 	SlotsPerEpoch uint64
 	SlotDuration  time.Duration
 	EpochDuration time.Duration
@@ -44,6 +45,7 @@ func Load(ctx context.Context, source Source) (Info, error) {
 	if err := decodeFixed("genesis fork version", genesis.ForkVersion, chain.genesisForkVersion[:]); err != nil {
 		return Info{}, err
 	}
+	chain.GenesisTime = time.Unix(int64(genesis.Time), 0)
 
 	chain.SlotsPerEpoch, err = source.SpecUint(ctx, "SLOTS_PER_EPOCH")
 	if err != nil {
@@ -74,6 +76,57 @@ func Load(ctx context.Context, source Source) (Info, error) {
 
 func (chain Info) Epoch(slot uint64) uint64 {
 	return slot / chain.SlotsPerEpoch
+}
+
+// SlotPoint is a moment on the chain's clock: a slot and how far into it.
+type SlotPoint struct {
+	Slot   uint64
+	Offset time.Duration
+}
+
+func (point SlotPoint) String() string {
+	return fmt.Sprintf("slot %d at %.3fs", point.Slot, point.Offset.Seconds())
+}
+
+// SlotPointAt places a wall-clock time on the chain's clock. Before genesis
+// it is slot 0 with a negative offset.
+func (chain Info) SlotPointAt(at time.Time) SlotPoint {
+	elapsed := at.Sub(chain.GenesisTime)
+	if elapsed < 0 {
+		return SlotPoint{Offset: elapsed}
+	}
+	return SlotPoint{Slot: uint64(elapsed / chain.SlotDuration), Offset: elapsed % chain.SlotDuration}
+}
+
+// NextSlotOffset returns the first time at or after from that is offset into
+// a slot. offset must be at least zero and shorter than a slot.
+func (chain Info) NextSlotOffset(from time.Time, offset time.Duration) (time.Time, error) {
+	if offset < 0 || offset >= chain.SlotDuration {
+		return time.Time{}, fmt.Errorf("slot offset %s is outside a %s slot", offset, chain.SlotDuration)
+	}
+	point := chain.SlotPointAt(from)
+	if point.Offset <= offset {
+		return from.Add(offset - point.Offset), nil
+	}
+	return from.Add(chain.SlotDuration - point.Offset + offset), nil
+}
+
+// WaitForSlotOffset waits until the wall clock next reaches offset into a
+// slot, and returns where on the chain's clock it woke up: the slot it
+// waited for, a little past the offset.
+func (chain Info) WaitForSlotOffset(ctx context.Context, offset time.Duration) (SlotPoint, error) {
+	deadline, err := chain.NextSlotOffset(time.Now(), offset)
+	if err != nil {
+		return SlotPoint{}, err
+	}
+	timer := time.NewTimer(time.Until(deadline))
+	defer timer.Stop()
+	select {
+	case <-timer.C:
+		return chain.SlotPointAt(time.Now()), nil
+	case <-ctx.Done():
+		return SlotPoint{}, ctx.Err()
+	}
 }
 
 // DepositWait is how long a deposit takes to reach the beacon state on a

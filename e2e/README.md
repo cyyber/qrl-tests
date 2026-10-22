@@ -11,7 +11,7 @@ endpoints; suites do not provision infrastructure.
 | `execution` | `single` | Execution client: contract ABI, gqrl console, and transaction pool |
 | `consensus-staking-automated` | `single` | Staking through contract deposits and the keymanager API |
 | `consensus-staking-operator` | `single` | Staking through the deposit and validator CLIs |
-| `resilience-network-restart` | `anchored` | Recovery from full outages: every node stopped, then every node killed |
+| `resilience-network-restart` | `anchored` | Recovery from full outages: every node stopped, then every node killed at the start of a slot |
 
 Run one lane with a fresh network:
 
