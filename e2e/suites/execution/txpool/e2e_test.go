@@ -84,7 +84,7 @@ var _ = ginkgo.Describe(
 
 		ginkgo.BeforeAll(func(ctx ginkgo.SpecContext) {
 			node = testsuite.MustSucceed(testsuite.LoadRuntime().PrimaryNode(ctx))
-			signer = types.LatestSignerForChainID(node.ChainID)
+			signer = types.NewZondSigner(node.ChainID)
 			head := testsuite.MustSucceed(node.Execution.HeaderByNumber(ctx, nil))
 			tip = testsuite.MustSucceed(node.Execution.SuggestGasTipCap(ctx))
 			// Room for the base fee to double.
