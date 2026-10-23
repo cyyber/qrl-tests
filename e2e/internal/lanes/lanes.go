@@ -26,6 +26,8 @@ const (
 	suiteExecutionABI              SuiteID = "execution-abi"
 	suiteExecutionConsole          SuiteID = "execution-console"
 	suiteExecutionTxpool           SuiteID = "execution-txpool"
+	suiteExecutionRPC              SuiteID = "execution-rpc"
+	suiteExecutionGraphQL          SuiteID = "execution-graphql"
 	suiteConsensusStakingAutomated SuiteID = "consensus-staking-automated"
 	suiteConsensusStakingOperator  SuiteID = "consensus-staking-operator"
 	suiteResilienceNetworkRestart  SuiteID = "resilience-network-restart"
@@ -36,6 +38,8 @@ var suitePackages = map[SuiteID]string{
 	suiteExecutionABI:              "./e2e/suites/execution/abi",
 	suiteExecutionConsole:          "./e2e/suites/execution/console",
 	suiteExecutionTxpool:           "./e2e/suites/execution/txpool",
+	suiteExecutionRPC:              "./e2e/suites/execution/rpc",
+	suiteExecutionGraphQL:          "./e2e/suites/execution/graphql",
 	suiteConsensusStakingAutomated: "./e2e/suites/consensus/stakingautomated",
 	suiteConsensusStakingOperator:  "./e2e/suites/consensus/stakingoperator",
 	suiteResilienceNetworkRestart:  "./e2e/suites/resilience/networkrestart",
@@ -46,7 +50,7 @@ var registry = []Lane{
 	{
 		Name:    "execution",
 		Profile: devnet.ProfileSingle,
-		Suites:  []SuiteID{suiteExecutionABI, suiteExecutionConsole, suiteExecutionTxpool},
+		Suites:  []SuiteID{suiteExecutionABI, suiteExecutionConsole, suiteExecutionTxpool, suiteExecutionRPC, suiteExecutionGraphQL},
 		Timeout: 20 * time.Minute,
 	},
 	{

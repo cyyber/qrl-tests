@@ -214,7 +214,7 @@ func expectRelayed(ctx context.Context, node *syncnode.Node, source *live.Node) 
 	head := testsuite.MustSucceed(source.Execution.HeaderByNumber(ctx, nil))
 	tip := testsuite.MustSucceed(source.Execution.SuggestGasTipCap(ctx))
 	recipient := common.BytesToAddress([]byte("sync e2e relayed transfer"))
-	tx := testsuite.MustSucceed(types.SignNewTx(source.Wallet, types.LatestSignerForChainID(source.ChainID), &types.DynamicFeeTx{
+	tx := testsuite.MustSucceed(types.SignNewTx(source.Wallet, types.NewZondSigner(source.ChainID), &types.DynamicFeeTx{
 		ChainID:   source.ChainID,
 		Nonce:     nonce,
 		GasTipCap: tip,
