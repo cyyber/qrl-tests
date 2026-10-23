@@ -8,7 +8,7 @@ endpoints; suites do not provision infrastructure.
 
 | Lane | Profile | Coverage |
 | --- | --- | --- |
-| `execution` | `single` | Execution client: contract ABI, gqrl console, and transaction pool |
+| `execution` | `single` | Execution client: contract ABI, gqrl console, transaction pool, JSON-RPC and GraphQL APIs |
 | `consensus-staking-automated` | `single` | Staking through contract deposits and the keymanager API |
 | `consensus-staking-operator` | `single` | Staking through the deposit and validator CLIs |
 | `resilience-network-restart` | `anchored` | Recovery from a full outage: proposing and finalizing after every node stops at once |
