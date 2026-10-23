@@ -1,13 +1,16 @@
 package soak
 
 import (
+	"bytes"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
 
-func TestLiveAnnotations(t *testing.T) {
+func TestProgressLine(t *testing.T) {
 	sample := Sample{
+		At:    time.Date(2026, 10, 25, 3, 4, 5, 0, time.UTC),
 		Phase: PhaseSteady,
 		Participants: []ParticipantSample{
 			{
@@ -24,11 +27,9 @@ func TestLiveAnnotations(t *testing.T) {
 			},
 		},
 	}
-	annotations := LiveAnnotations(sample, 12)
-	require.Equal(t, "steady", annotations["qrl.io/phase"])
-	require.Equal(t, "12", annotations["qrl.io/samples"])
-	require.Equal(t, "2", annotations["qrl.io/finalized-epoch"])
-	require.Equal(t, "40", annotations["qrl.io/head-slot"])
-	require.Equal(t, "5", annotations["qrl.io/tx-per-slot"])
-	require.Equal(t, "512", annotations["qrl.io/el-rss-mb"])
+	require.Equal(t, "03:04:05Z phase=steady samples=12 finalized=2 head_slot=40 tx/slot=5 el_rss=512MB", ProgressLine(sample, 12))
+
+	var out bytes.Buffer
+	require.NoError(t, LogProgress{Out: &out}.Report(t.Context(), sample, 12))
+	require.Equal(t, ProgressLine(sample, 12)+"\n", out.String())
 }

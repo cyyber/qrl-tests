@@ -1,4 +1,4 @@
-# Resolves the client, tooling and harness revisions, builds whichever images
+# Resolves the client and tooling revisions, builds whichever images
 # are missing from GHCR, and returns immutable digest references. Nightly and
 # the weekly soak both call this so every run uses the same pins.
 name: images-reusable
@@ -37,14 +37,9 @@ on:
         value: ${{ jobs.images.outputs.tx-spammer-image }}
       metrics-exporter-image:
         value: ${{ jobs.images.outputs.metrics-exporter-image }}
-      runner-image:
-        value: ${{ jobs.images.outputs.runner-image }}
 
 permissions:
   contents: read
-
-env:
-  KURTOSIS_VERSION: 1.20.0
 
 jobs:
   # Image and lane runners must use the same architecture.
@@ -74,7 +69,6 @@ jobs:
       genesis-image: ${{ steps.pin.outputs.genesis-image }}
       tx-spammer-image: ${{ steps.pin.outputs.tx-spammer-image }}
       metrics-exporter-image: ${{ steps.pin.outputs.metrics-exporter-image }}
-      runner-image: ${{ steps.pin.outputs.runner-image }}
     steps:
       - name: Check out qrl-tests
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -117,7 +111,6 @@ jobs:
           TX_SPAMMER_GIT_COMMIT: ${{ steps.refs.outputs.tx-spammer-sha }}
           METRICS_EXPORTER_GIT_REPO: https://github.com/${{ env.METRICS_EXPORTER_REPOSITORY }}.git
           METRICS_EXPORTER_GIT_COMMIT: ${{ steps.refs.outputs.metrics-exporter-sha }}
-          QRL_TESTS_GIT_COMMIT: ${{ github.sha }}
         run: ci/images/build.sh plan
 
       - name: Set up buildx

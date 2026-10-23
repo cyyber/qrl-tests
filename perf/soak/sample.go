@@ -18,7 +18,7 @@ type Sample struct {
 	// consensus-split check: min(head) - 2 at the time of the sample.
 	Reference uint64  `json:"reference_block,omitempty"`
 	Canary    *Canary `json:"canary,omitempty"`
-	// Containers holds cgroup usage from metrics.k8s.io; Kubernetes only.
+	// Containers holds cgroup usage from the Docker Engine stats API.
 	Containers []ContainerSample `json:"containers,omitempty"`
 }
 
@@ -76,9 +76,8 @@ type ClientMetrics struct {
 // ContainerSample is what the kernel reports about the container.
 type ContainerSample struct {
 	Participant     int     `json:"participant,omitempty"`
-	Pod             string  `json:"pod"`
+	Service         string  `json:"service"`
 	Container       string  `json:"container"`
-	Node            string  `json:"node,omitempty"`
 	WorkingSetBytes float64 `json:"working_set_bytes"`
 	LimitBytes      float64 `json:"limit_bytes,omitempty"`
 	CPUCores        float64 `json:"cpu_cores,omitempty"`

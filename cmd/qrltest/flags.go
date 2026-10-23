@@ -20,7 +20,7 @@ func enclaveNameFlag() *cli.StringFlag {
 func backendFlag() *cli.StringFlag {
 	return &cli.StringFlag{
 		Name:    "backend",
-		Usage:   "Kurtosis backend: docker, or kubernetes for the soak",
+		Usage:   "Kurtosis backend: docker (the only one for now)",
 		Value:   string(devnet.BackendDocker),
 		EnvVars: []string{"DEVNET_BACKEND"},
 	}
@@ -106,19 +106,10 @@ func imagesFromFlags(command *cli.Context) devnet.Images {
 	}
 }
 
-func endpointModeFlag() *cli.StringFlag {
-	return &cli.StringFlag{
-		Name:    "endpoint-mode",
-		Usage:   "service endpoint resolution: public or cluster",
-		Value:   string(devnet.EndpointModePublic),
-		EnvVars: []string{"DEVNET_ENDPOINT_MODE"},
-	}
-}
-
 func loadPercentFlag() *cli.IntFlag {
 	return &cli.IntFlag{
 		Name:    "load-percent",
-		Usage:   "share of block gas capacity the soak load generator targets; 0 disables it (kubernetes accepts only 0: tx_spammer cannot tolerate the work taint)",
+		Usage:   "share of block gas capacity the soak load generator targets; 0 disables it",
 		Value:   devnet.DefaultLoadPercent,
 		EnvVars: []string{"SOAK_LOAD_PERCENT"},
 	}
@@ -127,8 +118,7 @@ func loadPercentFlag() *cli.IntFlag {
 func participantCountFlag() *cli.IntFlag {
 	return &cli.IntFlag{
 		Name:    "participants",
-		Usage:   "soak participants to provision (1-4); default 1 until the 16 vCPU On-Demand cap is raised",
-		Value:   1,
+		Usage:   "soak participants to provision (1-4); 0 provisions all of the profile's",
 		EnvVars: []string{"SOAK_PARTICIPANTS"},
 	}
 }

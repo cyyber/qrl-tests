@@ -5,18 +5,11 @@ import (
 	"strings"
 )
 
-// VerdictClass is passed, infrastructure, or product. Placement breaches
-// count as infrastructure even when SOAK_ENFORCE is off and the run itself
-// still passes.
+// VerdictClass is passed or product. A run that never produced a verdict
+// (the network did not start) is the workflow's infrastructure case.
 func VerdictClass(evaluation Evaluation) string {
-	failed := FailedGates(evaluation)
-	if len(failed) == 0 {
+	if len(FailedGates(evaluation)) == 0 {
 		return "passed"
-	}
-	for _, gate := range failed {
-		if strings.HasPrefix(gate.Name, "placement/") {
-			return "infrastructure"
-		}
 	}
 	return "product"
 }
@@ -72,7 +65,7 @@ func RenderSummary(evaluation Evaluation) string {
 }
 
 // RenderComparedSummary is RenderSummary plus the week-over-week table
-// soak-report writes after it downloads the previous artifact.
+// the soak workflow writes after it downloads the previous artifact.
 func RenderComparedSummary(evaluation Evaluation, comparison Comparison) string {
 	var body strings.Builder
 	body.WriteString(RenderSummary(evaluation))

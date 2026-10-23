@@ -28,7 +28,6 @@ jobs:
           - qrl-genesis-generator
           - qrl-tx-spammer
           - qrl-metrics-exporter
-          - qrl-tests-runner
     steps:
       - name: Keep only the newest window
         uses: actions/delete-package-versions@e5bc658cc4c965c472efe991f8beea3981499c55 # v5

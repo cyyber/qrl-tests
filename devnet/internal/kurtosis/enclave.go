@@ -21,12 +21,11 @@ import (
 )
 
 type Service struct {
-	UUID         string
-	PrivateIP    string
-	PublicIP     string
-	PublicPorts  map[string]uint16
-	PrivatePorts map[string]uint16
-	Labels       map[string]string
+	UUID        string
+	PrivateIP   string
+	PublicIP    string
+	PublicPorts map[string]uint16
+	Labels      map[string]string
 }
 
 func (service Service) PublicHostPort(portID string) (string, error) {
@@ -42,27 +41,6 @@ func (service Service) PublicHostPort(portID string) (string, error) {
 
 func (service Service) PublicEndpoint(portID, scheme string) (string, error) {
 	hostPort, err := service.PublicHostPort(portID)
-	if err != nil {
-		return "", err
-	}
-	return scheme + "://" + hostPort, nil
-}
-
-// PrivateHostPort addresses the service inside the enclave network: the
-// container address on Docker, the Kubernetes Service address on Kubernetes.
-func (service Service) PrivateHostPort(portID string) (string, error) {
-	port := service.PrivatePorts[portID]
-	if port == 0 {
-		return "", fmt.Errorf("no private %q port", portID)
-	}
-	if service.PrivateIP == "" {
-		return "", errors.New("no private IP address")
-	}
-	return net.JoinHostPort(service.PrivateIP, strconv.Itoa(int(port))), nil
-}
-
-func (service Service) PrivateEndpoint(portID, scheme string) (string, error) {
-	hostPort, err := service.PrivateHostPort(portID)
 	if err != nil {
 		return "", err
 	}
@@ -242,18 +220,16 @@ type serviceContext interface {
 	GetPrivateIPAddress() string
 	GetMaybePublicIPAddress() string
 	GetPublicPorts() map[string]*services.PortSpec
-	GetPrivatePorts() map[string]*services.PortSpec
 	GetLabels() map[string]string
 }
 
 func newService(source serviceContext) Service {
 	return Service{
-		UUID:         string(source.GetServiceUUID()),
-		PrivateIP:    source.GetPrivateIPAddress(),
-		PublicIP:     source.GetMaybePublicIPAddress(),
-		PublicPorts:  portNumbers(source.GetPublicPorts()),
-		PrivatePorts: portNumbers(source.GetPrivatePorts()),
-		Labels:       maps.Clone(source.GetLabels()),
+		UUID:        string(source.GetServiceUUID()),
+		PrivateIP:   source.GetPrivateIPAddress(),
+		PublicIP:    source.GetMaybePublicIPAddress(),
+		PublicPorts: portNumbers(source.GetPublicPorts()),
+		Labels:      maps.Clone(source.GetLabels()),
 	}
 }
 

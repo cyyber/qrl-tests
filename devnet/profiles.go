@@ -25,8 +25,7 @@ const (
 	// package's sync settings, so it follows the anchor.
 	ProfileAnchored Profile = "anchored"
 	// ProfileSoak is a multi-participant network under sustained load with
-	// metrics collection, sized so that on Kubernetes every participant owns
-	// one work node.
+	// metrics collection.
 	ProfileSoak Profile = "soak"
 )
 
@@ -42,11 +41,6 @@ type profileSpec struct {
 	loadGenerator bool
 	// metricsExporter runs qrl-metrics-exporter next to every participant.
 	metricsExporter bool
-	// pinnedPlacement places participant N on the node labelled
-	// qrl.io/participant=N with guaranteed resources when the backend is
-	// Kubernetes. Docker ignores it.
-	pinnedPlacement bool
-	resources       *participantResources
 }
 
 type participantSpec struct {
@@ -54,15 +48,6 @@ type participantSpec struct {
 	elExtraParams  []string
 	clExtraParams  []string
 	vcExtraParams  []string
-}
-
-// participantResources are per-client CPU (millicores) and memory (MB)
-// requests; the soak profile sets limits equal to requests so the kubelet
-// grants guaranteed QoS and nothing under test is throttled or evicted.
-type participantResources struct {
-	elCPU, elMemory int
-	clCPU, clMemory int
-	vcCPU, vcMemory int
 }
 
 const (
@@ -73,14 +58,6 @@ const (
 	soakSimpleTransferGas   = 21_000
 	soakGenesisDelaySeconds = 120
 )
-
-// Sized for an 8 vCPU / 32 GB participant node with room for the kubelet,
-// the CNI and the logs collector.
-var soakResources = participantResources{
-	elCPU: 3000, elMemory: 12288,
-	clCPU: 3000, clMemory: 10240,
-	vcCPU: 500, vcMemory: 1024,
-}
 
 var profileSpecs = map[Profile]profileSpec{
 	ProfileSingle: {participants: []participantSpec{{validatorCount: 64}}},
@@ -93,8 +70,6 @@ var profileSpecs = map[Profile]profileSpec{
 		additionalServices: []string{"prometheus_grafana", "tx_spammer"},
 		loadGenerator:      true,
 		metricsExporter:    true,
-		pinnedPlacement:    true,
-		resources:          &soakResources,
 	},
 }
 

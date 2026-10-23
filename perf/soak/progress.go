@@ -3,39 +3,33 @@ package soak
 import (
 	"context"
 	"fmt"
-	"strconv"
+	"io"
+	"time"
 )
 
-// ProgressReporter publishes live soak numbers so the heartbeat workflow
-// can refresh the check run without holding a runner.
+// ProgressReporter publishes live soak numbers while the window runs.
 type ProgressReporter interface {
 	Report(ctx context.Context, sample Sample, n int) error
 }
 
-// JobProgress patches annotations on the in-cluster soak Job.
-type JobProgress struct {
-	Kube *Kube
-	Name string
+// LogProgress writes one line per sample, so the Actions job log shows how
+// the network is doing while the soak runs.
+type LogProgress struct {
+	Out io.Writer
 }
 
-func (progress *JobProgress) Report(ctx context.Context, sample Sample, n int) error {
-	if progress == nil || progress.Kube == nil || progress.Name == "" {
+func (progress LogProgress) Report(_ context.Context, sample Sample, n int) error {
+	if progress.Out == nil {
 		return nil
 	}
-	return progress.Kube.PatchJobAnnotations(ctx, progress.Name, LiveAnnotations(sample, n))
+	_, err := fmt.Fprintln(progress.Out, ProgressLine(sample, n))
+	return err
 }
 
-func (progress *JobProgress) reportPhase(ctx context.Context, phase string) error {
-	if progress == nil || progress.Kube == nil || progress.Name == "" {
-		return nil
-	}
-	return progress.Kube.PatchJobAnnotations(ctx, progress.Name, map[string]string{
-		"qrl.io/phase": phase,
-	})
-}
-
-// LiveAnnotations is what soak-heartbeat reads off the Job.
-func LiveAnnotations(sample Sample, n int) map[string]string {
+// ProgressLine summarizes one sample: the lowest finalized epoch, the
+// highest head slot, the mean transactions in each head, and the largest
+// execution-client RSS.
+func ProgressLine(sample Sample, n int) string {
 	var finalized, headSlot, txSum, txN uint64
 	var elRSS float64
 	for i, participant := range sample.Participants {
@@ -57,12 +51,6 @@ func LiveAnnotations(sample Sample, n int) map[string]string {
 	if txN > 0 {
 		txPerSlot = txSum / txN
 	}
-	return map[string]string{
-		"qrl.io/phase":           string(sample.Phase),
-		"qrl.io/samples":         strconv.Itoa(n),
-		"qrl.io/finalized-epoch": strconv.FormatUint(finalized, 10),
-		"qrl.io/head-slot":       strconv.FormatUint(headSlot, 10),
-		"qrl.io/tx-per-slot":     strconv.FormatUint(txPerSlot, 10),
-		"qrl.io/el-rss-mb":       fmt.Sprintf("%.0f", elRSS/(1<<20)),
-	}
+	return fmt.Sprintf("%s phase=%s samples=%d finalized=%d head_slot=%d tx/slot=%d el_rss=%.0fMB",
+		sample.At.UTC().Format(time.TimeOnly+"Z"), sample.Phase, n, finalized, headSlot, txPerSlot, elRSS/(1<<20))
 }

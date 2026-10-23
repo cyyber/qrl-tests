@@ -29,30 +29,7 @@
       "vc_extra_labels": {
         "qrl-tests.participant": "1",
         "qrl-tests.partition": "1"
-      },
-      "node_selectors": {
-        "qrl.io/participant": "1"
-      },
-      "tolerations": [
-        {
-          "key": "qrl.io/pool",
-          "operator": "Equal",
-          "value": "work",
-          "effect": "NoSchedule"
-        }
-      ],
-      "el_min_cpu": 3000,
-      "el_max_cpu": 3000,
-      "el_min_mem": 12288,
-      "el_max_mem": 12288,
-      "cl_min_cpu": 3000,
-      "cl_max_cpu": 3000,
-      "cl_min_mem": 10240,
-      "cl_max_mem": 10240,
-      "vc_min_cpu": 500,
-      "vc_max_cpu": 500,
-      "vc_min_mem": 1024,
-      "vc_max_mem": 1024
+      }
     },
     {
       "el_image": "ghcr.io/example/go-qrl@sha256:0af10af10af10af10af10af10af10af10af10af10af10af10af10af10af10af1",
@@ -83,30 +60,7 @@
       "vc_extra_labels": {
         "qrl-tests.participant": "2",
         "qrl-tests.partition": "2"
-      },
-      "node_selectors": {
-        "qrl.io/participant": "2"
-      },
-      "tolerations": [
-        {
-          "key": "qrl.io/pool",
-          "operator": "Equal",
-          "value": "work",
-          "effect": "NoSchedule"
-        }
-      ],
-      "el_min_cpu": 3000,
-      "el_max_cpu": 3000,
-      "el_min_mem": 12288,
-      "el_max_mem": 12288,
-      "cl_min_cpu": 3000,
-      "cl_max_cpu": 3000,
-      "cl_min_mem": 10240,
-      "cl_max_mem": 10240,
-      "vc_min_cpu": 500,
-      "vc_max_cpu": 500,
-      "vc_min_mem": 1024,
-      "vc_max_mem": 1024
+      }
     },
     {
       "el_image": "ghcr.io/example/go-qrl@sha256:0af10af10af10af10af10af10af10af10af10af10af10af10af10af10af10af1",
@@ -137,30 +91,7 @@
       "vc_extra_labels": {
         "qrl-tests.participant": "3",
         "qrl-tests.partition": "1"
-      },
-      "node_selectors": {
-        "qrl.io/participant": "3"
-      },
-      "tolerations": [
-        {
-          "key": "qrl.io/pool",
-          "operator": "Equal",
-          "value": "work",
-          "effect": "NoSchedule"
-        }
-      ],
-      "el_min_cpu": 3000,
-      "el_max_cpu": 3000,
-      "el_min_mem": 12288,
-      "el_max_mem": 12288,
-      "cl_min_cpu": 3000,
-      "cl_max_cpu": 3000,
-      "cl_min_mem": 10240,
-      "cl_max_mem": 10240,
-      "vc_min_cpu": 500,
-      "vc_max_cpu": 500,
-      "vc_min_mem": 1024,
-      "vc_max_mem": 1024
+      }
     },
     {
       "el_image": "ghcr.io/example/go-qrl@sha256:0af10af10af10af10af10af10af10af10af10af10af10af10af10af10af10af1",
@@ -191,30 +122,7 @@
       "vc_extra_labels": {
         "qrl-tests.participant": "4",
         "qrl-tests.partition": "2"
-      },
-      "node_selectors": {
-        "qrl.io/participant": "4"
-      },
-      "tolerations": [
-        {
-          "key": "qrl.io/pool",
-          "operator": "Equal",
-          "value": "work",
-          "effect": "NoSchedule"
-        }
-      ],
-      "el_min_cpu": 3000,
-      "el_max_cpu": 3000,
-      "el_min_mem": 12288,
-      "el_max_mem": 12288,
-      "cl_min_cpu": 3000,
-      "cl_max_cpu": 3000,
-      "cl_min_mem": 10240,
-      "cl_max_mem": 10240,
-      "vc_min_cpu": 500,
-      "vc_max_cpu": 500,
-      "vc_min_mem": 1024,
-      "vc_max_mem": 1024
+      }
     }
   ],
   "network_params": {
@@ -237,17 +145,21 @@
   "qrl_genesis_generator_params": {
     "image": "ghcr.io/example/qrl-genesis-generator@sha256:0af50af50af50af50af50af50af50af50af50af50af50af50af50af50af50af5"
   },
-  "global_node_selectors": {
-    "qrl.io/pool": "work",
-    "qrl.io/role": "shared"
-  },
-  "global_tolerations": [
-    {
-      "key": "qrl.io/pool",
-      "operator": "Equal",
-      "value": "work",
-      "effect": "NoSchedule"
-    }
+  "additional_services": [
+    "prometheus_grafana",
+    "tx_spammer"
   ],
+  "tx_spammer_params": {
+    "image": "ghcr.io/example/qrl-tx-spammer@sha256:0af60af60af60af60af60af60af60af60af60af60af60af60af60af60af60af6",
+    "scenario": "eoatx",
+    "throughput": 85,
+    "max_pending": 850,
+    "max_wallets": 340
+  },
+  "prometheus_params": {
+    "storage_tsdb_retention_time": "2d",
+    "storage_tsdb_retention_size": "4GB"
+  },
+  "qrl_metrics_exporter_enabled": true,
   "global_log_level": "info"
 }

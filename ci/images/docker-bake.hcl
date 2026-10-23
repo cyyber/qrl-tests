@@ -15,8 +15,6 @@ variable "TX_SPAMMER_IMAGE_TAG" { default = "" }
 variable "METRICS_EXPORTER_GIT_REPO" { default = "" }
 variable "METRICS_EXPORTER_GIT_COMMIT" { default = "" }
 variable "METRICS_EXPORTER_IMAGE_TAG" { default = "" }
-variable "KURTOSIS_VERSION" { default = "1.20.0" }
-variable "RUNNER_IMAGE_TAG" { default = "" }
 
 group "default" {
   targets = [
@@ -25,7 +23,6 @@ group "default" {
     "qrl-genesis-generator",
     "qrl-tx-spammer",
     "qrl-metrics-exporter",
-    "qrl-tests-runner",
   ]
 }
 
@@ -86,17 +83,4 @@ target "qrl-metrics-exporter" {
   tags       = [METRICS_EXPORTER_IMAGE_TAG]
   cache-from = [buildcache("qrl-metrics-exporter")]
   cache-to   = ["${buildcache("qrl-metrics-exporter")},mode=max"]
-}
-
-# The harness itself, for lanes that run as in-cluster Jobs: this checkout
-# plus the Go toolchain, Kurtosis CLI and kubectl.
-target "qrl-tests-runner" {
-  context    = "."
-  dockerfile = "ci/images/runner/Dockerfile"
-  tags       = [RUNNER_IMAGE_TAG]
-  args = {
-    KURTOSIS_VERSION = KURTOSIS_VERSION
-  }
-  cache-from = [buildcache("qrl-tests-runner")]
-  cache-to   = ["${buildcache("qrl-tests-runner")},mode=max"]
 }

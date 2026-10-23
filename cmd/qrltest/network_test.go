@@ -42,10 +42,9 @@ func TestNetworkStart(t *testing.T) {
 
 	require.Equal(t, "network ready\n", output)
 	require.Equal(t, devnet.StartOptions{
-		EnclaveName:  enclaveName,
-		Backend:      devnet.BackendDocker,
-		EndpointMode: devnet.EndpointModePublic,
-		LoadPercent:  devnet.DefaultLoadPercent,
+		EnclaveName: enclaveName,
+		Backend:     devnet.BackendDocker,
+		LoadPercent: devnet.DefaultLoadPercent,
 		Images: devnet.Images{
 			Execution:       "local/go-qrl:test",
 			Clef:            devnet.DefaultClefImage,

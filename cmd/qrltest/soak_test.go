@@ -22,9 +22,9 @@ func TestSoakRejectsNonPositiveDuration(t *testing.T) {
 	require.ErrorContains(t, err, "duration must be positive")
 }
 
-func TestSoakRejectsLoadOnKubernetes(t *testing.T) {
-	err := runCommandError(t, "soak", "--backend", "kubernetes", "--load-percent", "30")
-	require.ErrorContains(t, err, "load 30% is not supported on the kubernetes backend")
+func TestSoakRejectsKubernetes(t *testing.T) {
+	err := runCommandError(t, "soak", "--backend", "kubernetes")
+	require.ErrorContains(t, err, "only docker is supported")
 }
 
 func runCommandError(t *testing.T, arguments ...string) error {

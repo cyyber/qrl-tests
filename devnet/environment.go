@@ -38,27 +38,15 @@ const (
 	clientTypeLabel  = "qrl-package.client-type"
 	participantLabel = "qrl-tests.participant"
 	partitionLabel   = "qrl-tests.partition"
-
-	// kubernetesNamespacePrefix is how Kurtosis names an enclave's namespace.
-	kubernetesNamespacePrefix = "kt-"
 )
 
 type Environment struct {
 	EnclaveName  string        `json:"enclave_name"`
 	Backend      Backend       `json:"backend,omitempty"`
-	EndpointMode EndpointMode  `json:"endpoint_mode,omitempty"`
 	Participants []Participant `json:"participants"`
 	// PrometheusURL is set when the network runs the prometheus_grafana
 	// additional service.
 	PrometheusURL string `json:"prometheus_url,omitempty"`
-}
-
-// Namespace is the Kubernetes namespace holding the enclave; empty on Docker.
-func (environment Environment) Namespace() string {
-	if environment.Backend != BackendKubernetes {
-		return ""
-	}
-	return kubernetesNamespacePrefix + environment.EnclaveName
 }
 
 // Primary returns the lowest-indexed participant. Readiness probes and
@@ -106,61 +94,31 @@ type ValidatorService struct {
 	MetricsURL string `json:"metrics_url"`
 }
 
-func resolveEnvironment(ctx context.Context, client enclaveClient, name string, mode EndpointMode) (Environment, error) {
+func resolveEnvironment(ctx context.Context, client enclaveClient, name string) (Environment, error) {
 	services, err := client.Services(ctx, name)
 	if err != nil {
 		return Environment{}, err
 	}
 
-	resolver := endpointResolver{mode: cmp.Or(mode, EndpointModePublic)}
-	participants, err := resolver.participantsFromServices(services)
+	participants, err := participantsFromServices(services)
 	if err != nil {
 		return Environment{}, err
 	}
 
 	environment := Environment{
 		EnclaveName:  name,
-		EndpointMode: resolver.mode,
 		Participants: participants,
 	}
 	if prometheus, found := services[prometheusServiceName]; found {
-		environment.PrometheusURL = resolver.optionalEndpoint(prometheus, prometheusPortID, "http")
+		environment.PrometheusURL = optionalPublicEndpoint(prometheus, prometheusPortID, "http")
 	}
 	return environment, nil
 }
 
-type endpointResolver struct {
-	mode EndpointMode
-}
-
-func (resolver endpointResolver) endpoint(service kurtosis.Service, portID, scheme string) (string, error) {
-	if resolver.mode == EndpointModeCluster {
-		return service.PrivateEndpoint(portID, scheme)
-	}
-	return service.PublicEndpoint(portID, scheme)
-}
-
-// optionalEndpoint resolves a port a service may legitimately not expose;
-// absence is reported as an empty endpoint, not an error.
-func (resolver endpointResolver) optionalEndpoint(service kurtosis.Service, portID, scheme string) string {
-	endpoint, _ := resolver.endpoint(service, portID, scheme)
-	return endpoint
-}
-
-func (resolver endpointResolver) optionalHostPort(service kurtosis.Service, portID string) string {
-	var hostPort string
-	if resolver.mode == EndpointModeCluster {
-		hostPort, _ = service.PrivateHostPort(portID)
-	} else {
-		hostPort, _ = service.PublicHostPort(portID)
-	}
-	return hostPort
-}
-
-func (resolver endpointResolver) participantsFromServices(services map[string]kurtosis.Service) ([]Participant, error) {
+func participantsFromServices(services map[string]kurtosis.Service) ([]Participant, error) {
 	byIndex := make(map[int]*Participant)
 	for name, service := range services {
-		clientType := clientTypeOf(name, service.Labels)
+		clientType := service.Labels[clientTypeLabel]
 		if clientType != "execution" && clientType != "beacon" && clientType != "validator" {
 			continue
 		}
@@ -179,33 +137,33 @@ func (resolver endpointResolver) participantsFromServices(services map[string]ku
 		switch clientType {
 		case "execution":
 			participant.Execution.ServiceInfo = info
-			participant.Execution.RPCURL, err = resolver.endpoint(service, rpcPortID, "http")
+			participant.Execution.RPCURL, err = service.PublicEndpoint(rpcPortID, "http")
 			if err != nil {
 				return nil, fmt.Errorf("execution service %q: %w", name, err)
 			}
 			participant.Execution.GraphQLURL = participant.Execution.RPCURL + graphQLPath
-			participant.Execution.WebSocketURL, err = resolver.endpoint(service, webSocketPortID, "ws")
+			participant.Execution.WebSocketURL, err = service.PublicEndpoint(webSocketPortID, "ws")
 			if err != nil {
 				return nil, fmt.Errorf("execution service %q: %w", name, err)
 			}
-			participant.Execution.EngineURL = resolver.optionalEndpoint(service, engineRPCPortID, "http")
-			if metrics := resolver.optionalEndpoint(service, metricsPortID, "http"); metrics != "" {
+			participant.Execution.EngineURL = optionalPublicEndpoint(service, engineRPCPortID, "http")
+			if metrics := optionalPublicEndpoint(service, metricsPortID, "http"); metrics != "" {
 				participant.Execution.MetricsURL = metrics + executionMetricsPath
 			}
 		case "beacon":
 			participant.Consensus.ServiceInfo = info
-			participant.Consensus.URL, err = resolver.endpoint(service, consensusHTTPPortID, "http")
+			participant.Consensus.URL, err = service.PublicEndpoint(consensusHTTPPortID, "http")
 			if err != nil {
 				return nil, fmt.Errorf("consensus service %q: %w", name, err)
 			}
-			participant.Consensus.GRPC = resolver.optionalHostPort(service, rpcPortID)
-			if metrics := resolver.optionalEndpoint(service, metricsPortID, "http"); metrics != "" {
+			participant.Consensus.GRPC = optionalPublicHostPort(service, rpcPortID)
+			if metrics := optionalPublicEndpoint(service, metricsPortID, "http"); metrics != "" {
 				participant.Consensus.MetricsURL = metrics + consensusMetricsPath
 			}
 		case "validator":
 			participant.Validator.ServiceInfo = info
-			participant.Validator.URL = resolver.optionalEndpoint(service, validatorHTTPPortID, "http")
-			if metrics := resolver.optionalEndpoint(service, metricsPortID, "http"); metrics != "" {
+			participant.Validator.URL = optionalPublicEndpoint(service, validatorHTTPPortID, "http")
+			if metrics := optionalPublicEndpoint(service, metricsPortID, "http"); metrics != "" {
 				participant.Validator.MetricsURL = metrics + consensusMetricsPath
 			}
 		}
@@ -234,24 +192,6 @@ func (resolver endpointResolver) participantsFromServices(services map[string]ku
 	return participants, nil
 }
 
-func clientTypeOf(name string, labels map[string]string) string {
-	if clientType := labels[clientTypeLabel]; clientType != "" {
-		return clientType
-	}
-	// Kubernetes GetLabels is often empty even when qrl-package stamped the
-	// pod; fall back to the service-name prefix the package always uses.
-	switch {
-	case strings.HasPrefix(name, "el-"):
-		return "execution"
-	case strings.HasPrefix(name, "cl-"):
-		return "beacon"
-	case strings.HasPrefix(name, "vc-"):
-		return "validator"
-	default:
-		return ""
-	}
-}
-
 func participantIndex(name string, labels map[string]string) (int, error) {
 	if value := labels[participantLabel]; value != "" {
 		index, err := strconv.Atoi(value)
@@ -275,4 +215,16 @@ func serviceIndex(name string) (int, error) {
 		return 0, fmt.Errorf("qrl-package service %q has invalid participant index", name)
 	}
 	return index, nil
+}
+
+// optionalPublicEndpoint resolves a port a service may legitimately not
+// expose; absence is reported as an empty endpoint, not an error.
+func optionalPublicEndpoint(service kurtosis.Service, portID, scheme string) string {
+	endpoint, _ := service.PublicEndpoint(portID, scheme)
+	return endpoint
+}
+
+func optionalPublicHostPort(service kurtosis.Service, portID string) string {
+	hostPort, _ := service.PublicHostPort(portID)
+	return hostPort
 }

@@ -25,10 +25,8 @@ const (
 	windowDriftShare = 0.05
 	windowDriftFloor = 30 * time.Second
 
-	ReasonThresholdsChanged      = "thresholds digest differs"
-	ReasonBaselineInfrastructure = "previous run was infrastructure"
-	ReasonCurrentInfrastructure  = "current run is infrastructure"
-	ReasonNoComparableMetrics    = "no overlapping metrics to compare"
+	ReasonThresholdsChanged   = "thresholds digest differs"
+	ReasonNoComparableMetrics = "no overlapping metrics to compare"
 
 	// NotJudged is the cell for a metric whose gate was n/a in that run.
 	NotJudged = "n/a"
@@ -86,19 +84,11 @@ type Delta struct {
 }
 
 // Compare diffs headline metrics. It refuses when the thresholds file
-// changed or either run is an infrastructure failure.
+// changed.
 func Compare(current, baseline Evaluation) Comparison {
 	comparison := Comparison{
 		CurrentClass:  VerdictClass(current),
 		BaselineClass: VerdictClass(baseline),
-	}
-	if comparison.CurrentClass == "infrastructure" {
-		comparison.Reason = ReasonCurrentInfrastructure
-		return comparison
-	}
-	if comparison.BaselineClass == "infrastructure" {
-		comparison.Reason = ReasonBaselineInfrastructure
-		return comparison
 	}
 	if current.ThresholdsDigest != "" && baseline.ThresholdsDigest != "" &&
 		current.ThresholdsDigest != baseline.ThresholdsDigest {

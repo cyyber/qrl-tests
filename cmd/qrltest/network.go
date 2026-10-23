@@ -24,7 +24,6 @@ func networkCommand(network networkController) *cli.Command {
 			EnvVars: []string{"DEVNET_PROFILE"},
 		},
 		parametersFileFlag(),
-		endpointModeFlag(),
 		loadPercentFlag(),
 		&cli.DurationFlag{
 			Name:    "timeout",
@@ -60,22 +59,17 @@ func networkCommand(network networkController) *cli.Command {
 					if err != nil {
 						return err
 					}
-					endpointMode, err := devnet.ParseEndpointMode(command.String("endpoint-mode"))
-					if err != nil {
-						return err
-					}
 
 					ctx, cancel := context.WithTimeout(command.Context, command.Duration("timeout"))
 					defer cancel()
 
 					if _, err := network.Start(ctx, devnet.StartOptions{
-						EnclaveName:  command.String("enclave-name"),
-						Backend:      backend,
-						Images:       imagesFromFlags(command),
-						Parameters:   parameters,
-						Profile:      profile,
-						EndpointMode: endpointMode,
-						LoadPercent:  command.Int("load-percent"),
+						EnclaveName: command.String("enclave-name"),
+						Backend:     backend,
+						Images:      imagesFromFlags(command),
+						Parameters:  parameters,
+						Profile:     profile,
+						LoadPercent: command.Int("load-percent"),
 					}); err != nil {
 						return err
 					}

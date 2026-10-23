@@ -73,23 +73,6 @@ func TestEvaluateCanary(t *testing.T) {
 	require.Equal(t, 3*time.Second, evaluation.Metrics.CanaryP95)
 }
 
-func TestEvaluatePlacement(t *testing.T) {
-	thresholds := DefaultThresholds()
-	thresholds.Memory.MinSamples = 99
-	start := time.Date(2026, 9, 3, 12, 0, 0, 0, time.UTC)
-	samples := []Sample{
-		steady(start, 100, 100, 10, 1<<30),
-		steady(start.Add(time.Minute), 112, 112, 10, 1<<30),
-	}
-
-	evaluation := Evaluate(samples, thresholds, Options{
-		Participants: 2, SlotsPerEpoch: 8, Enforce: true,
-		Placement: []Placement{{Participant: 1, Node: "ip-1", Pinned: true}, {Participant: 2, Node: "ip-2", Pinned: false}},
-	})
-	require.False(t, evaluation.Passed)
-	require.Contains(t, gate(evaluation, "placement/one-participant-per-node").Detail, "2→ip-2")
-}
-
 func TestEvaluateRSSInsufficientBelowMinWindow(t *testing.T) {
 	thresholds := DefaultThresholds()
 	thresholds.Memory.MinSamples = 2
@@ -233,19 +216,6 @@ func TestMinPeers(t *testing.T) {
 	require.Equal(t, 2, DefaultThresholds().MinPeers(4, 2))
 }
 
-func TestParseQuantity(t *testing.T) {
-	value, err := ParseQuantity("1536Mi")
-	require.NoError(t, err)
-	require.InDelta(t, 1536<<20, value, 1)
-
-	value, err = ParseQuantity("250m")
-	require.NoError(t, err)
-	require.InDelta(t, 0.25, value, 1e-9)
-
-	_, err = ParseQuantity("")
-	require.Error(t, err)
-}
-
 func TestSlopePerHour(t *testing.T) {
 	origin := time.Unix(0, 0).UTC()
 	slope, ok := slopePerHour([]point{
@@ -306,7 +276,7 @@ func processSamples(start time.Time, span time.Duration) []Sample {
 			sample.Participants[i].Clients[ClientExecution] = stats
 		}
 		sample.Containers = []ContainerSample{{
-			Participant: 1, Pod: "el-1", Container: "execution",
+			Participant: 1, Service: "el-1", Container: "execution",
 			WorkingSetBytes: 1 << 30, LimitBytes: 4 << 30,
 		}}
 	}

@@ -82,15 +82,14 @@ func soakImages() Images {
 	}
 }
 
-// The Kubernetes rendering of the soak profile is checked in: it is the
-// placement and sizing contract with the cluster in qrl-infra, and the file
-// doubles as documentation. Regenerate with UPDATE_GOLDEN=1.
-func TestSoakParametersKubernetes(t *testing.T) {
+// The rendering of the soak profile is checked in: the file doubles as
+// documentation of what the soak asks qrl-package for. Regenerate with
+// UPDATE_GOLDEN=1.
+func TestSoakParameters(t *testing.T) {
 	payload, err := resolveParameters(devwallet.Address, StartOptions{
 		Images:      soakImages(),
 		Profile:     ProfileSoak,
-		Backend:     BackendKubernetes,
-		LoadPercent: 0,
+		LoadPercent: DefaultLoadPercent,
 	})
 	require.NoError(t, err)
 
@@ -98,8 +97,9 @@ func TestSoakParametersKubernetes(t *testing.T) {
 	require.NoError(t, json.Indent(&pretty, []byte(payload), "", "  "))
 	pretty.WriteByte('\n')
 
-	golden := filepath.Join("testdata", "soak_kubernetes.json")
+	golden := filepath.Join("testdata", "soak.json")
 	if os.Getenv("UPDATE_GOLDEN") != "" {
+		require.NoError(t, os.MkdirAll(filepath.Dir(golden), 0o755))
 		require.NoError(t, os.WriteFile(golden, pretty.Bytes(), 0o600))
 	}
 	want, err := os.ReadFile(golden)
@@ -112,16 +112,13 @@ func TestSoakParametersKubernetes(t *testing.T) {
 	require.Len(t, participants, soakParticipants)
 	for index, raw := range participants {
 		participant := raw.(map[string]any)
-		require.Equal(t, map[string]any{ParticipantNodeLabel: strconv.Itoa(index + 1)}, participant["node_selectors"])
-		require.Equal(t, []any{map[string]any{"key": PoolLabel, "operator": "Equal", "value": WorkPool, "effect": "NoSchedule"}}, participant["tolerations"])
-		require.Equal(t, participant["el_min_cpu"], participant["el_max_cpu"], "guaranteed QoS needs request == limit")
-		require.Equal(t, participant["el_min_mem"], participant["el_max_mem"])
-		require.Equal(t, participant["cl_min_mem"], participant["cl_max_mem"])
+		labels := participant["el_extra_labels"].(map[string]any)
+		require.Equal(t, strconv.Itoa(index+1), labels[participantLabel])
+		require.NotContains(t, participant, "node_selectors", "Docker has no pools to pin to")
+		require.NotContains(t, participant, "el_min_cpu", "containers share the host unbounded")
 	}
-	require.NotContains(t, parameters, "additional_services", "prometheus cannot tolerate the work taint and an idle soak runs no spammer")
-	require.NotContains(t, parameters, "tx_spammer_params")
-	require.NotContains(t, parameters, "qrl_metrics_exporter_enabled")
-	require.NotContains(t, parameters, "prometheus_params")
+	require.Equal(t, true, parameters["qrl_metrics_exporter_enabled"])
+	require.Contains(t, parameters, "prometheus_params")
 	network := parameters["network_params"].(map[string]any)
 	require.Equal(t, float64(soakGenesisGasLimit), network["genesis_gaslimit"])
 	require.Equal(t, float64(soakGenesisDelaySeconds), network["genesis_delay"])
@@ -131,31 +128,22 @@ func TestSoakParametersParticipantCount(t *testing.T) {
 	payload, err := resolveParameters(devwallet.Address, StartOptions{
 		Images:           soakImages(),
 		Profile:          ProfileSoak,
-		Backend:          BackendKubernetes,
 		ParticipantCount: 1,
 	})
 	require.NoError(t, err)
 	var parameters map[string]any
 	require.NoError(t, json.Unmarshal([]byte(payload), &parameters))
 	require.Len(t, parameters["participants"].([]any), 1)
-}
 
-func TestSoakParametersKubernetesRejectsLoad(t *testing.T) {
-	_, err := resolveParameters(devwallet.Address, StartOptions{
-		Images:      soakImages(),
-		Profile:     ProfileSoak,
-		Backend:     BackendKubernetes,
-		LoadPercent: DefaultLoadPercent,
+	_, err = resolveParameters(devwallet.Address, StartOptions{
+		Images:           soakImages(),
+		Profile:          ProfileSoak,
+		ParticipantCount: soakParticipants + 1,
 	})
-	require.ErrorContains(t, err, "load 30% is not supported on the kubernetes backend")
-	require.ErrorContains(t, err, "tx_spammer cannot tolerate")
-
-	require.NoError(t, CheckLoad(BackendKubernetes, 0))
-	require.NoError(t, CheckLoad(BackendDocker, DefaultLoadPercent))
-	require.Error(t, CheckLoad(BackendKubernetes, 1))
+	require.ErrorContains(t, err, "exceeds profile soak")
 }
 
-func TestSoakParametersDockerAndIdle(t *testing.T) {
+func TestSoakParametersIdle(t *testing.T) {
 	payload, err := resolveParameters(devwallet.Address, StartOptions{
 		Images:      soakImages(),
 		Profile:     ProfileSoak,
@@ -166,15 +154,11 @@ func TestSoakParametersDockerAndIdle(t *testing.T) {
 
 	var parameters map[string]any
 	require.NoError(t, json.Unmarshal([]byte(payload), &parameters))
-	participant := parameters["participants"].([]any)[0].(map[string]any)
-	require.NotContains(t, participant, "node_selectors", "Docker has no pools to pin to")
-	require.NotContains(t, participant, "tolerations")
-	require.NotContains(t, participant, "el_min_cpu")
 	require.Equal(t, []any{"prometheus_grafana"}, parameters["additional_services"], "an idle baseline runs no spammer")
 	require.NotContains(t, parameters, "tx_spammer_params")
 }
 
-func TestSoakParametersDockerLoadKeepsSpammer(t *testing.T) {
+func TestSoakParametersLoadKeepsSpammer(t *testing.T) {
 	payload, err := resolveParameters(devwallet.Address, StartOptions{
 		Images:      soakImages(),
 		Profile:     ProfileSoak,

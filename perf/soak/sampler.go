@@ -24,8 +24,8 @@ type Sampler struct {
 	Participants []Endpoints
 	Thresholds   Thresholds
 	Interval     time.Duration
-	// Kube enables container usage sampling; nil on Docker.
-	Kube *Kube
+	// Containers enables container usage sampling; nil disables it.
+	Containers ContainerUsageSource
 	// Canary enables the inclusion-latency probe; nil disables it.
 	Canary CanarySender
 	// SlotsPerEpoch is needed to reason about finality lag during warm-up.
@@ -36,11 +36,15 @@ type Sampler struct {
 	Log *log.Logger
 	// HTTP overrides the probe client; nil uses a 15 s-timeout default.
 	HTTP *http.Client
-	// Progress publishes live numbers for the heartbeat check run.
+	// Progress publishes live numbers to the job log.
 	Progress ProgressReporter
 
 	probe probe
-	pods  []Pod
+}
+
+// ContainerUsageSource reads per-container working set and CPU.
+type ContainerUsageSource interface {
+	ContainerUsage(ctx context.Context) ([]ContainerSample, error)
 }
 
 // Run samples until duration elapses or ctx ends, returning every sample
@@ -138,17 +142,12 @@ func (sampler *Sampler) Sample(ctx context.Context) Sample {
 	}
 	group.Wait()
 
-	if sampler.Kube != nil {
-		if pods, err := sampler.Kube.Pods(ctx); err == nil {
-			sampler.pods = pods
-		} else {
-			sampler.logf("list pods: %v", err)
-		}
-		if usage, err := sampler.Kube.ContainerUsage(ctx, sampler.pods); err == nil {
-			sample.Containers = usage
-		} else {
+	if sampler.Containers != nil {
+		usage, err := sampler.Containers.ContainerUsage(ctx)
+		if err != nil {
 			sampler.logf("container usage: %v", err)
 		}
+		sample.Containers = usage
 	}
 
 	if sampler.Canary != nil {

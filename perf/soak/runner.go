@@ -44,7 +44,6 @@ type Config struct {
 	Backend          devnet.Backend
 	Images           devnet.Images
 	Parameters       []byte
-	EndpointMode     devnet.EndpointMode
 	LoadPercent      int
 	ParticipantCount int
 	StartTimeout     time.Duration
@@ -60,7 +59,6 @@ func (configuration Config) withDefaults() Config {
 	configuration.EnclaveName = cmp.Or(configuration.EnclaveName, devnet.DefaultEnclaveName)
 	configuration.ReportDir = cmp.Or(configuration.ReportDir, DefaultReportDir)
 	configuration.Backend = cmp.Or(configuration.Backend, devnet.BackendDocker)
-	configuration.EndpointMode = cmp.Or(configuration.EndpointMode, devnet.EndpointModePublic)
 	configuration.StartTimeout = cmp.Or(configuration.StartTimeout, DefaultStartTimeout)
 	configuration.Duration = cmp.Or(configuration.Duration, DefaultDuration)
 	configuration.Interval = cmp.Or(configuration.Interval, DefaultInterval)
@@ -120,12 +118,7 @@ func (runner *Runner) Run(ctx context.Context) (err error) {
 	stdout := io.MultiWriter(runner.stdout, logFile)
 
 	if runner.progress == nil {
-		if progress := jobProgress(); progress != nil {
-			runner.progress = progress
-		}
-	}
-	if err := reportPhase(ctx, runner.progress, "provisioning"); err != nil {
-		fmt.Fprintf(runner.stderr, "report progress: %v\n", err)
+		runner.progress = LogProgress{Out: stdout}
 	}
 
 	record := runner.initialRunManifest(ctx)
@@ -223,7 +216,6 @@ func (runner *Runner) acquire(ctx context.Context) (devnet.Environment, func() e
 		Images:                runner.configuration.Images,
 		Parameters:            runner.configuration.Parameters,
 		Profile:               devnet.ProfileSoak,
-		EndpointMode:          runner.configuration.EndpointMode,
 		LoadPercent:           runner.configuration.LoadPercent,
 		ParticipantCount:      runner.configuration.ParticipantCount,
 		FailureDiagnosticsDir: filepath.Join(runner.configuration.ReportDir, diagnosticsDirectory),
@@ -261,21 +253,14 @@ func (runner *Runner) sampleNetwork(ctx context.Context, environment devnet.Envi
 		return Evaluation{}, err
 	}
 
-	var kube *Kube
-	if environment.Backend == devnet.BackendKubernetes {
-		kube, err = InClusterKube(environment.Namespace())
-		if err != nil {
-			fmt.Fprintf(runner.stderr, "in-cluster kube unavailable: %v\n", err)
-			kube = nil
-		}
-	}
-
-	var placement []Placement
-	if kube != nil {
-		placement, err = VerifyPlacement(ctx, kube, devnet.ParticipantNodeLabel, len(environment.Participants))
-		if err != nil {
-			return Evaluation{}, fmt.Errorf("placement: %w", err)
-		}
+	// Container usage is evidence, not a precondition: the chain and
+	// process gates still judge the run without it.
+	var containers ContainerUsageSource
+	if usage, err := NewDockerUsage(environment); err == nil {
+		defer usage.Close()
+		containers = usage
+	} else {
+		fmt.Fprintf(runner.stderr, "container usage unavailable: %v\n", err)
 	}
 
 	samplesPath := filepath.Join(reportDir, SamplesFile)
@@ -309,7 +294,7 @@ func (runner *Runner) sampleNetwork(ctx context.Context, environment devnet.Envi
 		Participants:  participants,
 		Thresholds:    thresholds,
 		Interval:      runner.configuration.Interval,
-		Kube:          kube,
+		Containers:    containers,
 		Canary:        canary,
 		SlotsPerEpoch: defaultSlots,
 		Out:           samplesFile,
@@ -329,7 +314,6 @@ func (runner *Runner) sampleNetwork(ctx context.Context, environment devnet.Envi
 		SlotsPerEpoch: defaultSlots,
 		Enforce:       runner.configuration.Enforce,
 		LoadPercent:   runner.configuration.LoadPercent,
-		Placement:     placement,
 	}), nil
 }
 
@@ -386,24 +370,4 @@ func imageMap(images devnet.Images) map[string]string {
 		"tx_spammer":       images.TxSpammer,
 		"metrics_exporter": images.MetricsExporter,
 	}
-}
-
-func jobProgress() *JobProgress {
-	name, namespace := os.Getenv("JOB_NAME"), os.Getenv("JOB_NAMESPACE")
-	if name == "" || namespace == "" {
-		return nil
-	}
-	kube, err := InClusterKube(namespace)
-	if err != nil {
-		return nil
-	}
-	return &JobProgress{Kube: kube, Name: name}
-}
-
-func reportPhase(ctx context.Context, progress ProgressReporter, phase string) error {
-	job, ok := progress.(*JobProgress)
-	if !ok {
-		return nil
-	}
-	return job.reportPhase(ctx, phase)
 }

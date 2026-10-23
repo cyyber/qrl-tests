@@ -60,7 +60,6 @@ type Metrics struct {
 	GCPerHour           map[string]float64       `json:"gc_per_hour,omitempty"`
 	WorkingSetSlopes    map[string]MemoryTrend   `json:"working_set_slopes,omitempty"`
 	PeakWorkingSetShare map[string]float64       `json:"peak_working_set_share,omitempty"`
-	Placement           []Placement              `json:"placement,omitempty"`
 	Participants        map[int]ParticipantStats `json:"participants"`
 }
 
@@ -84,12 +83,11 @@ type Options struct {
 	Participants  int
 	SlotsPerEpoch uint64
 	// Enforce false turns a failing verdict into a passing one with the
-	// breaches recorded, for shaking down thresholds on a new cluster.
+	// breaches recorded, for shaking down thresholds on a new host.
 	Enforce bool
 	// LoadPercent zero means the canary and spammer-dependent gates are not
 	// meaningful; canary gates still run if a canary was sent.
 	LoadPercent int
-	Placement   []Placement
 }
 
 // Evaluate judges the steady-state samples against the thresholds.
@@ -99,7 +97,6 @@ func Evaluate(samples []Sample, thresholds Thresholds, options Options) Evaluati
 		Samples:          len(samples),
 		ThresholdsDigest: thresholds.Digest,
 	}
-	evaluation.Metrics.Placement = options.Placement
 
 	steady := make([]Sample, 0, len(samples))
 	for _, sample := range samples {
@@ -135,9 +132,6 @@ func Evaluate(samples []Sample, thresholds Thresholds, options Options) Evaluati
 	evaluation.Gates = append(evaluation.Gates, evaluator.memory(&evaluation.Metrics)...)
 	evaluation.Gates = append(evaluation.Gates, evaluator.process(&evaluation.Metrics)...)
 	evaluation.Gates = append(evaluation.Gates, evaluator.workingSet(&evaluation.Metrics)...)
-	if options.Placement != nil {
-		evaluation.Gates = append(evaluation.Gates, evaluator.placement())
-	}
 
 	evaluation.Passed = true
 	for _, gate := range evaluation.Gates {
@@ -603,7 +597,7 @@ func (e evaluator) workingSet(metrics *Metrics) []Gate {
 		for _, container := range sample.Containers {
 			key := fmt.Sprintf("participant-%d/%s", container.Participant, container.Container)
 			if container.Participant == 0 {
-				key = container.Pod + "/" + container.Container
+				key = container.Service + "/" + container.Container
 			}
 			series[key] = append(series[key], point{sample.At, container.WorkingSetBytes})
 			if container.LimitBytes > 0 {
@@ -698,27 +692,6 @@ func (e evaluator) trendGate(name string, points []point, limit float64, convert
 	gate.Observed = fmt.Sprintf("slope %.1f %s (%.0f → %.0f over %d samples)", slope, unit, trend.FirstMB, trend.LastMB, len(points))
 	if !gate.Passed {
 		at := points[len(points)-1].at
-		gate.FirstBreach = &at
-	}
-	return gate
-}
-
-func (e evaluator) placement() Gate {
-	gate := Gate{Name: "placement/one-participant-per-node", Passed: true, Threshold: "every participant pinned to its own labelled node"}
-	var pinned, unpinned []string
-	for _, placement := range e.options.Placement {
-		label := fmt.Sprintf("%d→%s", placement.Participant, placement.Node)
-		if placement.Pinned {
-			pinned = append(pinned, label)
-		} else {
-			unpinned = append(unpinned, label)
-			gate.Passed = false
-		}
-	}
-	gate.Observed = fmt.Sprintf("%d pinned, %d not", len(pinned), len(unpinned))
-	if len(unpinned) > 0 {
-		gate.Detail = "not pinned: " + strings.Join(unpinned, ", ")
-		at := e.first().At
 		gate.FirstBreach = &at
 	}
 	return gate

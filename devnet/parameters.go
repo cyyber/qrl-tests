@@ -9,17 +9,9 @@ import (
 	"go.yaml.in/yaml/v3"
 )
 
-// Kubernetes placement contract shared with qrl-infra: the work pool taint
-// and the per-participant node label.
-const (
-	PoolLabel             = "qrl.io/pool"
-	WorkPool              = "work"
-	RoleLabel             = "qrl.io/role"
-	SharedRole            = "shared"
-	ParticipantNodeLabel  = "qrl.io/participant"
-	DefaultLoadPercent    = 30
-	kubernetesTaintEffect = "NoSchedule"
-)
+// DefaultLoadPercent is the share of block gas capacity the soak load
+// generator targets unless told otherwise.
+const DefaultLoadPercent = 30
 
 // The qrl-package parameter schema, as far as the built-in profiles use it.
 type packageParameters struct {
@@ -27,8 +19,6 @@ type packageParameters struct {
 	NetworkParams             networkParams     `json:"network_params"`
 	GenesisParams             generatorParams   `json:"qrl_genesis_generator_params"`
 	AdditionalServices        []string          `json:"additional_services,omitempty"`
-	GlobalNodeSelectors       map[string]string `json:"global_node_selectors,omitempty"`
-	GlobalTolerations         []toleration      `json:"global_tolerations,omitempty"`
 	TxSpammerParams           *txSpammerParams  `json:"tx_spammer_params,omitempty"`
 	PrometheusParams          *prometheusParams `json:"prometheus_params,omitempty"`
 	QRLMetricsExporterEnabled bool              `json:"qrl_metrics_exporter_enabled,omitempty"`
@@ -50,29 +40,6 @@ type participant struct {
 	ELExtraLabels           map[string]string `json:"el_extra_labels,omitempty"`
 	CLExtraLabels           map[string]string `json:"cl_extra_labels,omitempty"`
 	VCExtraLabels           map[string]string `json:"vc_extra_labels,omitempty"`
-
-	// Kubernetes placement and sizing; zero values leave qrl-package defaults.
-	NodeSelectors map[string]string `json:"node_selectors,omitempty"`
-	Tolerations   []toleration      `json:"tolerations,omitempty"`
-	ELMinCPU      int               `json:"el_min_cpu,omitempty"`
-	ELMaxCPU      int               `json:"el_max_cpu,omitempty"`
-	ELMinMem      int               `json:"el_min_mem,omitempty"`
-	ELMaxMem      int               `json:"el_max_mem,omitempty"`
-	CLMinCPU      int               `json:"cl_min_cpu,omitempty"`
-	CLMaxCPU      int               `json:"cl_max_cpu,omitempty"`
-	CLMinMem      int               `json:"cl_min_mem,omitempty"`
-	CLMaxMem      int               `json:"cl_max_mem,omitempty"`
-	VCMinCPU      int               `json:"vc_min_cpu,omitempty"`
-	VCMaxCPU      int               `json:"vc_max_cpu,omitempty"`
-	VCMinMem      int               `json:"vc_min_mem,omitempty"`
-	VCMaxMem      int               `json:"vc_max_mem,omitempty"`
-}
-
-type toleration struct {
-	Key      string `json:"key"`
-	Operator string `json:"operator"`
-	Value    string `json:"value"`
-	Effect   string `json:"effect"`
 }
 
 type networkParams struct {
@@ -137,7 +104,6 @@ func profileParameters(address string, options StartOptions) (string, error) {
 		return "", err
 	}
 	spec := profileSpecs[options.Profile]
-	pinned := spec.pinnedPlacement && options.Backend == BackendKubernetes
 	wanted := spec.participants
 	if options.ParticipantCount > 0 {
 		if options.ParticipantCount > len(wanted) {
@@ -170,9 +136,6 @@ func profileParameters(address string, options StartOptions) (string, error) {
 			CLExtraLabels:           labels,
 			VCExtraLabels:           labels,
 		}
-		if pinned {
-			participants[index].pin(index+1, spec.resources)
-		}
 	}
 
 	parameters := packageParameters{
@@ -201,33 +164,7 @@ func profileParameters(address string, options StartOptions) (string, error) {
 		parameters.PrometheusParams = &prometheusParams{RetentionTime: "2d", RetentionSize: "4GB"}
 		parameters.GlobalLogLevel = "info"
 	}
-	if spec.metricsExporter && options.Backend != BackendKubernetes {
-		// qrl-package copies the participant node selector onto the
-		// exporter but not the work-pool taint, so the pod cannot
-		// schedule on Kubernetes. Native EL/CL /metrics are enough
-		// for soak gates.
-		parameters.QRLMetricsExporterEnabled = true
-	}
-	if pinned {
-		// Additional services inherit these; participants override with
-		// per-node selectors so they never share a node.
-		parameters.GlobalNodeSelectors = map[string]string{
-			PoolLabel: "work",
-			RoleLabel: SharedRole,
-		}
-		parameters.GlobalTolerations = []toleration{{
-			Key:      PoolLabel,
-			Operator: "Equal",
-			Value:    WorkPool,
-			Effect:   kubernetesTaintEffect,
-		}}
-		// kurtosis-tech/prometheus-package applies global_node_selectors
-		// and leaves tolerations empty, so prometheus/grafana cannot
-		// land on NoSchedule work nodes. Drop them on Kubernetes;
-		// native EL/CL /metrics still feed the soak gates.
-		parameters.AdditionalServices = withoutService(parameters.AdditionalServices, "prometheus_grafana")
-		parameters.PrometheusParams = nil
-	}
+	parameters.QRLMetricsExporterEnabled = spec.metricsExporter
 	if spec.loadGenerator {
 		throughput := SoakThroughput(options.LoadPercent)
 		if throughput == 0 {
@@ -243,11 +180,6 @@ func profileParameters(address string, options StartOptions) (string, error) {
 			}
 		}
 	}
-	if spec.loadGenerator {
-		if err := CheckLoad(options.Backend, options.LoadPercent); err != nil {
-			return "", err
-		}
-	}
 
 	payload, err := json.Marshal(parameters)
 	if err != nil {
@@ -255,44 +187,6 @@ func profileParameters(address string, options StartOptions) (string, error) {
 	}
 
 	return string(payload), nil
-}
-
-// CheckLoad rejects a load generator the backend cannot schedule. On
-// Kubernetes qrl-package hands tx_spammer global_node_selectors (the
-// work-shared node) but no tolerations, and Kurtosis applies its
-// cluster-level tolerations only to its own engine and logs pods, never to
-// user services; the spammer would sit Pending against the work-pool
-// NoSchedule taint and the soak would run idle while claiming load.
-// Refusing up front keeps the run honest until the package passes
-// global_tolerations to additional services.
-func CheckLoad(backend Backend, loadPercent int) error {
-	if backend != BackendKubernetes || SoakThroughput(loadPercent) == 0 {
-		return nil
-	}
-	return fmt.Errorf("load %d%% is not supported on the kubernetes backend: tx_spammer cannot tolerate the %s=%s taint (qrl-package passes it node selectors but no tolerations); run idle with load 0 or use the docker backend", loadPercent, PoolLabel, WorkPool)
-}
-
-// pin places the participant on its own node and requests guaranteed
-// resources. Additional services keep qrl-package's empty selectors and land
-// on untainted (core) nodes: the package passes tolerations only to
-// participants.
-func (participant *participant) pin(index int, resources *participantResources) {
-	participant.NodeSelectors = map[string]string{ParticipantNodeLabel: strconv.Itoa(index)}
-	participant.Tolerations = []toleration{{
-		Key:      PoolLabel,
-		Operator: "Equal",
-		Value:    WorkPool,
-		Effect:   kubernetesTaintEffect,
-	}}
-	if resources == nil {
-		return
-	}
-	participant.ELMinCPU, participant.ELMaxCPU = resources.elCPU, resources.elCPU
-	participant.ELMinMem, participant.ELMaxMem = resources.elMemory, resources.elMemory
-	participant.CLMinCPU, participant.CLMaxCPU = resources.clCPU, resources.clCPU
-	participant.CLMinMem, participant.CLMaxMem = resources.clMemory, resources.clMemory
-	participant.VCMinCPU, participant.VCMaxCPU = resources.vcCPU, resources.vcCPU
-	participant.VCMinMem, participant.VCMaxMem = resources.vcMemory, resources.vcMemory
 }
 
 func withoutService(services []string, name string) []string {

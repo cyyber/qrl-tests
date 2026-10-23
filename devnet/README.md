@@ -3,7 +3,7 @@
 This directory provides a reusable package for a Kurtosis-backed QRL
 development network, driven by the `qrltest` CLI in
 [`cmd/qrltest`](../cmd/qrltest). It runs on Kurtosis's Docker backend with
-Kurtosis CLI 1.20.x; the soak also runs on Kubernetes.
+Kurtosis CLI 1.20.x.
 
 ## Run
 
@@ -19,7 +19,7 @@ and waits for readiness. It does not build images or run the test suites.
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `DEVNET_BACKEND` | `docker` | Kurtosis backend: `docker`, or `kubernetes` for the soak |
+| `DEVNET_BACKEND` | `docker` | Kurtosis backend: `docker`, the only one for now |
 | `DEVNET_ENCLAVE_NAME` | `go-qrl-devnet` | Kurtosis enclave |
 | `DEVNET_EXECUTION_IMAGE` | `local/go-qrl:devnet` | Execution client image reference |
 | `DEVNET_CLEF_IMAGE` | `local/go-qrl-clef:devnet` | Clef signer image reference |
@@ -30,11 +30,11 @@ and waits for readiness. It does not build images or run the test suites.
 | `DEVNET_TX_SPAMMER_IMAGE` | `local/qrl-tx-spammer:devnet` | Transaction spammer image (soak profile) |
 | `DEVNET_METRICS_EXPORTER_IMAGE` | `local/qrl-metrics-exporter:devnet` | Metrics exporter image (soak profile) |
 | `DEVNET_PROFILE` | `single` | Built-in profile used by `network-start` |
-| `DEVNET_ENDPOINT_MODE` | `public` | `public` (gateway/published ports) or `cluster` (in-network) |
 | `DEVNET_START_TIMEOUT` | `5m` | Network startup budget |
 | `DEVNET_PARAMS_FILE` | unset | Complete qrl-package YAML parameters |
-| `SOAK_DURATION` | `4h` | Steady-state window of `qrltest soak` |
-| `SOAK_LOAD_PERCENT` | `30` | Share of block gas the soak spammer targets; `0` is idle. Kubernetes accepts only `0`: `tx_spammer` gets node selectors but no tolerations from qrl-package, so it cannot schedule on the tainted work pool and the start is refused instead of running idle |
+| `SOAK_DURATION` | `4h` | Window of `qrltest soak`, warm-up included |
+| `SOAK_LOAD_PERCENT` | `30` | Share of block gas the soak spammer targets; `0` is idle |
+| `SOAK_PARTICIPANTS` | `0` | Soak participants to provision (1-4); `0` provisions all four |
 | `SOAK_ENFORCE` | unset | Fail `qrltest soak` when a gate is breached |
 | `KEEP_NETWORK` | unset | Leave the provisioned soak network running |
 

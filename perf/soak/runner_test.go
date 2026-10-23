@@ -94,8 +94,7 @@ func TestRunProvisionsWritesReportsAndStops(t *testing.T) {
 	runner := newTestRunner(t, Config{
 		EnclaveName:  "qrl-soak",
 		ReportDir:    reports,
-		Backend:      devnet.BackendKubernetes,
-		EndpointMode: devnet.EndpointModeCluster,
+		Backend:      devnet.BackendDocker,
 		LoadPercent:  30,
 		Duration:     time.Minute,
 		StartTimeout: time.Minute,
@@ -104,8 +103,7 @@ func TestRunProvisionsWritesReportsAndStops(t *testing.T) {
 	require.NoError(t, runner.Run(t.Context()))
 	require.Equal(t, "qrl-soak", networks.started.EnclaveName)
 	require.Equal(t, devnet.ProfileSoak, networks.started.Profile)
-	require.Equal(t, devnet.BackendKubernetes, networks.started.Backend)
-	require.Equal(t, devnet.EndpointModeCluster, networks.started.EndpointMode)
+	require.Equal(t, devnet.BackendDocker, networks.started.Backend)
 	require.Equal(t, 30, networks.started.LoadPercent)
 	require.Equal(t, []string{"qrl-soak"}, networks.stopped)
 	require.Empty(t, networks.collected)
@@ -206,13 +204,6 @@ func TestRunRejectsExistingWithParameters(t *testing.T) {
 
 func TestVerdictClass(t *testing.T) {
 	require.Equal(t, "passed", VerdictClass(passingEvaluation()))
-	require.Equal(t, "infrastructure", VerdictClass(Evaluation{
-		Passed: true,
-		Gates: []Gate{
-			{Name: "placement/pinned", Passed: false},
-			{Name: "chain-progress/head", Passed: true},
-		},
-	}))
 	require.Equal(t, "product", VerdictClass(Evaluation{
 		Gates: []Gate{{Name: "chain-progress/head", Passed: false}},
 	}))

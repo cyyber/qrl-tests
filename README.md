@@ -58,7 +58,7 @@ List registered E2E lanes and suites with:
 go run ./cmd/qrltest list
 ```
 
-E2E lanes run on Kurtosis's Docker backend; the soak also runs on Kubernetes.
+Networks run on Kurtosis's Docker backend.
 
 See [development network configuration](devnet/README.md), the
 [end-to-end suites](e2e/README.md), and the

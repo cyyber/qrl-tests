@@ -37,7 +37,6 @@ func soakFlags() []cli.Flag {
 			EnvVars: []string{"SOAK_REPORT_DIR"},
 		},
 		backendFlag(),
-		endpointModeFlag(),
 		loadPercentFlag(),
 		participantCountFlag(),
 		&cli.DurationFlag{
@@ -96,28 +95,15 @@ func soakConfig(command *cli.Context) (soak.Config, error) {
 	if err != nil {
 		return soak.Config{}, err
 	}
-	endpointMode, err := devnet.ParseEndpointMode(command.String("endpoint-mode"))
-	if err != nil {
-		return soak.Config{}, err
-	}
 	parameters, err := readParametersFile(command)
 	if err != nil {
 		return soak.Config{}, err
-	}
-
-	// Fail before any node is scaled or enclave created; an existing
-	// network was provisioned elsewhere and only gets sampled here.
-	if !command.Bool("existing") && parameters == nil {
-		if err := devnet.CheckLoad(backend, command.Int("load-percent")); err != nil {
-			return soak.Config{}, err
-		}
 	}
 
 	return soak.Config{
 		EnclaveName:      command.String("enclave-name"),
 		ReportDir:        command.String("report-dir"),
 		Backend:          backend,
-		EndpointMode:     endpointMode,
 		LoadPercent:      command.Int("load-percent"),
 		ParticipantCount: command.Int("participants"),
 		StartTimeout:     command.Duration("start-timeout"),

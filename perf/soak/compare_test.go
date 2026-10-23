@@ -187,20 +187,6 @@ func TestCompareRefusesThresholdsChange(t *testing.T) {
 	require.Empty(t, comparison.Deltas)
 }
 
-func TestCompareRefusesInfrastructure(t *testing.T) {
-	current := comparableEvaluation()
-	baseline := comparableEvaluation()
-	baseline.Gates = append(baseline.Gates, Gate{Name: "placement/pinned", Passed: false})
-
-	comparison := Compare(current, baseline)
-	require.False(t, comparison.Comparable)
-	require.Equal(t, ReasonBaselineInfrastructure, comparison.Reason)
-
-	comparison = Compare(baseline, current)
-	require.False(t, comparison.Comparable)
-	require.Equal(t, ReasonCurrentInfrastructure, comparison.Reason)
-}
-
 func TestCompareNotesProvenanceDrift(t *testing.T) {
 	current := comparableEvaluation()
 	current.QRLTests = "aaa"
@@ -276,9 +262,9 @@ func TestWriteComparisonRewritesSummary(t *testing.T) {
 }
 
 func TestRenderComparisonSkipped(t *testing.T) {
-	markdown := RenderComparison(Comparison{Reason: ReasonBaselineInfrastructure})
+	markdown := RenderComparison(Comparison{Reason: ReasonNoComparableMetrics})
 	require.Contains(t, markdown, "## Versus previous soak")
-	require.Contains(t, markdown, "Skipped: previous run was infrastructure.")
+	require.Contains(t, markdown, "Skipped: no overlapping metrics to compare.")
 }
 
 func comparableEvaluation() Evaluation {
