@@ -45,6 +45,15 @@ type StartOptions struct {
 	Parameters  []byte
 	Profile     Profile
 
+	// LoadPercent is the share of block gas capacity the load generator
+	// targets in profiles that run one; zero disables it.
+	LoadPercent int
+
+	// ParticipantCount, when set, provisions that many participants of the
+	// profile instead of all of them, for a host too small for the full
+	// network.
+	ParticipantCount int
+
 	// FailureDiagnosticsDir, when set, receives the enclave's diagnostics
 	// before cleanup of a failed start is attempted.
 	FailureDiagnosticsDir string

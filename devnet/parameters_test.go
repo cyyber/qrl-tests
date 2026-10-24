@@ -1,9 +1,11 @@
 package devnet
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -66,6 +68,118 @@ func TestAnchoredProfileParameters(t *testing.T) {
 	require.Equal(t, []any{"--minimum-peers-per-subnet=0"}, participants[1].(map[string]any)["cl_extra_params"])
 	// The profile adds to the defaults without changing them for others.
 	require.Equal(t, []string{"--min-sync-peers=0", "--minimum-peers-per-subnet=0"}, defaultCLExtraParams)
+}
+
+func soakImages() Images {
+	return Images{
+		Execution:       "ghcr.io/example/go-qrl@sha256:" + strings.Repeat("0af1", 16),
+		Clef:            "ghcr.io/example/go-qrl-clef@sha256:" + strings.Repeat("0af2", 16),
+		Consensus:       "ghcr.io/example/qrysm-beacon@sha256:" + strings.Repeat("0af3", 16),
+		Validator:       "ghcr.io/example/qrysm-validator@sha256:" + strings.Repeat("0af4", 16),
+		Genesis:         "ghcr.io/example/qrl-genesis-generator@sha256:" + strings.Repeat("0af5", 16),
+		TxSpammer:       "ghcr.io/example/qrl-tx-spammer@sha256:" + strings.Repeat("0af6", 16),
+		MetricsExporter: "ghcr.io/example/qrl-metrics-exporter@sha256:" + strings.Repeat("0af7", 16),
+	}
+}
+
+// The rendering of the soak profile is checked in: the file doubles as
+// documentation of what the soak asks qrl-package for. Regenerate with
+// UPDATE_GOLDEN=1.
+func TestSoakParameters(t *testing.T) {
+	payload, err := resolveParameters(devwallet.Address, StartOptions{
+		Images:      soakImages(),
+		Profile:     ProfileSoak,
+		LoadPercent: DefaultLoadPercent,
+	})
+	require.NoError(t, err)
+
+	var pretty bytes.Buffer
+	require.NoError(t, json.Indent(&pretty, []byte(payload), "", "  "))
+	pretty.WriteByte('\n')
+
+	golden := filepath.Join("testdata", "soak.json")
+	if os.Getenv("UPDATE_GOLDEN") != "" {
+		require.NoError(t, os.MkdirAll(filepath.Dir(golden), 0o755))
+		require.NoError(t, os.WriteFile(golden, pretty.Bytes(), 0o600))
+	}
+	want, err := os.ReadFile(golden)
+	require.NoError(t, err)
+	require.Equal(t, string(want), pretty.String())
+
+	var parameters map[string]any
+	require.NoError(t, json.Unmarshal([]byte(payload), &parameters))
+	participants := parameters["participants"].([]any)
+	require.Len(t, participants, soakParticipants)
+	for index, raw := range participants {
+		participant := raw.(map[string]any)
+		labels := participant["el_extra_labels"].(map[string]any)
+		require.Equal(t, strconv.Itoa(index+1), labels[participantLabel])
+		require.NotContains(t, participant, "node_selectors", "Docker has no pools to pin to")
+		require.NotContains(t, participant, "el_min_cpu", "containers share the host unbounded")
+	}
+	require.Equal(t, true, parameters["qrl_metrics_exporter_enabled"])
+	require.Contains(t, parameters, "prometheus_params")
+	network := parameters["network_params"].(map[string]any)
+	require.Equal(t, float64(soakGenesisGasLimit), network["genesis_gaslimit"])
+	require.Equal(t, float64(soakGenesisDelaySeconds), network["genesis_delay"])
+}
+
+func TestSoakParametersParticipantCount(t *testing.T) {
+	payload, err := resolveParameters(devwallet.Address, StartOptions{
+		Images:           soakImages(),
+		Profile:          ProfileSoak,
+		ParticipantCount: 1,
+	})
+	require.NoError(t, err)
+	var parameters map[string]any
+	require.NoError(t, json.Unmarshal([]byte(payload), &parameters))
+	require.Len(t, parameters["participants"].([]any), 1)
+
+	_, err = resolveParameters(devwallet.Address, StartOptions{
+		Images:           soakImages(),
+		Profile:          ProfileSoak,
+		ParticipantCount: soakParticipants + 1,
+	})
+	require.ErrorContains(t, err, "exceeds profile soak")
+}
+
+func TestSoakParametersIdle(t *testing.T) {
+	payload, err := resolveParameters(devwallet.Address, StartOptions{
+		Images:      soakImages(),
+		Profile:     ProfileSoak,
+		Backend:     BackendDocker,
+		LoadPercent: 0,
+	})
+	require.NoError(t, err)
+
+	var parameters map[string]any
+	require.NoError(t, json.Unmarshal([]byte(payload), &parameters))
+	require.Equal(t, []any{"prometheus_grafana"}, parameters["additional_services"], "an idle baseline runs no spammer")
+	require.NotContains(t, parameters, "tx_spammer_params")
+}
+
+func TestSoakParametersLoadKeepsSpammer(t *testing.T) {
+	payload, err := resolveParameters(devwallet.Address, StartOptions{
+		Images:      soakImages(),
+		Profile:     ProfileSoak,
+		Backend:     BackendDocker,
+		LoadPercent: DefaultLoadPercent,
+	})
+	require.NoError(t, err)
+	var parameters map[string]any
+	require.NoError(t, json.Unmarshal([]byte(payload), &parameters))
+	require.Equal(t, []any{"prometheus_grafana", "tx_spammer"}, parameters["additional_services"])
+	spammer := parameters["tx_spammer_params"].(map[string]any)
+	require.Equal(t, soakImages().TxSpammer, spammer["image"])
+	require.Equal(t, float64(SoakThroughput(DefaultLoadPercent)), spammer["throughput"])
+}
+
+func TestSoakThroughput(t *testing.T) {
+	require.Equal(t, 0, SoakThroughput(0))
+	require.Equal(t, 0, SoakThroughput(-5))
+	// 30M gas / 21k per transfer / 5 s slots = 285 TPS at full capacity.
+	require.Equal(t, 285, SoakThroughput(100))
+	require.Equal(t, 85, SoakThroughput(DefaultLoadPercent))
 }
 
 func TestFileParametersPassThroughUnchanged(t *testing.T) {

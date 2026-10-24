@@ -30,11 +30,11 @@ func TestParticipantsFromServices(t *testing.T) {
 			},
 			Consensus: ConsensusService{
 				ServiceInfo: ServiceInfo{Name: "cl-1-qrysm-gqrl", ID: "cl-1-qrysm-gqrl-id", PrivateIP: "10.0.0.1"},
-				URL:         "http://127.0.0.1:4201", GRPC: "127.0.0.1:4401", MetricsURL: "http://127.0.0.1:4301",
+				URL:         "http://127.0.0.1:4201", GRPC: "127.0.0.1:4401", MetricsURL: "http://127.0.0.1:4301/metrics",
 			},
 			Validator: ValidatorService{
 				ServiceInfo: ServiceInfo{Name: "vc-1-gqrl-qrysm", ID: "vc-1-gqrl-qrysm-id", PrivateIP: "10.0.0.1"},
-				URL:         "http://127.0.0.1:5201", MetricsURL: "http://127.0.0.1:5301",
+				URL:         "http://127.0.0.1:5201", MetricsURL: "http://127.0.0.1:5301/metrics",
 			},
 		},
 		{
@@ -46,11 +46,11 @@ func TestParticipantsFromServices(t *testing.T) {
 			},
 			Consensus: ConsensusService{
 				ServiceInfo: ServiceInfo{Name: "cl-2-qrysm-gqrl", ID: "cl-2-qrysm-gqrl-id", PrivateIP: "10.0.0.2"},
-				URL:         "http://127.0.0.1:4202", GRPC: "127.0.0.1:4402", MetricsURL: "http://127.0.0.1:4302",
+				URL:         "http://127.0.0.1:4202", GRPC: "127.0.0.1:4402", MetricsURL: "http://127.0.0.1:4302/metrics",
 			},
 			Validator: ValidatorService{
 				ServiceInfo: ServiceInfo{Name: "vc-2-gqrl-qrysm", ID: "vc-2-gqrl-qrysm-id", PrivateIP: "10.0.0.2"},
-				URL:         "http://127.0.0.1:5202", MetricsURL: "http://127.0.0.1:5302",
+				URL:         "http://127.0.0.1:5202", MetricsURL: "http://127.0.0.1:5302/metrics",
 			},
 		},
 	}, participants)

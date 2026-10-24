@@ -22,6 +22,17 @@ const (
 	metricsPortID       = "metrics"
 	graphQLPath         = "/graphql"
 
+	// executionMetricsPath is where go-qrl serves Prometheus metrics.
+	executionMetricsPath = "/debug/metrics/prometheus"
+	// consensusMetricsPath is Qrysm's Prometheus path on the metrics port.
+	consensusMetricsPath = "/metrics"
+
+	// prometheusServiceName and prometheusPortID come from the Kurtosis
+	// prometheus package qrl-package launches for the prometheus_grafana
+	// additional service.
+	prometheusServiceName = "prometheus"
+	prometheusPortID      = "http"
+
 	// clientTypeLabel is stamped by qrl-package itself; the qrl-tests labels
 	// are stamped by the built-in parameter renderer and read back here.
 	clientTypeLabel  = "qrl-package.client-type"
@@ -33,6 +44,9 @@ type Environment struct {
 	EnclaveName  string        `json:"enclave_name"`
 	Backend      Backend       `json:"backend,omitempty"`
 	Participants []Participant `json:"participants"`
+	// PrometheusURL is set when the network runs the prometheus_grafana
+	// additional service.
+	PrometheusURL string `json:"prometheus_url,omitempty"`
 }
 
 // Primary returns the lowest-indexed participant. Readiness probes and
@@ -64,6 +78,7 @@ type ExecutionService struct {
 	GraphQLURL   string `json:"graphql_url"`
 	WebSocketURL string `json:"websocket_url"`
 	EngineURL    string `json:"engine_url"`
+	MetricsURL   string `json:"metrics_url,omitempty"`
 }
 
 type ConsensusService struct {
@@ -90,10 +105,14 @@ func resolveEnvironment(ctx context.Context, client enclaveClient, name string) 
 		return Environment{}, err
 	}
 
-	return Environment{
+	environment := Environment{
 		EnclaveName:  name,
 		Participants: participants,
-	}, nil
+	}
+	if prometheus, found := services[prometheusServiceName]; found {
+		environment.PrometheusURL = optionalPublicEndpoint(prometheus, prometheusPortID, "http")
+	}
+	return environment, nil
 }
 
 func participantsFromServices(services map[string]kurtosis.Service) ([]Participant, error) {
@@ -128,6 +147,9 @@ func participantsFromServices(services map[string]kurtosis.Service) ([]Participa
 				return nil, fmt.Errorf("execution service %q: %w", name, err)
 			}
 			participant.Execution.EngineURL = optionalPublicEndpoint(service, engineRPCPortID, "http")
+			if metrics := optionalPublicEndpoint(service, metricsPortID, "http"); metrics != "" {
+				participant.Execution.MetricsURL = metrics + executionMetricsPath
+			}
 		case "beacon":
 			participant.Consensus.ServiceInfo = info
 			participant.Consensus.URL, err = service.PublicEndpoint(consensusHTTPPortID, "http")
@@ -135,15 +157,27 @@ func participantsFromServices(services map[string]kurtosis.Service) ([]Participa
 				return nil, fmt.Errorf("consensus service %q: %w", name, err)
 			}
 			participant.Consensus.GRPC = optionalPublicHostPort(service, rpcPortID)
-			participant.Consensus.MetricsURL = optionalPublicEndpoint(service, metricsPortID, "http")
+			if metrics := optionalPublicEndpoint(service, metricsPortID, "http"); metrics != "" {
+				participant.Consensus.MetricsURL = metrics + consensusMetricsPath
+			}
 		case "validator":
 			participant.Validator.ServiceInfo = info
 			participant.Validator.URL = optionalPublicEndpoint(service, validatorHTTPPortID, "http")
-			participant.Validator.MetricsURL = optionalPublicEndpoint(service, metricsPortID, "http")
+			if metrics := optionalPublicEndpoint(service, metricsPortID, "http"); metrics != "" {
+				participant.Validator.MetricsURL = metrics + consensusMetricsPath
+			}
 		}
 	}
 	if len(byIndex) == 0 {
-		return nil, errors.New("no qrl-package participants found")
+		names := make([]string, 0, len(services))
+		for name := range services {
+			names = append(names, name)
+		}
+		slices.Sort(names)
+		if len(names) == 0 {
+			return nil, errors.New("no qrl-package participants found (enclave listed no services)")
+		}
+		return nil, fmt.Errorf("no qrl-package participants found (services: %s)", strings.Join(names, ", "))
 	}
 
 	participants := make([]Participant, 0, len(byIndex))

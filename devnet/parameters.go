@@ -9,11 +9,20 @@ import (
 	"go.yaml.in/yaml/v3"
 )
 
-// The qrl-package parameter schema, as far as the built-in profile uses it.
+// DefaultLoadPercent is the share of block gas capacity the soak load
+// generator targets unless told otherwise.
+const DefaultLoadPercent = 30
+
+// The qrl-package parameter schema, as far as the built-in profiles use it.
 type packageParameters struct {
-	Participants  []participant   `json:"participants"`
-	NetworkParams networkParams   `json:"network_params"`
-	GenesisParams generatorParams `json:"qrl_genesis_generator_params"`
+	Participants              []participant     `json:"participants"`
+	NetworkParams             networkParams     `json:"network_params"`
+	GenesisParams             generatorParams   `json:"qrl_genesis_generator_params"`
+	AdditionalServices        []string          `json:"additional_services,omitempty"`
+	TxSpammerParams           *txSpammerParams  `json:"tx_spammer_params,omitempty"`
+	PrometheusParams          *prometheusParams `json:"prometheus_params,omitempty"`
+	QRLMetricsExporterEnabled bool              `json:"qrl_metrics_exporter_enabled,omitempty"`
+	GlobalLogLevel            string            `json:"global_log_level,omitempty"`
 }
 
 type participant struct {
@@ -38,6 +47,8 @@ type networkParams struct {
 	PreregisteredValidators int                `json:"preregistered_validator_count,omitempty"`
 	SecondsPerSlot          int                `json:"seconds_per_slot"`
 	SlotsPerEpoch           int                `json:"slots_per_epoch"`
+	GenesisDelay            int                `json:"genesis_delay,omitempty"`
+	GenesisGasLimit         int                `json:"genesis_gaslimit,omitempty"`
 	ExecutionFollowDistance int                `json:"execution_follow_distance"`
 	WithdrawabilityDelay    int                `json:"min_validator_withdrawability_delay"`
 	ShardCommitteePeriod    int                `json:"shard_committee_period"`
@@ -52,6 +63,22 @@ type account struct {
 
 type generatorParams struct {
 	Image string `json:"image"`
+}
+
+// txSpammerParams drive qrl-package's tx_spammer service. The spammer funds
+// itself from the package's own prefunded account, never from the suite
+// wallet, so suite specs keep a serial nonce.
+type txSpammerParams struct {
+	Image      string `json:"image"`
+	Scenario   string `json:"scenario"`
+	Throughput int    `json:"throughput"`
+	MaxPending int    `json:"max_pending"`
+	MaxWallets int    `json:"max_wallets"`
+}
+
+type prometheusParams struct {
+	RetentionTime string `json:"storage_tsdb_retention_time"`
+	RetentionSize string `json:"storage_tsdb_retention_size"`
 }
 
 // The invariant every custom parameter file must satisfy: the development
@@ -77,9 +104,17 @@ func profileParameters(address string, options StartOptions) (string, error) {
 		return "", err
 	}
 	spec := profileSpecs[options.Profile]
-	participants := make([]participant, len(spec.participants))
+	wanted := spec.participants
+	if options.ParticipantCount > 0 {
+		if options.ParticipantCount > len(wanted) {
+			return "", fmt.Errorf("participant count %d exceeds profile %s (%d)", options.ParticipantCount, options.Profile, len(wanted))
+		}
+		wanted = wanted[:options.ParticipantCount]
+	}
+
+	participants := make([]participant, len(wanted))
 	for index := range participants {
-		configuration := spec.participants[index]
+		configuration := wanted[index]
 		labels := map[string]string{
 			participantLabel: strconv.Itoa(index + 1),
 			// Alternate halves for the network-partition lanes.
@@ -103,12 +138,12 @@ func profileParameters(address string, options StartOptions) (string, error) {
 		}
 	}
 
-	payload, err := json.Marshal(packageParameters{
+	parameters := packageParameters{
 		Participants: participants,
 		NetworkParams: networkParams{
 			NetworkID:               "1337",
 			PreregisteredValidators: spec.preregisteredValidators,
-			SecondsPerSlot:          5,
+			SecondsPerSlot:          secondsPerSlot,
 			SlotsPerEpoch:           8,
 			ExecutionFollowDistance: 8,
 			WithdrawabilityDelay:    2,
@@ -117,13 +152,51 @@ func profileParameters(address string, options StartOptions) (string, error) {
 			WithdrawalAddress:       address,
 			LightKDFEnabled:         true,
 		},
-		GenesisParams: generatorParams{Image: images.Genesis},
-	})
+		GenesisParams:      generatorParams{Image: images.Genesis},
+		AdditionalServices: spec.additionalServices,
+	}
+
+	if spec.loadGenerator || spec.metricsExporter {
+		// Long-running profiles: nodes must all be scheduled and pulled before
+		// genesis, and the gas limit is what load is expressed against.
+		parameters.NetworkParams.GenesisDelay = soakGenesisDelaySeconds
+		parameters.NetworkParams.GenesisGasLimit = soakGenesisGasLimit
+		parameters.PrometheusParams = &prometheusParams{RetentionTime: "2d", RetentionSize: "4GB"}
+		parameters.GlobalLogLevel = "info"
+	}
+	parameters.QRLMetricsExporterEnabled = spec.metricsExporter
+	if spec.loadGenerator {
+		throughput := SoakThroughput(options.LoadPercent)
+		if throughput == 0 {
+			// Idle baseline: keep the service list honest.
+			parameters.AdditionalServices = withoutService(parameters.AdditionalServices, "tx_spammer")
+		} else {
+			parameters.TxSpammerParams = &txSpammerParams{
+				Image:      images.TxSpammer,
+				Scenario:   "eoatx",
+				Throughput: throughput,
+				MaxPending: throughput * 10,
+				MaxWallets: min(500, max(50, throughput*4)),
+			}
+		}
+	}
+
+	payload, err := json.Marshal(parameters)
 	if err != nil {
 		return "", err
 	}
 
 	return string(payload), nil
+}
+
+func withoutService(services []string, name string) []string {
+	result := make([]string, 0, len(services))
+	for _, service := range services {
+		if service != name {
+			result = append(result, service)
+		}
+	}
+	return result
 }
 
 func participantParameters(configured []string, defaults ...string) []string {

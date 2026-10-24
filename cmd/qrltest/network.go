@@ -24,6 +24,7 @@ func networkCommand(network networkController) *cli.Command {
 			EnvVars: []string{"DEVNET_PROFILE"},
 		},
 		parametersFileFlag(),
+		loadPercentFlag(),
 		&cli.DurationFlag{
 			Name:    "timeout",
 			Usage:   "network start budget",
@@ -68,6 +69,7 @@ func networkCommand(network networkController) *cli.Command {
 						Images:      imagesFromFlags(command),
 						Parameters:  parameters,
 						Profile:     profile,
+						LoadPercent: command.Int("load-percent"),
 					}); err != nil {
 						return err
 					}

@@ -1,0 +1,196 @@
+# Weekly soak on a GitHub-hosted runner: provisions the soak profile on
+# Kurtosis's Docker backend, samples it for the window, and publishes the
+# verdict, the week-over-week comparison and reports/ as an artifact.
+#
+# The job is bounded by the hosted runner's 6 h limit: the window, network
+# start, diagnostics and teardown all have to fit in timeout-minutes, so a
+# window longer than 5 h is refused up front.
+name: soak
+
+on:
+  # Sunday 03:00 UTC. Schedule cannot pass inputs, so the defaults below are
+  # the weekly contract.
+  schedule:
+    - cron: "0 3 * * 0"
+  workflow_dispatch:
+    inputs:
+      duration:
+        description: soak window including warm-up (Go duration, at most 5h)
+        default: 4h
+      load-percent:
+        description: share of block gas capacity the spammer targets; 0 is an idle baseline
+        default: "30"
+      participants:
+        description: participants to provision (1-4)
+        default: "4"
+      enforce:
+        description: fail the run when a gate is breached. Leave off until the thresholds are calibrated.
+        type: boolean
+        default: false
+
+concurrency:
+  group: qrl-soak
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  KURTOSIS_VERSION: 1.20.0
+
+jobs:
+  images:
+    uses: ./.github/workflows/images-reusable.yml
+    permissions:
+      contents: read
+      packages: write
+
+  soak:
+    needs: images
+    # Same label as the image bake: the images are built for its architecture.
+    runs-on: ${{ vars.E2E_RUNNER || 'ubuntu-24.04-arm' }}
+    timeout-minutes: 350
+    permissions:
+      contents: read
+      actions: read
+    env:
+      SOAK_DURATION: ${{ inputs.duration || '4h' }}
+      SOAK_LOAD_PERCENT: ${{ inputs.load-percent || '30' }}
+      SOAK_PARTICIPANTS: ${{ inputs.participants || '4' }}
+      # Stay off until a ≥1h baseline trusts the thresholds.
+      SOAK_ENFORCE: ${{ inputs.enforce && 'true' || 'false' }}
+    steps:
+      - name: Check the soak window
+        run: |
+          python3 - <<'PY'
+          import os, re, sys
+          value = os.environ["SOAK_DURATION"]
+          units = {"h": 3600, "m": 60, "s": 1}
+          parts = re.findall(r"(\d+(?:\.\d+)?)([hms])", value)
+          if not parts or "".join(n + u for n, u in parts) != value:
+              sys.exit(f"duration {value!r} is not a Go duration in h, m and s")
+          seconds = sum(float(n) * units[u] for n, u in parts)
+          if seconds > 5 * 3600:
+              sys.exit(f"duration {value} exceeds 5h: it would not fit the hosted runner's 6 h job limit")
+          PY
+
+      - name: Check out qrl-tests
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+
+      - name: Install Kurtosis CLI
+        run: |
+          case "$(uname -m)" in
+            aarch64) arch=arm64 sha256=8c5f50adbb27ca2d0693b9ac8643a148d55240cfdbc5b36fa8eef4b02325af16 ;;
+            x86_64) arch=amd64 sha256=3866e805a83a63d3d0b177f54c3fb556066b8c0e12f6442a0579bb7deaa1d5ae ;;
+            *) echo "unsupported architecture $(uname -m)" >&2; exit 1 ;;
+          esac
+          curl -fsSL --retry 3 --retry-connrefused -o kurtosis.tar.gz "https://github.com/kurtosis-tech/kurtosis-cli-release-artifacts/releases/download/${KURTOSIS_VERSION}/kurtosis-cli_${KURTOSIS_VERSION}_linux_${arch}.tar.gz"
+          echo "${sha256}  kurtosis.tar.gz" | sha256sum -c -
+          sudo tar -xzf kurtosis.tar.gz -C /usr/local/bin kurtosis
+          rm kurtosis.tar.gz
+          kurtosis analytics disable
+
+      - name: Run the soak
+        env:
+          DEVNET_EXECUTION_IMAGE: ${{ needs.images.outputs.execution-image }}
+          DEVNET_CLEF_IMAGE: ${{ needs.images.outputs.clef-image }}
+          DEVNET_CONSENSUS_IMAGE: ${{ needs.images.outputs.consensus-image }}
+          DEVNET_VALIDATOR_IMAGE: ${{ needs.images.outputs.validator-image }}
+          DEVNET_GENESIS_IMAGE: ${{ needs.images.outputs.genesis-image }}
+          DEVNET_TX_SPAMMER_IMAGE: ${{ needs.images.outputs.tx-spammer-image }}
+          DEVNET_METRICS_EXPORTER_IMAGE: ${{ needs.images.outputs.metrics-exporter-image }}
+          DEVNET_ENCLAVE_NAME: qrl-soak-${{ github.run_id }}-${{ github.run_attempt }}
+          E2E_SOURCE_GO_QRL: ${{ needs.images.outputs.go-qrl-sha }}
+          E2E_SOURCE_QRYSM: ${{ needs.images.outputs.qrysm-sha }}
+          E2E_SOURCE_GENERATOR: ${{ needs.images.outputs.generator-sha }}
+        run: make soak-run
+
+      - name: Compare with the previous soak
+        if: always()
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SKIP_PREFIX: soak-reports-${{ github.run_id }}-
+        run: |
+          set -euo pipefail
+          if [ ! -f reports/results.json ]; then
+            echo "No results.json to compare"
+            exit 0
+          fi
+          baseline=""
+          artifact=$(gh api "repos/${{ github.repository }}/actions/artifacts?per_page=100" \
+            | jq -c --arg skip "${SKIP_PREFIX}" '
+                [.artifacts[]
+                  | select(.expired == false)
+                  | select(.name | startswith("soak-reports-"))
+                  | select(.name | startswith($skip) | not)]
+                | sort_by(.created_at)
+                | reverse
+                | if length == 0 then empty else {id: .[0].id, name: .[0].name} end
+              ')
+          if [ -n "${artifact}" ]; then
+            id=$(jq -r .id <<<"${artifact}")
+            name=$(jq -r .name <<<"${artifact}")
+            echo "Previous soak artifact: ${name} (${id})"
+            baseline_dir="${RUNNER_TEMP}/soak-baseline"
+            gh api "repos/${{ github.repository }}/actions/artifacts/${id}/zip" > "${baseline_dir}.zip"
+            mkdir -p "${baseline_dir}"
+            if unzip -qo "${baseline_dir}.zip" -d "${baseline_dir}" && [ -f "${baseline_dir}/results.json" ]; then
+              baseline="${baseline_dir}/results.json"
+            fi
+          fi
+          if [ -z "${baseline}" ]; then
+            {
+              echo ""
+              echo "## Versus previous soak"
+              echo ""
+              echo "No previous soak artifact in the last 14 days."
+            } >> reports/summary.md
+            exit 0
+          fi
+          go run ./cmd/qrltest soak-compare \
+            --current reports/results.json \
+            --baseline "${baseline}" \
+            --summary reports/summary.md \
+            --output reports/comparison.json
+
+      - name: Publish the job summary
+        if: always()
+        run: |
+          if [ -f reports/summary.md ]; then
+            cat reports/summary.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            # No verdict means the network never got to be judged: an
+            # infrastructure failure, not a product one.
+            echo "## Soak: no verdict produced (infrastructure)" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload the reports
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: soak-reports-${{ github.run_id }}-${{ github.run_attempt }}
+          path: reports/
+          # Covers the weekly cadence for the comparison above.
+          retention-days: 14
+
+  image-failure-summary:
+    needs: images
+    if: ${{ always() && needs.images.result != 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Publish the result
+        env:
+          IMAGE_RESULT: ${{ needs.images.result }}
+        run: |
+          {
+            echo "## Soak: not run"
+            echo
+            echo "Image preparation ${IMAGE_RESULT}."
+          } >> "$GITHUB_STEP_SUMMARY"

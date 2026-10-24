@@ -27,9 +27,16 @@ and waits for readiness. It does not build images or run the test suites.
 | `DEVNET_VALIDATOR_IMAGE` | `local/qrysm-validator:devnet` | Validator client image reference |
 | `DEVNET_GENESIS_IMAGE` | `local/qrl-genesis-generator:devnet` | Genesis generator image reference |
 | `DEVNET_QRYSM_ALLTOOLS_IMAGE` | `local/qrysm-alltools:devnet` | Qrysm all-tools image reference, for E2E lanes that run its command-line tools; it is not pulled |
+| `DEVNET_TX_SPAMMER_IMAGE` | `local/qrl-tx-spammer:devnet` | Transaction spammer image (soak profile) |
+| `DEVNET_METRICS_EXPORTER_IMAGE` | `local/qrl-metrics-exporter:devnet` | Metrics exporter image (soak profile) |
 | `DEVNET_PROFILE` | `single` | Built-in profile used by `network-start` |
 | `DEVNET_START_TIMEOUT` | `5m` | Network startup budget |
 | `DEVNET_PARAMS_FILE` | unset | Complete qrl-package YAML parameters |
+| `SOAK_DURATION` | `4h` | Window of `qrltest soak`, warm-up included |
+| `SOAK_LOAD_PERCENT` | `30` | Share of block gas the soak spammer targets; `0` is idle |
+| `SOAK_PARTICIPANTS` | `0` | Soak participants to provision (1-4); `0` provisions all four |
+| `SOAK_ENFORCE` | unset | Fail `qrltest soak` when a gate is breached |
+| `KEEP_NETWORK` | unset | Leave the provisioned soak network running |
 
 `e2e-run` derives its network profile from `E2E_LANE` and does not use
 `DEVNET_PROFILE`.

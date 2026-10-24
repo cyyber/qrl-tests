@@ -14,8 +14,8 @@ var (
 	anchorCLExtraParams  = append(slices.Clone(defaultCLExtraParams), "--sync-from=head")
 )
 
-// Further profiles arrive together with the lanes that exercise them.
 const (
+	// ProfileSingle is one participant: the functional E2E lanes.
 	ProfileSingle Profile = "single"
 	// ProfileAnchored has two participants that share the validators. The
 	// first is the anchor of a full-outage recovery: its beacon node counts
@@ -24,11 +24,23 @@ const (
 	// beacon nodes all stopped never proposes again. The second keeps the
 	// package's sync settings, so it follows the anchor.
 	ProfileAnchored Profile = "anchored"
+	// ProfileSoak is a multi-participant network under sustained load with
+	// metrics collection.
+	ProfileSoak Profile = "soak"
 )
 
 type profileSpec struct {
 	participants            []participantSpec
 	preregisteredValidators int
+
+	// additionalServices are qrl-package extras launched alongside the
+	// participants.
+	additionalServices []string
+	// loadGenerator enables the transaction spammer; its throughput follows
+	// StartOptions.LoadPercent.
+	loadGenerator bool
+	// metricsExporter runs qrl-metrics-exporter next to every participant.
+	metricsExporter bool
 }
 
 type participantSpec struct {
@@ -38,12 +50,35 @@ type participantSpec struct {
 	vcExtraParams  []string
 }
 
+const (
+	soakParticipants        = 4
+	soakValidatorsPerNode   = 64
+	secondsPerSlot          = 5
+	soakGenesisGasLimit     = 30_000_000
+	soakSimpleTransferGas   = 21_000
+	soakGenesisDelaySeconds = 120
+)
+
 var profileSpecs = map[Profile]profileSpec{
 	ProfileSingle: {participants: []participantSpec{{validatorCount: 64}}},
 	ProfileAnchored: {participants: []participantSpec{
 		{validatorCount: 32, clExtraParams: anchorCLExtraParams},
 		{validatorCount: 32, clExtraParams: []string{"--minimum-peers-per-subnet=0"}},
 	}},
+	ProfileSoak: {
+		participants:       soakParticipantSpecs(),
+		additionalServices: []string{"prometheus_grafana", "tx_spammer"},
+		loadGenerator:      true,
+		metricsExporter:    true,
+	},
+}
+
+func soakParticipantSpecs() []participantSpec {
+	specs := make([]participantSpec, soakParticipants)
+	for index := range specs {
+		specs[index] = participantSpec{validatorCount: soakValidatorsPerNode}
+	}
+	return specs
 }
 
 // ParseProfile validates the raw value, resolving the empty value to the
@@ -59,4 +94,20 @@ func ParseProfile(value string) (Profile, error) {
 		return "", fmt.Errorf("unknown development-network profile %q", value)
 	}
 	return profile, nil
+}
+
+// ParticipantCount reports how many participants the profile provisions.
+func (profile Profile) ParticipantCount() int {
+	return len(profileSpecs[profile].participants)
+}
+
+// SoakThroughput converts a share of block gas capacity into the spammer's
+// transactions-per-second target: how many simple transfers fit in a block,
+// spread over a slot. 30% of a 30M gas block at 5 s slots is ~85 TPS.
+func SoakThroughput(loadPercent int) int {
+	if loadPercent <= 0 {
+		return 0
+	}
+	perSecond := float64(soakGenesisGasLimit) / soakSimpleTransferGas / secondsPerSlot
+	return int(perSecond * float64(loadPercent) / 100)
 }
