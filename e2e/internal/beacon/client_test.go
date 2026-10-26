@@ -53,7 +53,7 @@ func TestClientDecodesQrysmResponses(t *testing.T) {
 		case "/qrl/v1/beacon/rewards/attestations/4":
 			var indices []string
 			assert.NoError(t, json.NewDecoder(request.Body).Decode(&indices))
-			assert.Empty(t, indices)
+			assert.Equal(t, []string{"64"}, indices)
 			_, _ = writer.Write([]byte(`{"data":{"ideal_rewards":[{"effective_balance":"39998000000000","head":"376","target":"698","source":"376"}],"total_rewards":[]}}`))
 		case "/qrl/v1/beacon/rewards/blocks/9":
 			_, _ = writer.Write([]byte(`{"data":{"proposer_index":"64","total":"123","attestations":"100","sync_aggregate":"23","proposer_slashings":"0","attester_slashings":"0"}}`))
@@ -151,13 +151,13 @@ func TestClientDecodesQrysmResponses(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, []AttestationReward{{ValidatorIndex: 64, Target: -650, Source: -350}}, rewards)
 
-	ideal, err := client.IdealAttestationRewards(t.Context(), 4)
+	ideal, err := client.IdealAttestationRewards(t.Context(), 4, []uint64{64})
 	require.NoError(t, err)
 	require.Equal(t, []IdealAttestationReward{{EffectiveBalance: 39998000000000, Head: 376, Target: 698, Source: 376}}, ideal)
 
 	blockRewards, err := client.BlockRewards(t.Context(), "9")
 	require.NoError(t, err)
-	require.Equal(t, BlockRewards{ProposerIndex: 64, Total: 123}, blockRewards)
+	require.Equal(t, BlockRewards{Total: 123}, blockRewards)
 
 	syncRewards, err := client.SyncCommitteeRewards(t.Context(), "9", []uint64{64})
 	require.NoError(t, err)

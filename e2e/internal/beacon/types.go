@@ -108,6 +108,5 @@ type IdealAttestationReward struct {
 }
 
 type BlockRewards struct {
-	ProposerIndex uint64 `json:"proposer_index,string"`
-	Total         uint64 `json:"total,string"`
+	Total uint64 `json:"total,string"`
 }

@@ -68,7 +68,7 @@ func (client *Client) FinalityCheckpoints(ctx context.Context) (FinalityCheckpoi
 }
 
 // FinalityCheckpointsAt returns the justified and finalized checkpoints of
-// the state at stateID, as ValidatorAt takes it.
+// the state at stateID: "head", "finalized" or a slot.
 func (client *Client) FinalityCheckpointsAt(ctx context.Context, stateID string) (FinalityCheckpoints, error) {
 	return getData[FinalityCheckpoints](
 		ctx, client, "/qrl/v1/beacon/states/"+url.PathEscape(stateID)+"/finality_checkpoints",
@@ -210,22 +210,27 @@ func (client *Client) SubmitVoluntaryExit(ctx context.Context, exit SignedVolunt
 // for a penalty. Qrysm serves an epoch only after two later epochs have
 // elapsed so every attestation has a chance of inclusion.
 func (client *Client) AttestationRewards(ctx context.Context, epoch uint64, indices []uint64) ([]AttestationReward, error) {
-	path := "/qrl/v1/beacon/rewards/attestations/" + strconv.FormatUint(epoch, 10)
-	rewards, err := postData[struct {
-		TotalRewards []AttestationReward `json:"total_rewards"`
-	}](ctx, client, path, formatIndices(indices))
+	rewards, err := client.attestationRewards(ctx, epoch, indices)
 	return rewards.TotalRewards, err
 }
 
 // IdealAttestationRewards returns, for each effective balance among the
 // validators, what timely head, source and target votes earn in a completed
-// epoch, in shor.
-func (client *Client) IdealAttestationRewards(ctx context.Context, epoch uint64) ([]IdealAttestationReward, error) {
-	path := "/qrl/v1/beacon/rewards/attestations/" + strconv.FormatUint(epoch, 10)
-	rewards, err := postData[struct {
-		IdealRewards []IdealAttestationReward `json:"ideal_rewards"`
-	}](ctx, client, path, []string{})
+// epoch, in shor. Qrysm also computes the given validators' own rewards, so
+// naming few keeps the request small.
+func (client *Client) IdealAttestationRewards(ctx context.Context, epoch uint64, indices []uint64) ([]IdealAttestationReward, error) {
+	rewards, err := client.attestationRewards(ctx, epoch, indices)
 	return rewards.IdealRewards, err
+}
+
+type attestationRewardsWire struct {
+	IdealRewards []IdealAttestationReward `json:"ideal_rewards"`
+	TotalRewards []AttestationReward      `json:"total_rewards"`
+}
+
+func (client *Client) attestationRewards(ctx context.Context, epoch uint64, indices []uint64) (attestationRewardsWire, error) {
+	path := "/qrl/v1/beacon/rewards/attestations/" + strconv.FormatUint(epoch, 10)
+	return postData[attestationRewardsWire](ctx, client, path, formatIndices(indices))
 }
 
 // BlockRewards returns what one block paid its proposer, in shor.
