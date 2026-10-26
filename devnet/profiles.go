@@ -24,6 +24,11 @@ const (
 	// beacon nodes all stopped never proposes again. The second keeps the
 	// package's sync settings, so it follows the anchor.
 	ProfileAnchored Profile = "anchored"
+	// ProfileRemoteSigner has one participant whose validator client holds no
+	// keys: go-remotesigner signs every duty with the deposit CLI keystores
+	// qrl-package generated for it. Clef, the execution signer, does not run,
+	// since qrl-package gives one participant a single remote signer.
+	ProfileRemoteSigner Profile = "remote-signer"
 )
 
 type profileSpec struct {
@@ -36,6 +41,7 @@ type participantSpec struct {
 	elExtraParams  []string
 	clExtraParams  []string
 	vcExtraParams  []string
+	remoteSigner   bool
 }
 
 var profileSpecs = map[Profile]profileSpec{
@@ -44,6 +50,7 @@ var profileSpecs = map[Profile]profileSpec{
 		{validatorCount: 32, clExtraParams: anchorCLExtraParams},
 		{validatorCount: 32, clExtraParams: []string{"--minimum-peers-per-subnet=0"}},
 	}},
+	ProfileRemoteSigner: {participants: []participantSpec{{validatorCount: 64, remoteSigner: true}}},
 }
 
 // ParseProfile validates the raw value, resolving the empty value to the

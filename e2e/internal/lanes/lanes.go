@@ -18,6 +18,11 @@ type Lane struct {
 	Timeout time.Duration
 
 	RestartsServices bool
+	// LocalImages marks a lane whose network needs images that CI does not
+	// build yet, so the nightly and run-all leave it out. The scripts
+	// directory builds them from local checkouts, and e2e/README.md says how
+	// to run each such lane.
+	LocalImages bool
 }
 
 type SuiteID string
@@ -28,6 +33,7 @@ const (
 	suiteExecutionTxpool           SuiteID = "execution-txpool"
 	suiteConsensusStakingAutomated SuiteID = "consensus-staking-automated"
 	suiteConsensusStakingOperator  SuiteID = "consensus-staking-operator"
+	suiteConsensusRemoteSigner     SuiteID = "consensus-remote-signer"
 	suiteResilienceNetworkRestart  SuiteID = "resilience-network-restart"
 	suiteSyncGenesis               SuiteID = "sync-genesis"
 )
@@ -38,6 +44,7 @@ var suitePackages = map[SuiteID]string{
 	suiteExecutionTxpool:           "./e2e/suites/execution/txpool",
 	suiteConsensusStakingAutomated: "./e2e/suites/consensus/stakingautomated",
 	suiteConsensusStakingOperator:  "./e2e/suites/consensus/stakingoperator",
+	suiteConsensusRemoteSigner:     "./e2e/suites/consensus/remotesigner",
 	suiteResilienceNetworkRestart:  "./e2e/suites/resilience/networkrestart",
 	suiteSyncGenesis:               "./e2e/suites/sync/genesis",
 }
@@ -65,6 +72,19 @@ var registry = []Lane{
 		Profile: devnet.ProfileSingle,
 		Suites:  []SuiteID{suiteConsensusStakingOperator},
 		Timeout: 95 * time.Minute,
+	},
+	{
+		// Finality from about epoch 4 of eight five-second slots comes
+		// first, then the refused requests and two more finalized epochs.
+		// The signer is go-remotesigner, and the validator client a qrysm
+		// with its remote signer client: neither image is published yet.
+		// The pinned qrl-package does not run go-remotesigner either, so
+		// the network is started from a qrl-package checkout that does.
+		Name:        "consensus-remote-signer",
+		Profile:     devnet.ProfileRemoteSigner,
+		Suites:      []SuiteID{suiteConsensusRemoteSigner},
+		Timeout:     25 * time.Minute,
+		LocalImages: true,
 	},
 	{
 		// Finality, the outage and finality again take about a dozen

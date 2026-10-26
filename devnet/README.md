@@ -26,6 +26,7 @@ and waits for readiness. It does not build images or run the test suites.
 | `DEVNET_CONSENSUS_IMAGE` | `local/qrysm-beacon:devnet` | Consensus client image reference |
 | `DEVNET_VALIDATOR_IMAGE` | `local/qrysm-validator:devnet` | Validator client image reference |
 | `DEVNET_GENESIS_IMAGE` | `local/qrl-genesis-generator:devnet` | Genesis generator image reference |
+| `DEVNET_REMOTE_SIGNER_IMAGE` | `local/go-remotesigner:devnet` | go-remotesigner image reference, for the `remote-signer` profile |
 | `DEVNET_QRYSM_ALLTOOLS_IMAGE` | `local/qrysm-alltools:devnet` | Qrysm all-tools image reference, for E2E lanes that run its command-line tools; it is not pulled |
 | `DEVNET_PROFILE` | `single` | Built-in profile used by `network-start` |
 | `DEVNET_START_TIMEOUT` | `5m` | Network startup budget |
@@ -33,6 +34,30 @@ and waits for readiness. It does not build images or run the test suites.
 
 `e2e-run` derives its network profile from `E2E_LANE` and does not use
 `DEVNET_PROFILE`.
+
+## Profiles
+
+| Profile | Network |
+| --- | --- |
+| `single` | One participant with 64 validators |
+| `anchored` | Two participants with 32 validators each; the first beacon node recovers a network whose nodes all stopped |
+| `remote-signer` | One participant with 64 validators, whose validator client holds no keys and signs through go-remotesigner |
+
+Every participant's execution client signs through Clef, except in the
+`remote-signer` profile: qrl-package gives a participant one remote signer,
+and there it is go-remotesigner. It loads the validator client's keystores,
+serves its API over TLS with a certificate qrl-package issues, and keeps
+slashing protection on. The validator client gets only its public keys, the
+sign token and the CA certificate, in `/remote-signer`. Its validator image
+must have qrysm's remote signer client, and its signer image is built with
+`make remote-signer-image`; the
+[remote signer lane](../e2e/README.md#remote-signer-lane) describes both.
+
+`go run ./cmd/qrltest network params --profile <profile>` prints the
+qrl-package parameters a profile renders, with the configured images, for a
+network started with `kurtosis run` from a qrl-package checkout. The
+`remote-signer` profile needs one until the pinned qrl-package runs
+go-remotesigner: `network-start` would start it without the signer.
 
 `DEVNET_ENCLAVE_NAME` is optional. Without it, every command uses
 `go-qrl-devnet`. Set it only to use another enclave name, and use the same value

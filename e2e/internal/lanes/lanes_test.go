@@ -81,6 +81,16 @@ func TestLaneWithSuites(t *testing.T) {
 	require.True(t, restart.RestartsServices)
 	require.False(t, execution.RestartsServices)
 
+	remoteSigner, err := Named("consensus-remote-signer")
+	require.NoError(t, err)
+	require.Equal(t, devnet.ProfileRemoteSigner, remoteSigner.Profile)
+	require.True(t, remoteSigner.LocalImages)
+	require.False(t, remoteSigner.NeedsValidatorImage())
+	require.False(t, remoteSigner.NeedsExecutionImage())
+	require.False(t, remoteSigner.NeedsConsensusImage())
+	require.False(t, remoteSigner.RestartsServices)
+	require.False(t, execution.LocalImages)
+
 	sync, err := Named("sync")
 	require.NoError(t, err)
 	require.Equal(t, devnet.ProfileSingle, sync.Profile)
@@ -90,6 +100,18 @@ func TestLaneWithSuites(t *testing.T) {
 
 	_, err = execution.WithSuites([]string{"unknown"})
 	require.ErrorContains(t, err, "unknown E2E suite")
+}
+
+// The nightly cannot build the images of a lane that needs local ones, so it
+// must not run the lane by default.
+func TestNightlyLeavesOutLanesWithLocalImages(t *testing.T) {
+	workflow, err := os.ReadFile(filepath.Join(repositoryRoot(t), ".github", "workflows", "nightly.yml"))
+	require.NoError(t, err)
+	for _, lane := range All() {
+		if lane.LocalImages {
+			require.NotContainsf(t, string(workflow), `"`+lane.Name+`"`, "the nightly runs lane %s", lane.Name)
+		}
+	}
 }
 
 func repositoryRoot(t *testing.T) string {

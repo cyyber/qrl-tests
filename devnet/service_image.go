@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"net/netip"
+	"slices"
 	"strings"
 
 	"github.com/cyyber/qrl-tests/internal/containerfiles"
@@ -157,6 +158,48 @@ func ReadServiceFile(ctx context.Context, client ServiceFileClient, serviceID, f
 		return nil, fmt.Errorf("find container: %w", err)
 	}
 	return containerfiles.ReadFile(ctx, client, container.ID, filePath)
+}
+
+// ServiceContainer describes how the Docker container of a Kurtosis service
+// runs.
+type ServiceContainer struct {
+	ID string
+	// Command is the image's entrypoint and the arguments it runs with.
+	Command []string
+	// Mounts are the paths that volumes and files artifacts are mounted at,
+	// sorted.
+	Mounts []string
+}
+
+// ServiceContainerClient is the part of the Docker client
+// InspectServiceContainer uses.
+type ServiceContainerClient interface {
+	containerLister
+	ContainerInspect(context.Context, string, dockerclient.ContainerInspectOptions) (dockerclient.ContainerInspectResult, error)
+}
+
+// InspectServiceContainer returns the command and mounts of the running
+// Docker container of a Kurtosis service, such as the files a validator
+// client is given.
+func InspectServiceContainer(ctx context.Context, client ServiceContainerClient, serviceID string) (ServiceContainer, error) {
+	container, err := serviceContainer(ctx, client, serviceID)
+	if err != nil {
+		return ServiceContainer{}, fmt.Errorf("find container: %w", err)
+	}
+	inspected, err := client.ContainerInspect(ctx, container.ID, dockerclient.ContainerInspectOptions{})
+	if err != nil {
+		return ServiceContainer{}, fmt.Errorf("inspect container: %w", err)
+	}
+	mounts := make([]string, 0, len(inspected.Container.Mounts))
+	for _, mount := range inspected.Container.Mounts {
+		mounts = append(mounts, mount.Destination)
+	}
+	slices.Sort(mounts)
+	return ServiceContainer{
+		ID:      container.ID,
+		Command: append([]string{inspected.Container.Path}, inspected.Container.Args...),
+		Mounts:  mounts,
+	}, nil
 }
 
 // ServiceNetwork returns the Docker network on which a Kurtosis service has

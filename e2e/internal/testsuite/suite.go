@@ -2,9 +2,12 @@
 package testsuite
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/cyyber/qrl-tests/e2e/internal/live"
+	"github.com/cyyber/qrl-tests/e2e/internal/manifest"
 	"github.com/onsi/ginkgo/v2"
 	"github.com/onsi/gomega"
 )
@@ -43,4 +46,13 @@ func LoadRuntime() *live.Runtime {
 	runtime := MustSucceed(live.Load())
 	ginkgo.DeferCleanup(runtime.Close)
 	return runtime
+}
+
+// LaneReportDir returns the lane's report directory, where the runner writes
+// the lane manifest and a suite may save files of its own.
+func LaneReportDir() string {
+	ginkgo.GinkgoHelper()
+	path := os.Getenv(manifest.PathEnv)
+	gomega.Expect(path).NotTo(gomega.BeEmpty(), "%s is not configured", manifest.PathEnv)
+	return filepath.Dir(path)
 }

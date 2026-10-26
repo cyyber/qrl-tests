@@ -144,6 +144,39 @@ func TestReadServiceFileErrors(t *testing.T) {
 	}
 }
 
+func TestInspectServiceContainer(t *testing.T) {
+	client := &fakeDocker{
+		containers: []containertypes.Summary{{ID: "validator-container"}},
+		inspected: containertypes.InspectResponse{
+			Path: "/validator",
+			Args: []string{"--accept-terms-of-use=true", "--datadir=/data"},
+			Mounts: []containertypes.MountPoint{
+				{Destination: "/remote-signer"},
+				{Destination: "/network-configs"},
+			},
+		},
+	}
+
+	container, err := InspectServiceContainer(t.Context(), client, "validator-service")
+	require.NoError(t, err)
+	require.Equal(t, ServiceContainer{
+		ID:      "validator-container",
+		Command: []string{"/validator", "--accept-terms-of-use=true", "--datadir=/data"},
+		Mounts:  []string{"/network-configs", "/remote-signer"},
+	}, container)
+	require.Equal(t, dockerclient.Filters{
+		"label": {kurtosisServiceUUIDDockerLabel + "=validator-service": true},
+	}, client.listed.Filters)
+	require.Equal(t, "validator-container", client.inspectedID)
+
+	_, err = InspectServiceContainer(t.Context(), &fakeDocker{}, "validator-service")
+	require.ErrorContains(t, err, "find container: expected one running Docker container")
+
+	client.containerInspectErr = errors.New("no such container")
+	_, err = InspectServiceContainer(t.Context(), client, "validator-service")
+	require.EqualError(t, err, "inspect container: no such container")
+}
+
 func TestServiceNetwork(t *testing.T) {
 	service := ServiceInfo{Name: "cl-1-qrysm-gqrl", ID: "consensus-service", PrivateIP: "172.16.0.12"}
 	withNetworks := func(networks map[string]*network.EndpointSettings) *fakeDocker {
@@ -187,16 +220,25 @@ type fakeDocker struct {
 	inspectErr error
 	// entries are the archive entries CopyFromContainer returns, by name.
 	entries map[string]string
+	// inspected and containerInspectErr are what ContainerInspect returns.
+	inspected           containertypes.InspectResponse
+	containerInspectErr error
 
-	listed     dockerclient.ContainerListOptions
-	copiedFrom string
-	copiedPath string
+	listed      dockerclient.ContainerListOptions
+	copiedFrom  string
+	copiedPath  string
+	inspectedID string
 }
 
 func (client *fakeDocker) ImageInspect(context.Context, string, ...dockerclient.ImageInspectOption) (dockerclient.ImageInspectResult, error) {
 	var inspected dockerclient.ImageInspectResult
 	inspected.ID = client.imageID
 	return inspected, client.inspectErr
+}
+
+func (client *fakeDocker) ContainerInspect(_ context.Context, containerID string, _ dockerclient.ContainerInspectOptions) (dockerclient.ContainerInspectResult, error) {
+	client.inspectedID = containerID
+	return dockerclient.ContainerInspectResult{Container: client.inspected}, client.containerInspectErr
 }
 
 func (client *fakeDocker) ContainerList(_ context.Context, options dockerclient.ContainerListOptions) (dockerclient.ContainerListResult, error) {

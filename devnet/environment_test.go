@@ -56,6 +56,35 @@ func TestParticipantsFromServices(t *testing.T) {
 	}, participants)
 }
 
+func TestParticipantsFromServicesResolveGoRemoteSigner(t *testing.T) {
+	signer := service("signer-1-gqrl-qrysm", "remote-signer", map[string]uint16{"http": 35000, "metrics": 35001})
+	signer.PrivateIP = "10.0.0.1"
+	signer.Labels["qrl-package.client"] = "go-remotesigner"
+	clef := service("signer-clef", "remote-signer", map[string]uint16{"http": 8550})
+	clef.Labels["qrl-package.client"] = "clef"
+	services := map[string]kurtosis.Service{
+		"cl-1-qrysm-gqrl":     service("cl-1-qrysm-gqrl", "beacon", map[string]uint16{"http": 4201}),
+		"el-1-gqrl-qrysm":     service("el-1-gqrl-qrysm", "execution", map[string]uint16{"rpc": 3201, "ws": 3301}),
+		"vc-1-gqrl-qrysm":     service("vc-1-gqrl-qrysm", "validator", map[string]uint16{"metrics": 5301}),
+		"signer-1-gqrl-qrysm": signer,
+		// Clef has no participant index; it is not part of any participant.
+		"signer-clef": clef,
+	}
+
+	participants, err := participantsFromServices(services)
+	require.NoError(t, err)
+	require.Len(t, participants, 1)
+	require.Equal(t, RemoteSignerService{
+		ServiceInfo: ServiceInfo{Name: "signer-1-gqrl-qrysm", ID: "signer-1-gqrl-qrysm-id", PrivateIP: "10.0.0.1"},
+		URL:         "https://127.0.0.1:35000",
+		MetricsURL:  "http://127.0.0.1:35001",
+	}, participants[0].RemoteSigner)
+
+	delete(signer.PublicPorts, "http")
+	_, err = participantsFromServices(services)
+	require.ErrorContains(t, err, `remote signer service "signer-1-gqrl-qrysm": no public "http" port`)
+}
+
 func TestParticipantIndex(t *testing.T) {
 	index, err := participantIndex("service-without-an-index", map[string]string{"qrl-tests.participant": "7"})
 	require.NoError(t, err)

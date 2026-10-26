@@ -27,6 +27,10 @@ func TestParseProfile(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, ProfileAnchored, profile)
 
+	profile, err = ParseProfile("remote-signer")
+	require.NoError(t, err)
+	require.Equal(t, ProfileRemoteSigner, profile)
+
 	_, err = ParseProfile("unknown")
 	require.ErrorContains(t, err, "unknown development-network profile")
 }
