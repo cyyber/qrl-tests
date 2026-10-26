@@ -216,8 +216,8 @@ func (client *Client) AttestationRewards(ctx context.Context, epoch uint64, indi
 
 // IdealAttestationRewards returns, for each effective balance among the
 // validators, what timely head, source and target votes earn in a completed
-// epoch, in shor. Qrysm also computes the given validators' own rewards, so
-// naming few keeps the request small.
+// epoch, in shor. Qrysm computes the given validators' own rewards alongside,
+// and everyone's when none are given, so pass only the ones needed.
 func (client *Client) IdealAttestationRewards(ctx context.Context, epoch uint64, indices []uint64) ([]IdealAttestationReward, error) {
 	rewards, err := client.attestationRewards(ctx, epoch, indices)
 	return rewards.IdealRewards, err
