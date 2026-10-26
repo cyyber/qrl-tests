@@ -24,6 +24,10 @@ const (
 	// beacon nodes all stopped never proposes again. The second keeps the
 	// package's sync settings, so it follows the anchor.
 	ProfileAnchored Profile = "anchored"
+	// ProfileSpareValidator is the single profile with one more genesis
+	// validator than its participant runs. No client signs for the spare
+	// until a suite starts one with its key, derived from GenesisMnemonic.
+	ProfileSpareValidator Profile = "spare-validator"
 )
 
 type profileSpec struct {
@@ -44,6 +48,10 @@ var profileSpecs = map[Profile]profileSpec{
 		{validatorCount: 32, clExtraParams: anchorCLExtraParams},
 		{validatorCount: 32, clExtraParams: []string{"--minimum-peers-per-subnet=0"}},
 	}},
+	ProfileSpareValidator: {
+		participants:            []participantSpec{{validatorCount: 64}},
+		preregisteredValidators: 65,
+	},
 }
 
 // ParseProfile validates the raw value, resolving the empty value to the
@@ -59,4 +67,20 @@ func ParseProfile(value string) (Profile, error) {
 		return "", fmt.Errorf("unknown development-network profile %q", value)
 	}
 	return profile, nil
+}
+
+// SpareValidators returns the genesis indices of the profile's validators
+// that no participant runs. qrl-package hands the participants the first
+// indices in order, so the spares follow them.
+func (profile Profile) SpareValidators() []uint64 {
+	spec := profileSpecs[profile]
+	var assigned int
+	for _, participant := range spec.participants {
+		assigned += participant.validatorCount
+	}
+	var spares []uint64
+	for index := assigned; index < spec.preregisteredValidators; index++ {
+		spares = append(spares, uint64(index))
+	}
+	return spares
 }

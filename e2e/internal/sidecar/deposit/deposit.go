@@ -76,13 +76,19 @@ func run(ctx context.Context, config Config, client sidecar.Client) (Result, err
 		return Result{}, fmt.Errorf("rewrite execution RPC URL: %w", err)
 	}
 
-	container, err := sidecar.Run(ctx, client, sidecar.Spec{
+	return runCLI(ctx, client, sidecar.Spec{
 		Name:       sidecarName,
 		Image:      config.Image,
 		Entrypoint: []string{"/bin/sh", startScriptPath},
 		Env:        containerEnv(config, executionRPC),
 		Files:      fixtureFiles(config),
 	})
+}
+
+// runCLI runs the deposit CLI to completion and reads the deposit data and
+// keystore it wrote.
+func runCLI(ctx context.Context, client sidecar.Client, spec sidecar.Spec) (Result, error) {
+	container, err := sidecar.Run(ctx, client, spec)
 	if err != nil {
 		return Result{}, err
 	}
