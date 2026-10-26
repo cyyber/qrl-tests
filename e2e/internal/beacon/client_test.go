@@ -39,7 +39,7 @@ func TestClientDecodesQrysmResponses(t *testing.T) {
 			assert.Equal(t, []string{"active_ongoing", "active_exiting", "active_slashed"}, request.URL.Query()["status"])
 			_, _ = writer.Write([]byte(`{"data":[{"index":"0","validator":{"effective_balance":"40000000000000"}},{"index":"64","validator":{"effective_balance":"39998000000000"}}]}`))
 		case "/qrl/v1/beacon/blocks/9":
-			_, _ = writer.Write([]byte(`{"data":{"message":{"slot":"9","body":{"voluntary_exits":[{"message":{"epoch":"1","validator_index":"64"},"signature":"0x00"}],"execution_payload":{"block_number":"42","withdrawals":[{"index":"0","validator_index":"64","address":"0xcd","amount":"40000000000000"}]}}}}}`))
+			_, _ = writer.Write([]byte(`{"data":{"message":{"slot":"9","proposer_index":"12","body":{"voluntary_exits":[{"message":{"epoch":"1","validator_index":"64"},"signature":"0x00"}],"execution_payload":{"block_number":"42","withdrawals":[{"index":"0","validator_index":"64","address":"0xcd","amount":"40000000000000"}]}}}}}`))
 		case "/qrl/v1/validator/duties/attester/2":
 			var indices []string
 			assert.NoError(t, json.NewDecoder(request.Body).Decode(&indices))
@@ -50,6 +50,13 @@ func TestClientDecodesQrysmResponses(t *testing.T) {
 			assert.NoError(t, json.NewDecoder(request.Body).Decode(&indices))
 			assert.Equal(t, []string{"64"}, indices)
 			_, _ = writer.Write([]byte(`{"data":{"total_rewards":[{"validator_index":"64","head":"12","target":"34","source":"56"}]}}`))
+		case "/qrl/v1/beacon/rewards/attestations/4":
+			var indices []string
+			assert.NoError(t, json.NewDecoder(request.Body).Decode(&indices))
+			assert.Empty(t, indices)
+			_, _ = writer.Write([]byte(`{"data":{"ideal_rewards":[{"effective_balance":"39998000000000","head":"376","target":"698","source":"376"}],"total_rewards":[]}}`))
+		case "/qrl/v1/beacon/rewards/blocks/9":
+			_, _ = writer.Write([]byte(`{"data":{"proposer_index":"64","total":"123","attestations":"100","sync_aggregate":"23","proposer_slashings":"0","attester_slashings":"0"}}`))
 		case "/qrl/v1/beacon/rewards/attestations/3":
 			_, _ = writer.Write([]byte(`{"data":{"total_rewards":[{"validator_index":"64","head":"0","target":"-650","source":"-350"}]}}`))
 		case "/qrl/v1/beacon/rewards/sync_committee/9":
@@ -125,6 +132,7 @@ func TestClientDecodesQrysmResponses(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, BlockOperations{
 		Slot:                 9,
+		ProposerIndex:        12,
 		ExecutionBlockNumber: 42,
 		VoluntaryExits:       []uint64{64},
 		Withdrawals:          []Withdrawal{{ValidatorIndex: 64, Address: "0xcd", Amount: 40000000000000}},
@@ -142,6 +150,14 @@ func TestClientDecodesQrysmResponses(t *testing.T) {
 	rewards, err = client.AttestationRewards(t.Context(), 3, []uint64{64})
 	require.NoError(t, err)
 	require.Equal(t, []AttestationReward{{ValidatorIndex: 64, Target: -650, Source: -350}}, rewards)
+
+	ideal, err := client.IdealAttestationRewards(t.Context(), 4)
+	require.NoError(t, err)
+	require.Equal(t, []IdealAttestationReward{{EffectiveBalance: 39998000000000, Head: 376, Target: 698, Source: 376}}, ideal)
+
+	blockRewards, err := client.BlockRewards(t.Context(), "9")
+	require.NoError(t, err)
+	require.Equal(t, BlockRewards{ProposerIndex: 64, Total: 123}, blockRewards)
 
 	syncRewards, err := client.SyncCommitteeRewards(t.Context(), "9", []uint64{64})
 	require.NoError(t, err)

@@ -76,6 +76,7 @@ type Withdrawal struct {
 
 type BlockOperations struct {
 	Slot                 uint64
+	ProposerIndex        uint64
 	ExecutionBlockNumber uint64
 	VoluntaryExits       []uint64
 	Withdrawals          []Withdrawal
@@ -97,4 +98,16 @@ type AttestationReward struct {
 type SyncCommitteeReward struct {
 	ValidatorIndex uint64 `json:"validator_index,string"`
 	Reward         int64  `json:"reward,string"`
+}
+
+type IdealAttestationReward struct {
+	EffectiveBalance uint64 `json:"effective_balance,string"`
+	Head             int64  `json:"head,string"`
+	Target           int64  `json:"target,string"`
+	Source           int64  `json:"source,string"`
+}
+
+type BlockRewards struct {
+	ProposerIndex uint64 `json:"proposer_index,string"`
+	Total         uint64 `json:"total,string"`
 }

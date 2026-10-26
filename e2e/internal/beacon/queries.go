@@ -164,8 +164,9 @@ func (record validatorWire) validator() Validator {
 
 type blockWire struct {
 	Message struct {
-		Slot uint64 `json:"slot,string"`
-		Body struct {
+		Slot          uint64 `json:"slot,string"`
+		ProposerIndex uint64 `json:"proposer_index,string"`
+		Body          struct {
 			VoluntaryExits []SignedVoluntaryExit `json:"voluntary_exits"`
 			Payload        struct {
 				BlockNumber uint64       `json:"block_number,string"`
@@ -175,8 +176,8 @@ type blockWire struct {
 	} `json:"message"`
 }
 
-// BlockOperations returns the exits and withdrawals in one block. A slot
-// without a block is reported through IsNotFound.
+// BlockOperations returns the proposer, exits and withdrawals of one block. A
+// slot without a block is reported through IsNotFound.
 func (client *Client) BlockOperations(ctx context.Context, blockID string) (BlockOperations, error) {
 	block, err := getData[blockWire](ctx, client, "/qrl/v1/beacon/blocks/"+url.PathEscape(blockID))
 	if err != nil {
@@ -185,6 +186,7 @@ func (client *Client) BlockOperations(ctx context.Context, blockID string) (Bloc
 
 	operations := BlockOperations{
 		Slot:                 block.Message.Slot,
+		ProposerIndex:        block.Message.ProposerIndex,
 		ExecutionBlockNumber: block.Message.Body.Payload.BlockNumber,
 		Withdrawals:          block.Message.Body.Payload.Withdrawals,
 	}
@@ -213,6 +215,22 @@ func (client *Client) AttestationRewards(ctx context.Context, epoch uint64, indi
 		TotalRewards []AttestationReward `json:"total_rewards"`
 	}](ctx, client, path, formatIndices(indices))
 	return rewards.TotalRewards, err
+}
+
+// IdealAttestationRewards returns, for each effective balance among the
+// validators, what timely head, source and target votes earn in a completed
+// epoch, in shor.
+func (client *Client) IdealAttestationRewards(ctx context.Context, epoch uint64) ([]IdealAttestationReward, error) {
+	path := "/qrl/v1/beacon/rewards/attestations/" + strconv.FormatUint(epoch, 10)
+	rewards, err := postData[struct {
+		IdealRewards []IdealAttestationReward `json:"ideal_rewards"`
+	}](ctx, client, path, []string{})
+	return rewards.IdealRewards, err
+}
+
+// BlockRewards returns what one block paid its proposer, in shor.
+func (client *Client) BlockRewards(ctx context.Context, blockID string) (BlockRewards, error) {
+	return getData[BlockRewards](ctx, client, "/qrl/v1/beacon/rewards/blocks/"+url.PathEscape(blockID))
 }
 
 // SyncCommitteeRewards returns what the sync aggregate of one block paid the
