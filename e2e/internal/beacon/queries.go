@@ -114,8 +114,8 @@ func (client *Client) Validator(ctx context.Context, validatorID string) (Valida
 }
 
 // ValidatorAt looks a validator up in the state at stateID, which is "head",
-// "finalized" or a slot. The state at a slot is the one after its block, or
-// after the empty slot.
+// "finalized" or a slot. The state at a slot includes its block, if it has
+// one; for an empty slot it is the earlier state advanced to that slot.
 func (client *Client) ValidatorAt(ctx context.Context, stateID, validatorID string) (Validator, error) {
 	record, err := getData[validatorWire](
 		ctx, client, "/qrl/v1/beacon/states/"+url.PathEscape(stateID)+"/validators/"+url.PathEscape(validatorID),
