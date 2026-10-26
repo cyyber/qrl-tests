@@ -126,10 +126,10 @@ func (client *Client) ValidatorAt(ctx context.Context, stateID, validatorID stri
 	return record.validator(), nil
 }
 
-// TotalActiveBalance sums the effective balances of the validators active in
-// the epoch of the state at stateID, slashed ones included, as the base
-// reward of that state's epoch processing does. It reads every active
-// validator, which suits a devnet, not a large network.
+// TotalActiveBalance sums the effective balances of the validators that the
+// state at stateID holds as active in its current epoch, slashed ones
+// included: the total that state's epoch processing uses for base rewards.
+// It reads every active validator, which suits a devnet, not a large network.
 func (client *Client) TotalActiveBalance(ctx context.Context, stateID string) (uint64, error) {
 	records, err := getData[[]validatorWire](
 		ctx, client,
