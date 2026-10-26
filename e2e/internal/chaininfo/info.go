@@ -21,6 +21,7 @@ type Source interface {
 
 // Info describes a live chain: its genesis fork version and its timing.
 type Info struct {
+	GenesisTime   time.Time
 	SlotsPerEpoch uint64
 	SlotDuration  time.Duration
 	EpochDuration time.Duration
@@ -40,7 +41,7 @@ func Load(ctx context.Context, source Source) (Info, error) {
 		return Info{}, err
 	}
 
-	var chain Info
+	chain := Info{GenesisTime: time.Unix(int64(genesis.Time), 0)}
 	if err := decodeFixed("genesis fork version", genesis.ForkVersion, chain.genesisForkVersion[:]); err != nil {
 		return Info{}, err
 	}
@@ -74,6 +75,14 @@ func Load(ctx context.Context, source Source) (Info, error) {
 
 func (chain Info) Epoch(slot uint64) uint64 {
 	return slot / chain.SlotsPerEpoch
+}
+
+// EpochAt is the epoch the wall clock is in at now, which the head can lag.
+func (chain Info) EpochAt(now time.Time) uint64 {
+	if now.Before(chain.GenesisTime) {
+		return 0
+	}
+	return uint64(now.Sub(chain.GenesisTime) / chain.EpochDuration)
 }
 
 // DepositWait is how long a deposit takes to reach the beacon state on a

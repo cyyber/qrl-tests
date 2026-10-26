@@ -39,7 +39,7 @@ func (fakeSource) SpecUint(_ context.Context, name string) (uint64, error) {
 }
 
 func validSource() fakeSource {
-	return fakeSource{genesis: beacon.Genesis{ForkVersion: "0x" + hex.EncodeToString(genesisVersion[:])}}
+	return fakeSource{genesis: beacon.Genesis{Time: 1700000000, ForkVersion: "0x" + hex.EncodeToString(genesisVersion[:])}}
 }
 
 func TestLoad(t *testing.T) {
@@ -47,6 +47,10 @@ func TestLoad(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, uint64(128), chain.SlotsPerEpoch)
 	require.Equal(t, uint64(2), chain.Epoch(300))
+	require.Equal(t, time.Unix(1700000000, 0), chain.GenesisTime)
+	require.Equal(t, uint64(0), chain.EpochAt(chain.GenesisTime.Add(-time.Hour)))
+	require.Equal(t, uint64(0), chain.EpochAt(chain.GenesisTime.Add(chain.EpochDuration-time.Second)))
+	require.Equal(t, uint64(3), chain.EpochAt(chain.GenesisTime.Add(3*chain.EpochDuration)))
 	require.Equal(t, 12*time.Second, chain.SlotDuration)
 	require.Equal(t, 128*12*time.Second, chain.EpochDuration)
 	require.Equal(t, 4*128*12*time.Second, chain.ExecutionVotingPeriod)

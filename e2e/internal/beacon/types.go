@@ -93,3 +93,8 @@ type AttestationReward struct {
 	Target         int64  `json:"target,string"`
 	Source         int64  `json:"source,string"`
 }
+
+type SyncCommitteeReward struct {
+	ValidatorIndex uint64 `json:"validator_index,string"`
+	Reward         int64  `json:"reward,string"`
+}

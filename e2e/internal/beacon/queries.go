@@ -64,7 +64,15 @@ func (client *Client) BlockHeader(ctx context.Context, blockID string) (BlockHea
 // FinalityCheckpoints returns the justified and finalized checkpoints of the
 // head state.
 func (client *Client) FinalityCheckpoints(ctx context.Context) (FinalityCheckpoints, error) {
-	return getData[FinalityCheckpoints](ctx, client, "/qrl/v1/beacon/states/head/finality_checkpoints")
+	return client.FinalityCheckpointsAt(ctx, "head")
+}
+
+// FinalityCheckpointsAt returns the justified and finalized checkpoints of
+// the state at stateID, as ValidatorAt takes it.
+func (client *Client) FinalityCheckpointsAt(ctx context.Context, stateID string) (FinalityCheckpoints, error) {
+	return getData[FinalityCheckpoints](
+		ctx, client, "/qrl/v1/beacon/states/"+url.PathEscape(stateID)+"/finality_checkpoints",
+	)
 }
 
 // SlashedValidators returns the validators of the head state that have been
@@ -102,13 +110,40 @@ type validatorWire struct {
 // Validator looks a validator up by index or 0x-prefixed public key in the
 // head state. An unknown validator is reported through IsNotFound.
 func (client *Client) Validator(ctx context.Context, validatorID string) (Validator, error) {
+	return client.ValidatorAt(ctx, "head", validatorID)
+}
+
+// ValidatorAt looks a validator up in the state at stateID, which is "head",
+// "finalized" or a slot. The state at a slot is the one after its block, or
+// after the empty slot.
+func (client *Client) ValidatorAt(ctx context.Context, stateID, validatorID string) (Validator, error) {
 	record, err := getData[validatorWire](
-		ctx, client, "/qrl/v1/beacon/states/head/validators/"+url.PathEscape(validatorID),
+		ctx, client, "/qrl/v1/beacon/states/"+url.PathEscape(stateID)+"/validators/"+url.PathEscape(validatorID),
 	)
 	if err != nil {
 		return Validator{}, err
 	}
 	return record.validator(), nil
+}
+
+// TotalActiveBalance sums the effective balances of the validators active in
+// the epoch of the state at stateID, slashed ones included, as the base
+// reward of that state's epoch processing does. It reads every active
+// validator, which suits a devnet, not a large network.
+func (client *Client) TotalActiveBalance(ctx context.Context, stateID string) (uint64, error) {
+	records, err := getData[[]validatorWire](
+		ctx, client,
+		"/qrl/v1/beacon/states/"+url.PathEscape(stateID)+
+			"/validators?status=active_ongoing&status=active_exiting&status=active_slashed",
+	)
+	if err != nil {
+		return 0, err
+	}
+	var total uint64
+	for _, record := range records {
+		total += record.Validator.EffectiveBalance
+	}
+	return total, nil
 }
 
 func (record validatorWire) validator() Validator {
@@ -177,6 +212,14 @@ func (client *Client) AttestationRewards(ctx context.Context, epoch uint64, indi
 		TotalRewards []AttestationReward `json:"total_rewards"`
 	}](ctx, client, path, formatIndices(indices))
 	return rewards.TotalRewards, err
+}
+
+// SyncCommitteeRewards returns what the sync aggregate of one block paid the
+// given validators, negative for a missed duty. A validator outside the sync
+// committee is left out.
+func (client *Client) SyncCommitteeRewards(ctx context.Context, blockID string, indices []uint64) ([]SyncCommitteeReward, error) {
+	path := "/qrl/v1/beacon/rewards/sync_committee/" + url.PathEscape(blockID)
+	return postData[[]SyncCommitteeReward](ctx, client, path, formatIndices(indices))
 }
 
 func formatIndices(indices []uint64) []string {
