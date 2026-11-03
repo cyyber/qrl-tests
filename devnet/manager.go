@@ -26,9 +26,8 @@ const (
 	PackageLocator = "github.com/theQRL/qrl-package@25d3a1c53009294f06644c5b49c1011cf86ad0a5"
 
 	// GenesisMnemonic is the pinned qrl-package's default
-	// preregistered_validator_keys_mnemonic, which the profiles leave unset.
-	// Every genesis validator key derives from it, the one at genesis index i
-	// as the deposit CLI's new-seed derives it at validator index i.
+	// preregistered_validator_keys_mnemonic. The genesis validator at index i
+	// has the key the deposit CLI's new-seed derives from it at index i.
 	GenesisMnemonic = "veto waiter rail aroma aunt chess fiend than sahara unwary punk dawn belong agent sane reefy loyal from judas clean paste rho madam poor pay convoy duty circa hybrid circus exempt splash"
 )
 
