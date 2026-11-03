@@ -78,7 +78,9 @@ type VoteAmounts struct {
 	MissedTarget uint64
 }
 
-// AwaitRewards waits until Qrysm serves the attestation rewards of epoch.
+// AwaitRewards waits until Qrysm serves the attestation rewards of epoch, two
+// epochs later. Block and sync committee rewards need no wait: Qrysm serves
+// them once their block exists.
 func (validator Validator) AwaitRewards(ctx context.Context, epoch uint64) {
 	ginkgo.GinkgoHelper()
 	head := testsuite.MustSucceed(validator.Client.HeadSlot(ctx))
@@ -93,7 +95,8 @@ func (validator Validator) AwaitRewards(ctx context.Context, epoch uint64) {
 		Should(gomega.Succeed(), "the rewards of epoch %d are not available", epoch)
 }
 
-func (validator Validator) Reward(ctx context.Context, epoch uint64) (beacon.AttestationReward, error) {
+// AttestationReward returns the validator's attestation reward for epoch.
+func (validator Validator) AttestationReward(ctx context.Context, epoch uint64) (beacon.AttestationReward, error) {
 	return AttestationReward(ctx, validator.Client, epoch, validator.Index)
 }
 
