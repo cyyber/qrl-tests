@@ -4,7 +4,6 @@ package staking
 
 import (
 	"context"
-	"fmt"
 	"math/big"
 	"strconv"
 	"strings"
@@ -13,6 +12,7 @@ import (
 	"github.com/cyyber/qrl-tests/e2e/internal/beacon"
 	"github.com/cyyber/qrl-tests/e2e/internal/chaininfo"
 	"github.com/cyyber/qrl-tests/e2e/internal/live"
+	"github.com/cyyber/qrl-tests/e2e/internal/rewards"
 	"github.com/cyyber/qrl-tests/e2e/internal/testsuite"
 	ginkgo "github.com/onsi/ginkgo/v2"
 	gomega "github.com/onsi/gomega"
@@ -94,19 +94,14 @@ func ExpectActiveAndAttesting(
 	// Every active validator attests once per epoch, so a missed attestation
 	// can be made up in a later epoch.
 	ginkgo.By("waiting for the validator client to attest")
-	next := validator.ActivationEpoch
-	gomega.Eventually(func(g gomega.Gomega) {
-		var attested bool
-		var err error
-		next, attested, err = attestedFrom(ctx, node.Beacon, chain, validator.Index, next)
-		g.Expect(err).NotTo(gomega.HaveOccurred())
-		g.Expect(attested).To(gomega.BeTrue(),
-			"validator client produced no attestation reward since epoch %d", validator.ActivationEpoch)
-	}).WithContext(ctx).
-		WithTimeout(attestationTimeout).
-		WithPolling(PollInterval).
-		Should(gomega.Succeed())
+	rewards.AwaitAttestationReward(ctx, node.Beacon, chain, validator.Index, validator.ActivationEpoch,
+		attestationTimeout, earnedAny)
 	return validator
+}
+
+// earnedAny reports whether any vote earned a reward.
+func earnedAny(reward beacon.AttestationReward) bool {
+	return reward.Head > 0 || reward.Target > 0 || reward.Source > 0
 }
 
 // ExpectExitAndWithdrawal waits out the committee period, submits the exit
@@ -197,35 +192,6 @@ func ExpectExitAndWithdrawal(
 		WithPolling(PollInterval).
 		Should(gomega.Succeed())
 	return validator
-}
-
-// attestedFrom checks the validator's attestation rewards from epoch from
-// through the latest epoch whose rewards are served, two before the head. It
-// reports whether one was positive, and the epoch to check next.
-func attestedFrom(
-	ctx context.Context,
-	client *beacon.Client,
-	chain chaininfo.Info,
-	index, from uint64,
-) (uint64, bool, error) {
-	head, err := client.HeadSlot(ctx)
-	if err != nil {
-		return from, false, err
-	}
-	epoch := from
-	for ; epoch+2 <= chain.Epoch(head); epoch++ {
-		rewards, err := client.AttestationRewards(ctx, epoch, []uint64{index})
-		if err != nil {
-			return epoch, false, err
-		}
-		if len(rewards) != 1 || rewards[0].ValidatorIndex != index {
-			return epoch, false, fmt.Errorf("epoch %d rewards do not cover validator %d", epoch, index)
-		}
-		if rewards[0].Head > 0 || rewards[0].Target > 0 || rewards[0].Source > 0 {
-			return epoch, true, nil
-		}
-	}
-	return epoch, false, nil
 }
 
 // operationScanner walks every block after a starting slot exactly once, so
