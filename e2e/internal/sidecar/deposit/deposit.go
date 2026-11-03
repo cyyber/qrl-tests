@@ -85,8 +85,6 @@ func run(ctx context.Context, config Config, client sidecar.Client) (Result, err
 	})
 }
 
-// runCLI runs the deposit CLI to completion and reads the deposit data and
-// keystore it wrote.
 func runCLI(ctx context.Context, client sidecar.Client, spec sidecar.Spec) (Result, error) {
 	container, err := sidecar.Run(ctx, client, spec)
 	if err != nil {
