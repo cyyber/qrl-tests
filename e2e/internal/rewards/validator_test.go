@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -75,7 +76,7 @@ func (fake *stateBeacon) ServeHTTP(writer http.ResponseWriter, request *http.Req
 func (fake *stateBeacon) paths() []string {
 	fake.mu.Lock()
 	defer fake.mu.Unlock()
-	return append([]string(nil), fake.requested...)
+	return slices.Clone(fake.requested)
 }
 
 func testValidator(client *beacon.Client) Validator {
