@@ -41,28 +41,21 @@ func TestClientDecodesQrysmResponses(t *testing.T) {
 		case "/qrl/v1/beacon/blocks/9":
 			_, _ = writer.Write([]byte(`{"data":{"message":{"slot":"9","proposer_index":"12","body":{"voluntary_exits":[{"message":{"epoch":"1","validator_index":"64"},"signature":"0x00"}],"execution_payload":{"block_number":"42","withdrawals":[{"index":"0","validator_index":"64","address":"0xcd","amount":"40000000000000"}]}}}}}`))
 		case "/qrl/v1/validator/duties/attester/2":
-			var indices []string
-			assert.NoError(t, json.NewDecoder(request.Body).Decode(&indices))
-			assert.Equal(t, []string{"64"}, indices)
+			assertIndices(t, request, "64")
 			_, _ = writer.Write([]byte(`{"dependent_root":"0x00","execution_optimistic":false,"data":[{"pubkey":"0xab","validator_index":"64","committee_index":"0","committee_length":"8","committees_at_slot":"1","validator_committee_index":"3","slot":"17"}]}`))
 		case "/qrl/v1/beacon/rewards/attestations/2":
-			var indices []string
-			assert.NoError(t, json.NewDecoder(request.Body).Decode(&indices))
-			assert.Equal(t, []string{"64"}, indices)
+			assertIndices(t, request, "64")
 			_, _ = writer.Write([]byte(`{"data":{"total_rewards":[{"validator_index":"64","head":"12","target":"34","source":"56"}]}}`))
 		case "/qrl/v1/beacon/rewards/attestations/4":
-			var indices []string
-			assert.NoError(t, json.NewDecoder(request.Body).Decode(&indices))
-			assert.Equal(t, []string{"64"}, indices)
+			assertIndices(t, request, "64")
 			_, _ = writer.Write([]byte(`{"data":{"ideal_rewards":[{"effective_balance":"39998000000000","head":"376","target":"698","source":"376"}],"total_rewards":[]}}`))
 		case "/qrl/v1/beacon/rewards/blocks/9":
-			_, _ = writer.Write([]byte(`{"data":{"proposer_index":"64","total":"123","attestations":"100","sync_aggregate":"23","proposer_slashings":"0","attester_slashings":"0"}}`))
+			_, _ = writer.Write([]byte(`{"data":{"proposer_index":"12","total":"123","attestations":"100","sync_aggregate":"23","proposer_slashings":"0","attester_slashings":"0"}}`))
 		case "/qrl/v1/beacon/rewards/attestations/3":
+			assertIndices(t, request, "64")
 			_, _ = writer.Write([]byte(`{"data":{"total_rewards":[{"validator_index":"64","head":"0","target":"-650","source":"-350"}]}}`))
 		case "/qrl/v1/beacon/rewards/sync_committee/9":
-			var indices []string
-			assert.NoError(t, json.NewDecoder(request.Body).Decode(&indices))
-			assert.Equal(t, []string{"64"}, indices)
+			assertIndices(t, request, "64")
 			_, _ = writer.Write([]byte(`{"execution_optimistic":false,"finalized":false,"data":[{"validator_index":"64","reward":"-2964"}]}`))
 		case "/qrl/v1/beacon/pool/voluntary_exits":
 			assert.Equal(t, http.MethodPost, request.Method)
@@ -250,11 +243,25 @@ func TestClientDecodesChainProgress(t *testing.T) {
 
 	checkpoints, err = client.FinalityCheckpointsAt(t.Context(), "95")
 	require.NoError(t, err)
-	require.Equal(t, Checkpoint{Epoch: 9, Root: "0x09"}, checkpoints.Finalized)
+	require.Equal(t, FinalityCheckpoints{
+		PreviousJustified: Checkpoint{Epoch: 9, Root: "0x09"},
+		CurrentJustified:  Checkpoint{Epoch: 10, Root: "0x0a"},
+		Finalized:         Checkpoint{Epoch: 9, Root: "0x09"},
+	}, checkpoints)
 
 	slashed, err := client.SlashedValidators(t.Context())
 	require.NoError(t, err)
 	require.Len(t, slashed, 1)
 	require.Equal(t, uint64(7), slashed[0].Index)
 	require.True(t, slashed[0].Slashed)
+}
+
+// assertIndices checks that a request POSTs the validator indices as a JSON
+// array of decimal strings. Like the handlers that call it, it uses assert.
+func assertIndices(t *testing.T, request *http.Request, want ...string) {
+	t.Helper()
+	assert.Equal(t, http.MethodPost, request.Method)
+	var indices []string
+	assert.NoError(t, json.NewDecoder(request.Body).Decode(&indices))
+	assert.Equal(t, want, indices)
 }
