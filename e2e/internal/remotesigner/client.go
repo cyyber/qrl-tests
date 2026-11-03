@@ -1,6 +1,7 @@
 // Package remotesigner is a client for go-remotesigner's consensus HTTP API,
-// api_version 1.x of the contract in its docs/contract.md, and a reader of its
-// Prometheus metrics.
+// api_version 1.x of the contract in its docs/contract.md, and for its
+// execution mode's JSON-RPC endpoint and accounts, and a reader of its
+// Prometheus metrics and its execution audit log.
 package remotesigner
 
 import (
