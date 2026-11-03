@@ -25,8 +25,7 @@ type Runtime struct {
 	ConsensusImage     string
 	ValidatorImage     string
 	QrysmAlltoolsImage string
-	// Profile is the lane's profile. A network started from a parameters file
-	// need not match it.
+	// A network started from a parameters file need not match Profile.
 	Profile devnet.Profile
 
 	environment devnet.Environment
