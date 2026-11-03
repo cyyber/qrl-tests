@@ -61,9 +61,9 @@ var _ = ginkgo.Describe(
 			}))
 		}
 
-		// Removing the container stops the client for good, so a client
-		// started later, with a new slashing-protection database, signs only
-		// for later epochs and never conflicts with what this one signed.
+		// The next client starts with an empty slashing-protection database.
+		// It can't double sign: this one is removed first, so the next one
+		// signs only later epochs.
 		stopValidatorClient := func() {
 			ginkgo.GinkgoHelper()
 			client := validatorClient
