@@ -25,11 +25,11 @@ import (
 const (
 	offlineEpochs = 3
 
-	// attestTimeout covers a missed first epoch and the two epochs before its
+	// attestTimeout covers a missed first epoch and the two epochs until its
 	// rewards are served.
 	attestTimeout = 5 * time.Minute
-	// offlineTimeout covers the offline epochs and the two before the last
-	// one's rewards are served.
+	// offlineTimeout covers the offline epochs and the two epochs until their
+	// rewards are served.
 	offlineTimeout = 6 * time.Minute
 )
 
