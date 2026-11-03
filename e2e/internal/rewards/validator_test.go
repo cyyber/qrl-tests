@@ -35,8 +35,8 @@ func TestMissedVotePenalties(t *testing.T) {
 	require.Equal(t, uint64(351_435_000), source)
 	require.Equal(t, uint64(652_665_000), target)
 
-	// A fraction of an increment counts for nothing, and the total includes
-	// the validator's own lower effective balance.
+	// 39,997.5 QRL counts as 39,997 whole increments, and the total active
+	// balance includes the validator's own 39,997 QRL.
 	source, target = spec.missedVotePenalties(39_997*shorPerQRL+shorPerQRL/2, 64*40_000*shorPerQRL+39_997*shorPerQRL)
 	require.Equal(t, uint64(351_408_642), source)
 	require.Equal(t, uint64(652_616_050), target)
