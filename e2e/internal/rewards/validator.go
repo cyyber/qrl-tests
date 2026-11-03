@@ -14,7 +14,7 @@ import (
 	gomega "github.com/onsi/gomega"
 )
 
-// Spec holds the consensus constants of the Altair base reward.
+// Spec holds the consensus constants of the base reward.
 type Spec struct {
 	increment                    uint64
 	baseRewardFactor             uint64
