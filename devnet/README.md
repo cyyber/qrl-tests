@@ -27,6 +27,7 @@ and waits for readiness. It does not build images or run the test suites.
 | `DEVNET_VALIDATOR_IMAGE` | `local/qrysm-validator:devnet` | Validator client image reference |
 | `DEVNET_GENESIS_IMAGE` | `local/qrl-genesis-generator:devnet` | Genesis generator image reference |
 | `DEVNET_REMOTE_SIGNER_IMAGE` | `local/go-remotesigner:devnet` | go-remotesigner image reference, for the `remote-signer` profile |
+| `DEVNET_REMOTE_SIGNER_EXECUTION_IMAGE` | `local/go-remotesigner:devnet-full` | go-remotesigner image of the full flavour, for the `remote-signer-execution` profile |
 | `DEVNET_QRYSM_ALLTOOLS_IMAGE` | `local/qrysm-alltools:devnet` | Qrysm all-tools image reference, for E2E lanes that run its command-line tools; it is not pulled |
 | `DEVNET_PROFILE` | `single` | Built-in profile used by `network-start` |
 | `DEVNET_START_TIMEOUT` | `5m` | Network startup budget |
@@ -44,6 +45,7 @@ and waits for readiness. It does not build images or run the test suites.
 | `remote-signer` | One participant with 64 validators, whose validator client holds no keys and signs through go-remotesigner |
 | `remote-signer-mtls` | `remote-signer`, with the validator client presenting a client certificate to go-remotesigner as well as the token |
 | `remote-signer-exits` | `remote-signer`, with go-remotesigner signing voluntary exits |
+| `remote-signer-execution` | One participant with 64 validators, whose execution client's JSON-RPC go-remotesigner fronts in execution mode |
 
 Every participant's execution client signs through Clef, except in the
 `remote-signer` profile: qrl-package gives a participant one remote signer,
@@ -63,6 +65,17 @@ description says what it needs. The `remote-signer-exits` profile runs it
 with `--voluntary-exit-signing-enabled`, through the participant field
 `remote_signer_extra_params`; the other profiles' signers refuse exits, as
 go-remotesigner does by default.
+
+The `remote-signer-execution` profile runs go-remotesigner in execution mode
+in front of the execution client instead (`remote_signer_type:
+go-remotesigner-execution`), in place of Clef: it holds qrl-package's
+prefunded development accounts 8 to 11, signs and sends their transactions
+through the execution client, and forwards what its allowlist allows to it,
+over TLS with a sign token, both of which it mounts in `/remote-signer`. The
+validator client keeps its keystores. Only go-remotesigner's full flavour has
+execution mode: its image is built with `make remote-signer-execution-image`;
+the [execution remote signer lane](../e2e/README.md#execution-remote-signer-lane)
+describes it.
 
 `go run ./cmd/qrltest network params --profile <profile>` prints the
 qrl-package parameters a profile renders, with the configured images, for a

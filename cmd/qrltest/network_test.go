@@ -51,7 +51,8 @@ func TestNetworkStart(t *testing.T) {
 			Validator: devnet.DefaultValidatorImage,
 			Genesis:   devnet.DefaultGenesisImage,
 
-			RemoteSigner: devnet.DefaultRemoteSignerImage,
+			RemoteSigner:          devnet.DefaultRemoteSignerImage,
+			RemoteSignerExecution: devnet.DefaultRemoteSignerExecutionImage,
 		},
 		Parameters: parameters,
 		Profile:    devnet.ProfileSingle,
@@ -71,10 +72,19 @@ func TestNetworkParams(t *testing.T) {
 		Validator:    "local/qrysm:remote-signer-validator",
 		Genesis:      devnet.DefaultGenesisImage,
 		RemoteSigner: devnet.DefaultRemoteSignerImage,
+
+		RemoteSignerExecution: devnet.DefaultRemoteSignerExecutionImage,
 	})
 	require.NoError(t, err)
 	require.Equal(t, want+"\n", output)
 	require.Contains(t, output, `"remote_signer_type":"go-remotesigner"`)
+
+	output = runCommand(t, new(recordingController),
+		"network", "params", "--profile", "remote-signer-execution",
+		"--remote-signer-execution-image", "local/go-remotesigner:test-full",
+	)
+	require.Contains(t, output, `"remote_signer_type":"go-remotesigner-execution"`)
+	require.Contains(t, output, `"remote_signer_image":"local/go-remotesigner:test-full"`)
 }
 
 func TestNetworkStop(t *testing.T) {

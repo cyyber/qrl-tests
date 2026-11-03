@@ -105,6 +105,35 @@ func TestRemoteSignerProfileParameters(t *testing.T) {
 	require.NotContains(t, participant, "remote_signer_extra_params")
 }
 
+func TestRemoteSignerExecutionProfileParameters(t *testing.T) {
+	payload, err := resolveParameters("Q"+strings.Repeat("a", 128), StartOptions{
+		Images:  Images{RemoteSignerExecution: "registry.example/go-remotesigner:full"},
+		Profile: ProfileRemoteSignerExecution,
+	})
+	require.NoError(t, err)
+
+	var parameters map[string]any
+	require.NoError(t, json.Unmarshal([]byte(payload), &parameters))
+	participants := parameters["participants"].([]any)
+	require.Len(t, participants, 1)
+	participant := participants[0].(map[string]any)
+	require.Equal(t, true, participant["use_remote_signer"])
+	require.Equal(t, "go-remotesigner-execution", participant["remote_signer_type"])
+	require.Equal(t, "registry.example/go-remotesigner:full", participant["remote_signer_image"])
+	require.Equal(t, false, participant["remote_signer_auto_approve"])
+	require.Equal(t,
+		map[string]any{"REMOTESIGNER_ACCESS_LOGS_ENABLED": "true"},
+		participant["remote_signer_extra_env_vars"],
+	)
+	require.Equal(t, participant["el_extra_labels"], participant["remote_signer_extra_labels"])
+	require.Equal(t, float64(64), participant["validator_count"])
+	// The validator client keeps its keystores, and the profile sets only
+	// the fields every qrl-package with go-remotesigner takes.
+	require.NotContains(t, participant, "keymanager_enabled")
+	require.NotContains(t, participant, "remote_signer_auth_mode")
+	require.NotContains(t, participant, "remote_signer_extra_params")
+}
+
 func TestRemoteSignerExitsProfileParameters(t *testing.T) {
 	images := Images{RemoteSigner: "registry.example/go-remotesigner:test"}
 	tokenPayload, err := resolveParameters(devwallet.Address, StartOptions{Images: images, Profile: ProfileRemoteSigner})

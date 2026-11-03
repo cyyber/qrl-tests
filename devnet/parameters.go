@@ -128,17 +128,23 @@ func profileParameters(address string, options StartOptions) (string, error) {
 			CLExtraLabels:           labels,
 			VCExtraLabels:           labels,
 		}
-		if configuration.remoteSigner {
+		switch {
+		case configuration.remoteSigner:
 			participants[index].RemoteSignerType = goRemoteSigner
 			participants[index].RemoteSignerImage = images.RemoteSigner
-			participants[index].RemoteSignerAutoApprove = false
-			// The access log names each request's route, status and
-			// duration, never a key or a body.
-			participants[index].RemoteSignerExtraEnvVars = map[string]string{"REMOTESIGNER_ACCESS_LOGS_ENABLED": "true"}
-			participants[index].RemoteSignerExtraLabels = labels
 			participants[index].RemoteSignerAuthMode = configuration.remoteSignerAuthMode
 			participants[index].RemoteSignerExtraParams = configuration.remoteSignerExtraParams
+		case configuration.executionSigner:
+			participants[index].RemoteSignerType = goRemoteSignerExecution
+			participants[index].RemoteSignerImage = images.RemoteSignerExecution
+		default:
+			continue
 		}
+		participants[index].RemoteSignerAutoApprove = false
+		// The access log names each request's route, status and duration,
+		// never a key or a body.
+		participants[index].RemoteSignerExtraEnvVars = map[string]string{"REMOTESIGNER_ACCESS_LOGS_ENABLED": "true"}
+		participants[index].RemoteSignerExtraLabels = labels
 	}
 
 	payload, err := json.Marshal(packageParameters{

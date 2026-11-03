@@ -14,6 +14,7 @@ func TestImagesResolveDefaults(t *testing.T) {
 	require.Equal(t, DefaultClefImage, images.Clef)
 	require.Equal(t, DefaultConsensusImage, images.Consensus)
 	require.Equal(t, DefaultRemoteSignerImage, images.RemoteSigner)
+	require.Equal(t, DefaultRemoteSignerExecutionImage, images.RemoteSignerExecution)
 
 	images, err = Images{}.Resolved()
 	require.NoError(t, err)
@@ -49,8 +50,12 @@ func TestImagesResolveRejectsInvalid(t *testing.T) {
 }
 
 func TestImagesResolveReportsEveryInvalidReference(t *testing.T) {
-	_, err := Images{Execution: "GO-QRL", Validator: "qrysm@sha256:short", RemoteSigner: "go remotesigner"}.Resolved()
+	_, err := Images{
+		Execution: "GO-QRL", Validator: "qrysm@sha256:short", RemoteSigner: "go remotesigner",
+		RemoteSignerExecution: "go remotesigner full",
+	}.Resolved()
 	require.ErrorContains(t, err, "execution image")
 	require.ErrorContains(t, err, "validator image")
 	require.ErrorContains(t, err, "remote signer image")
+	require.ErrorContains(t, err, "execution remote signer image")
 }

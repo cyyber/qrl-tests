@@ -39,6 +39,10 @@ func TestParseProfile(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, ProfileRemoteSignerExits, profile)
 
+	profile, err = ParseProfile("remote-signer-execution")
+	require.NoError(t, err)
+	require.Equal(t, ProfileRemoteSignerExecution, profile)
+
 	_, err = ParseProfile("unknown")
 	require.ErrorContains(t, err, "unknown development-network profile")
 }
@@ -49,12 +53,25 @@ func TestRemoteSignerAuthMode(t *testing.T) {
 	require.Equal(t, RemoteSignerAuthToken, ProfileRemoteSignerExits.RemoteSignerAuthMode())
 	require.Empty(t, ProfileSingle.RemoteSignerAuthMode())
 	require.Empty(t, ProfileAnchored.RemoteSignerAuthMode())
+	// Its signer fronts the execution client, not the validator client.
+	require.Empty(t, ProfileRemoteSignerExecution.RemoteSignerAuthMode())
 	require.Empty(t, Profile("unknown").RemoteSignerAuthMode())
 }
 
 func TestRemoteSignerSignsExits(t *testing.T) {
 	require.True(t, ProfileRemoteSignerExits.RemoteSignerSignsExits())
-	for _, profile := range []Profile{ProfileRemoteSigner, ProfileRemoteSignerMTLS, ProfileSingle, ProfileAnchored, "unknown"} {
+	for _, profile := range []Profile{
+		ProfileRemoteSigner, ProfileRemoteSignerMTLS, ProfileRemoteSignerExecution, ProfileSingle, ProfileAnchored, "unknown",
+	} {
 		require.Falsef(t, profile.RemoteSignerSignsExits(), "profile %s", profile)
+	}
+}
+
+func TestRunsExecutionSigner(t *testing.T) {
+	require.True(t, ProfileRemoteSignerExecution.RunsExecutionSigner())
+	for _, profile := range []Profile{
+		ProfileRemoteSigner, ProfileRemoteSignerMTLS, ProfileRemoteSignerExits, ProfileSingle, ProfileAnchored, "unknown",
+	} {
+		require.Falsef(t, profile.RunsExecutionSigner(), "profile %s", profile)
 	}
 }

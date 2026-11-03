@@ -29,13 +29,15 @@ const (
 	partitionLabel   = "qrl-tests.partition"
 
 	// A remote signer is clef, the execution layer's signer, or
-	// go-remotesigner, which signs for one validator client. qrl-package
-	// names both by their remote_signer_type, in its client label too.
-	clientLabel            = "qrl-package.client"
-	remoteSignerClientType = "remote-signer"
-	remoteSignerTypeClef   = "clef"
-	goRemoteSigner         = "go-remotesigner"
-	remoteSignerHTTPPortID = "http"
+	// go-remotesigner, which signs for one validator client, or in execution
+	// mode fronts one execution client. qrl-package names each by its
+	// remote_signer_type, in its client label too.
+	clientLabel             = "qrl-package.client"
+	remoteSignerClientType  = "remote-signer"
+	remoteSignerTypeClef    = "clef"
+	goRemoteSigner          = "go-remotesigner"
+	goRemoteSignerExecution = "go-remotesigner-execution"
+	remoteSignerHTTPPortID  = "http"
 )
 
 // Files qrl-package mounts into a validator client that signs through
@@ -50,6 +52,16 @@ const (
 	ValidatorRemoteSignerCAFile         = "/remote-signer/ca.pem"
 	ValidatorRemoteSignerClientCertFile = "/remote-signer/client-cert.pem"
 	ValidatorRemoteSignerClientKeyFile  = "/remote-signer/client-key.pem"
+)
+
+// Files of go-remotesigner in execution mode: qrl-package mounts the sign
+// token and the CA that issued the signer's TLS certificate, which is valid
+// for the signer's service name, localhost and 127.0.0.1, and the signer
+// writes its audit log, one JSON object per line, into its data directory.
+const (
+	ExecutionSignerTokenFile    = "/remote-signer/auth-token"
+	ExecutionSignerCAFile       = "/remote-signer/ca.pem"
+	ExecutionSignerAuditLogFile = "/data/audit.jsonl"
 )
 
 // ValidatorKeymanagerTokenFile holds the token of the keymanager API that a
@@ -82,6 +94,9 @@ type Participant struct {
 	Validator ValidatorService `json:"validator"`
 	// RemoteSigner is set when go-remotesigner signs for the validator client.
 	RemoteSigner RemoteSignerService `json:"remote_signer,omitzero"`
+	// ExecutionSigner is set when go-remotesigner in execution mode fronts
+	// the execution client's JSON-RPC.
+	ExecutionSigner RemoteSignerService `json:"execution_signer,omitzero"`
 }
 
 type ServiceInfo struct {
@@ -96,7 +111,14 @@ type ExecutionService struct {
 	GraphQLURL   string `json:"graphql_url"`
 	WebSocketURL string `json:"websocket_url"`
 	EngineURL    string `json:"engine_url"`
+	// MetricsURL is the base URL of gqrl's metrics listener, which serves
+	// them at ExecutionMetricsPath.
+	MetricsURL string `json:"metrics_url,omitempty"`
 }
+
+// ExecutionMetricsPath is where gqrl serves its metrics in Prometheus's text
+// format.
+const ExecutionMetricsPath = "/debug/metrics/prometheus"
 
 type ConsensusService struct {
 	ServiceInfo
@@ -146,7 +168,7 @@ func participantsFromServices(services map[string]kurtosis.Service) ([]Participa
 		case remoteSignerClientType:
 			// Clef signs for every participant's execution client and has
 			// no participant index.
-			if service.Labels[clientLabel] != goRemoteSigner {
+			if client := service.Labels[clientLabel]; client != goRemoteSigner && client != goRemoteSignerExecution {
 				continue
 			}
 		default:
@@ -177,6 +199,7 @@ func participantsFromServices(services map[string]kurtosis.Service) ([]Participa
 				return nil, fmt.Errorf("execution service %q: %w", name, err)
 			}
 			participant.Execution.EngineURL = optionalPublicEndpoint(service, engineRPCPortID, "http")
+			participant.Execution.MetricsURL = optionalPublicEndpoint(service, metricsPortID, "http")
 		case "beacon":
 			participant.Consensus.ServiceInfo = info
 			participant.Consensus.URL, err = service.PublicEndpoint(consensusHTTPPortID, "http")
@@ -190,12 +213,16 @@ func participantsFromServices(services map[string]kurtosis.Service) ([]Participa
 			participant.Validator.URL = optionalPublicEndpoint(service, validatorHTTPPortID, "http")
 			participant.Validator.MetricsURL = optionalPublicEndpoint(service, metricsPortID, "http")
 		case remoteSignerClientType:
-			participant.RemoteSigner.ServiceInfo = info
-			participant.RemoteSigner.URL, err = service.PublicEndpoint(remoteSignerHTTPPortID, "https")
+			signer := &participant.RemoteSigner
+			if service.Labels[clientLabel] == goRemoteSignerExecution {
+				signer = &participant.ExecutionSigner
+			}
+			signer.ServiceInfo = info
+			signer.URL, err = service.PublicEndpoint(remoteSignerHTTPPortID, "https")
 			if err != nil {
 				return nil, fmt.Errorf("remote signer service %q: %w", name, err)
 			}
-			participant.RemoteSigner.MetricsURL = optionalPublicEndpoint(service, metricsPortID, "http")
+			signer.MetricsURL = optionalPublicEndpoint(service, metricsPortID, "http")
 		}
 	}
 	if len(byIndex) == 0 {

@@ -38,6 +38,13 @@ const (
 	// signing voluntary exits, which it refuses unless it runs with
 	// --voluntary-exit-signing-enabled.
 	ProfileRemoteSignerExits Profile = "remote-signer-exits"
+	// ProfileRemoteSignerExecution has one participant whose execution
+	// client's JSON-RPC go-remotesigner fronts in execution mode: it holds
+	// qrl-package's development accounts, signs and sends their transactions
+	// through the client, and forwards to it what its allowlist allows. Clef
+	// does not run, as in ProfileRemoteSigner, and the validator client keeps
+	// its keystores.
+	ProfileRemoteSignerExecution Profile = "remote-signer-execution"
 )
 
 // remoteSignerExitsFlag is the go-remotesigner consensus flag that has it
@@ -70,6 +77,9 @@ type participantSpec struct {
 	remoteSignerExtraParams []string
 	// keymanager has the validator client serve the keymanager API.
 	keymanager bool
+	// executionSigner runs go-remotesigner in execution mode in front of the
+	// execution client, in place of clef.
+	executionSigner bool
 }
 
 var profileSpecs = map[Profile]profileSpec{
@@ -87,6 +97,7 @@ var profileSpecs = map[Profile]profileSpec{
 	ProfileRemoteSignerExits: {participants: []participantSpec{
 		{validatorCount: 64, remoteSigner: true, keymanager: true, remoteSignerExtraParams: []string{remoteSignerExitsFlag}},
 	}},
+	ProfileRemoteSignerExecution: {participants: []participantSpec{{validatorCount: 64, executionSigner: true}}},
 }
 
 // ParseProfile validates the raw value, resolving the empty value to the
@@ -129,4 +140,12 @@ func (profile Profile) RemoteSignerSignsExits() bool {
 		}
 	}
 	return false
+}
+
+// RunsExecutionSigner reports whether a participant of the profile runs
+// go-remotesigner in execution mode in front of its execution client.
+func (profile Profile) RunsExecutionSigner() bool {
+	return slices.ContainsFunc(profileSpecs[profile].participants, func(participant participantSpec) bool {
+		return participant.executionSigner
+	})
 }

@@ -13,7 +13,7 @@ func TestParticipantsFromServices(t *testing.T) {
 		"el-2-gqrl-qrysm": service("el-2-gqrl-qrysm", "execution", map[string]uint16{"rpc": 3202, "ws": 3302, "engine-rpc": 3402}),
 		"vc-2-gqrl-qrysm": service("vc-2-gqrl-qrysm", "validator", map[string]uint16{"http-validator": 5202, "metrics": 5302}),
 		"cl-1-qrysm-gqrl": service("cl-1-qrysm-gqrl", "beacon", map[string]uint16{"http": 4201, "rpc": 4401, "metrics": 4301}),
-		"el-1-gqrl-qrysm": service("el-1-gqrl-qrysm", "execution", map[string]uint16{"rpc": 3201, "ws": 3301, "engine-rpc": 3401}),
+		"el-1-gqrl-qrysm": service("el-1-gqrl-qrysm", "execution", map[string]uint16{"rpc": 3201, "ws": 3301, "engine-rpc": 3401, "metrics": 3501}),
 		"vc-1-gqrl-qrysm": service("vc-1-gqrl-qrysm", "validator", map[string]uint16{"http-validator": 5201, "metrics": 5301}),
 		"prometheus":      {Labels: map[string]string{"qrl-package.client-type": "utility"}},
 	}
@@ -27,6 +27,7 @@ func TestParticipantsFromServices(t *testing.T) {
 				ServiceInfo: ServiceInfo{Name: "el-1-gqrl-qrysm", ID: "el-1-gqrl-qrysm-id", PrivateIP: "10.0.0.1"},
 				RPCURL:      "http://127.0.0.1:3201", GraphQLURL: "http://127.0.0.1:3201/graphql",
 				WebSocketURL: "ws://127.0.0.1:3301", EngineURL: "http://127.0.0.1:3401",
+				MetricsURL: "http://127.0.0.1:3501",
 			},
 			Consensus: ConsensusService{
 				ServiceInfo: ServiceInfo{Name: "cl-1-qrysm-gqrl", ID: "cl-1-qrysm-gqrl-id", PrivateIP: "10.0.0.1"},
@@ -83,6 +84,28 @@ func TestParticipantsFromServicesResolveGoRemoteSigner(t *testing.T) {
 	delete(signer.PublicPorts, "http")
 	_, err = participantsFromServices(services)
 	require.ErrorContains(t, err, `remote signer service "signer-1-gqrl-qrysm": no public "http" port`)
+}
+
+func TestParticipantsFromServicesResolveExecutionSigner(t *testing.T) {
+	signer := service("signer-1-gqrl-qrysm", "remote-signer", map[string]uint16{"http": 35000, "metrics": 35001})
+	signer.PrivateIP = "10.0.0.1"
+	signer.Labels["qrl-package.client"] = "go-remotesigner-execution"
+	services := map[string]kurtosis.Service{
+		"cl-1-qrysm-gqrl":     service("cl-1-qrysm-gqrl", "beacon", map[string]uint16{"http": 4201}),
+		"el-1-gqrl-qrysm":     service("el-1-gqrl-qrysm", "execution", map[string]uint16{"rpc": 3201, "ws": 3301}),
+		"vc-1-gqrl-qrysm":     service("vc-1-gqrl-qrysm", "validator", map[string]uint16{"metrics": 5301}),
+		"signer-1-gqrl-qrysm": signer,
+	}
+
+	participants, err := participantsFromServices(services)
+	require.NoError(t, err)
+	require.Len(t, participants, 1)
+	require.Equal(t, RemoteSignerService{
+		ServiceInfo: ServiceInfo{Name: "signer-1-gqrl-qrysm", ID: "signer-1-gqrl-qrysm-id", PrivateIP: "10.0.0.1"},
+		URL:         "https://127.0.0.1:35000",
+		MetricsURL:  "http://127.0.0.1:35001",
+	}, participants[0].ExecutionSigner)
+	require.Zero(t, participants[0].RemoteSigner, "the execution signer signs for no validator client")
 }
 
 func TestParticipantIndex(t *testing.T) {
