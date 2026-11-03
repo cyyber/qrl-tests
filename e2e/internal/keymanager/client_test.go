@@ -65,6 +65,54 @@ func TestClientDecodesQrysmResponses(t *testing.T) {
 	}, exit)
 }
 
+func TestClientDecodesRemoteKeysResponses(t *testing.T) {
+	client := newTestClient(t, func(writer http.ResponseWriter, request *http.Request) {
+		if request.URL.Path != "/qrl/v1/remotekeys" {
+			http.NotFound(writer, request)
+			return
+		}
+		switch request.Method {
+		case http.MethodGet:
+			_, _ = writer.Write([]byte(`{"data":[{"pubkey":"0xab","url":"https://signer:9000","readonly":false}]}`))
+		case http.MethodPost:
+			assert.Equal(t, "application/json", request.Header.Get("Content-Type"))
+			var body map[string][]map[string]string
+			assert.NoError(t, json.NewDecoder(request.Body).Decode(&body))
+			assert.Equal(t, map[string][]map[string]string{
+				"remote_keys": {{"pubkey": "0xab", "url": "https://elsewhere:9000"}},
+			}, body)
+			_, _ = writer.Write([]byte(`{"data":[{"status":"IMPORTED","message":""}]}`))
+		case http.MethodDelete:
+			var body map[string][]string
+			assert.NoError(t, json.NewDecoder(request.Body).Decode(&body))
+			assert.Equal(t, map[string][]string{"pubkeys": {"0xab"}}, body)
+			_, _ = writer.Write([]byte(`{"data":[{"status":"deleted"}]}`))
+		default:
+			http.Error(writer, "method", http.StatusMethodNotAllowed)
+		}
+	})
+
+	keys, err := client.ListRemoteKeys(t.Context())
+	require.NoError(t, err)
+	require.Equal(t, []RemoteKey{{PublicKey: "0xab", URL: "https://signer:9000"}}, keys)
+
+	imported, err := client.ImportRemoteKey(t.Context(), "0xab", "https://elsewhere:9000")
+	require.NoError(t, err)
+	require.Equal(t, Status{Status: "IMPORTED"}, imported)
+
+	deleted, err := client.DeleteRemoteKey(t.Context(), "0xab")
+	require.NoError(t, err)
+	require.Equal(t, Status{Status: "deleted"}, deleted)
+}
+
+func TestRemoteKeyStatusCount(t *testing.T) {
+	client := newTestClient(t, func(writer http.ResponseWriter, _ *http.Request) {
+		_, _ = writer.Write([]byte(`{"data":[]}`))
+	})
+	_, err := client.DeleteRemoteKey(t.Context(), "0xab")
+	require.EqualError(t, err, "DELETE /qrl/v1/remotekeys: expected 1 status, got 0")
+}
+
 func TestImportKeystoreStatus(t *testing.T) {
 	for _, test := range []struct {
 		name     string
