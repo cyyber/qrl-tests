@@ -238,8 +238,11 @@ func TestClientDecodesChainProgress(t *testing.T) {
 
 	checkpoints, err := client.FinalityCheckpoints(t.Context())
 	require.NoError(t, err)
-	require.Equal(t, Checkpoint{Epoch: 3, Root: "0x03"}, checkpoints.CurrentJustified)
-	require.Equal(t, Checkpoint{Epoch: 2, Root: "0x02"}, checkpoints.Finalized)
+	require.Equal(t, FinalityCheckpoints{
+		PreviousJustified: Checkpoint{Epoch: 2, Root: "0x02"},
+		CurrentJustified:  Checkpoint{Epoch: 3, Root: "0x03"},
+		Finalized:         Checkpoint{Epoch: 2, Root: "0x02"},
+	}, checkpoints)
 
 	checkpoints, err = client.FinalityCheckpointsAt(t.Context(), "95")
 	require.NoError(t, err)
@@ -251,9 +254,10 @@ func TestClientDecodesChainProgress(t *testing.T) {
 
 	slashed, err := client.SlashedValidators(t.Context())
 	require.NoError(t, err)
-	require.Len(t, slashed, 1)
-	require.Equal(t, uint64(7), slashed[0].Index)
-	require.True(t, slashed[0].Slashed)
+	require.Equal(t, []Validator{{
+		Index: 7, Balance: 1, Status: "active_slashed", PublicKey: "0xab", Slashed: true,
+		EffectiveBalance: 1, ExitEpoch: 9, WithdrawableEpoch: 73,
+	}}, slashed)
 }
 
 // assertIndices checks that a request POSTs the validator indices as a JSON
