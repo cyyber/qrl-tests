@@ -261,7 +261,7 @@ func TestClientDecodesChainProgress(t *testing.T) {
 }
 
 // assertIndices checks that a request POSTs the validator indices as a JSON
-// array of decimal strings. Like the handlers that call it, it uses assert.
+// array of decimal strings.
 func assertIndices(t *testing.T, request *http.Request, want ...string) {
 	t.Helper()
 	assert.Equal(t, http.MethodPost, request.Method)
