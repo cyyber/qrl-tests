@@ -97,6 +97,12 @@ func TestLaneWithSuites(t *testing.T) {
 	require.Equal(t, remoteSigner.Suites, mtls.Suites)
 	require.True(t, mtls.LocalImages)
 
+	exits, err := Named("consensus-remote-signer-exits")
+	require.NoError(t, err)
+	require.Equal(t, devnet.ProfileRemoteSignerExits, exits.Profile)
+	require.Equal(t, remoteSigner.Suites, exits.Suites)
+	require.True(t, exits.LocalImages)
+
 	sync, err := Named("sync")
 	require.NoError(t, err)
 	require.Equal(t, devnet.ProfileSingle, sync.Profile)

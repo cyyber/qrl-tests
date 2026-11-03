@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/hex"
+	"fmt"
 	"maps"
 	"net/http"
 	"path"
@@ -21,6 +22,7 @@ import (
 	"github.com/cyyber/qrl-tests/devnet"
 	"github.com/cyyber/qrl-tests/e2e/internal/beacon"
 	"github.com/cyyber/qrl-tests/e2e/internal/chaininfo"
+	"github.com/cyyber/qrl-tests/e2e/internal/keymanager"
 	"github.com/cyyber/qrl-tests/e2e/internal/live"
 	"github.com/cyyber/qrl-tests/e2e/internal/remotesigner"
 	"github.com/cyyber/qrl-tests/e2e/internal/testsuite"
@@ -41,6 +43,28 @@ const (
 	// diagnosticsDirectory, in the lane's report directory, receives what
 	// the signer reports when a spec fails.
 	diagnosticsDirectory = "remote-signer"
+
+	// removedKeyIndex is the validator whose key the remote keys spec
+	// removes and adds back, and exitingIndexFromLast, counted back from the
+	// last validator, the one the exit spec exits: two validators, so that
+	// neither spec depends on the other.
+	removedKeyIndex      = 1
+	exitingIndexFromLast = 1
+
+	// importProbePath, under the signer's URL, is the url the remote keys
+	// spec imports its key with: qrysm ignores that url, so the signer must
+	// get no request whose path starts with it.
+	importProbePath = "/remote-keys-import-probe"
+
+	// signerURLFlag is the validator client's flag naming its signer.
+	signerURLFlag = "--validators-external-signer-url="
+
+	// exitsDisabled is what qrysm's exit command fails with when the signer
+	// refuses to sign exits, with 403 ARTIFACT_TYPE_DISABLED.
+	exitsDisabled = "remote signer does not sign voluntary exits (start it with --voluntary-exit-signing-enabled to sign them)"
+	// exitSubmitted is what the command logs once the beacon node has
+	// accepted an exit.
+	exitSubmitted = "Voluntary exit was successful"
 )
 
 // The duties the validator client signs on this network: every type the
@@ -59,6 +83,9 @@ var dutyTypes = []string{
 // The types the signer enables by default: exits are off unless it runs with
 // --voluntary-exit-signing-enabled.
 var enabledTypes = append(slices.Clone(dutyTypes), remotesigner.TypeValidatorRegistration)
+
+// farFutureEpoch is the exit epoch of a validator that is not exiting.
+const farFutureEpoch = ^uint64(0)
 
 func TestE2E(t *testing.T) {
 	testsuite.Run(t, "Remote signer E2E suite")
@@ -89,6 +116,9 @@ var _ = ginkgo.Describe(
 			// two clients are the same.
 			mtls               bool
 			withoutCertificate *remotesigner.Client
+			// signsExits is set when the lane's profile runs the signer with
+			// --voluntary-exit-signing-enabled.
+			signsExits bool
 		)
 
 		finalizedEpoch := func(ctx context.Context) (uint64, error) {
@@ -140,11 +170,85 @@ var _ = ginkgo.Describe(
 				To(gomega.BeZero(), "the validator client got errors from the signer")
 		}
 
+		slotStart := func(slot uint64) time.Time {
+			return time.Unix(int64(genesis.Time), 0).Add(time.Duration(slot) * chain.SlotDuration)
+		}
+
+		sleepUntil := func(ctx context.Context, at time.Time) {
+			ginkgo.GinkgoHelper()
+			timer := time.NewTimer(time.Until(at))
+			defer timer.Stop()
+			select {
+			case <-ctx.Done():
+				ginkgo.Fail(fmt.Sprintf("waiting until %s: %v", at.Format(time.TimeOnly), context.Cause(ctx)))
+			case <-timer.C:
+			}
+		}
+
+		// Each active validator attests once an epoch, in its slot of the
+		// epoch, at a third of the slot or when the slot's block arrives if
+		// that is sooner. The signer's ATTESTATION requests from four fifths
+		// into the slot before an epoch to four fifths into the epoch's last
+		// slot are therefore the epoch's: one for each attester duty of a key
+		// the validator client signs for. countFrom is when that window
+		// starts.
+		countFrom := func(epoch uint64) time.Time {
+			return slotStart(epoch*chain.SlotsPerEpoch - 1).Add(chain.SlotDuration * 4 / 5)
+		}
+
+		// countableEpoch is the first epoch after the current one whose
+		// attestations epochAttestations can still count.
+		countableEpoch := func() uint64 {
+			epoch := uint64(time.Since(slotStart(0))/chain.EpochDuration) + 1
+			for !time.Now().Before(countFrom(epoch)) {
+				epoch++
+			}
+			return epoch
+		}
+
+		// epochAttestations returns the ATTESTATION requests the signer got
+		// for the duties of epoch, the epoch's attester duties of the
+		// validators, and the scrape at the end of the window.
+		epochAttestations := func(ctx context.Context, epoch uint64, validators []uint64) (float64, int, remotesigner.Metrics) {
+			ginkgo.GinkgoHelper()
+			gomega.Expect(time.Now().Before(countFrom(epoch))).To(gomega.BeTrue(), "epoch %d has begun", epoch)
+			attestations := remotesigner.With("type", remotesigner.TypeAttestation)
+			sleepUntil(ctx, countFrom(epoch))
+			before := sum(scrape(ctx), remotesigner.MetricSigningRequests, attestations)
+			// The next epoch's duties are known by now.
+			duties := testsuite.MustSucceed(node.Beacon.AttesterDuties(ctx, epoch, validators))
+			sleepUntil(ctx, countFrom(epoch+1))
+			after := scrape(ctx)
+			return sum(after, remotesigner.MetricSigningRequests, attestations) - before, len(duties), after
+		}
+
+		// targetVote is the validator's target reward in epoch: positive when
+		// its vote for the epoch's target was included, else not.
+		targetVote := func(ctx context.Context, epoch, index uint64) int64 {
+			ginkgo.GinkgoHelper()
+			var rewards []beacon.AttestationReward
+			// The rewards of an epoch are served two epochs after it.
+			gomega.Eventually(func(ctx context.Context) error {
+				var err error
+				rewards, err = node.Beacon.AttestationRewards(ctx, epoch, []uint64{index})
+				return err
+			}).WithContext(ctx).WithTimeout(4 * chain.EpochDuration).WithPolling(chain.SlotDuration).Should(gomega.Succeed())
+			gomega.Expect(rewards).To(gomega.HaveLen(1))
+			return rewards[0].Target
+		}
+
+		validatorFlags := func(ctx context.Context) []string {
+			ginkgo.GinkgoHelper()
+			container := testsuite.MustSucceed(devnet.InspectServiceContainer(ctx, docker, validator.ID))
+			return container.Command
+		}
+
 		ginkgo.BeforeAll(func(ctx ginkgo.SpecContext) {
 			runtime := testsuite.LoadRuntime()
 			authMode := runtime.Profile.RemoteSignerAuthMode()
 			gomega.Expect(authMode).NotTo(gomega.BeEmpty(), "the lane's profile %q runs no go-remotesigner", runtime.Profile)
 			mtls = authMode == devnet.RemoteSignerAuthTokenMTLS
+			signsExits = runtime.Profile.RemoteSignerSignsExits()
 			node = testsuite.MustSucceed(runtime.PrimaryNode(ctx))
 			service = node.Participant.RemoteSigner
 			gomega.Expect(service.URL).NotTo(gomega.BeEmpty(),
@@ -244,7 +348,11 @@ var _ = ginkgo.Describe(
 			gomega.Expect(capabilities.APIVersion).To(gomega.HavePrefix("1."))
 			gomega.Expect(capabilities.RandaoReveal).To(gomega.BeTrue(), "the signer cannot release RANDAO reveals")
 			gomega.Expect(capabilities.SlashingProtection).To(gomega.Equal("bolt"))
-			gomega.Expect(capabilities.Types).To(gomega.ConsistOf(enabledTypes))
+			types := enabledTypes
+			if signsExits {
+				types = append(slices.Clone(enabledTypes), remotesigner.TypeVoluntaryExit)
+			}
+			gomega.Expect(capabilities.Types).To(gomega.ConsistOf(types))
 
 			network := capabilities.Network
 			gomega.Expect(strings.ToLower(network.GenesisForkVersion)).To(gomega.Equal(strings.ToLower(genesis.ForkVersion)))
@@ -431,8 +539,171 @@ var _ = ginkgo.Describe(
 			gomega.Expect(testsuite.MustSucceed(node.Beacon.SlashedValidators(ctx))).To(gomega.BeEmpty())
 			expectValidatorClientHealthy(ctx)
 		}, ginkgo.SpecTimeout(5*time.Minute))
+
+		ginkgo.It("stops signing for a key the remote keys API removes, and signs for it again once it is added back", func(ctx ginkgo.SpecContext) {
+			gomega.Expect(validator.URL).NotTo(gomega.BeEmpty(), "the validator client serves no keymanager API")
+			token := testsuite.MustSucceed(devnet.ReadServiceFile(ctx, docker, validator.ID, devnet.ValidatorKeymanagerTokenFile))
+			api := testsuite.MustSucceed(keymanager.New(validator.URL, lastLine(token)))
+			var signerURL string
+			for _, flag := range validatorFlags(ctx) {
+				if value, ok := strings.CutPrefix(flag, signerURLFlag); ok {
+					signerURL = value
+				}
+			}
+			gomega.Expect(signerURL).NotTo(gomega.BeEmpty(), "the validator client has no %s", signerURLFlag)
+			keyFile := func(ctx context.Context) []string {
+				ginkgo.GinkgoHelper()
+				return sortedLower(strings.Fields(string(testsuite.MustSucceed(
+					devnet.ReadServiceFile(ctx, docker, validator.ID, devnet.ValidatorRemoteSignerKeyFile)))))
+			}
+			listed := func(ctx context.Context) []string {
+				ginkgo.GinkgoHelper()
+				remoteKeys := testsuite.MustSucceed(api.ListRemoteKeys(ctx))
+				listed := make([]string, len(remoteKeys))
+				for index, key := range remoteKeys {
+					gomega.Expect(key.URL).To(gomega.Equal(signerURL), "the signer of %s", key.PublicKey)
+					gomega.Expect(key.ReadOnly).To(gomega.BeFalse(), "%s, a key of the key file, is read-only", key.PublicKey)
+					listed[index] = key.PublicKey
+				}
+				return sortedLower(listed)
+			}
+
+			// The API lists exactly the signer's keys.
+			signerKeys := sortedLower(testsuite.MustSucceed(signer.PublicKeys(ctx)))
+			gomega.Expect(listed(ctx)).To(gomega.Equal(signerKeys), "the remote keys, and the signer's %d keys", len(signerKeys))
+			gomega.Expect(keyFile(ctx)).To(gomega.Equal(signerKeys), "the key file, and the signer's %d keys", len(signerKeys))
+			record := testsuite.MustSucceed(node.Beacon.Validator(ctx, strconv.Itoa(removedKeyIndex)))
+			gomega.Expect(record.Status).To(gomega.Equal("active_ongoing"), "validator %d", removedKeyIndex)
+			removed := strings.ToLower(record.PublicKey)
+			others := slices.DeleteFunc(slices.Clone(signerKeys), func(key string) bool { return key == removed })
+			gomega.Expect(others).To(gomega.HaveLen(len(signerKeys)-1), "the signer does not hold validator %d's key", removedKeyIndex)
+			var indices []uint64
+			for _, record := range testsuite.MustSucceed(node.Beacon.Validators(ctx)) {
+				if slices.Contains(signerKeys, strings.ToLower(record.PublicKey)) {
+					indices = append(indices, record.Index)
+				}
+			}
+
+			status := testsuite.MustSucceed(api.DeleteRemoteKey(ctx, removed))
+			gomega.Expect(strings.EqualFold(status.Status, "deleted")).To(gomega.BeTrue(), "DELETE answered %+v", status)
+			// Should a check below fail, the other specs keep the key.
+			ginkgo.DeferCleanup(func(ctx ginkgo.SpecContext) {
+				if !slices.Contains(keyFile(ctx), removed) {
+					_, err := api.ImportRemoteKey(ctx, removed, signerURL)
+					gomega.Expect(err).NotTo(gomega.HaveOccurred(), "adding validator %d's key back", removedKeyIndex)
+				}
+			}, ginkgo.NodeTimeout(time.Minute))
+			gomega.Expect(keyFile(ctx)).To(gomega.Equal(others), "the key file after the DELETE")
+			gomega.Expect(listed(ctx)).To(gomega.Equal(others), "the remote keys after the DELETE")
+
+			// The validator client refuses the key's duties itself, so the
+			// signer gets every attestation of the next whole epoch but the
+			// key's, and the key's vote is missing on chain.
+			withoutKey := countableEpoch()
+			attestations, duties, _ := epochAttestations(ctx, withoutKey, indices)
+			gomega.Expect(attestations).To(gomega.Equal(float64(duties-1)),
+				"ATTESTATION requests for the %d attester duties of epoch %d, without validator %d's key",
+				duties, withoutKey, removedKeyIndex)
+
+			// qrysm ignores the url of an imported key: every key is signed
+			// by the signer the validator client names, and nothing asks the
+			// url given here, a path of the signer that no route serves.
+			unknownPaths := remotesigner.With("route", remotesigner.UnknownPathRoute)
+			unknownBefore := sum(scrape(ctx), remotesigner.MetricHTTPRequestDurations, unknownPaths)
+			status = testsuite.MustSucceed(api.ImportRemoteKey(ctx, removed, signerURL+importProbePath))
+			gomega.Expect(strings.EqualFold(status.Status, "imported")).To(gomega.BeTrue(), "POST answered %+v", status)
+			gomega.Expect(keyFile(ctx)).To(gomega.Equal(signerKeys), "the key file after the POST")
+			gomega.Expect(listed(ctx)).To(gomega.Equal(signerKeys), "the remote keys after the POST")
+
+			// The validator client takes the key's duties again from the
+			// next epoch on.
+			withKey := countableEpoch()
+			attestations, duties, after := epochAttestations(ctx, withKey, indices)
+			gomega.Expect(attestations).To(gomega.Equal(float64(duties)),
+				"ATTESTATION requests for the %d attester duties of epoch %d, with validator %d's key again",
+				duties, withKey, removedKeyIndex)
+			gomega.Expect(sum(after, remotesigner.MetricHTTPRequestDurations, unknownPaths)-unknownBefore).
+				To(gomega.BeZero(), "requests to paths the signer does not serve, such as %s", importProbePath)
+
+			gomega.Expect(targetVote(ctx, withoutKey, removedKeyIndex)).To(gomega.BeNumerically("<=", 0),
+				"validator %d's target vote in epoch %d, without its key", removedKeyIndex, withoutKey)
+			gomega.Expect(targetVote(ctx, withKey, removedKeyIndex)).To(gomega.BeNumerically(">", 0),
+				"validator %d's target vote in epoch %d, with its key again", removedKeyIndex, withKey)
+			expectNoFaults(scrape(ctx))
+		}, ginkgo.SpecTimeout(10*time.Minute))
+
+		// An exit cannot be undone, so it is the suite's last spec.
+		ginkgo.It("exits a validator through the signer with qrysm's exit command when the signer signs exits", func(ctx ginkgo.SpecContext) {
+			index := uint64(len(keys) - exitingIndexFromLast)
+			exiting := testsuite.MustSucceed(node.Beacon.Validator(ctx, strconv.FormatUint(index, 10)))
+			gomega.Expect(exiting.Status).To(gomega.Equal("active_ongoing"))
+
+			// qrysm's exit command, next to the validator client with its
+			// chain config, beacon node and remote signer flags, as qrysm's
+			// remote signer README describes; the chain config is a global
+			// flag.
+			flags := validatorFlags(ctx)
+			command := []string{flags[0]}
+			for _, flag := range flags[1:] {
+				if strings.HasPrefix(flag, "--chain-config-file=") {
+					command = append(command, flag)
+				}
+			}
+			gomega.Expect(command).To(gomega.HaveLen(2), "the validator client has no --chain-config-file")
+			command = append(command, "accounts", "voluntary-exit", "--accept-terms-of-use", "--force-exit",
+				"--public-keys="+exiting.PublicKey)
+			for _, flag := range flags[1:] {
+				if strings.HasPrefix(flag, "--validators-external-signer-") || strings.HasPrefix(flag, "--beacon-rpc-provider=") {
+					command = append(command, flag)
+				}
+			}
+
+			exits := func(metrics remotesigner.Metrics, result string) float64 {
+				ginkgo.GinkgoHelper()
+				return sum(metrics, remotesigner.MetricSigningRequests, remotesigner.With("type", remotesigner.TypeVoluntaryExit, "result", result))
+			}
+			before := scrape(ctx)
+			output, err := devnet.ExecService(ctx, docker, validator.ID, command...)
+			after := scrape(ctx)
+
+			if !signsExits {
+				// The signer answers 403 ARTIFACT_TYPE_DISABLED, and the command
+				// stops, names the signer's option and submits nothing.
+				gomega.Expect(err).To(gomega.HaveOccurred(), "the exit command succeeded: %s", output)
+				gomega.Expect(err.Error()).To(gomega.ContainSubstring(exitsDisabled))
+				gomega.Expect(err.Error()).To(gomega.ContainSubstring("ARTIFACT_TYPE_DISABLED"))
+				gomega.Expect(exits(after, "refused") - exits(before, "refused")).To(gomega.Equal(1.0))
+				gomega.Expect(exits(after, "ok") - exits(before, "ok")).To(gomega.BeZero())
+				gomega.Consistently(func(ctx context.Context) (beacon.Validator, error) {
+					return node.Beacon.Validator(ctx, strconv.FormatUint(index, 10))
+				}).WithContext(ctx).WithTimeout(2 * chain.SlotDuration).WithPolling(chain.SlotDuration).
+					Should(gomega.HaveField("Status", "active_ongoing"))
+				return
+			}
+
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+			gomega.Expect(output).To(gomega.ContainSubstring(exitSubmitted))
+			gomega.Expect(exits(after, "ok") - exits(before, "ok")).To(gomega.Equal(1.0))
+			gomega.Expect(exits(after, "refused") - exits(before, "refused")).To(gomega.BeZero())
+			// The beacon node accepted the exit, and a block includes it.
+			gomega.Eventually(func(ctx context.Context) (beacon.Validator, error) {
+				return node.Beacon.Validator(ctx, strconv.FormatUint(index, 10))
+			}).WithContext(ctx).WithTimeout(2 * chain.EpochDuration).WithPolling(chain.SlotDuration).Should(gomega.And(
+				gomega.HaveField("Status", "active_exiting"),
+				gomega.HaveField("ExitEpoch", gomega.BeNumerically("<", farFutureEpoch)),
+			))
+		}, ginkgo.SpecTimeout(5*time.Minute))
 	},
 )
+
+// lastLine is a token file's token: qrysm reads its last non-empty line.
+func lastLine(file []byte) string {
+	lines := strings.Fields(string(file))
+	if len(lines) == 0 {
+		return ""
+	}
+	return lines[len(lines)-1]
+}
 
 func sortedLower(keys []string) []string {
 	lowered := make([]string, len(keys))

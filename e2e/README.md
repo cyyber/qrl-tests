@@ -11,8 +11,9 @@ endpoints; suites do not provision infrastructure.
 | `execution` | `single` | Execution client: contract ABI, gqrl console, and transaction pool |
 | `consensus-staking-automated` | `single` | Staking through contract deposits and the keymanager API |
 | `consensus-staking-operator` | `single` | Staking through the deposit and validator CLIs |
-| `consensus-remote-signer` | `remote-signer` | Validator duties signed by go-remotesigner: its keys and chain, finality, its metrics, and refused slashable requests; needs locally built images |
+| `consensus-remote-signer` | `remote-signer` | Validator duties signed by go-remotesigner: its keys and chain, finality, its metrics, refused slashable requests, a key removed and added back through the remote keys API, and a refused exit; needs locally built images |
 | `consensus-remote-signer-mtls` | `remote-signer-mtls` | The same, with the validator client presenting a client certificate as well as the token; needs locally built images and a qrl-package that issues the certificate |
+| `consensus-remote-signer-exits` | `remote-signer-exits` | The same, with go-remotesigner signing voluntary exits: the last spec exits a validator through it; needs locally built images |
 | `resilience-network-restart` | `anchored` | Recovery from a full outage: proposing and finalizing after every node stops at once |
 | `sync` | `single` | A new full-mode node syncs from genesis, then catches up after a stop |
 
@@ -43,9 +44,27 @@ serves exactly the validator client's keys and is bound to its chain, that the
 validator client has no keystore, that the chain finalizes, that the signer's
 metrics show every duty type signed, a RANDAO reveal for every block and no
 refusal or fault, that it refuses a double vote and a double proposal sent to
-it directly, and that the chain keeps finalizing afterwards. When a spec
-fails, the signer's metrics, healthcheck and capabilities, and the validator
-client's remote signer metrics, are saved under
+it directly, and that the chain keeps finalizing afterwards.
+
+Then it removes one validator's key through the validator client's remote
+keys API (`/qrl/v1/remotekeys`), after checking that the API lists exactly
+the signer's keys: the key file loses the key, the signer gets every
+attestation of the next epoch but that key's, and its vote is missing on
+chain. It adds the key back with a url of its own, which qrysm must ignore:
+the key file has the key again, the signer gets every attestation of the
+next epoch, the key's vote is on chain, and the signer gets no request for
+that url. Last, it runs qrysm's exit command, `validator accounts
+voluntary-exit`, next to the validator client with its remote signer flags
+and its chain config, for another validator. The signer refuses it with 403
+`ARTIFACT_TYPE_DISABLED`, as it refuses every exit unless it runs with
+`--voluntary-exit-signing-enabled`, and the command fails, naming that
+option, and submits nothing. `consensus-remote-signer-exits` runs the same
+suite on the `remote-signer-exits` profile, whose signer runs with the
+option: the beacon node accepts the exit, and the validator is
+`active_exiting`. An exit cannot be undone, so it comes last.
+
+When a spec fails, the signer's metrics, healthcheck and capabilities, and
+the validator client's remote signer metrics, are saved under
 `reports/lanes/<lane>/remote-signer/<spec>/`.
 
 Its images are not published yet, and the pinned qrl-package does not run
@@ -53,7 +72,8 @@ go-remotesigner, so the nightly does not run the lane, `run-all` leaves it
 out, and `qrltest list` marks it; the
 [remote signer nightly](#remote-signer-nightly) builds the images and runs it.
 Build the images from local checkouts, the validator client and beacon node
-from one qrysm commit with the remote signer client:
+from one qrysm commit with the remote signer client, its remote keys API and
+its exits through the signer:
 
 ```bash
 REMOTESIGNER_SOURCE_DIR=../go-remotesigner make remote-signer-image
@@ -65,7 +85,8 @@ The scripts build the working tree of the checkout, or the commit
 go-remotesigner's own Dockerfile and needs `go-licenses` v2; the qrysm images
 are static `go build`s, without Bazel.
 
-Then start the network from a qrl-package checkout that runs go-remotesigner,
+Then start the network from a qrl-package checkout that runs go-remotesigner
+and serves qrysm's keymanager API on the validator client's gRPC gateway,
 with the parameters of the `remote-signer` profile, and run the lane against
 it. The network gets an enclave of its own, which `kurtosis enclave add`
 creates and refuses when the name is taken, and its parameters go to the
@@ -84,6 +105,10 @@ DEVNET_ENCLAVE_NAME=remote-signer-devnet \
 E2E_LANE=consensus-remote-signer make e2e
 DEVNET_ENCLAVE_NAME=remote-signer-devnet make network-stop
 ```
+
+`consensus-remote-signer-exits` runs the same way on a network of its own,
+with `--profile remote-signer-exits` and
+`E2E_LANE=consensus-remote-signer-exits`.
 
 To record the commits the images were built from in
 `reports/run-manifest.json`, set `E2E_SOURCE_REMOTESIGNER` and
@@ -130,7 +155,7 @@ repository variables, then the pinned defaults:
 | Source | Input | Variable | Default |
 | --- | --- | --- | --- |
 | go-remotesigner | `go-remotesigner-repository`, `go-remotesigner-ref` | `E2E_REMOTE_SIGNER_GO_REMOTESIGNER_REPOSITORY`, `E2E_REMOTE_SIGNER_GO_REMOTESIGNER_REF` | `rgeraldes24/go-remotesigner` at `8447c2d29add5f52b5157038bc6b74bd0ecef36b` |
-| qrysm | `qrysm-repository`, `qrysm-ref` | `E2E_REMOTE_SIGNER_QRYSM_REPOSITORY`, `E2E_REMOTE_SIGNER_QRYSM_REF` | `rgeraldes24/qrysm` at `47f6b65e6c58bb8c268d3dfd94aca8cbd1718bcc` |
+| qrysm | `qrysm-repository`, `qrysm-ref` | `E2E_REMOTE_SIGNER_QRYSM_REPOSITORY`, `E2E_REMOTE_SIGNER_QRYSM_REF` | `rgeraldes24/qrysm` at `d026800cb2337ac1c7564968730e0587f5bc1161` |
 | qrl-package | `qrl-package-repository`, `qrl-package-ref` | `E2E_REMOTE_SIGNER_QRL_PACKAGE_REPOSITORY`, `E2E_REMOTE_SIGNER_QRL_PACKAGE_REF` | `rgeraldes24/qrl-package` at `f68c0523e2b46f8afeaed4943361afed2f075df3` |
 | go-qrl | | the nightly's `E2E_GO_QRL_REPOSITORY`, `E2E_REMOTE_SIGNER_GO_QRL_REF` | `cyyber/go-qrl` at `main` |
 | qrl-genesis-generator | | the nightly's `E2E_GENERATOR_REPOSITORY`, `E2E_REMOTE_SIGNER_GENERATOR_REF` | `cyyber/qrl-genesis-generator` at `main` |

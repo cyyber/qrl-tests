@@ -58,7 +58,7 @@ env:
   GO_REMOTESIGNER_REPOSITORY: ${{ inputs.go-remotesigner-repository || vars.E2E_REMOTE_SIGNER_GO_REMOTESIGNER_REPOSITORY || 'rgeraldes24/go-remotesigner' }}
   GO_REMOTESIGNER_GIT_REF: ${{ inputs.go-remotesigner-ref || vars.E2E_REMOTE_SIGNER_GO_REMOTESIGNER_REF || '8447c2d29add5f52b5157038bc6b74bd0ecef36b' }}
   QRYSM_REPOSITORY: ${{ inputs.qrysm-repository || vars.E2E_REMOTE_SIGNER_QRYSM_REPOSITORY || 'rgeraldes24/qrysm' }}
-  QRYSM_GIT_REF: ${{ inputs.qrysm-ref || vars.E2E_REMOTE_SIGNER_QRYSM_REF || '47f6b65e6c58bb8c268d3dfd94aca8cbd1718bcc' }}
+  QRYSM_GIT_REF: ${{ inputs.qrysm-ref || vars.E2E_REMOTE_SIGNER_QRYSM_REF || 'd026800cb2337ac1c7564968730e0587f5bc1161' }}
   QRL_PACKAGE_REPOSITORY: ${{ inputs.qrl-package-repository || vars.E2E_REMOTE_SIGNER_QRL_PACKAGE_REPOSITORY || 'rgeraldes24/qrl-package' }}
   QRL_PACKAGE_GIT_REF: ${{ inputs.qrl-package-ref || vars.E2E_REMOTE_SIGNER_QRL_PACKAGE_REF || 'f68c0523e2b46f8afeaed4943361afed2f075df3' }}
   # The execution client and the genesis generator, from the nightly's
@@ -194,9 +194,9 @@ jobs:
     name: ${{ matrix.lane }}
     needs: images
     runs-on: ${{ inputs.runner || vars.E2E_RUNNER || 'ubuntu-24.04-arm' }}
-    # The lane's 25 minutes, the image builds, the network start, the
+    # The lane's 35 minutes, the image builds, the network start, the
     # diagnostics and the teardown.
-    timeout-minutes: 75
+    timeout-minutes: 85
     strategy:
       fail-fast: false
       matrix:
@@ -208,7 +208,7 @@ jobs:
       E2E_LANE: ${{ matrix.lane }}
       E2E_SEED: ${{ inputs.seed }}
       # The lane's profile; empty for a lane this workflow does not run.
-      DEVNET_PROFILE: ${{ fromJSON('{"consensus-remote-signer":"remote-signer","consensus-remote-signer-mtls":"remote-signer-mtls"}')[matrix.lane] }}
+      DEVNET_PROFILE: ${{ fromJSON('{"consensus-remote-signer":"remote-signer","consensus-remote-signer-mtls":"remote-signer-mtls","consensus-remote-signer-exits":"remote-signer-exits"}')[matrix.lane] }}
       DEVNET_EXECUTION_IMAGE: ${{ needs.images.outputs.execution-image }}
       DEVNET_GENESIS_IMAGE: ${{ needs.images.outputs.genesis-image }}
       DEVNET_REMOTE_SIGNER_IMAGE: local/go-remotesigner:nightly

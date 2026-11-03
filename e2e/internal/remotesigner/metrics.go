@@ -25,6 +25,12 @@ const (
 	MetricHTTPRequestDurations = "http_request_duration_seconds"
 )
 
+// UnknownPathRoute is the route label of MetricHTTPRequestDurations for a
+// request whose path matches no route of the API: the signer's router
+// answers it, with 401 without a credential and 404 with one, under its
+// catch-all pattern.
+const UnknownPathRoute = "/"
+
 // Metrics of the qrysm validator client's remote signer keymanager; they all
 // start with ValidatorMetricPrefix.
 const (

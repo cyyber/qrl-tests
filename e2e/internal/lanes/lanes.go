@@ -75,15 +75,17 @@ var registry = []Lane{
 	},
 	{
 		// Finality from about epoch 4 of eight five-second slots comes
-		// first, then the refused requests and two more finalized epochs.
-		// The signer is go-remotesigner, and the validator client a qrysm
-		// with its remote signer client: neither image is published yet.
-		// The pinned qrl-package does not run go-remotesigner either, so
-		// the network is started from a qrl-package checkout that does.
+		// first, then the refused requests and two more finalized epochs,
+		// then a key removed and added again through the remote keys API,
+		// which takes about seven epochs, and last the exit the signer
+		// refuses. The signer is go-remotesigner, and the validator client
+		// a qrysm with its remote signer client: neither image is published
+		// yet. The pinned qrl-package does not run go-remotesigner either,
+		// so the network is started from a qrl-package checkout that does.
 		Name:        "consensus-remote-signer",
 		Profile:     devnet.ProfileRemoteSigner,
 		Suites:      []SuiteID{suiteConsensusRemoteSigner},
-		Timeout:     25 * time.Minute,
+		Timeout:     35 * time.Minute,
 		LocalImages: true,
 	},
 	{
@@ -93,7 +95,16 @@ var registry = []Lane{
 		Name:        "consensus-remote-signer-mtls",
 		Profile:     devnet.ProfileRemoteSignerMTLS,
 		Suites:      []SuiteID{suiteConsensusRemoteSigner},
-		Timeout:     25 * time.Minute,
+		Timeout:     35 * time.Minute,
+		LocalImages: true,
+	},
+	{
+		// The same suite, with the signer signing voluntary exits: the last
+		// spec exits a validator through it instead of being refused.
+		Name:        "consensus-remote-signer-exits",
+		Profile:     devnet.ProfileRemoteSignerExits,
+		Suites:      []SuiteID{suiteConsensusRemoteSigner},
+		Timeout:     35 * time.Minute,
 		LocalImages: true,
 	},
 	{
