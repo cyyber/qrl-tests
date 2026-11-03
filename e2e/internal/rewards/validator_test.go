@@ -193,8 +193,9 @@ func TestBlockBalanceChanges(t *testing.T) {
 		return fmt.Sprintf(`[{"validator_index":"%d","reward":"%d"}]`, validatorIndex, reward)
 	}
 	// BlockBalanceChanges(6) covers slots 49 through 56. Slots 48 and 57
-	// belong to the balances either side, slot 50 is empty, at slot 52 the validator is
-	// outside the sync committee, and it proposed the block at slot 54.
+	// belong to the balances either side, slot 50 is empty, at slot 52 the
+	// validator is outside the sync committee, and it proposed the block at
+	// slot 54.
 	responses := map[string]string{
 		"beacon/blocks/48":                 block(withdrawal(validatorIndex, 1000)),
 		"beacon/blocks/49":                 block(withdrawal(validatorIndex, 7) + "," + withdrawal(3, 500)),
