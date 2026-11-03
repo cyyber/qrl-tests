@@ -46,7 +46,7 @@ func (client *Client) HeadSlot(ctx context.Context) (uint64, error) {
 	return head.Slot, err
 }
 
-// BlockHeader returns the slot and root of a canonical block. blockID is
+// BlockHeader returns the header and root of a canonical block. blockID is
 // "head", "finalized", a slot or a 0x-prefixed root. A slot without a block
 // is reported through IsNotFound.
 func (client *Client) BlockHeader(ctx context.Context, blockID string) (BlockHeader, error) {
@@ -54,11 +54,23 @@ func (client *Client) BlockHeader(ctx context.Context, blockID string) (BlockHea
 		Root   string `json:"root"`
 		Header struct {
 			Message struct {
-				Slot uint64 `json:"slot,string"`
+				Slot          uint64 `json:"slot,string"`
+				ProposerIndex uint64 `json:"proposer_index,string"`
+				ParentRoot    string `json:"parent_root"`
+				StateRoot     string `json:"state_root"`
+				BodyRoot      string `json:"body_root"`
 			} `json:"message"`
 		} `json:"header"`
 	}](ctx, client, "/qrl/v1/beacon/headers/"+url.PathEscape(blockID))
-	return BlockHeader{Slot: header.Header.Message.Slot, Root: header.Root}, err
+	message := header.Header.Message
+	return BlockHeader{
+		Slot:          message.Slot,
+		Root:          header.Root,
+		ProposerIndex: message.ProposerIndex,
+		ParentRoot:    message.ParentRoot,
+		StateRoot:     message.StateRoot,
+		BodyRoot:      message.BodyRoot,
+	}, err
 }
 
 // FinalityCheckpoints returns the justified and finalized checkpoints of the
@@ -70,9 +82,16 @@ func (client *Client) FinalityCheckpoints(ctx context.Context) (FinalityCheckpoi
 // SlashedValidators returns the validators of the head state that have been
 // slashed.
 func (client *Client) SlashedValidators(ctx context.Context) ([]Validator, error) {
-	records, err := getData[[]validatorWire](
-		ctx, client, "/qrl/v1/beacon/states/head/validators?status=active_slashed&status=exited_slashed",
-	)
+	return client.validators(ctx, "?status=active_slashed&status=exited_slashed")
+}
+
+// Validators returns every validator of the head state.
+func (client *Client) Validators(ctx context.Context) ([]Validator, error) {
+	return client.validators(ctx, "")
+}
+
+func (client *Client) validators(ctx context.Context, query string) ([]Validator, error) {
+	records, err := getData[[]validatorWire](ctx, client, "/qrl/v1/beacon/states/head/validators"+query)
 	if err != nil {
 		return nil, err
 	}

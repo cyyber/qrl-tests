@@ -12,6 +12,30 @@ image_inventory=(
 	'qrl-genesis-generator|GENESIS_IMAGE_TAG|genesis-image|bake'
 )
 
+# IMAGE_TARGETS, a comma-separated list of inventory targets, limits plan and
+# pin to those images; unset, they cover the whole inventory.
+selected_target() {
+	case ",${IMAGE_TARGETS:-$1}," in
+		*",$1,"*) return 0 ;;
+		*) return 1 ;;
+	esac
+}
+
+check_image_targets() {
+	[ -n "${IMAGE_TARGETS:-}" ] || return 0
+	local requested image target known
+	local -a requested_targets
+	IFS=',' read -r -a requested_targets <<<"${IMAGE_TARGETS}"
+	for requested in "${requested_targets[@]}"; do
+		known=false
+		for image in "${image_inventory[@]}"; do
+			IFS='|' read -r target _ <<<"${image}"
+			[ "${target}" = "${requested}" ] && known=true
+		done
+		"${known}" || { echo "unknown image target: ${requested}" >&2; return 2; }
+	done
+}
+
 require_build_inputs() {
 	: "${REGISTRY_NAMESPACE:?set REGISTRY_NAMESPACE to the registry prefix}"
 	: "${GO_QRL_GIT_REPO:?set GO_QRL_GIT_REPO to the go-qrl clone URL}"
@@ -40,6 +64,7 @@ recipe_revision() {
 
 plan() {
 	require_build_inputs
+	check_image_targets
 	: "${GITHUB_ENV:?set GITHUB_ENV to the environment file}"
 	: "${GITHUB_OUTPUT:?set GITHUB_OUTPUT to the outputs file}"
 
@@ -77,6 +102,7 @@ plan() {
 	local image target tag_variable build_type reference
 	for image in "${image_inventory[@]}"; do
 		IFS='|' read -r target tag_variable _ build_type <<<"${image}"
+		selected_target "${target}" || continue
 		reference=${!tag_variable}
 		if docker buildx imagetools inspect "${reference}" >/dev/null 2>&1; then
 			echo "cache hit: ${reference}"
@@ -98,10 +124,12 @@ plan() {
 
 pin() {
 	: "${GITHUB_OUTPUT:?set GITHUB_OUTPUT to the outputs file}"
+	check_image_targets
 	local metadata=${BAKE_METADATA:-}
 	local image target tag_variable output_key reference digest repository immutable
 	for image in "${image_inventory[@]}"; do
 		IFS='|' read -r target tag_variable output_key _ <<<"${image}"
+		selected_target "${target}" || continue
 		reference=${!tag_variable}
 		digest=""
 		if [ -n "${metadata}" ]; then

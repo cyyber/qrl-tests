@@ -27,7 +27,37 @@ const (
 	clientTypeLabel  = "qrl-package.client-type"
 	participantLabel = "qrl-tests.participant"
 	partitionLabel   = "qrl-tests.partition"
+
+	// A remote signer is clef, the execution layer's signer, or
+	// go-remotesigner, which signs for one validator client. qrl-package
+	// names both by their remote_signer_type, in its client label too.
+	clientLabel            = "qrl-package.client"
+	remoteSignerClientType = "remote-signer"
+	remoteSignerTypeClef   = "clef"
+	goRemoteSigner         = "go-remotesigner"
+	remoteSignerHTTPPortID = "http"
 )
+
+// Files qrl-package mounts into a validator client that signs through
+// go-remotesigner, in place of a wallet: the sign token, the client's public
+// keys (one 0x-prefixed key per line) and the CA that issued the signer's TLS
+// certificate. The certificate is valid for the signer's service name,
+// localhost and 127.0.0.1. When the signer runs in token+mtls mode, the
+// client also gets a client certificate the same CA issued, and its key.
+const (
+	ValidatorRemoteSignerTokenFile      = "/remote-signer/auth-token"
+	ValidatorRemoteSignerKeyFile        = "/remote-signer/keys.txt"
+	ValidatorRemoteSignerCAFile         = "/remote-signer/ca.pem"
+	ValidatorRemoteSignerClientCertFile = "/remote-signer/client-cert.pem"
+	ValidatorRemoteSignerClientKeyFile  = "/remote-signer/client-key.pem"
+)
+
+// ValidatorKeymanagerTokenFile holds the token of the keymanager API that a
+// validator client signing through go-remotesigner serves when the profile
+// enables it. qrysm keeps the token in its wallet directory, and in remote
+// mode it opens no wallet and is given no --wallet-dir, so the directory is
+// the default one of the image's root user.
+const ValidatorKeymanagerTokenFile = "/root/.qrlvalidators/qrysm-wallet/auth-token"
 
 type Environment struct {
 	EnclaveName  string        `json:"enclave_name"`
@@ -50,6 +80,8 @@ type Participant struct {
 	Execution ExecutionService `json:"execution"`
 	Consensus ConsensusService `json:"consensus"`
 	Validator ValidatorService `json:"validator"`
+	// RemoteSigner is set when go-remotesigner signs for the validator client.
+	RemoteSigner RemoteSignerService `json:"remote_signer,omitzero"`
 }
 
 type ServiceInfo struct {
@@ -79,6 +111,15 @@ type ValidatorService struct {
 	MetricsURL string `json:"metrics_url"`
 }
 
+// RemoteSignerService is a go-remotesigner. Its API serves TLS only, with a
+// certificate the validator client's ValidatorRemoteSignerCAFile verifies,
+// and its metrics are plain HTTP.
+type RemoteSignerService struct {
+	ServiceInfo
+	URL        string `json:"url"`
+	MetricsURL string `json:"metrics_url"`
+}
+
 func resolveEnvironment(ctx context.Context, client enclaveClient, name string) (Environment, error) {
 	services, err := client.Services(ctx, name)
 	if err != nil {
@@ -100,7 +141,15 @@ func participantsFromServices(services map[string]kurtosis.Service) ([]Participa
 	byIndex := make(map[int]*Participant)
 	for name, service := range services {
 		clientType := service.Labels[clientTypeLabel]
-		if clientType != "execution" && clientType != "beacon" && clientType != "validator" {
+		switch clientType {
+		case "execution", "beacon", "validator":
+		case remoteSignerClientType:
+			// Clef signs for every participant's execution client and has
+			// no participant index.
+			if service.Labels[clientLabel] != goRemoteSigner {
+				continue
+			}
+		default:
 			continue
 		}
 
@@ -140,6 +189,13 @@ func participantsFromServices(services map[string]kurtosis.Service) ([]Participa
 			participant.Validator.ServiceInfo = info
 			participant.Validator.URL = optionalPublicEndpoint(service, validatorHTTPPortID, "http")
 			participant.Validator.MetricsURL = optionalPublicEndpoint(service, metricsPortID, "http")
+		case remoteSignerClientType:
+			participant.RemoteSigner.ServiceInfo = info
+			participant.RemoteSigner.URL, err = service.PublicEndpoint(remoteSignerHTTPPortID, "https")
+			if err != nil {
+				return nil, fmt.Errorf("remote signer service %q: %w", name, err)
+			}
+			participant.RemoteSigner.MetricsURL = optionalPublicEndpoint(service, metricsPortID, "http")
 		}
 	}
 	if len(byIndex) == 0 {

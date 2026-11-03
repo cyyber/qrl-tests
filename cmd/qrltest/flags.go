@@ -26,6 +26,15 @@ func backendFlag() *cli.StringFlag {
 	}
 }
 
+func profileFlag() *cli.StringFlag {
+	return &cli.StringFlag{
+		Name:    "profile",
+		Usage:   "built-in network profile",
+		Value:   string(devnet.ProfileSingle),
+		EnvVars: []string{"DEVNET_PROFILE"},
+	}
+}
+
 func parametersFileFlag() *cli.PathFlag {
 	return &cli.PathFlag{
 		Name:    "params-file",
@@ -79,6 +88,12 @@ func imageFlags() []cli.Flag {
 			Value:   images.Genesis,
 			EnvVars: []string{"DEVNET_GENESIS_IMAGE"},
 		},
+		&cli.StringFlag{
+			Name:    "remote-signer-image",
+			Usage:   "go-remotesigner image reference, for the remote-signer profiles",
+			Value:   images.RemoteSigner,
+			EnvVars: []string{"DEVNET_REMOTE_SIGNER_IMAGE"},
+		},
 	}
 }
 
@@ -89,5 +104,7 @@ func imagesFromFlags(command *cli.Context) devnet.Images {
 		Consensus: command.String("consensus-image"),
 		Validator: command.String("validator-image"),
 		Genesis:   command.String("genesis-image"),
+
+		RemoteSigner: command.String("remote-signer-image"),
 	}
 }

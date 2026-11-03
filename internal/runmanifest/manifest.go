@@ -21,10 +21,11 @@ const (
 	FileName = "run-manifest.json"
 
 	// The CI workflow records the client revisions it built or resolved;
-	// local runs leave them unset.
-	sourceGoQRLEnv     = "E2E_SOURCE_GO_QRL"
-	sourceQrysmEnv     = "E2E_SOURCE_QRYSM"
-	sourceGeneratorEnv = "E2E_SOURCE_GENERATOR"
+	// local runs leave them unset unless they set them.
+	sourceGoQRLEnv        = "E2E_SOURCE_GO_QRL"
+	sourceQrysmEnv        = "E2E_SOURCE_QRYSM"
+	sourceGeneratorEnv    = "E2E_SOURCE_GENERATOR"
+	sourceRemoteSignerEnv = "E2E_SOURCE_REMOTESIGNER"
 
 	probeTimeout = 10 * time.Second
 )
@@ -33,7 +34,10 @@ type Sources struct {
 	GoQRL     string `json:"go_qrl,omitempty"`
 	Qrysm     string `json:"qrysm,omitempty"`
 	Generator string `json:"genesis_generator,omitempty"`
-	QRLTests  string `json:"qrl_tests,omitempty"`
+	// RemoteSigner is the go-remotesigner revision the remote-signer
+	// profile's signer image was built from.
+	RemoteSigner string `json:"remote_signer,omitempty"`
+	QRLTests     string `json:"qrl_tests,omitempty"`
 }
 
 type Versions struct {
@@ -126,10 +130,11 @@ func enrich(ctx context.Context, testsDir string, manifest Manifest, deps depend
 	testsRevision, _ := deps.probe(ctx, "git", "-C", testsDir, "rev-parse", "HEAD")
 
 	manifest.Sources = Sources{
-		GoQRL:     deps.getenv(sourceGoQRLEnv),
-		Qrysm:     deps.getenv(sourceQrysmEnv),
-		Generator: deps.getenv(sourceGeneratorEnv),
-		QRLTests:  testsRevision,
+		GoQRL:        deps.getenv(sourceGoQRLEnv),
+		Qrysm:        deps.getenv(sourceQrysmEnv),
+		Generator:    deps.getenv(sourceGeneratorEnv),
+		RemoteSigner: deps.getenv(sourceRemoteSignerEnv),
+		QRLTests:     testsRevision,
 	}
 	manifest.Versions = Versions{
 		Go:       runtime.Version(),

@@ -19,13 +19,14 @@ import (
 
 func TestEnrich(t *testing.T) {
 	environment := map[string]string{
-		sourceGoQRLEnv:       "1111111111111111111111111111111111111111",
-		sourceQrysmEnv:       "2222222222222222222222222222222222222222",
-		sourceGeneratorEnv:   "4444444444444444444444444444444444444444",
-		"GITHUB_REPOSITORY":  "cyyber/qrl-tests",
-		"GITHUB_WORKFLOW":    "nightly",
-		"GITHUB_RUN_ID":      "12345",
-		"GITHUB_RUN_ATTEMPT": "2",
+		sourceGoQRLEnv:        "1111111111111111111111111111111111111111",
+		sourceQrysmEnv:        "2222222222222222222222222222222222222222",
+		sourceGeneratorEnv:    "4444444444444444444444444444444444444444",
+		sourceRemoteSignerEnv: "5555555555555555555555555555555555555555",
+		"GITHUB_REPOSITORY":   "cyyber/qrl-tests",
+		"GITHUB_WORKFLOW":     "nightly",
+		"GITHUB_RUN_ID":       "12345",
+		"GITHUB_RUN_ATTEMPT":  "2",
 	}
 	var probes [][]string
 	probe := func(_ context.Context, name string, arguments ...string) (string, error) {
@@ -58,10 +59,11 @@ func TestEnrich(t *testing.T) {
 	})
 
 	require.Equal(t, Sources{
-		GoQRL:     "1111111111111111111111111111111111111111",
-		Qrysm:     "2222222222222222222222222222222222222222",
-		Generator: "4444444444444444444444444444444444444444",
-		QRLTests:  "3333333333333333333333333333333333333333",
+		GoQRL:        "1111111111111111111111111111111111111111",
+		Qrysm:        "2222222222222222222222222222222222222222",
+		Generator:    "4444444444444444444444444444444444444444",
+		RemoteSigner: "5555555555555555555555555555555555555555",
+		QRLTests:     "3333333333333333333333333333333333333333",
 	}, manifest.Sources)
 	require.Equal(t, Versions{
 		Go:       runtime.Version(),

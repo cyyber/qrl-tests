@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -144,8 +145,12 @@ func (writer *lockedWriter) Write(payload []byte) (int, error) {
 func (runner *Runner) List() error {
 	var listing strings.Builder
 	for _, lane := range lanes.All() {
-		fmt.Fprintf(&listing, "%-16s profile=%-16s timeout=%-8s suites=%s\n",
+		fmt.Fprintf(&listing, "%-16s profile=%-16s timeout=%-8s suites=%s",
 			lane.Name, lane.Profile, lane.Timeout, suiteIDs(lane.Suites))
+		if lane.LocalImages {
+			listing.WriteString(" (needs locally built images; see e2e/README.md)")
+		}
+		listing.WriteString("\n")
 	}
 
 	listing.WriteString("\nRegistered suites:\n")
@@ -191,7 +196,10 @@ func (runner *Runner) RunAll(ctx context.Context) error {
 	if len(runner.configuration.Suites) != 0 {
 		return errors.New("suite selection cannot be used with run-all")
 	}
-	return runner.run(ctx, lanes.All(), provisionPerLane)
+	// A lane that needs locally built images runs only on its own, with
+	// those images.
+	selected := slices.DeleteFunc(lanes.All(), func(lane lanes.Lane) bool { return lane.LocalImages })
+	return runner.run(ctx, selected, provisionPerLane)
 }
 
 func (runner *Runner) selectedLane(name string) (lanes.Lane, error) {
