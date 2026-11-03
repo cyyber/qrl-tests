@@ -31,6 +31,7 @@ const (
 	suiteExecutionABI              SuiteID = "execution-abi"
 	suiteExecutionConsole          SuiteID = "execution-console"
 	suiteExecutionTxpool           SuiteID = "execution-txpool"
+	suiteExecutionRemoteSigner     SuiteID = "execution-remote-signer"
 	suiteConsensusStakingAutomated SuiteID = "consensus-staking-automated"
 	suiteConsensusStakingOperator  SuiteID = "consensus-staking-operator"
 	suiteConsensusRemoteSigner     SuiteID = "consensus-remote-signer"
@@ -42,6 +43,7 @@ var suitePackages = map[SuiteID]string{
 	suiteExecutionABI:              "./e2e/suites/execution/abi",
 	suiteExecutionConsole:          "./e2e/suites/execution/console",
 	suiteExecutionTxpool:           "./e2e/suites/execution/txpool",
+	suiteExecutionRemoteSigner:     "./e2e/suites/execution/remotesigner",
 	suiteConsensusStakingAutomated: "./e2e/suites/consensus/stakingautomated",
 	suiteConsensusStakingOperator:  "./e2e/suites/consensus/stakingoperator",
 	suiteConsensusRemoteSigner:     "./e2e/suites/consensus/remotesigner",
@@ -105,6 +107,19 @@ var registry = []Lane{
 		Profile:     devnet.ProfileRemoteSignerExits,
 		Suites:      []SuiteID{suiteConsensusRemoteSigner},
 		Timeout:     35 * time.Minute,
+		LocalImages: true,
+	},
+	{
+		// go-remotesigner in execution mode in front of the execution
+		// client: two transfers mined, a few signed messages and refused
+		// requests, a few minutes in all. The signer is go-remotesigner's
+		// full flavour, which is not published, and the pinned qrl-package
+		// does not run its execution mode, so the network is started from a
+		// qrl-package checkout that does.
+		Name:        "execution-remote-signer",
+		Profile:     devnet.ProfileRemoteSignerExecution,
+		Suites:      []SuiteID{suiteExecutionRemoteSigner},
+		Timeout:     15 * time.Minute,
 		LocalImages: true,
 	},
 	{

@@ -14,6 +14,7 @@ endpoints; suites do not provision infrastructure.
 | `consensus-remote-signer` | `remote-signer` | Validator duties signed by go-remotesigner: its keys and chain, finality, its metrics, refused slashable requests, a key removed and added back through the remote keys API, and a refused exit; needs locally built images |
 | `consensus-remote-signer-mtls` | `remote-signer-mtls` | The same, with the validator client presenting a client certificate as well as the token; needs locally built images and a qrl-package that issues the certificate |
 | `consensus-remote-signer-exits` | `remote-signer-exits` | The same, with go-remotesigner signing voluntary exits: the last spec exits a validator through it; needs locally built images |
+| `execution-remote-signer` | `remote-signer-execution` | go-remotesigner in execution mode in front of the execution client: its accounts, a transfer it sends and one it signs mined, verified message signatures, refused transactions for another chain and above its fee cap, its proxy's allowlist, its audit log and metrics; needs a locally built image and a qrl-package with its execution mode |
 | `resilience-network-restart` | `anchored` | Recovery from a full outage: proposing and finalizing after every node stops at once |
 | `sync` | `single` | A new full-mode node syncs from genesis, then catches up after a stop |
 
@@ -191,7 +192,10 @@ The lanes are the JSON list of the `lanes` input, then of the
 `E2E_REMOTE_SIGNER_LANES` variable, then
 `["consensus-remote-signer","consensus-remote-signer-exits"]`: mTLS is not
 covered until a qrl-package issues client certificates and the variable
-names `consensus-remote-signer-mtls` too. Before it builds any image,
+names `consensus-remote-signer-mtls` too, nor execution mode until the
+qrl-package revision has `go-remotesigner-execution` and the variable names
+`execution-remote-signer`. That lane's job builds the signer's full flavour
+with `make remote-signer-execution-image`. Before it builds any image,
 each lane job checks that the qrl-package takes every participant field the
 lane's profile sets, so a lane whose qrl-package lacks
 `remote_signer_auth_mode` fails in seconds.
@@ -212,3 +216,64 @@ Deterministic fixture, encoding, and helper tests remain untagged so the default
 
 Build test inputs inside the suite when the building is the behavior under
 test; shared client helpers and fixtures belong under `internal/`.
+
+## Execution remote signer lane
+
+`execution-remote-signer` runs go-remotesigner in execution mode in front of
+the execution client's JSON-RPC, over TLS with a bearer token, as qrl-package's
+`remote_signer_type: go-remotesigner-execution` sets it up: the signer holds
+prefunded development accounts and the execution client none. The suite reads
+the token and the CA from the signer's container, and checks that:
+
+- the signer serves its accounts, each funded and with a public key that
+  derives its address, in `/api/v1/execution/publicKeys` and `qrl_accounts`,
+  and answers neither without its token nor with another;
+- a value transfer `qrl_sendTransaction` sends is mined: the signer has the
+  execution client fill in the nonce, gas and fees, signs, and sends it with
+  `qrl_sendRawTransaction`, and the transaction's sender is the account. The
+  execution client, by its own RPC metrics, served the raw transaction and
+  never `qrl_sendTransaction`;
+- a transaction `qrl_signTransaction` signs is mined once the suite sends it
+  through the signer;
+- `qrl_sign` signatures verify with go-qrllib under the listed public keys,
+  and not over another message or under another account's key;
+- both transaction methods refuse a transaction for another chain and one
+  whose fee is above the signer's cap of 1 quanta, with -32003, and send
+  nothing;
+- the proxy forwards `net_version`, and refuses `admin_nodeInfo`,
+  `debug_getRawHeader` and `personal_listAccounts` with its own -32601: the
+  execution client, which serves the admin and debug APIs, counts the suite's
+  direct calls of them and none of the signer's;
+- the audit log records the transfer as signed and sent, the signed
+  transaction as signed, and the four refusals, and the signer's metrics count
+  the JSON-RPC calls, every one answered with 200, and no 5xx.
+
+When a spec fails, the signer's metrics, healthcheck and audit log are saved
+under `reports/lanes/<lane>/execution-signer/<spec>/`.
+
+The lane needs go-remotesigner's full flavour, which is not published, and a
+qrl-package with its execution mode, which the pinned one lacks, so the
+nightly does not run it and `run-all` leaves it out. Build the image from a
+go-remotesigner checkout, as the consensus image but with the full flavour,
+which links go-qrl (LGPL-3.0-or-later):
+
+```bash
+REMOTESIGNER_SOURCE_DIR=../go-remotesigner make remote-signer-execution-image
+```
+
+Then start the network from a qrl-package checkout that has
+`go-remotesigner-execution`, with the parameters of the
+`remote-signer-execution` profile, and run the lane against it. Its
+validator client signs locally, so any qrysm images serve:
+
+```bash
+mkdir -p reports
+go run ./cmd/qrltest network params --profile remote-signer-execution \
+	> reports/remote-signer-execution.json
+kurtosis enclave add --name remote-signer-execution-devnet &&
+	kurtosis run --enclave remote-signer-execution-devnet ../qrl-package \
+		--args-file reports/remote-signer-execution.json
+DEVNET_ENCLAVE_NAME=remote-signer-execution-devnet \
+E2E_LANE=execution-remote-signer make e2e
+DEVNET_ENCLAVE_NAME=remote-signer-execution-devnet make network-stop
+```

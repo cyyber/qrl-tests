@@ -2,10 +2,11 @@ name: remote-signer-nightly
 
 # The remote-signer lanes, whose validator client signs every duty through
 # go-remotesigner over TLS with the sign token, and in the mTLS lane with a
-# client certificate as well. Neither the signer nor qrysm's remote signer
-# client is published, so the job builds them from pinned commits with the
-# lane's image scripts, and starts the network from a qrl-package checkout
-# until the pinned qrl-package runs go-remotesigner.
+# client certificate as well, and the execution lane, whose execution client
+# go-remotesigner fronts in execution mode. Neither the signer nor qrysm's
+# remote signer client is published, so the job builds them from pinned
+# commits with the lane's image scripts, and starts the network from a
+# qrl-package checkout until the pinned qrl-package runs go-remotesigner.
 on:
   schedule:
     - cron: "30 5 * * *"
@@ -202,19 +203,21 @@ jobs:
       fail-fast: false
       matrix:
         # consensus-remote-signer-mtls needs a qrl-package option that no
-        # qrl-package has yet (e2e/README.md), so only the token lanes, the
-        # one whose signer refuses exits and the one whose signer signs
-        # them, run unless the variable or the input names the mTLS lane
-        # too.
+        # qrl-package has yet (e2e/README.md), and execution-remote-signer a
+        # qrl-package with go-remotesigner's execution mode, which the pinned
+        # one lacks, so only the token lanes, the one whose signer refuses
+        # exits and the one whose signer signs them, run unless the variable
+        # or the input names the others too.
         lane: ${{ fromJSON(inputs.lanes || vars.E2E_REMOTE_SIGNER_LANES || '["consensus-remote-signer","consensus-remote-signer-exits"]') }}
     env:
       E2E_LANE: ${{ matrix.lane }}
       E2E_SEED: ${{ inputs.seed }}
       # The lane's profile; empty for a lane this workflow does not run.
-      DEVNET_PROFILE: ${{ fromJSON('{"consensus-remote-signer":"remote-signer","consensus-remote-signer-mtls":"remote-signer-mtls","consensus-remote-signer-exits":"remote-signer-exits"}')[matrix.lane] }}
+      DEVNET_PROFILE: ${{ fromJSON('{"consensus-remote-signer":"remote-signer","consensus-remote-signer-mtls":"remote-signer-mtls","consensus-remote-signer-exits":"remote-signer-exits","execution-remote-signer":"remote-signer-execution"}')[matrix.lane] }}
       DEVNET_EXECUTION_IMAGE: ${{ needs.images.outputs.execution-image }}
       DEVNET_GENESIS_IMAGE: ${{ needs.images.outputs.genesis-image }}
       DEVNET_REMOTE_SIGNER_IMAGE: local/go-remotesigner:nightly
+      DEVNET_REMOTE_SIGNER_EXECUTION_IMAGE: local/go-remotesigner:nightly-full
       DEVNET_CONSENSUS_IMAGE: local/qrysm:nightly-beacon-chain
       DEVNET_VALIDATOR_IMAGE: local/qrysm:nightly-validator
       # One enclave per run, attempt, and lane.
@@ -293,14 +296,20 @@ jobs:
         uses: ./.github/actions/install-kurtosis
 
       # The scripts export the commit with git archive, so the image is built
-      # from the commit the images job resolved, whatever ref named it.
+      # from the commit the images job resolved, whatever ref named it. The
+      # execution lane's signer is the full flavour, the others' the
+      # consensus-only one.
       - name: Build the go-remotesigner image
         env:
           REMOTESIGNER_SOURCE_DIR: .build/go-remotesigner
           REMOTESIGNER_REF: ${{ needs.images.outputs.go-remotesigner-sha }}
         run: |
           go install github.com/google/go-licenses/v2@v2.0.1
-          GO_LICENSES="$(go env GOPATH)/bin/go-licenses" make remote-signer-image
+          target=remote-signer-image
+          if [ "${DEVNET_PROFILE}" = remote-signer-execution ]; then
+            target=remote-signer-execution-image
+          fi
+          GO_LICENSES="$(go env GOPATH)/bin/go-licenses" make "${target}"
 
       - name: Build the qrysm images
         env:
