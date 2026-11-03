@@ -62,9 +62,12 @@ its chain config, for another validator. The signer refuses it with 403
 `ARTIFACT_TYPE_DISABLED`, as it refuses every exit unless it runs with
 `--voluntary-exit-signing-enabled`, and the command fails, naming that option,
 and submits nothing. `consensus-remote-signer-exits` runs the same suite on
-the `remote-signer-exits` profile, whose signer runs with the option: the
-beacon node accepts the exit, and the validator is `active_exiting`. An exit
-cannot be undone, so it comes last.
+the `remote-signer-exits` profile, whose signer runs with the option. There
+the command first runs without the chain config, so that it makes the exit for
+mainnet's fork: the signer answers 400 `FORK_INFO_MISMATCH`, and the command
+fails, naming `--chain-config-file`, and submits nothing. With the chain
+config the beacon node accepts the exit, and the validator is
+`active_exiting`. An exit cannot be undone, so it comes last.
 
 When a spec fails, the signer's metrics, healthcheck and capabilities, and
 the validator client's remote signer metrics, are saved under

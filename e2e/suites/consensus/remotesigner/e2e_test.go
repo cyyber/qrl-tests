@@ -63,10 +63,18 @@ const (
 
 	// signerURLFlag is the validator client's flag naming its signer.
 	signerURLFlag = "--validators-external-signer-url="
+	// chainConfigFlag is the global flag of qrysm's validator binary that
+	// names the network's chain config.
+	chainConfigFlag = "--chain-config-file"
 
 	// exitsDisabled is what qrysm's exit command fails with when the signer
 	// refuses to sign exits, with 403 ARTIFACT_TYPE_DISABLED.
 	exitsDisabled = "remote signer does not sign voluntary exits (start it with --voluntary-exit-signing-enabled to sign them)"
+	// exitForAnotherNetwork is what the command fails with when the signer
+	// rejects an exit as made for another network, with 400
+	// FORK_INFO_MISMATCH or SIGNING_ROOT_MISMATCH.
+	exitForAnotherNetwork = "remote signer refused the voluntary exit as made for another network " +
+		"(the chain config, --chain-config-file, and the beacon node must be on the signer's network)"
 	// exitSubmitted is what the command logs once the beacon node has
 	// accepted an exit.
 	exitSubmitted = "Voluntary exit was successful"
@@ -674,25 +682,51 @@ var _ = ginkgo.Describe(
 			// remote signer README describes; the chain config is a global
 			// flag.
 			flags := validatorFlags(ctx)
-			command := []string{flags[0]}
+			var chainConfig []string
 			for _, flag := range flags[1:] {
-				if strings.HasPrefix(flag, "--chain-config-file=") {
-					command = append(command, flag)
+				if strings.HasPrefix(flag, chainConfigFlag+"=") {
+					chainConfig = append(chainConfig, flag)
 				}
 			}
-			gomega.Expect(command).To(gomega.HaveLen(2), "the validator client has no --chain-config-file")
-			command = append(command, "accounts", "voluntary-exit", "--accept-terms-of-use", "--force-exit",
-				"--public-keys="+exiting.PublicKey)
+			gomega.Expect(chainConfig).To(gomega.HaveLen(1), "the validator client's %s", chainConfigFlag)
+			exit := []string{"accounts", "voluntary-exit", "--accept-terms-of-use", "--force-exit", "--public-keys=" + exiting.PublicKey}
 			for _, flag := range flags[1:] {
 				if strings.HasPrefix(flag, "--validators-external-signer-") || strings.HasPrefix(flag, "--beacon-rpc-provider=") {
-					command = append(command, flag)
+					exit = append(exit, flag)
 				}
 			}
+			command := slices.Concat(flags[:1], chainConfig, exit)
 
 			exits := func(metrics remotesigner.Metrics, result string) float64 {
 				ginkgo.GinkgoHelper()
 				return sum(metrics, remotesigner.MetricSigningRequests, remotesigner.With("type", remotesigner.TypeVoluntaryExit, "result", result))
 			}
+			stillActive := func(ctx context.Context) {
+				ginkgo.GinkgoHelper()
+				gomega.Consistently(func(ctx context.Context) (beacon.Validator, error) {
+					return node.Beacon.Validator(ctx, strconv.FormatUint(index, 10))
+				}).WithContext(ctx).WithTimeout(2 * chain.SlotDuration).WithPolling(chain.SlotDuration).
+					Should(gomega.HaveField("Status", "active_ongoing"))
+			}
+
+			if signsExits {
+				// Without the chain config the command makes the exit for
+				// mainnet's fork: the signer answers 400 FORK_INFO_MISMATCH,
+				// and the command stops, names the chain config's flag and
+				// submits nothing. A signer that refuses exits refuses the
+				// type before it reads the fork, so only this lane gets the
+				// answer.
+				before := scrape(ctx)
+				output, err := devnet.ExecService(ctx, docker, validator.ID, slices.Concat(flags[:1], exit)...)
+				after := scrape(ctx)
+				gomega.Expect(err).To(gomega.HaveOccurred(), "the exit command succeeded without %s: %s", chainConfigFlag, output)
+				gomega.Expect(output).To(gomega.ContainSubstring(exitForAnotherNetwork))
+				gomega.Expect(output).To(gomega.ContainSubstring("FORK_INFO_MISMATCH"))
+				gomega.Expect(exits(after, "bad_request") - exits(before, "bad_request")).To(gomega.Equal(1.0))
+				gomega.Expect(exits(after, "ok") - exits(before, "ok")).To(gomega.BeZero())
+				stillActive(ctx)
+			}
+
 			before := scrape(ctx)
 			output, err := devnet.ExecService(ctx, docker, validator.ID, command...)
 			after := scrape(ctx)
@@ -705,10 +739,7 @@ var _ = ginkgo.Describe(
 				gomega.Expect(err.Error()).To(gomega.ContainSubstring("ARTIFACT_TYPE_DISABLED"))
 				gomega.Expect(exits(after, "refused") - exits(before, "refused")).To(gomega.Equal(1.0))
 				gomega.Expect(exits(after, "ok") - exits(before, "ok")).To(gomega.BeZero())
-				gomega.Consistently(func(ctx context.Context) (beacon.Validator, error) {
-					return node.Beacon.Validator(ctx, strconv.FormatUint(index, 10))
-				}).WithContext(ctx).WithTimeout(2 * chain.SlotDuration).WithPolling(chain.SlotDuration).
-					Should(gomega.HaveField("Status", "active_ongoing"))
+				stillActive(ctx)
 				ginkgo.AddReportEntry("exit", fmt.Sprintf("refused: the signer answered ARTIFACT_TYPE_DISABLED, and validator %d is active_ongoing", index))
 				return
 			}
