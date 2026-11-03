@@ -26,7 +26,8 @@ const (
 	ProfileAnchored Profile = "anchored"
 	// ProfileSpareValidator is the single profile with one more genesis
 	// validator than its participant runs. No client signs for the spare
-	// until a suite starts one with its key, derived from GenesisMnemonic.
+	// until a suite starts one with its key, derived from the pinned
+	// qrl-package's default mnemonic.
 	ProfileSpareValidator Profile = "spare-validator"
 )
 
