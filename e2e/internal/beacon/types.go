@@ -4,6 +4,10 @@ package beacon
 // not been scheduled, such as the exit epoch of an active validator.
 const FarFutureEpoch = ^uint64(0)
 
+// Spec holds the consensus constants a node runs, by name, as the beacon API
+// reports them.
+type Spec map[string]string
+
 type Genesis struct {
 	Time           uint64 `json:"genesis_time,string"`
 	ValidatorsRoot string `json:"genesis_validators_root"`

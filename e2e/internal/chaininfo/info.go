@@ -16,7 +16,7 @@ import (
 // Source is the subset of the beacon API the info is loaded from.
 type Source interface {
 	Genesis(context.Context) (beacon.Genesis, error)
-	SpecUint(context.Context, string) (uint64, error)
+	Spec(context.Context) (beacon.Spec, error)
 }
 
 // Info describes a live chain: its genesis fork version and its timing.
@@ -46,23 +46,27 @@ func Load(ctx context.Context, source Source) (Info, error) {
 		return Info{}, err
 	}
 
-	chain.SlotsPerEpoch, err = source.SpecUint(ctx, "SLOTS_PER_EPOCH")
+	spec, err := source.Spec(ctx)
 	if err != nil {
 		return Info{}, err
 	}
-	secondsPerSlot, err := source.SpecUint(ctx, "SECONDS_PER_SLOT")
+	chain.SlotsPerEpoch, err = spec.Uint("SLOTS_PER_EPOCH")
 	if err != nil {
 		return Info{}, err
 	}
-	votingEpochs, err := source.SpecUint(ctx, "EPOCHS_PER_EXECUTION_VOTING_PERIOD")
+	secondsPerSlot, err := spec.Uint("SECONDS_PER_SLOT")
 	if err != nil {
 		return Info{}, err
 	}
-	followBlocks, err := source.SpecUint(ctx, "EXECUTION_FOLLOW_DISTANCE")
+	votingEpochs, err := spec.Uint("EPOCHS_PER_EXECUTION_VOTING_PERIOD")
 	if err != nil {
 		return Info{}, err
 	}
-	secondsPerBlock, err := source.SpecUint(ctx, "SECONDS_PER_EXECUTION_BLOCK")
+	followBlocks, err := spec.Uint("EXECUTION_FOLLOW_DISTANCE")
+	if err != nil {
+		return Info{}, err
+	}
+	secondsPerBlock, err := spec.Uint("SECONDS_PER_EXECUTION_BLOCK")
 	if err != nil {
 		return Info{}, err
 	}

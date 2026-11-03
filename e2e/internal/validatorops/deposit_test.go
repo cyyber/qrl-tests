@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -220,21 +219,14 @@ func (chainSource) Genesis(context.Context) (beacon.Genesis, error) {
 	return beacon.Genesis{ForkVersion: "0x10000020"}, nil
 }
 
-func (chainSource) SpecUint(_ context.Context, name string) (uint64, error) {
-	switch name {
-	case "SLOTS_PER_EPOCH":
-		return 8, nil
-	case "SECONDS_PER_SLOT":
-		return 5, nil
-	case "EPOCHS_PER_EXECUTION_VOTING_PERIOD":
-		return 64, nil
-	case "EXECUTION_FOLLOW_DISTANCE":
-		return 8, nil
-	case "SECONDS_PER_EXECUTION_BLOCK":
-		return 5, nil
-	default:
-		return 0, fmt.Errorf("unexpected spec value %s", name)
-	}
+func (chainSource) Spec(context.Context) (beacon.Spec, error) {
+	return beacon.Spec{
+		"SLOTS_PER_EPOCH":                    "8",
+		"SECONDS_PER_SLOT":                   "5",
+		"EPOCHS_PER_EXECUTION_VOTING_PERIOD": "64",
+		"EXECUTION_FOLLOW_DISTANCE":          "8",
+		"SECONDS_PER_EXECUTION_BLOCK":        "5",
+	}, nil
 }
 
 func loadChainInfo(t *testing.T) chaininfo.Info {

@@ -15,12 +15,24 @@ func (client *Client) DepositContract(ctx context.Context) (DepositContract, err
 	return getData[DepositContract](ctx, client, "/qrl/v1/config/deposit_contract")
 }
 
+// Spec returns the node's consensus constants. A caller that needs several
+// reads them all in one request.
+func (client *Client) Spec(ctx context.Context) (Spec, error) {
+	return getData[Spec](ctx, client, "/qrl/v1/config/spec")
+}
+
+// SpecUint returns one numeric consensus constant.
 func (client *Client) SpecUint(ctx context.Context, name string) (uint64, error) {
-	values, err := getData[map[string]string](ctx, client, "/qrl/v1/config/spec")
+	spec, err := client.Spec(ctx)
 	if err != nil {
 		return 0, err
 	}
-	value, ok := values[name]
+	return spec.Uint(name)
+}
+
+// Uint parses the numeric constant name.
+func (spec Spec) Uint(name string) (uint64, error) {
+	value, ok := spec[name]
 	if !ok {
 		return 0, fmt.Errorf("consensus spec does not define %s", name)
 	}
@@ -196,6 +208,8 @@ func (client *Client) BlockOperations(ctx context.Context, blockID string) (Bloc
 	return operations, nil
 }
 
+// AttesterDuties returns the slot each of the given validators attests in
+// during epoch. Qrysm serves the current epoch and the next.
 func (client *Client) AttesterDuties(ctx context.Context, epoch uint64, indices []uint64) ([]AttesterDuty, error) {
 	path := "/qrl/v1/validator/duties/attester/" + strconv.FormatUint(epoch, 10)
 	return postData[[]AttesterDuty](ctx, client, path, formatIndices(indices))
