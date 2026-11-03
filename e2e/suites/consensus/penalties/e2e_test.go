@@ -45,7 +45,7 @@ var _ = ginkgo.Describe(
 	func() {
 		var (
 			node            *live.Node
-			spare           rewards.Validator
+			val             rewards.Validator
 			keystores       []sidecar.File
 			validatorClient *validator.Sidecar
 		)
@@ -88,7 +88,7 @@ var _ = ginkgo.Describe(
 
 			spares := runtime.Profile.SpareValidators()
 			gomega.Expect(spares).NotTo(gomega.BeEmpty(), "profile %q has no genesis validator that no client runs", runtime.Profile)
-			spare = rewards.Validator{
+			val = rewards.Validator{
 				Client: node.Beacon,
 				Chain:  testsuite.MustSucceed(chaininfo.Load(ctx, node.Beacon)),
 				Spec:   testsuite.MustSucceed(rewards.LoadSpec(ctx, node.Beacon)),
@@ -98,7 +98,7 @@ var _ = ginkgo.Describe(
 			derived := testsuite.MustSucceed(deposit.GenesisKey(ctx, deposit.GenesisKeyConfig{
 				Image:               node.QrysmAlltoolsImage,
 				Mnemonic:            devnet.GenesisMnemonic,
-				Index:               spare.Index,
+				Index:               val.Index,
 				WithdrawalRecipient: node.Address.Hex(),
 				Password:            validatorops.KeystorePassword,
 			}))
@@ -106,9 +106,9 @@ var _ = ginkgo.Describe(
 
 			// A network from other parameters may have no such validator, or
 			// a validator client that already runs it.
-			record := testsuite.MustSucceed(node.Beacon.Validator(ctx, strconv.FormatUint(spare.Index, 10)))
+			record := testsuite.MustSucceed(node.Beacon.Validator(ctx, strconv.FormatUint(val.Index, 10)))
 			gomega.Expect(strings.EqualFold(record.PublicKey, derived.PublicKey)).To(gomega.BeTrue(),
-				"genesis validator %d is not the key derived for its index", spare.Index)
+				"genesis validator %d is not the key derived for its index", val.Index)
 			gomega.Expect(record.Status).To(gomega.Equal("active_ongoing"))
 		}, ginkgo.NodeTimeout(3*time.Minute))
 
@@ -125,7 +125,7 @@ var _ = ginkgo.Describe(
 			// before the start is a miss.
 			head := testsuite.MustSucceed(node.Beacon.HeadSlot(ctx))
 			startValidatorClient(ctx)
-			spare.FirstAttestedEpoch(ctx, spare.Chain.Epoch(head), attestTimeout)
+			val.FirstAttestedEpoch(ctx, val.Chain.Epoch(head), attestTimeout)
 		}, ginkgo.SpecTimeout(attestTimeout+time.Minute))
 
 		ginkgo.It("loses exactly the missed-vote penalty in every epoch its validator client is stopped", func(ctx ginkgo.SpecContext) {
@@ -135,15 +135,15 @@ var _ = ginkgo.Describe(
 			// later epoch covers a host clock behind the node's, as Docker
 			// Desktop's can be after sleep.
 			head := testsuite.MustSucceed(node.Beacon.HeadSlot(ctx))
-			first := max(spare.Chain.EpochAt(time.Now()), spare.Chain.Epoch(head)) + 1
+			first := max(val.Chain.EpochAt(time.Now()), val.Chain.Epoch(head)) + 1
 			last := first + offlineEpochs - 1
-			spare.AwaitRewards(ctx, last)
+			val.AwaitRewards(ctx, last)
 
 			for epoch := first; epoch <= last; epoch++ {
-				reward := testsuite.MustSucceed(spare.AttestationReward(ctx, epoch))
-				amounts := testsuite.MustSucceed(spare.VoteAmounts(ctx, epoch))
+				reward := testsuite.MustSucceed(val.AttestationReward(ctx, epoch))
+				amounts := testsuite.MustSucceed(val.VoteAmounts(ctx, epoch))
 				gomega.Expect(reward).To(gomega.Equal(beacon.AttestationReward{
-					ValidatorIndex: spare.Index,
+					ValidatorIndex: val.Index,
 					Source:         -int64(amounts.MissedSource),
 					Target:         -int64(amounts.MissedTarget),
 				}), "attestation rewards of epoch %d", epoch)
@@ -151,9 +151,9 @@ var _ = ginkgo.Describe(
 				// The rewards of epoch apply when epoch+2 starts. The blocks
 				// of epoch+1 add the missed sync committee duties and take
 				// any withdrawal; the offline validator proposes none.
-				before := testsuite.MustSucceed(spare.BalanceAtEpochStart(ctx, epoch+1))
-				after := testsuite.MustSucceed(spare.BalanceAtEpochStart(ctx, epoch+2))
-				blocks := testsuite.MustSucceed(spare.BlockBalanceChanges(ctx, epoch+1))
+				before := testsuite.MustSucceed(val.BalanceAtEpochStart(ctx, epoch+1))
+				after := testsuite.MustSucceed(val.BalanceAtEpochStart(ctx, epoch+2))
+				blocks := testsuite.MustSucceed(val.BlockBalanceChanges(ctx, epoch+1))
 				penalty := amounts.MissedSource + amounts.MissedTarget
 				want := int64(before) - int64(penalty) + blocks
 				gomega.Expect(int64(after)).To(gomega.Equal(want),
@@ -165,16 +165,16 @@ var _ = ginkgo.Describe(
 		ginkgo.It("earns exactly the timely-vote rewards once its validator client starts again", func(ctx ginkgo.SpecContext) {
 			head := testsuite.MustSucceed(node.Beacon.HeadSlot(ctx))
 			startValidatorClient(ctx)
-			resumed := spare.FirstAttestedEpoch(ctx, spare.Chain.Epoch(head), attestTimeout)
+			resumed := val.FirstAttestedEpoch(ctx, val.Chain.Epoch(head), attestTimeout)
 
 			// The target vote has the whole epoch, so a healthy client's is
 			// timely. A timely source vote needs inclusion within two slots
 			// and a timely head vote within one, which empty slots can take
 			// away, so each of those earns its reward or costs its penalty.
 			next := resumed + 1
-			spare.AwaitRewards(ctx, next)
-			reward := testsuite.MustSucceed(spare.AttestationReward(ctx, next))
-			amounts := testsuite.MustSucceed(spare.VoteAmounts(ctx, next))
+			val.AwaitRewards(ctx, next)
+			reward := testsuite.MustSucceed(val.AttestationReward(ctx, next))
+			amounts := testsuite.MustSucceed(val.VoteAmounts(ctx, next))
 			gomega.Expect(reward.Target).To(gomega.Equal(amounts.Timely.Target), "target reward of epoch %d", next)
 			gomega.Expect(reward.Source).To(gomega.BeElementOf(amounts.Timely.Source, -int64(amounts.MissedSource)),
 				"source reward of epoch %d", next)
@@ -183,9 +183,9 @@ var _ = ginkgo.Describe(
 			// The rewards of next apply when next+2 starts. The blocks of
 			// next+1 add the validator's proposer and sync committee rewards
 			// and take any withdrawal.
-			before := testsuite.MustSucceed(spare.BalanceAtEpochStart(ctx, next+1))
-			after := testsuite.MustSucceed(spare.BalanceAtEpochStart(ctx, next+2))
-			blocks := testsuite.MustSucceed(spare.BlockBalanceChanges(ctx, next+1))
+			before := testsuite.MustSucceed(val.BalanceAtEpochStart(ctx, next+1))
+			after := testsuite.MustSucceed(val.BalanceAtEpochStart(ctx, next+2))
+			blocks := testsuite.MustSucceed(val.BlockBalanceChanges(ctx, next+1))
 			earned := reward.Head + reward.Source + reward.Target
 			want := int64(before) + earned + blocks
 			gomega.Expect(int64(after)).To(gomega.Equal(want),
