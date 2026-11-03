@@ -1,9 +1,14 @@
 #!/usr/bin/env bash
-# Builds go-remotesigner's consensus-only image for the remote-signer profiles
-# from a go-remotesigner checkout, with the checkout's own Dockerfile
-# (deploy/docker/Dockerfile, through its `make image` target). The image is
-# tagged DEVNET_REMOTE_SIGNER_IMAGE, the image the profile runs.
+# Builds a go-remotesigner image for the remote-signer profiles from a
+# go-remotesigner checkout, with the checkout's own Dockerfile
+# (deploy/docker/Dockerfile, through its `make image` target): by default the
+# consensus-only flavour, tagged DEVNET_REMOTE_SIGNER_IMAGE, the image the
+# consensus profiles run; with REMOTESIGNER_FLAVOUR=remotesigner the full
+# flavour, which has execution mode too, tagged
+# DEVNET_REMOTE_SIGNER_EXECUTION_IMAGE, the image the remote-signer-execution
+# profile runs.
 #
+# REMOTESIGNER_FLAVOUR     remotesigner-consensus (default) or remotesigner
 # REMOTESIGNER_SOURCE_DIR  the checkout (default: ../go-remotesigner)
 # REMOTESIGNER_REF         a commit to build instead of the checkout's working
 #                          tree; it is exported with git archive, so the
@@ -15,7 +20,15 @@ set -euo pipefail
 script_dir=$(cd -- "$(dirname -- "$0")" && pwd)
 repo_root=$(cd -- "${script_dir}/.." && pwd)
 source_dir=$(cd -- "${REMOTESIGNER_SOURCE_DIR:-${repo_root}/../go-remotesigner}" && pwd)
-image=${DEVNET_REMOTE_SIGNER_IMAGE:-local/go-remotesigner:devnet}
+flavour=${REMOTESIGNER_FLAVOUR:-remotesigner-consensus}
+case "${flavour}" in
+remotesigner-consensus) image=${DEVNET_REMOTE_SIGNER_IMAGE:-local/go-remotesigner:devnet} ;;
+remotesigner) image=${DEVNET_REMOTE_SIGNER_EXECUTION_IMAGE:-local/go-remotesigner:devnet-full} ;;
+*)
+	echo "REMOTESIGNER_FLAVOUR must be remotesigner-consensus or remotesigner, not ${flavour}" >&2
+	exit 1
+	;;
+esac
 
 go_licenses=${GO_LICENSES:-$(command -v go-licenses || true)}
 test -n "${go_licenses}" || {
@@ -26,7 +39,7 @@ test -n "${go_licenses}" || {
 workdir=$(mktemp -d)
 trap 'rm -rf "${workdir}"' EXIT
 
-make_args=(image FLAVOUR=remotesigner-consensus "IMAGE=${image}" "GO_LICENSES=${go_licenses}")
+make_args=(image "FLAVOUR=${flavour}" "IMAGE=${image}" "GO_LICENSES=${go_licenses}")
 build_dir=${source_dir}
 if [ -n "${REMOTESIGNER_REF:-}" ]; then
 	commit=$(git -C "${source_dir}" rev-parse --verify "${REMOTESIGNER_REF}^{commit}")
