@@ -28,6 +28,7 @@ const (
 	suiteExecutionTxpool           SuiteID = "execution-txpool"
 	suiteConsensusStakingAutomated SuiteID = "consensus-staking-automated"
 	suiteConsensusStakingOperator  SuiteID = "consensus-staking-operator"
+	suiteConsensusPenalties        SuiteID = "consensus-penalties"
 	suiteResilienceNetworkRestart  SuiteID = "resilience-network-restart"
 	suiteSyncGenesis               SuiteID = "sync-genesis"
 )
@@ -38,6 +39,7 @@ var suitePackages = map[SuiteID]string{
 	suiteExecutionTxpool:           "./e2e/suites/execution/txpool",
 	suiteConsensusStakingAutomated: "./e2e/suites/consensus/stakingautomated",
 	suiteConsensusStakingOperator:  "./e2e/suites/consensus/stakingoperator",
+	suiteConsensusPenalties:        "./e2e/suites/consensus/penalties",
 	suiteResilienceNetworkRestart:  "./e2e/suites/resilience/networkrestart",
 	suiteSyncGenesis:               "./e2e/suites/sync/genesis",
 }
@@ -65,6 +67,16 @@ var registry = []Lane{
 		Profile: devnet.ProfileSingle,
 		Suites:  []SuiteID{suiteConsensusStakingOperator},
 		Timeout: 95 * time.Minute,
+	},
+	{
+		// The spare genesis validator attests, stays offline and attests
+		// again, each for a few 40-second epochs, and every epoch's rewards
+		// are served two epochs late: about seven minutes, within spec
+		// timeouts that add up to 22.
+		Name:    "consensus-penalties",
+		Profile: devnet.ProfileSpareValidator,
+		Suites:  []SuiteID{suiteConsensusPenalties},
+		Timeout: 30 * time.Minute,
 	},
 	{
 		// Finality, the outage and finality again take about a dozen
@@ -145,11 +157,13 @@ func (lane Lane) NeedsConsensusImage() bool {
 
 func (lane Lane) NeedsValidatorImage() bool {
 	return slices.Contains(lane.Suites, suiteConsensusStakingAutomated) ||
-		slices.Contains(lane.Suites, suiteConsensusStakingOperator)
+		slices.Contains(lane.Suites, suiteConsensusStakingOperator) ||
+		slices.Contains(lane.Suites, suiteConsensusPenalties)
 }
 
 func (lane Lane) NeedsQrysmAlltoolsImage() bool {
-	return slices.Contains(lane.Suites, suiteConsensusStakingOperator)
+	return slices.Contains(lane.Suites, suiteConsensusStakingOperator) ||
+		slices.Contains(lane.Suites, suiteConsensusPenalties)
 }
 
 func RegisteredSuites() []SuiteID {

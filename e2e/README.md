@@ -11,6 +11,7 @@ endpoints; suites do not provision infrastructure.
 | `execution` | `single` | Execution client: contract ABI, gqrl console, and transaction pool |
 | `consensus-staking-automated` | `single` | Staking through contract deposits and the keymanager API |
 | `consensus-staking-operator` | `single` | Staking through the deposit and validator CLIs |
+| `consensus-penalties` | `spare-validator` | Penalties of a validator whose client stops, and their end when it starts again |
 | `resilience-network-restart` | `anchored` | Recovery from a full outage: proposing and finalizing after every node stops at once |
 | `sync` | `single` | A new full-mode node syncs from genesis, then catches up after a stop |
 
