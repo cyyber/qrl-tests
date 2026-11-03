@@ -68,6 +68,21 @@ func TestAnchoredProfileParameters(t *testing.T) {
 	require.Equal(t, []string{"--min-sync-peers=0", "--minimum-peers-per-subnet=0"}, defaultCLExtraParams)
 }
 
+func TestSpareValidatorProfileParameters(t *testing.T) {
+	payload, err := resolveParameters("Q"+strings.Repeat("a", 128), StartOptions{Profile: ProfileSpareValidator})
+	require.NoError(t, err)
+
+	var parameters map[string]any
+	require.NoError(t, json.Unmarshal([]byte(payload), &parameters))
+	participants := parameters["participants"].([]any)
+	require.Len(t, participants, 1)
+	require.Equal(t, float64(64), participants[0].(map[string]any)["validator_count"])
+	network := parameters["network_params"].(map[string]any)
+	require.Equal(t, float64(65), network["preregistered_validator_count"])
+	// The spare's key derives from the package's default mnemonic.
+	require.NotContains(t, network, "preregistered_validator_keys_mnemonic")
+}
+
 func TestFileParametersPassThroughUnchanged(t *testing.T) {
 	address := "Q" + strings.Repeat("b", 128)
 	custom := []byte(fmt.Sprintf(`participants:

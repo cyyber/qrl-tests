@@ -25,6 +25,7 @@ type Runtime struct {
 	ConsensusImage     string
 	ValidatorImage     string
 	QrysmAlltoolsImage string
+	Profile            devnet.Profile
 
 	environment devnet.Environment
 	nodes       []*Node
@@ -65,6 +66,7 @@ func Load() (*Runtime, error) {
 		ConsensusImage:     suiteManifest.ConsensusImage,
 		ValidatorImage:     suiteManifest.ValidatorImage,
 		QrysmAlltoolsImage: suiteManifest.QrysmAlltoolsImage,
+		Profile:            suiteManifest.Profile,
 		environment:        suiteManifest.Environment,
 	}
 	return runtime, nil
