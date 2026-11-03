@@ -162,11 +162,9 @@ func (validator Validator) BalanceAt(ctx context.Context, slot uint64) (uint64, 
 	return record.Balance, err
 }
 
-// BlockBalanceChanges sums what the blocks after the first slot of epoch,
-// through the first slot of the next, did to the validator's balance: the
-// rewards of the blocks it proposed and its sync committee rewards, negative
-// for missed duties, less its withdrawals. Those blocks lie between
-// BalanceAtEpochStart of epoch and of the next.
+// BlockBalanceChanges sums BlockBalanceChange over the blocks between
+// BalanceAtEpochStart of epoch and of the next: the second slot of epoch
+// through the first slot of the next.
 func (validator Validator) BlockBalanceChanges(ctx context.Context, epoch uint64) (int64, error) {
 	var change int64
 	start := epoch * validator.Chain.SlotsPerEpoch
