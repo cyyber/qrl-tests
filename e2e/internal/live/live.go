@@ -25,7 +25,7 @@ type Runtime struct {
 	ConsensusImage     string
 	ValidatorImage     string
 	QrysmAlltoolsImage string
-	Profile devnet.Profile
+	Profile            devnet.Profile
 
 	environment devnet.Environment
 	nodes       []*Node
