@@ -68,10 +68,10 @@ type Validator struct {
 	Index  uint64
 }
 
-// VoteAmounts is what a validator's votes of an epoch earn or lose: Timely is
-// what each vote earns when it is timely, the ideal reward at the validator's
-// effective balance, and MissedSource and MissedTarget what missing those
-// votes costs. Missing the head vote costs nothing.
+// VoteAmounts is what a validator's votes in an epoch earn or cost. Timely is
+// what each vote earns when it is timely: Qrysm's ideal reward at the
+// validator's effective balance. MissedSource and MissedTarget are what
+// missing those votes costs; missing the head vote costs nothing.
 type VoteAmounts struct {
 	Timely       beacon.IdealAttestationReward
 	MissedSource uint64
