@@ -25,8 +25,6 @@ type Runtime struct {
 	ConsensusImage     string
 	ValidatorImage     string
 	QrysmAlltoolsImage string
-	// Profile is the lane's profile. A network started from DEVNET_PARAMS_FILE
-	// is laid out by that file instead, which may differ.
 	Profile devnet.Profile
 
 	environment devnet.Environment
