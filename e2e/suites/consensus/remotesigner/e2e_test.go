@@ -661,8 +661,10 @@ var _ = ginkgo.Describe(
 			expectNoFaults(scrape(ctx))
 		}, ginkgo.SpecTimeout(10*time.Minute))
 
-		// An exit cannot be undone, so it is the suite's last spec.
-		ginkgo.It("exits a validator through the signer with qrysm's exit command when the signer signs exits", func(ctx ginkgo.SpecContext) {
+		// An exit cannot be undone, so it is the suite's last spec. The
+		// signer's option decides which answer the spec expects, and the
+		// spec's report entry says which one it got.
+		ginkgo.It("runs qrysm's exit command through the signer, which refuses the exit by default and signs it with --voluntary-exit-signing-enabled", func(ctx ginkgo.SpecContext) {
 			index := uint64(len(keys) - exitingIndexFromLast)
 			exiting := testsuite.MustSucceed(node.Beacon.Validator(ctx, strconv.FormatUint(index, 10)))
 			gomega.Expect(exiting.Status).To(gomega.Equal("active_ongoing"))
@@ -707,6 +709,7 @@ var _ = ginkgo.Describe(
 					return node.Beacon.Validator(ctx, strconv.FormatUint(index, 10))
 				}).WithContext(ctx).WithTimeout(2 * chain.SlotDuration).WithPolling(chain.SlotDuration).
 					Should(gomega.HaveField("Status", "active_ongoing"))
+				ginkgo.AddReportEntry("exit", fmt.Sprintf("refused: the signer answered ARTIFACT_TYPE_DISABLED, and validator %d is active_ongoing", index))
 				return
 			}
 
@@ -721,6 +724,7 @@ var _ = ginkgo.Describe(
 				gomega.HaveField("Status", "active_exiting"),
 				gomega.HaveField("ExitEpoch", gomega.BeNumerically("<", farFutureEpoch)),
 			))
+			ginkgo.AddReportEntry("exit", fmt.Sprintf("signed: the beacon node accepted the exit, and validator %d is active_exiting", index))
 		}, ginkgo.SpecTimeout(5*time.Minute))
 	},
 )
