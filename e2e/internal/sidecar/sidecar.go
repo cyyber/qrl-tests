@@ -19,6 +19,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cyyber/qrl-tests/internal/containerexec"
 	"github.com/cyyber/qrl-tests/internal/containerfiles"
 	"github.com/cyyber/qrl-tests/internal/dockerapi"
 	"github.com/moby/moby/api/pkg/stdcopy"
@@ -412,40 +413,7 @@ func (container *Container) Logs(lines int) (string, error) {
 // Exec runs command inside the container and returns its combined output. A
 // non-zero exit code is an error that carries the output.
 func (container *Container) Exec(ctx context.Context, command ...string) (string, error) {
-	commandLine := strings.Join(command, " ")
-	created, err := container.client.ExecCreate(ctx, container.id, dockerclient.ExecCreateOptions{
-		AttachStdout: true,
-		AttachStderr: true,
-		Cmd:          command,
-	})
-	if err != nil {
-		return "", fmt.Errorf("create exec %s: %w", commandLine, err)
-	}
-	attached, err := container.client.ExecAttach(ctx, created.ID, dockerclient.ExecAttachOptions{})
-	if err != nil {
-		return "", fmt.Errorf("attach exec %s: %w", commandLine, err)
-	}
-	defer attached.Close()
-	// The attached stream does not end with ctx; close it so a command that
-	// never exits cannot block past the caller's deadline.
-	stop := context.AfterFunc(ctx, attached.Close)
-	defer stop()
-
-	var output bytes.Buffer
-	if _, err := stdcopy.StdCopy(&output, &output, attached.Reader); err != nil {
-		if ctx.Err() != nil {
-			return output.String(), fmt.Errorf("exec %s: %w", commandLine, context.Cause(ctx))
-		}
-		return output.String(), fmt.Errorf("read exec %s: %w", commandLine, err)
-	}
-	inspected, err := container.client.ExecInspect(ctx, created.ID, dockerclient.ExecInspectOptions{})
-	if err != nil {
-		return output.String(), fmt.Errorf("inspect exec %s: %w", commandLine, err)
-	}
-	if inspected.ExitCode != 0 {
-		return output.String(), fmt.Errorf("%s: exit %d: %s", commandLine, inspected.ExitCode, strings.TrimSpace(output.String()))
-	}
-	return output.String(), nil
+	return containerexec.Run(ctx, container.client, container.id, command...)
 }
 
 // Process is a sidecar container started by Attach, with its standard streams

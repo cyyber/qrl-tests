@@ -35,6 +35,10 @@ func TestDefaultParameters(t *testing.T) {
 	require.Equal(t, "clef", participant["remote_signer_type"])
 	require.Equal(t, DefaultClefImage, participant["remote_signer_image"])
 	require.Equal(t, true, participant["remote_signer_auto_approve"])
+	require.NotContains(t, participant, "remote_signer_extra_env_vars")
+	require.NotContains(t, participant, "remote_signer_extra_labels")
+	require.NotContains(t, participant, "remote_signer_extra_params")
+	require.NotContains(t, participant, "keymanager_enabled")
 	require.Equal(t, float64(64), participant["validator_count"])
 	require.Equal(t, []any{"--graphql", "--graphql.vhosts=*"}, participant["el_extra_params"])
 	require.Equal(t, []any{"--min-sync-peers=0", "--minimum-peers-per-subnet=0"}, participant["cl_extra_params"])
@@ -66,6 +70,121 @@ func TestAnchoredProfileParameters(t *testing.T) {
 	require.Equal(t, []any{"--minimum-peers-per-subnet=0"}, participants[1].(map[string]any)["cl_extra_params"])
 	// The profile adds to the defaults without changing them for others.
 	require.Equal(t, []string{"--min-sync-peers=0", "--minimum-peers-per-subnet=0"}, defaultCLExtraParams)
+}
+
+func TestRemoteSignerProfileParameters(t *testing.T) {
+	payload, err := resolveParameters("Q"+strings.Repeat("a", 128), StartOptions{
+		Images:  Images{RemoteSigner: "registry.example/go-remotesigner:test"},
+		Profile: ProfileRemoteSigner,
+	})
+	require.NoError(t, err)
+
+	var parameters map[string]any
+	require.NoError(t, json.Unmarshal([]byte(payload), &parameters))
+	participants := parameters["participants"].([]any)
+	require.Len(t, participants, 1)
+	participant := participants[0].(map[string]any)
+	require.Equal(t, true, participant["use_remote_signer"])
+	require.Equal(t, "go-remotesigner", participant["remote_signer_type"])
+	require.Equal(t, "registry.example/go-remotesigner:test", participant["remote_signer_image"])
+	require.Equal(t, false, participant["remote_signer_auto_approve"])
+	require.Equal(t,
+		map[string]any{"REMOTESIGNER_ACCESS_LOGS_ENABLED": "true"},
+		participant["remote_signer_extra_env_vars"],
+	)
+	// The signer service is resolved to its participant by the same labels.
+	require.Equal(t, participant["vc_extra_labels"], participant["remote_signer_extra_labels"])
+	require.Equal(t, "1", participant["remote_signer_extra_labels"].(map[string]any)[participantLabel])
+	require.Equal(t, float64(64), participant["validator_count"])
+	require.Equal(t, DefaultValidatorImage, participant["vc_image"])
+	// qrl-package's default, which a qrl-package without the field runs.
+	require.NotContains(t, participant, "remote_signer_auth_mode")
+	// The validator client serves the remote keys API, and the signer
+	// refuses exits.
+	require.Equal(t, true, participant["keymanager_enabled"])
+	require.NotContains(t, participant, "remote_signer_extra_params")
+}
+
+func TestRemoteSignerExecutionProfileParameters(t *testing.T) {
+	payload, err := resolveParameters("Q"+strings.Repeat("a", 128), StartOptions{
+		Images:  Images{RemoteSignerExecution: "registry.example/go-remotesigner:full"},
+		Profile: ProfileRemoteSignerExecution,
+	})
+	require.NoError(t, err)
+
+	var parameters map[string]any
+	require.NoError(t, json.Unmarshal([]byte(payload), &parameters))
+	participants := parameters["participants"].([]any)
+	require.Len(t, participants, 1)
+	participant := participants[0].(map[string]any)
+	require.Equal(t, true, participant["use_remote_signer"])
+	require.Equal(t, "go-remotesigner-execution", participant["remote_signer_type"])
+	require.Equal(t, "registry.example/go-remotesigner:full", participant["remote_signer_image"])
+	require.Equal(t, false, participant["remote_signer_auto_approve"])
+	require.Equal(t,
+		map[string]any{"REMOTESIGNER_ACCESS_LOGS_ENABLED": "true"},
+		participant["remote_signer_extra_env_vars"],
+	)
+	require.Equal(t, participant["el_extra_labels"], participant["remote_signer_extra_labels"])
+	require.Equal(t, float64(64), participant["validator_count"])
+	// The validator client keeps its keystores, and the profile sets only
+	// the fields every qrl-package with go-remotesigner takes.
+	require.NotContains(t, participant, "keymanager_enabled")
+	require.NotContains(t, participant, "remote_signer_auth_mode")
+	require.NotContains(t, participant, "remote_signer_extra_params")
+}
+
+func TestRemoteSignerExitsProfileParameters(t *testing.T) {
+	images := Images{RemoteSigner: "registry.example/go-remotesigner:test"}
+	tokenPayload, err := resolveParameters(devwallet.Address, StartOptions{Images: images, Profile: ProfileRemoteSigner})
+	require.NoError(t, err)
+	exitsPayload, err := resolveParameters(devwallet.Address, StartOptions{Images: images, Profile: ProfileRemoteSignerExits})
+	require.NoError(t, err)
+
+	var token, exits map[string]any
+	require.NoError(t, json.Unmarshal([]byte(tokenPayload), &token))
+	require.NoError(t, json.Unmarshal([]byte(exitsPayload), &exits))
+	participants := exits["participants"].([]any)
+	require.Len(t, participants, 1)
+	participant := participants[0].(map[string]any)
+	require.Equal(t, []any{"--voluntary-exit-signing-enabled"}, participant["remote_signer_extra_params"])
+
+	// Everything else is the remote-signer profile's.
+	delete(participant, "remote_signer_extra_params")
+	require.Equal(t, token, exits)
+}
+
+func TestRemoteSignerMTLSProfileParameters(t *testing.T) {
+	images := Images{RemoteSigner: "registry.example/go-remotesigner:test"}
+	tokenPayload, err := resolveParameters(devwallet.Address, StartOptions{Images: images, Profile: ProfileRemoteSigner})
+	require.NoError(t, err)
+	mtlsPayload, err := resolveParameters(devwallet.Address, StartOptions{Images: images, Profile: ProfileRemoteSignerMTLS})
+	require.NoError(t, err)
+
+	var token, mtls map[string]any
+	require.NoError(t, json.Unmarshal([]byte(tokenPayload), &token))
+	require.NoError(t, json.Unmarshal([]byte(mtlsPayload), &mtls))
+	participants := mtls["participants"].([]any)
+	require.Len(t, participants, 1)
+	participant := participants[0].(map[string]any)
+	require.Equal(t, "token+mtls", participant["remote_signer_auth_mode"])
+
+	// Everything else is the remote-signer profile's.
+	delete(participant, "remote_signer_auth_mode")
+	require.Equal(t, token, mtls)
+}
+
+func TestProfileParameters(t *testing.T) {
+	images := Images{Validator: "registry.example/qrysm-validator:test"}
+	rendered, err := ProfileParameters(ProfileRemoteSigner, images)
+	require.NoError(t, err)
+	started, err := resolveParameters(devwallet.Address, StartOptions{Images: images, Profile: ProfileRemoteSigner})
+	require.NoError(t, err)
+	require.Equal(t, started, rendered)
+	require.Contains(t, decodedParametersFile(t, rendered).Network.PrefundedAccounts, devwallet.Address)
+
+	_, err = ProfileParameters("unknown", images)
+	require.ErrorContains(t, err, "unknown development-network profile")
 }
 
 func TestFileParametersPassThroughUnchanged(t *testing.T) {

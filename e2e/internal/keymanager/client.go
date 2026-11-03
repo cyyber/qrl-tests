@@ -98,6 +98,65 @@ func (client *Client) ImportKeystore(ctx context.Context, keystoreJSON, password
 	return fmt.Errorf("import keystore: %s", result.Status)
 }
 
+// RemoteKey is a key of a validator client that signs through a remote
+// signer, as its remote keys API lists it. URL is the signer the key is
+// signed by; ReadOnly is false for the keys of a key file, the only ones the
+// API can add and delete.
+type RemoteKey struct {
+	PublicKey string `json:"pubkey"`
+	URL       string `json:"url"`
+	ReadOnly  bool   `json:"readonly"`
+}
+
+// Status is the API's answer for one key of a request, such as imported,
+// duplicate or error for an import, and deleted, not_found or error for a
+// delete; qrysm's case varies, so compare with strings.EqualFold.
+type Status struct {
+	Status  string `json:"status"`
+	Message string `json:"message"`
+}
+
+const remoteKeysPath = "/qrl/v1/remotekeys"
+
+func (client *Client) ListRemoteKeys(ctx context.Context) ([]RemoteKey, error) {
+	var response dataResponse[[]RemoteKey]
+	if err := client.do(ctx, http.MethodGet, remoteKeysPath, nil, &response); err != nil {
+		return nil, err
+	}
+	return response.Data, nil
+}
+
+// ImportRemoteKey adds publicKey to the validator client's keys, giving
+// signerURL as the key's signer, and returns the key's status.
+func (client *Client) ImportRemoteKey(ctx context.Context, publicKey, signerURL string) (Status, error) {
+	type remoteKey struct {
+		PublicKey string `json:"pubkey"`
+		URL       string `json:"url"`
+	}
+	return client.oneStatus(ctx, http.MethodPost, struct {
+		RemoteKeys []remoteKey `json:"remote_keys"`
+	}{RemoteKeys: []remoteKey{{PublicKey: publicKey, URL: signerURL}}})
+}
+
+// DeleteRemoteKey removes publicKey from the validator client's keys and
+// returns the key's status.
+func (client *Client) DeleteRemoteKey(ctx context.Context, publicKey string) (Status, error) {
+	return client.oneStatus(ctx, http.MethodDelete, struct {
+		PublicKeys []string `json:"pubkeys"`
+	}{PublicKeys: []string{publicKey}})
+}
+
+func (client *Client) oneStatus(ctx context.Context, method string, payload any) (Status, error) {
+	var response dataResponse[[]Status]
+	if err := client.do(ctx, method, remoteKeysPath, payload, &response); err != nil {
+		return Status{}, err
+	}
+	if len(response.Data) != 1 {
+		return Status{}, fmt.Errorf("%s %s: expected 1 status, got %d", method, remoteKeysPath, len(response.Data))
+	}
+	return response.Data[0], nil
+}
+
 func (client *Client) SignVoluntaryExit(ctx context.Context, publicKey string, epoch uint64) (beacon.SignedVoluntaryExit, error) {
 	path := "/qrl/v1/validator/" + url.PathEscape(publicKey) + "/voluntary_exit?epoch=" + strconv.FormatUint(epoch, 10)
 	var response dataResponse[beacon.SignedVoluntaryExit]

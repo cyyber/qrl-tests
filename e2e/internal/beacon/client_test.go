@@ -171,12 +171,18 @@ func TestClientDecodesChainProgress(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		switch request.URL.Path {
 		case "/qrl/v1/beacon/headers/32":
-			_, _ = writer.Write([]byte(`{"data":{"root":"0xab","canonical":true,"header":{"message":{"slot":"32"}}}}`))
+			_, _ = writer.Write([]byte(`{"data":{"root":"0xab","canonical":true,"header":{"message":{"slot":"32",` +
+				`"proposer_index":"7","parent_root":"0x01","state_root":"0x02","body_root":"0x03"},"signature":"0x04"}}}`))
 		case "/qrl/v1/beacon/states/head/finality_checkpoints":
 			_, _ = writer.Write([]byte(`{"data":{"previous_justified":{"epoch":"2","root":"0x02"},"current_justified":{"epoch":"3","root":"0x03"},"finalized":{"epoch":"2","root":"0x02"}}}`))
 		case "/qrl/v1/beacon/states/head/validators":
-			assert.Equal(t, []string{"active_slashed", "exited_slashed"}, request.URL.Query()["status"])
-			_, _ = writer.Write([]byte(`{"data":[{"index":"7","balance":"1","status":"active_slashed","validator":{"pubkey":"0xab","slashed":true,"effective_balance":"1","activation_epoch":"0","exit_epoch":"9","withdrawable_epoch":"73"}}]}`))
+			slashed := `{"index":"7","balance":"1","status":"active_slashed","validator":{"pubkey":"0xab","slashed":true,"effective_balance":"1","activation_epoch":"0","exit_epoch":"9","withdrawable_epoch":"73"}}`
+			if statuses, filtered := request.URL.Query()["status"]; filtered {
+				assert.Equal(t, []string{"active_slashed", "exited_slashed"}, statuses)
+				_, _ = writer.Write([]byte(`{"data":[` + slashed + `]}`))
+				return
+			}
+			_, _ = writer.Write([]byte(`{"data":[{"index":"6","balance":"2","status":"active_ongoing","validator":{"pubkey":"0xcd","effective_balance":"2","activation_epoch":"0","exit_epoch":"18446744073709551615","withdrawable_epoch":"18446744073709551615"}},` + slashed + `]}`))
 		default:
 			http.NotFound(writer, request)
 		}
@@ -188,7 +194,9 @@ func TestClientDecodesChainProgress(t *testing.T) {
 
 	header, err := client.BlockHeader(t.Context(), "32")
 	require.NoError(t, err)
-	require.Equal(t, BlockHeader{Slot: 32, Root: "0xab"}, header)
+	require.Equal(t, BlockHeader{
+		Slot: 32, Root: "0xab", ProposerIndex: 7, ParentRoot: "0x01", StateRoot: "0x02", BodyRoot: "0x03",
+	}, header)
 
 	_, err = client.BlockHeader(t.Context(), "33")
 	require.True(t, IsNotFound(err))
@@ -203,4 +211,13 @@ func TestClientDecodesChainProgress(t *testing.T) {
 	require.Len(t, slashed, 1)
 	require.Equal(t, uint64(7), slashed[0].Index)
 	require.True(t, slashed[0].Slashed)
+
+	validators, err := client.Validators(t.Context())
+	require.NoError(t, err)
+	require.Len(t, validators, 2)
+	require.Equal(t, Validator{
+		Index: 6, Balance: 2, Status: "active_ongoing", PublicKey: "0xcd", EffectiveBalance: 2,
+		ExitEpoch: 18446744073709551615, WithdrawableEpoch: 18446744073709551615,
+	}, validators[0])
+	require.Equal(t, uint64(7), validators[1].Index)
 }

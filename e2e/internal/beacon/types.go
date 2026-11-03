@@ -13,6 +13,11 @@ type Genesis struct {
 type BlockHeader struct {
 	Slot uint64
 	Root string
+
+	ProposerIndex uint64
+	ParentRoot    string
+	StateRoot     string
+	BodyRoot      string
 }
 
 type SyncStatus struct {

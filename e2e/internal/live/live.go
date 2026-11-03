@@ -18,9 +18,12 @@ import (
 
 // Runtime owns the network metadata and shared resources for one live suite.
 type Runtime struct {
-	Wallet             qrlwallet.Wallet
-	Address            common.Address
-	ChainID            *big.Int
+	Wallet  qrlwallet.Wallet
+	Address common.Address
+	ChainID *big.Int
+	// Profile is the lane's network profile, which the suite's network
+	// must match.
+	Profile            devnet.Profile
 	ExecutionImage     string
 	ConsensusImage     string
 	ValidatorImage     string
@@ -61,6 +64,7 @@ func Load() (*Runtime, error) {
 	runtime := &Runtime{
 		Wallet:             wallet,
 		Address:            common.Address(wallet.GetAddress()),
+		Profile:            suiteManifest.Profile,
 		ExecutionImage:     suiteManifest.ExecutionImage,
 		ConsensusImage:     suiteManifest.ConsensusImage,
 		ValidatorImage:     suiteManifest.ValidatorImage,

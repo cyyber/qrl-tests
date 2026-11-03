@@ -17,12 +17,7 @@ func networkCommand(network networkController) *cli.Command {
 	startFlags := []cli.Flag{
 		enclaveNameFlag(),
 		backendFlag(),
-		&cli.StringFlag{
-			Name:    "profile",
-			Usage:   "built-in network profile",
-			Value:   string(devnet.ProfileSingle),
-			EnvVars: []string{"DEVNET_PROFILE"},
-		},
+		profileFlag(),
 		parametersFileFlag(),
 		&cli.DurationFlag{
 			Name:    "timeout",
@@ -73,6 +68,26 @@ func networkCommand(network networkController) *cli.Command {
 					}
 
 					_, err = fmt.Fprintln(command.App.Writer, "network ready")
+					return err
+				},
+			},
+			{
+				Name:  "params",
+				Usage: "print the qrl-package parameters of a built-in profile, for a network started with kurtosis run",
+				Flags: append([]cli.Flag{profileFlag()}, imageFlags()...),
+				Action: func(command *cli.Context) error {
+					if err := rejectPositional(command); err != nil {
+						return err
+					}
+					profile, err := devnet.ParseProfile(command.String("profile"))
+					if err != nil {
+						return err
+					}
+					parameters, err := devnet.ProfileParameters(profile, imagesFromFlags(command))
+					if err != nil {
+						return err
+					}
+					_, err = fmt.Fprintln(command.App.Writer, parameters)
 					return err
 				},
 			},

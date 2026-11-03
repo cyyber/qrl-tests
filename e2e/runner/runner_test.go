@@ -530,6 +530,9 @@ func TestListDescribesLanesAndSuites(t *testing.T) {
 	require.Contains(t, output.String(), executionABISuite)
 	require.Contains(t, output.String(), "profile=single")
 	require.Contains(t, output.String(), "package=./e2e/suites/execution/abi")
+	require.Regexp(t, `(?m)^consensus-remote-signer\s+profile=remote-signer\s.*\(needs locally built images; see e2e/README\.md\)$`, output.String())
+	require.Regexp(t, `(?m)^consensus-remote-signer-mtls\s+profile=remote-signer-mtls\s.*\(needs locally built images; see e2e/README\.md\)$`, output.String())
+	require.NotRegexp(t, `(?m)^execution\s.*locally built`, output.String())
 }
 
 func TestRunAllRejectsOverrides(t *testing.T) {
@@ -569,7 +572,8 @@ func TestRunAllProvisionsPerLane(t *testing.T) {
 	}
 
 	require.NoError(t, runner.RunAll(t.Context()))
-	// Every registered lane provisions its own enclave and runs its own suites.
+	// Every registered lane but those that need locally built images
+	// provisions its own enclave and runs its own suites.
 	require.Equal(t, "qrl-tests-sync", networks.started.EnclaveName)
 	require.Equal(t, devnet.ProfileSingle, networks.started.Profile)
 	require.Equal(t, []string{

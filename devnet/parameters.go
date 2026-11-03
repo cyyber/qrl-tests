@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strconv"
 
+	"github.com/cyyber/qrl-tests/internal/devwallet"
 	"go.yaml.in/yaml/v3"
 )
 
@@ -31,6 +32,21 @@ type participant struct {
 	ELExtraLabels           map[string]string `json:"el_extra_labels,omitempty"`
 	CLExtraLabels           map[string]string `json:"cl_extra_labels,omitempty"`
 	VCExtraLabels           map[string]string `json:"vc_extra_labels,omitempty"`
+
+	// go-remotesigner takes its global flags from environment variables.
+	RemoteSignerExtraEnvVars map[string]string `json:"remote_signer_extra_env_vars,omitempty"`
+	RemoteSignerExtraLabels  map[string]string `json:"remote_signer_extra_labels,omitempty"`
+	// RemoteSignerAuthMode is go-remotesigner's --http-auth-mode; qrl-package
+	// gives a client certificate to a validator client whose signer wants one.
+	// It is left out unless a profile sets it, since no qrl-package release
+	// has the field yet.
+	RemoteSignerAuthMode string `json:"remote_signer_auth_mode,omitempty"`
+	// RemoteSignerExtraParams are go-remotesigner consensus flags, after
+	// qrl-package's own.
+	RemoteSignerExtraParams []string `json:"remote_signer_extra_params,omitempty"`
+	// KeymanagerEnabled has the validator client serve the keymanager API on
+	// its http-validator port.
+	KeymanagerEnabled bool `json:"keymanager_enabled,omitempty"`
 }
 
 type networkParams struct {
@@ -64,6 +80,16 @@ type requiredParameters struct {
 	} `yaml:"network_params"`
 }
 
+// ProfileParameters renders the qrl-package parameters Start passes for a
+// built-in profile, so that a network started outside qrl-tests, for example
+// from a qrl-package checkout, matches it.
+func ProfileParameters(profile Profile, images Images) (string, error) {
+	if _, exists := profileSpecs[profile]; !exists {
+		return "", fmt.Errorf("unknown development-network profile %q", profile)
+	}
+	return profileParameters(devwallet.Address, StartOptions{Profile: profile, Images: images})
+}
+
 func resolveParameters(address string, options StartOptions) (string, error) {
 	if options.Parameters != nil {
 		return fileParameters(options.Parameters, address)
@@ -93,14 +119,32 @@ func profileParameters(address string, options StartOptions) (string, error) {
 			VCImage:                 images.Validator,
 			VCExtraParams:           participantParameters(configuration.vcExtraParams),
 			UseRemoteSigner:         true,
-			RemoteSignerType:        "clef",
+			RemoteSignerType:        remoteSignerTypeClef,
 			RemoteSignerImage:       images.Clef,
 			RemoteSignerAutoApprove: true,
 			ValidatorCount:          configuration.validatorCount,
+			KeymanagerEnabled:       configuration.keymanager,
 			ELExtraLabels:           labels,
 			CLExtraLabels:           labels,
 			VCExtraLabels:           labels,
 		}
+		switch {
+		case configuration.remoteSigner:
+			participants[index].RemoteSignerType = goRemoteSigner
+			participants[index].RemoteSignerImage = images.RemoteSigner
+			participants[index].RemoteSignerAuthMode = configuration.remoteSignerAuthMode
+			participants[index].RemoteSignerExtraParams = configuration.remoteSignerExtraParams
+		case configuration.executionSigner:
+			participants[index].RemoteSignerType = goRemoteSignerExecution
+			participants[index].RemoteSignerImage = images.RemoteSignerExecution
+		default:
+			continue
+		}
+		participants[index].RemoteSignerAutoApprove = false
+		// The access log names each request's route, status and duration,
+		// never a key or a body.
+		participants[index].RemoteSignerExtraEnvVars = map[string]string{"REMOTESIGNER_ACCESS_LOGS_ENABLED": "true"}
+		participants[index].RemoteSignerExtraLabels = labels
 	}
 
 	payload, err := json.Marshal(packageParameters{
