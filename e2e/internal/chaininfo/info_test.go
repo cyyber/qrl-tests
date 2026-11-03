@@ -3,7 +3,6 @@ package chaininfo
 import (
 	"context"
 	"encoding/hex"
-	"fmt"
 	"testing"
 	"time"
 
@@ -21,25 +20,18 @@ type fakeSource struct {
 
 func (source fakeSource) Genesis(context.Context) (beacon.Genesis, error) { return source.genesis, nil }
 
-func (fakeSource) SpecUint(_ context.Context, name string) (uint64, error) {
-	switch name {
-	case "SLOTS_PER_EPOCH":
-		return 128, nil
-	case "SECONDS_PER_SLOT":
-		return 12, nil
-	case "EPOCHS_PER_EXECUTION_VOTING_PERIOD":
-		return 4, nil
-	case "EXECUTION_FOLLOW_DISTANCE":
-		return 16, nil
-	case "SECONDS_PER_EXECUTION_BLOCK":
-		return 14, nil
-	default:
-		return 0, fmt.Errorf("unexpected spec value %s", name)
-	}
+func (fakeSource) Spec(context.Context) (beacon.Spec, error) {
+	return beacon.Spec{
+		"SLOTS_PER_EPOCH":                    "128",
+		"SECONDS_PER_SLOT":                   "12",
+		"EPOCHS_PER_EXECUTION_VOTING_PERIOD": "4",
+		"EXECUTION_FOLLOW_DISTANCE":          "16",
+		"SECONDS_PER_EXECUTION_BLOCK":        "14",
+	}, nil
 }
 
 func validSource() fakeSource {
-	return fakeSource{genesis: beacon.Genesis{ForkVersion: "0x" + hex.EncodeToString(genesisVersion[:])}}
+	return fakeSource{genesis: beacon.Genesis{Time: 1700000000, ForkVersion: "0x" + hex.EncodeToString(genesisVersion[:])}}
 }
 
 func TestLoad(t *testing.T) {
@@ -47,6 +39,10 @@ func TestLoad(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, uint64(128), chain.SlotsPerEpoch)
 	require.Equal(t, uint64(2), chain.Epoch(300))
+	require.Equal(t, time.Unix(1700000000, 0), chain.GenesisTime)
+	require.Equal(t, uint64(0), chain.EpochAt(chain.GenesisTime.Add(-time.Hour)))
+	require.Equal(t, uint64(0), chain.EpochAt(chain.GenesisTime.Add(chain.EpochDuration-time.Second)))
+	require.Equal(t, uint64(3), chain.EpochAt(chain.GenesisTime.Add(3*chain.EpochDuration)))
 	require.Equal(t, 12*time.Second, chain.SlotDuration)
 	require.Equal(t, 128*12*time.Second, chain.EpochDuration)
 	require.Equal(t, 4*128*12*time.Second, chain.ExecutionVotingPeriod)

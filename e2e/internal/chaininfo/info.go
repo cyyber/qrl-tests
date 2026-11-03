@@ -16,11 +16,12 @@ import (
 // Source is the subset of the beacon API the info is loaded from.
 type Source interface {
 	Genesis(context.Context) (beacon.Genesis, error)
-	SpecUint(context.Context, string) (uint64, error)
+	Spec(context.Context) (beacon.Spec, error)
 }
 
 // Info describes a live chain: its genesis fork version and its timing.
 type Info struct {
+	GenesisTime   time.Time
 	SlotsPerEpoch uint64
 	SlotDuration  time.Duration
 	EpochDuration time.Duration
@@ -40,28 +41,32 @@ func Load(ctx context.Context, source Source) (Info, error) {
 		return Info{}, err
 	}
 
-	var chain Info
+	chain := Info{GenesisTime: time.Unix(int64(genesis.Time), 0)}
 	if err := decodeFixed("genesis fork version", genesis.ForkVersion, chain.genesisForkVersion[:]); err != nil {
 		return Info{}, err
 	}
 
-	chain.SlotsPerEpoch, err = source.SpecUint(ctx, "SLOTS_PER_EPOCH")
+	spec, err := source.Spec(ctx)
 	if err != nil {
 		return Info{}, err
 	}
-	secondsPerSlot, err := source.SpecUint(ctx, "SECONDS_PER_SLOT")
+	chain.SlotsPerEpoch, err = spec.Uint("SLOTS_PER_EPOCH")
 	if err != nil {
 		return Info{}, err
 	}
-	votingEpochs, err := source.SpecUint(ctx, "EPOCHS_PER_EXECUTION_VOTING_PERIOD")
+	secondsPerSlot, err := spec.Uint("SECONDS_PER_SLOT")
 	if err != nil {
 		return Info{}, err
 	}
-	followBlocks, err := source.SpecUint(ctx, "EXECUTION_FOLLOW_DISTANCE")
+	votingEpochs, err := spec.Uint("EPOCHS_PER_EXECUTION_VOTING_PERIOD")
 	if err != nil {
 		return Info{}, err
 	}
-	secondsPerBlock, err := source.SpecUint(ctx, "SECONDS_PER_EXECUTION_BLOCK")
+	followBlocks, err := spec.Uint("EXECUTION_FOLLOW_DISTANCE")
+	if err != nil {
+		return Info{}, err
+	}
+	secondsPerBlock, err := spec.Uint("SECONDS_PER_EXECUTION_BLOCK")
 	if err != nil {
 		return Info{}, err
 	}
@@ -74,6 +79,14 @@ func Load(ctx context.Context, source Source) (Info, error) {
 
 func (chain Info) Epoch(slot uint64) uint64 {
 	return slot / chain.SlotsPerEpoch
+}
+
+// EpochAt is the epoch the wall clock is in at now, which the head can lag.
+func (chain Info) EpochAt(now time.Time) uint64 {
+	if now.Before(chain.GenesisTime) {
+		return 0
+	}
+	return uint64(now.Sub(chain.GenesisTime) / chain.EpochDuration)
 }
 
 // DepositWait is how long a deposit takes to reach the beacon state on a

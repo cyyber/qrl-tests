@@ -33,18 +33,30 @@ func TestClientDecodesQrysmResponses(t *testing.T) {
 			_, _ = writer.Write([]byte(`{"data":{"root":"0xab","header":{"message":{"slot":"17"}}}}`))
 		case "/qrl/v1/beacon/states/head/validators/64":
 			_, _ = writer.Write([]byte(`{"execution_optimistic":false,"finalized":false,"data":{"index":"64","balance":"40000000000000","status":"active_ongoing","validator":{"pubkey":"0xab","withdrawal_recipient":"0xcd","effective_balance":"40000000000000","slashed":false,"activation_eligibility_epoch":"3","activation_epoch":"8","exit_epoch":"18446744073709551615","withdrawable_epoch":"18446744073709551615","randao_commitment":"0xef"}}}`))
+		case "/qrl/v1/beacon/states/95/validators/64":
+			_, _ = writer.Write([]byte(`{"data":{"index":"64","balance":"39998000000000","status":"active_ongoing","validator":{"pubkey":"0xab","effective_balance":"39998000000000","exit_epoch":"18446744073709551615","withdrawable_epoch":"18446744073709551615"}}}`))
+		case "/qrl/v1/beacon/states/95/validators":
+			assert.Equal(t, []string{"active_ongoing", "active_exiting", "active_slashed"}, request.URL.Query()["status"])
+			_, _ = writer.Write([]byte(`{"data":[{"index":"0","validator":{"effective_balance":"40000000000000"}},{"index":"64","validator":{"effective_balance":"39998000000000"}}]}`))
 		case "/qrl/v1/beacon/blocks/9":
-			_, _ = writer.Write([]byte(`{"data":{"message":{"slot":"9","body":{"voluntary_exits":[{"message":{"epoch":"1","validator_index":"64"},"signature":"0x00"}],"execution_payload":{"block_number":"42","withdrawals":[{"index":"0","validator_index":"64","address":"0xcd","amount":"40000000000000"}]}}}}}`))
+			_, _ = writer.Write([]byte(`{"data":{"message":{"slot":"9","proposer_index":"12","body":{"voluntary_exits":[{"message":{"epoch":"1","validator_index":"64"},"signature":"0x00"}],"execution_payload":{"block_number":"42","withdrawals":[{"index":"0","validator_index":"64","address":"0xcd","amount":"40000000000000"}]}}}}}`))
 		case "/qrl/v1/validator/duties/attester/2":
-			var indices []string
-			assert.NoError(t, json.NewDecoder(request.Body).Decode(&indices))
-			assert.Equal(t, []string{"64"}, indices)
+			assertIndices(t, request, "64")
 			_, _ = writer.Write([]byte(`{"dependent_root":"0x00","execution_optimistic":false,"data":[{"pubkey":"0xab","validator_index":"64","committee_index":"0","committee_length":"8","committees_at_slot":"1","validator_committee_index":"3","slot":"17"}]}`))
 		case "/qrl/v1/beacon/rewards/attestations/2":
-			var indices []string
-			assert.NoError(t, json.NewDecoder(request.Body).Decode(&indices))
-			assert.Equal(t, []string{"64"}, indices)
+			assertIndices(t, request, "64")
 			_, _ = writer.Write([]byte(`{"data":{"total_rewards":[{"validator_index":"64","head":"12","target":"34","source":"56"}]}}`))
+		case "/qrl/v1/beacon/rewards/attestations/4":
+			assertIndices(t, request, "64")
+			_, _ = writer.Write([]byte(`{"data":{"ideal_rewards":[{"effective_balance":"39998000000000","head":"376","target":"698","source":"376"}],"total_rewards":[]}}`))
+		case "/qrl/v1/beacon/rewards/blocks/9":
+			_, _ = writer.Write([]byte(`{"data":{"proposer_index":"12","total":"123","attestations":"100","sync_aggregate":"23","proposer_slashings":"0","attester_slashings":"0"}}`))
+		case "/qrl/v1/beacon/rewards/attestations/3":
+			assertIndices(t, request, "64")
+			_, _ = writer.Write([]byte(`{"data":{"total_rewards":[{"validator_index":"64","head":"0","target":"-650","source":"-350"}]}}`))
+		case "/qrl/v1/beacon/rewards/sync_committee/9":
+			assertIndices(t, request, "64")
+			_, _ = writer.Write([]byte(`{"execution_optimistic":false,"finalized":false,"data":[{"validator_index":"64","reward":"-2964"}]}`))
 		case "/qrl/v1/beacon/pool/voluntary_exits":
 			assert.Equal(t, http.MethodPost, request.Method)
 			assert.Equal(t, "application/json", request.Header.Get("Content-Type"))
@@ -98,10 +110,22 @@ func TestClientDecodesQrysmResponses(t *testing.T) {
 		ActivationEpoch: 8, ExitEpoch: FarFutureEpoch, WithdrawableEpoch: FarFutureEpoch,
 	}, validator)
 
+	validator, err = client.ValidatorAt(t.Context(), "95", "64")
+	require.NoError(t, err)
+	require.Equal(t, Validator{
+		Index: 64, Balance: 39998000000000, Status: "active_ongoing", PublicKey: "0xab",
+		EffectiveBalance: 39998000000000, ExitEpoch: FarFutureEpoch, WithdrawableEpoch: FarFutureEpoch,
+	}, validator)
+
+	totalActive, err := client.TotalActiveBalance(t.Context(), "95")
+	require.NoError(t, err)
+	require.Equal(t, uint64(79998000000000), totalActive)
+
 	operations, err := client.BlockOperations(t.Context(), "9")
 	require.NoError(t, err)
 	require.Equal(t, BlockOperations{
 		Slot:                 9,
+		ProposerIndex:        12,
 		ExecutionBlockNumber: 42,
 		VoluntaryExits:       []uint64{64},
 		Withdrawals:          []Withdrawal{{ValidatorIndex: 64, Address: "0xcd", Amount: 40000000000000}},
@@ -114,6 +138,23 @@ func TestClientDecodesQrysmResponses(t *testing.T) {
 	rewards, err := client.AttestationRewards(t.Context(), 2, []uint64{64})
 	require.NoError(t, err)
 	require.Equal(t, []AttestationReward{{ValidatorIndex: 64, Head: 12, Target: 34, Source: 56}}, rewards)
+
+	// A missed source or target vote is reported as a negative score.
+	rewards, err = client.AttestationRewards(t.Context(), 3, []uint64{64})
+	require.NoError(t, err)
+	require.Equal(t, []AttestationReward{{ValidatorIndex: 64, Target: -650, Source: -350}}, rewards)
+
+	ideal, err := client.IdealAttestationRewards(t.Context(), 4, []uint64{64})
+	require.NoError(t, err)
+	require.Equal(t, []IdealAttestationReward{{EffectiveBalance: 39998000000000, Head: 376, Target: 698, Source: 376}}, ideal)
+
+	blockRewards, err := client.BlockRewards(t.Context(), "9")
+	require.NoError(t, err)
+	require.Equal(t, BlockRewards{Total: 123}, blockRewards)
+
+	syncRewards, err := client.SyncCommitteeRewards(t.Context(), "9", []uint64{64})
+	require.NoError(t, err)
+	require.Equal(t, []SyncCommitteeReward{{ValidatorIndex: 64, Reward: -2964}}, syncRewards)
 
 	require.NoError(t, client.SubmitVoluntaryExit(t.Context(), SignedVoluntaryExit{
 		Message: VoluntaryExit{Epoch: 1, ValidatorIndex: 64}, Signature: "0x00",
@@ -174,6 +215,8 @@ func TestClientDecodesChainProgress(t *testing.T) {
 			_, _ = writer.Write([]byte(`{"data":{"root":"0xab","canonical":true,"header":{"message":{"slot":"32"}}}}`))
 		case "/qrl/v1/beacon/states/head/finality_checkpoints":
 			_, _ = writer.Write([]byte(`{"data":{"previous_justified":{"epoch":"2","root":"0x02"},"current_justified":{"epoch":"3","root":"0x03"},"finalized":{"epoch":"2","root":"0x02"}}}`))
+		case "/qrl/v1/beacon/states/95/finality_checkpoints":
+			_, _ = writer.Write([]byte(`{"data":{"previous_justified":{"epoch":"9","root":"0x09"},"current_justified":{"epoch":"10","root":"0x0a"},"finalized":{"epoch":"9","root":"0x09"}}}`))
 		case "/qrl/v1/beacon/states/head/validators":
 			assert.Equal(t, []string{"active_slashed", "exited_slashed"}, request.URL.Query()["status"])
 			_, _ = writer.Write([]byte(`{"data":[{"index":"7","balance":"1","status":"active_slashed","validator":{"pubkey":"0xab","slashed":true,"effective_balance":"1","activation_epoch":"0","exit_epoch":"9","withdrawable_epoch":"73"}}]}`))
@@ -195,12 +238,34 @@ func TestClientDecodesChainProgress(t *testing.T) {
 
 	checkpoints, err := client.FinalityCheckpoints(t.Context())
 	require.NoError(t, err)
-	require.Equal(t, Checkpoint{Epoch: 3, Root: "0x03"}, checkpoints.CurrentJustified)
-	require.Equal(t, Checkpoint{Epoch: 2, Root: "0x02"}, checkpoints.Finalized)
+	require.Equal(t, FinalityCheckpoints{
+		PreviousJustified: Checkpoint{Epoch: 2, Root: "0x02"},
+		CurrentJustified:  Checkpoint{Epoch: 3, Root: "0x03"},
+		Finalized:         Checkpoint{Epoch: 2, Root: "0x02"},
+	}, checkpoints)
+
+	checkpoints, err = client.FinalityCheckpointsAt(t.Context(), "95")
+	require.NoError(t, err)
+	require.Equal(t, FinalityCheckpoints{
+		PreviousJustified: Checkpoint{Epoch: 9, Root: "0x09"},
+		CurrentJustified:  Checkpoint{Epoch: 10, Root: "0x0a"},
+		Finalized:         Checkpoint{Epoch: 9, Root: "0x09"},
+	}, checkpoints)
 
 	slashed, err := client.SlashedValidators(t.Context())
 	require.NoError(t, err)
-	require.Len(t, slashed, 1)
-	require.Equal(t, uint64(7), slashed[0].Index)
-	require.True(t, slashed[0].Slashed)
+	require.Equal(t, []Validator{{
+		Index: 7, Balance: 1, Status: "active_slashed", PublicKey: "0xab", Slashed: true,
+		EffectiveBalance: 1, ExitEpoch: 9, WithdrawableEpoch: 73,
+	}}, slashed)
+}
+
+// assertIndices checks that a request POSTs the validator indices as a JSON
+// array of decimal strings.
+func assertIndices(t *testing.T, request *http.Request, want ...string) {
+	t.Helper()
+	assert.Equal(t, http.MethodPost, request.Method)
+	var indices []string
+	assert.NoError(t, json.NewDecoder(request.Body).Decode(&indices))
+	assert.Equal(t, want, indices)
 }

@@ -15,12 +15,24 @@ func (client *Client) DepositContract(ctx context.Context) (DepositContract, err
 	return getData[DepositContract](ctx, client, "/qrl/v1/config/deposit_contract")
 }
 
+// Spec returns the node's consensus constants. A caller that needs several
+// reads them all in one request.
+func (client *Client) Spec(ctx context.Context) (Spec, error) {
+	return getData[Spec](ctx, client, "/qrl/v1/config/spec")
+}
+
+// SpecUint returns one numeric consensus constant.
 func (client *Client) SpecUint(ctx context.Context, name string) (uint64, error) {
-	values, err := getData[map[string]string](ctx, client, "/qrl/v1/config/spec")
+	spec, err := client.Spec(ctx)
 	if err != nil {
 		return 0, err
 	}
-	value, ok := values[name]
+	return spec.Uint(name)
+}
+
+// Uint parses the numeric constant name.
+func (spec Spec) Uint(name string) (uint64, error) {
+	value, ok := spec[name]
 	if !ok {
 		return 0, fmt.Errorf("consensus spec does not define %s", name)
 	}
@@ -64,7 +76,15 @@ func (client *Client) BlockHeader(ctx context.Context, blockID string) (BlockHea
 // FinalityCheckpoints returns the justified and finalized checkpoints of the
 // head state.
 func (client *Client) FinalityCheckpoints(ctx context.Context) (FinalityCheckpoints, error) {
-	return getData[FinalityCheckpoints](ctx, client, "/qrl/v1/beacon/states/head/finality_checkpoints")
+	return client.FinalityCheckpointsAt(ctx, "head")
+}
+
+// FinalityCheckpointsAt returns the justified and finalized checkpoints of
+// the state at stateID: "head", "finalized" or a slot.
+func (client *Client) FinalityCheckpointsAt(ctx context.Context, stateID string) (FinalityCheckpoints, error) {
+	return getData[FinalityCheckpoints](
+		ctx, client, "/qrl/v1/beacon/states/"+url.PathEscape(stateID)+"/finality_checkpoints",
+	)
 }
 
 // SlashedValidators returns the validators of the head state that have been
@@ -102,13 +122,40 @@ type validatorWire struct {
 // Validator looks a validator up by index or 0x-prefixed public key in the
 // head state. An unknown validator is reported through IsNotFound.
 func (client *Client) Validator(ctx context.Context, validatorID string) (Validator, error) {
+	return client.ValidatorAt(ctx, "head", validatorID)
+}
+
+// ValidatorAt looks a validator up in the state at stateID, which is "head",
+// "finalized" or a slot. The state at a slot includes its block, if it has
+// one; for an empty slot it is the earlier state advanced to that slot.
+func (client *Client) ValidatorAt(ctx context.Context, stateID, validatorID string) (Validator, error) {
 	record, err := getData[validatorWire](
-		ctx, client, "/qrl/v1/beacon/states/head/validators/"+url.PathEscape(validatorID),
+		ctx, client, "/qrl/v1/beacon/states/"+url.PathEscape(stateID)+"/validators/"+url.PathEscape(validatorID),
 	)
 	if err != nil {
 		return Validator{}, err
 	}
 	return record.validator(), nil
+}
+
+// TotalActiveBalance sums the effective balances of the validators that the
+// state at stateID holds as active in its current epoch, slashed ones
+// included: the total that state's epoch processing uses for base rewards.
+// It reads every active validator, which suits a devnet, not a large network.
+func (client *Client) TotalActiveBalance(ctx context.Context, stateID string) (uint64, error) {
+	records, err := getData[[]validatorWire](
+		ctx, client,
+		"/qrl/v1/beacon/states/"+url.PathEscape(stateID)+
+			"/validators?status=active_ongoing&status=active_exiting&status=active_slashed",
+	)
+	if err != nil {
+		return 0, err
+	}
+	var total uint64
+	for _, record := range records {
+		total += record.Validator.EffectiveBalance
+	}
+	return total, nil
 }
 
 func (record validatorWire) validator() Validator {
@@ -129,8 +176,9 @@ func (record validatorWire) validator() Validator {
 
 type blockWire struct {
 	Message struct {
-		Slot uint64 `json:"slot,string"`
-		Body struct {
+		Slot          uint64 `json:"slot,string"`
+		ProposerIndex uint64 `json:"proposer_index,string"`
+		Body          struct {
 			VoluntaryExits []SignedVoluntaryExit `json:"voluntary_exits"`
 			Payload        struct {
 				BlockNumber uint64       `json:"block_number,string"`
@@ -140,8 +188,8 @@ type blockWire struct {
 	} `json:"message"`
 }
 
-// BlockOperations returns the exits and withdrawals in one block. A slot
-// without a block is reported through IsNotFound.
+// BlockOperations returns the proposer, exits and withdrawals of one block. A
+// slot without a block is reported through IsNotFound.
 func (client *Client) BlockOperations(ctx context.Context, blockID string) (BlockOperations, error) {
 	block, err := getData[blockWire](ctx, client, "/qrl/v1/beacon/blocks/"+url.PathEscape(blockID))
 	if err != nil {
@@ -150,6 +198,7 @@ func (client *Client) BlockOperations(ctx context.Context, blockID string) (Bloc
 
 	operations := BlockOperations{
 		Slot:                 block.Message.Slot,
+		ProposerIndex:        block.Message.ProposerIndex,
 		ExecutionBlockNumber: block.Message.Body.Payload.BlockNumber,
 		Withdrawals:          block.Message.Body.Payload.Withdrawals,
 	}
@@ -159,6 +208,8 @@ func (client *Client) BlockOperations(ctx context.Context, blockID string) (Bloc
 	return operations, nil
 }
 
+// AttesterDuties returns the slot each of the given validators attests in
+// during epoch. Qrysm serves the current epoch and the next.
 func (client *Client) AttesterDuties(ctx context.Context, epoch uint64, indices []uint64) ([]AttesterDuty, error) {
 	path := "/qrl/v1/validator/duties/attester/" + strconv.FormatUint(epoch, 10)
 	return postData[[]AttesterDuty](ctx, client, path, formatIndices(indices))
@@ -168,15 +219,45 @@ func (client *Client) SubmitVoluntaryExit(ctx context.Context, exit SignedVolunt
 	return client.postJSON(ctx, "/qrl/v1/beacon/pool/voluntary_exits", exit, nil)
 }
 
-// AttestationRewards returns the attestation scores for the given validators
-// in a completed epoch. Qrysm serves an epoch only after two later epochs
-// have elapsed so every attestation has a chance of inclusion.
+// AttestationRewards returns the given validators' attestation rewards for a
+// completed epoch: their head, source and target rewards in shor, negative
+// for a penalty. Qrysm serves an epoch only after two later epochs have
+// elapsed so every attestation has a chance of inclusion.
 func (client *Client) AttestationRewards(ctx context.Context, epoch uint64, indices []uint64) ([]AttestationReward, error) {
-	path := "/qrl/v1/beacon/rewards/attestations/" + strconv.FormatUint(epoch, 10)
-	rewards, err := postData[struct {
-		TotalRewards []AttestationReward `json:"total_rewards"`
-	}](ctx, client, path, formatIndices(indices))
+	rewards, err := client.attestationRewards(ctx, epoch, indices)
 	return rewards.TotalRewards, err
+}
+
+// IdealAttestationRewards returns, for each effective balance among the
+// validators, what timely head, source and target votes earn in a completed
+// epoch, in shor. Qrysm computes the given validators' own rewards alongside,
+// and everyone's when none are given, so pass only the ones needed.
+func (client *Client) IdealAttestationRewards(ctx context.Context, epoch uint64, indices []uint64) ([]IdealAttestationReward, error) {
+	rewards, err := client.attestationRewards(ctx, epoch, indices)
+	return rewards.IdealRewards, err
+}
+
+type attestationRewardsWire struct {
+	IdealRewards []IdealAttestationReward `json:"ideal_rewards"`
+	TotalRewards []AttestationReward      `json:"total_rewards"`
+}
+
+func (client *Client) attestationRewards(ctx context.Context, epoch uint64, indices []uint64) (attestationRewardsWire, error) {
+	path := "/qrl/v1/beacon/rewards/attestations/" + strconv.FormatUint(epoch, 10)
+	return postData[attestationRewardsWire](ctx, client, path, formatIndices(indices))
+}
+
+// BlockRewards returns what one block paid its proposer, in shor.
+func (client *Client) BlockRewards(ctx context.Context, blockID string) (BlockRewards, error) {
+	return getData[BlockRewards](ctx, client, "/qrl/v1/beacon/rewards/blocks/"+url.PathEscape(blockID))
+}
+
+// SyncCommitteeRewards returns what the sync aggregate of one block paid the
+// given validators, negative for a missed duty. A validator outside the sync
+// committee is left out.
+func (client *Client) SyncCommitteeRewards(ctx context.Context, blockID string, indices []uint64) ([]SyncCommitteeReward, error) {
+	path := "/qrl/v1/beacon/rewards/sync_committee/" + url.PathEscape(blockID)
+	return postData[[]SyncCommitteeReward](ctx, client, path, formatIndices(indices))
 }
 
 func formatIndices(indices []uint64) []string {
