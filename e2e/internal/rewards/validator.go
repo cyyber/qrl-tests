@@ -178,11 +178,10 @@ func (validator Validator) BlockBalanceChanges(ctx context.Context, epoch uint64
 	return change, nil
 }
 
-// BlockBalanceChange is what the block at slot did to the validator's balance
-// through the duties of a validator in good standing, and nothing for an
-// empty slot: the block's rewards if it proposed it and its sync committee
-// reward, negative for a missed duty, less its withdrawals. A slashing the
-// block includes is left to the caller.
+// BlockBalanceChange is what the block at slot did to the validator's balance,
+// zero for an empty slot: its reward for proposing the block, its sync
+// committee reward (negative for a missed duty), less its withdrawals. A
+// slashing the block includes is left to the caller.
 func (validator Validator) BlockBalanceChange(ctx context.Context, slot uint64) (int64, error) {
 	blockID := strconv.FormatUint(slot, 10)
 	operations, err := validator.Client.BlockOperations(ctx, blockID)
