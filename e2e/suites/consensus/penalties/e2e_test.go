@@ -23,18 +23,13 @@ import (
 )
 
 const (
-	// offlineEpochs is how many whole epochs the validator client stays
-	// stopped while the suite checks each one's penalty.
 	offlineEpochs = 3
 
-	// attestTimeout bounds the wait for a started validator client's first
-	// attested epoch: a missed first epoch and the two epochs before an
-	// epoch's rewards are served. The specs add a minute or more for the
-	// client's start and the checks that follow.
+	// attestTimeout covers a missed first epoch and the two epochs before its
+	// rewards are served.
 	attestTimeout = 5 * time.Minute
-	// offlineTimeout covers the rest of the epoch the client stops in, the
-	// offline epochs, the two epochs before the last one's rewards are
-	// served, and reading every block of the offline epochs.
+	// offlineTimeout covers the offline epochs and the two before the last
+	// one's rewards are served.
 	offlineTimeout = 6 * time.Minute
 )
 
