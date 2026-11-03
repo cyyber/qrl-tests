@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/cyyber/qrl-tests/internal/containerexec"
 	"github.com/cyyber/qrl-tests/internal/containerfiles"
 	"github.com/cyyber/qrl-tests/internal/dockerapi"
 	containertypes "github.com/moby/moby/api/types/container"
@@ -158,6 +159,24 @@ func ReadServiceFile(ctx context.Context, client ServiceFileClient, serviceID, f
 		return nil, fmt.Errorf("find container: %w", err)
 	}
 	return containerfiles.ReadFile(ctx, client, container.ID, filePath)
+}
+
+// ServiceExecClient is the part of the Docker client ExecService uses.
+type ServiceExecClient interface {
+	containerLister
+	containerexec.Client
+}
+
+// ExecService runs command inside the running Docker container of a Kurtosis
+// service, as an operator runs a client's own tools next to it, and returns
+// its combined output. A non-zero exit code is an error that carries the
+// output.
+func ExecService(ctx context.Context, client ServiceExecClient, serviceID string, command ...string) (string, error) {
+	container, err := serviceContainer(ctx, client, serviceID)
+	if err != nil {
+		return "", fmt.Errorf("find container: %w", err)
+	}
+	return containerexec.Run(ctx, client, container.ID, command...)
 }
 
 // ServiceContainer describes how the Docker container of a Kurtosis service

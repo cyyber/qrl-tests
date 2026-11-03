@@ -1,15 +1,19 @@
 package devnet
 
 import (
+	"bufio"
 	"bytes"
 	"context"
+	"encoding/binary"
 	"errors"
 	"io"
+	"net"
 	"net/netip"
 	"strings"
 	"testing"
 
 	"github.com/cyyber/qrl-tests/internal/containerfiles"
+	"github.com/moby/moby/api/pkg/stdcopy"
 	containertypes "github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/api/types/network"
 	dockerclient "github.com/moby/moby/client"
@@ -177,6 +181,30 @@ func TestInspectServiceContainer(t *testing.T) {
 	require.EqualError(t, err, "inspect container: no such container")
 }
 
+func TestExecService(t *testing.T) {
+	client := &fakeDocker{
+		containers: []containertypes.Summary{{ID: "validator-container"}},
+		execOutput: "Voluntary exit was successful\n",
+	}
+
+	output, err := ExecService(t.Context(), client, "validator-service", "/validator", "accounts", "voluntary-exit")
+	require.NoError(t, err)
+	require.Equal(t, "Voluntary exit was successful\n", output)
+	require.Equal(t, dockerclient.Filters{
+		"label": {kurtosisServiceUUIDDockerLabel + "=validator-service": true},
+	}, client.listed.Filters)
+	require.Equal(t, "validator-container", client.execContainer)
+	require.Equal(t, []string{"/validator", "accounts", "voluntary-exit"}, client.execCommand)
+
+	client.execExitCode = 1
+	output, err = ExecService(t.Context(), client, "validator-service", "/validator", "accounts", "voluntary-exit")
+	require.Equal(t, "Voluntary exit was successful\n", output)
+	require.EqualError(t, err, "/validator accounts voluntary-exit: exit 1: Voluntary exit was successful")
+
+	_, err = ExecService(t.Context(), &fakeDocker{}, "validator-service", "/validator")
+	require.EqualError(t, err, `find container: expected one running Docker container for service "validator-service", found 0`)
+}
+
 func TestServiceNetwork(t *testing.T) {
 	service := ServiceInfo{Name: "cl-1-qrysm-gqrl", ID: "consensus-service", PrivateIP: "172.16.0.12"}
 	withNetworks := func(networks map[string]*network.EndpointSettings) *fakeDocker {
@@ -224,10 +252,37 @@ type fakeDocker struct {
 	inspected           containertypes.InspectResponse
 	containerInspectErr error
 
-	listed      dockerclient.ContainerListOptions
-	copiedFrom  string
-	copiedPath  string
-	inspectedID string
+	// execOutput and execExitCode are what an exec writes and exits with.
+	execOutput   string
+	execExitCode int
+
+	listed        dockerclient.ContainerListOptions
+	copiedFrom    string
+	copiedPath    string
+	inspectedID   string
+	execContainer string
+	execCommand   []string
+}
+
+func (client *fakeDocker) ExecCreate(_ context.Context, containerID string, options dockerclient.ExecCreateOptions) (dockerclient.ExecCreateResult, error) {
+	client.execContainer = containerID
+	client.execCommand = options.Cmd
+	return dockerclient.ExecCreateResult{ID: "exec"}, nil
+}
+
+func (client *fakeDocker) ExecAttach(context.Context, string, dockerclient.ExecAttachOptions) (dockerclient.ExecAttachResult, error) {
+	// Docker frames a stream without a TTY: one byte for the stream, three
+	// zero bytes and the frame's length, big-endian.
+	frame := append([]byte{byte(stdcopy.Stdout), 0, 0, 0}, binary.BigEndian.AppendUint32(nil, uint32(len(client.execOutput)))...)
+	frame = append(frame, client.execOutput...)
+	conn, _ := net.Pipe()
+	return dockerclient.ExecAttachResult{HijackedResponse: dockerclient.HijackedResponse{
+		Conn: conn, Reader: bufio.NewReader(bytes.NewReader(frame)),
+	}}, nil
+}
+
+func (client *fakeDocker) ExecInspect(context.Context, string, dockerclient.ExecInspectOptions) (dockerclient.ExecInspectResult, error) {
+	return dockerclient.ExecInspectResult{ExitCode: client.execExitCode}, nil
 }
 
 func (client *fakeDocker) ImageInspect(context.Context, string, ...dockerclient.ImageInspectOption) (dockerclient.ImageInspectResult, error) {
