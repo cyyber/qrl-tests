@@ -46,22 +46,25 @@ metrics show every duty type signed, a RANDAO reveal for every block and no
 refusal or fault, that it refuses a double vote and a double proposal sent to
 it directly, and that the chain keeps finalizing afterwards.
 
-Then it removes one validator's key through the validator client's remote
-keys API (`/qrl/v1/remotekeys`), after checking that the API lists exactly
-the signer's keys: the key file loses the key, the signer gets every
-attestation of the next epoch but that key's, and its vote is missing on
-chain. It adds the key back with a url of its own, which qrysm must ignore:
-the key file has the key again, the signer gets every attestation of the
-next epoch, the key's vote is on chain, and the signer gets no request for
+Then it removes one validator's key through the validator client's remote keys
+API (`/qrl/v1/remotekeys`), after checking that the API lists exactly the
+signer's keys. It removes the key half a slot into an epoch whose duties the
+validator client fetched with the key, before the key attests: the key file
+loses the key, and since qrysm refuses to sign for it once the DELETE has
+answered, although the validator client keeps its duties until the next epoch,
+the signer gets every attestation of that epoch but the key's, and its vote is
+missing on chain. It adds the key back with a url of its own, which qrysm must
+ignore: the key file has the key again, the signer gets every attestation of
+the next epoch, the key's vote is on chain, and the signer gets no request for
 that url. Last, it runs qrysm's exit command, `validator accounts
-voluntary-exit`, next to the validator client with its remote signer flags
-and its chain config, for another validator. The signer refuses it with 403
+voluntary-exit`, next to the validator client with its remote signer flags and
+its chain config, for another validator. The signer refuses it with 403
 `ARTIFACT_TYPE_DISABLED`, as it refuses every exit unless it runs with
-`--voluntary-exit-signing-enabled`, and the command fails, naming that
-option, and submits nothing. `consensus-remote-signer-exits` runs the same
-suite on the `remote-signer-exits` profile, whose signer runs with the
-option: the beacon node accepts the exit, and the validator is
-`active_exiting`. An exit cannot be undone, so it comes last.
+`--voluntary-exit-signing-enabled`, and the command fails, naming that option,
+and submits nothing. `consensus-remote-signer-exits` runs the same suite on
+the `remote-signer-exits` profile, whose signer runs with the option: the
+beacon node accepts the exit, and the validator is `active_exiting`. An exit
+cannot be undone, so it comes last.
 
 When a spec fails, the signer's metrics, healthcheck and capabilities, and
 the validator client's remote signer metrics, are saved under

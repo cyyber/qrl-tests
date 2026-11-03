@@ -50,6 +50,11 @@ const (
 	// neither spec depends on the other.
 	removedKeyIndex      = 1
 	exitingIndexFromLast = 1
+	// lateAttesterSlot is the first slot of an epoch, counted from 0, in
+	// which the remote keys spec lets the removed key attest when it removes
+	// the key half a slot into the epoch: the key attests a third into its
+	// slot, well after the DELETE.
+	lateAttesterSlot = 2
 
 	// importProbePath, under the signer's URL, is the url the remote keys
 	// spec imports its key with: qrysm ignores that url, so the signer must
@@ -208,8 +213,11 @@ var _ = ginkgo.Describe(
 
 		// epochAttestations returns the ATTESTATION requests the signer got
 		// for the duties of epoch, the epoch's attester duties of the
-		// validators, and the scrape at the end of the window.
-		epochAttestations := func(ctx context.Context, epoch uint64, validators []uint64) (float64, int, remotesigner.Metrics) {
+		// validators, and the scrape at the end of the window. during, unless
+		// nil, runs within the window, half a slot into the epoch: the
+		// validator client fetches an epoch's duties at its first slot, so by
+		// then it holds them.
+		epochAttestations := func(ctx context.Context, epoch uint64, validators []uint64, during func()) (float64, int, remotesigner.Metrics) {
 			ginkgo.GinkgoHelper()
 			gomega.Expect(time.Now().Before(countFrom(epoch))).To(gomega.BeTrue(), "epoch %d has begun", epoch)
 			attestations := remotesigner.With("type", remotesigner.TypeAttestation)
@@ -217,6 +225,10 @@ var _ = ginkgo.Describe(
 			before := sum(scrape(ctx), remotesigner.MetricSigningRequests, attestations)
 			// The next epoch's duties are known by now.
 			duties := testsuite.MustSucceed(node.Beacon.AttesterDuties(ctx, epoch, validators))
+			if during != nil {
+				sleepUntil(ctx, slotStart(epoch*chain.SlotsPerEpoch).Add(chain.SlotDuration/2))
+				during()
+			}
 			sleepUntil(ctx, countFrom(epoch+1))
 			after := scrape(ctx)
 			return sum(after, remotesigner.MetricSigningRequests, attestations) - before, len(duties), after
@@ -540,7 +552,7 @@ var _ = ginkgo.Describe(
 			expectValidatorClientHealthy(ctx)
 		}, ginkgo.SpecTimeout(5*time.Minute))
 
-		ginkgo.It("stops signing for a key the remote keys API removes, and signs for it again once it is added back", func(ctx ginkgo.SpecContext) {
+		ginkgo.It("stops signing at once for a key the remote keys API removes, and signs for it again once it is added back", func(ctx ginkgo.SpecContext) {
 			gomega.Expect(validator.URL).NotTo(gomega.BeEmpty(), "the validator client serves no keymanager API")
 			token := testsuite.MustSucceed(devnet.ReadServiceFile(ctx, docker, validator.ID, devnet.ValidatorKeymanagerTokenFile))
 			api := testsuite.MustSucceed(keymanager.New(validator.URL, lastLine(token)))
@@ -584,25 +596,42 @@ var _ = ginkgo.Describe(
 				}
 			}
 
-			status := testsuite.MustSucceed(api.DeleteRemoteKey(ctx, removed))
-			gomega.Expect(strings.EqualFold(status.Status, "deleted")).To(gomega.BeTrue(), "DELETE answered %+v", status)
-			// Should a check below fail, the other specs keep the key.
-			ginkgo.DeferCleanup(func(ctx ginkgo.SpecContext) {
-				if !slices.Contains(keyFile(ctx), removed) {
-					_, err := api.ImportRemoteKey(ctx, removed, signerURL)
-					gomega.Expect(err).NotTo(gomega.HaveOccurred(), "adding validator %d's key back", removedKeyIndex)
+			// The DELETE comes within an epoch whose duties the validator
+			// client fetched with the key, and before the key's attestation:
+			// half a slot into an epoch in which the key attests in the
+			// epoch's third slot or later. The client keeps the key's duties
+			// until the next epoch, but its keymanager refuses to sign for
+			// the key once the DELETE has answered, so the signer gets every
+			// attestation of the epoch but the key's, and the key's vote is
+			// missing on chain.
+			var withoutKey, keySlot uint64
+			for withoutKey = countableEpoch(); ; withoutKey++ {
+				// A beacon node serves the attester duties of the next
+				// epoch at the latest.
+				sleepUntil(ctx, slotStart((withoutKey-1)*chain.SlotsPerEpoch))
+				duty := testsuite.MustSucceed(node.Beacon.AttesterDuties(ctx, withoutKey, []uint64{removedKeyIndex}))
+				gomega.Expect(duty).To(gomega.HaveLen(1), "validator %d's attester duties in epoch %d", removedKeyIndex, withoutKey)
+				if keySlot = duty[0].Slot; keySlot >= withoutKey*chain.SlotsPerEpoch+lateAttesterSlot {
+					break
 				}
-			}, ginkgo.NodeTimeout(time.Minute))
-			gomega.Expect(keyFile(ctx)).To(gomega.Equal(others), "the key file after the DELETE")
-			gomega.Expect(listed(ctx)).To(gomega.Equal(others), "the remote keys after the DELETE")
-
-			// The validator client refuses the key's duties itself, so the
-			// signer gets every attestation of the next whole epoch but the
-			// key's, and the key's vote is missing on chain.
-			withoutKey := countableEpoch()
-			attestations, duties, _ := epochAttestations(ctx, withoutKey, indices)
+			}
+			attestations, duties, _ := epochAttestations(ctx, withoutKey, indices, func() {
+				status := testsuite.MustSucceed(api.DeleteRemoteKey(ctx, removed))
+				gomega.Expect(strings.EqualFold(status.Status, "deleted")).To(gomega.BeTrue(), "DELETE answered %+v", status)
+				// Should a check below fail, the other specs keep the key.
+				ginkgo.DeferCleanup(func(ctx ginkgo.SpecContext) {
+					if !slices.Contains(keyFile(ctx), removed) {
+						_, err := api.ImportRemoteKey(ctx, removed, signerURL)
+						gomega.Expect(err).NotTo(gomega.HaveOccurred(), "adding validator %d's key back", removedKeyIndex)
+					}
+				}, ginkgo.NodeTimeout(time.Minute))
+				gomega.Expect(time.Now().Before(slotStart(keySlot))).To(gomega.BeTrue(),
+					"the DELETE answered after slot %d began, in which validator %d attests", keySlot, removedKeyIndex)
+				gomega.Expect(keyFile(ctx)).To(gomega.Equal(others), "the key file after the DELETE")
+				gomega.Expect(listed(ctx)).To(gomega.Equal(others), "the remote keys after the DELETE")
+			})
 			gomega.Expect(attestations).To(gomega.Equal(float64(duties-1)),
-				"ATTESTATION requests for the %d attester duties of epoch %d, without validator %d's key",
+				"ATTESTATION requests for the %d attester duties of epoch %d, with validator %d's key deleted half a slot in",
 				duties, withoutKey, removedKeyIndex)
 
 			// qrysm ignores the url of an imported key: every key is signed
@@ -610,7 +639,7 @@ var _ = ginkgo.Describe(
 			// url given here, a path of the signer that no route serves.
 			unknownPaths := remotesigner.With("route", remotesigner.UnknownPathRoute)
 			unknownBefore := sum(scrape(ctx), remotesigner.MetricHTTPRequestDurations, unknownPaths)
-			status = testsuite.MustSucceed(api.ImportRemoteKey(ctx, removed, signerURL+importProbePath))
+			status := testsuite.MustSucceed(api.ImportRemoteKey(ctx, removed, signerURL+importProbePath))
 			gomega.Expect(strings.EqualFold(status.Status, "imported")).To(gomega.BeTrue(), "POST answered %+v", status)
 			gomega.Expect(keyFile(ctx)).To(gomega.Equal(signerKeys), "the key file after the POST")
 			gomega.Expect(listed(ctx)).To(gomega.Equal(signerKeys), "the remote keys after the POST")
@@ -618,7 +647,7 @@ var _ = ginkgo.Describe(
 			// The validator client takes the key's duties again from the
 			// next epoch on.
 			withKey := countableEpoch()
-			attestations, duties, after := epochAttestations(ctx, withKey, indices)
+			attestations, duties, after := epochAttestations(ctx, withKey, indices, nil)
 			gomega.Expect(attestations).To(gomega.Equal(float64(duties)),
 				"ATTESTATION requests for the %d attester duties of epoch %d, with validator %d's key again",
 				duties, withKey, removedKeyIndex)
@@ -626,7 +655,7 @@ var _ = ginkgo.Describe(
 				To(gomega.BeZero(), "requests to paths the signer does not serve, such as %s", importProbePath)
 
 			gomega.Expect(targetVote(ctx, withoutKey, removedKeyIndex)).To(gomega.BeNumerically("<=", 0),
-				"validator %d's target vote in epoch %d, without its key", removedKeyIndex, withoutKey)
+				"validator %d's target vote in epoch %d, its key deleted half a slot in", removedKeyIndex, withoutKey)
 			gomega.Expect(targetVote(ctx, withKey, removedKeyIndex)).To(gomega.BeNumerically(">", 0),
 				"validator %d's target vote in epoch %d, with its key again", removedKeyIndex, withKey)
 			expectNoFaults(scrape(ctx))
