@@ -69,10 +69,9 @@ var registry = []Lane{
 		Timeout: 95 * time.Minute,
 	},
 	{
-		// The spare genesis validator attests, stays offline and attests
-		// again, each for a few 40-second epochs, and every epoch's rewards
-		// are served two epochs late: about seven minutes, within spec
-		// timeouts that add up to 22.
+		// The spare genesis validator attests, goes offline and attests again,
+		// a few 40-second epochs each, with rewards served two epochs late:
+		// about eight minutes, within timeouts that add up to 22.
 		Name:    "consensus-penalties",
 		Profile: devnet.ProfileSpareValidator,
 		Suites:  []SuiteID{suiteConsensusPenalties},
