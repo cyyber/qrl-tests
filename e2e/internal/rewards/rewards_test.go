@@ -89,17 +89,17 @@ func anyReward(reward beacon.AttestationReward) bool {
 	return reward.Head > 0 || reward.Target > 0 || reward.Source > 0
 }
 
-func TestAvailable(t *testing.T) {
+func TestRewardsAvailable(t *testing.T) {
 	chain := chaininfo.Info{SlotsPerEpoch: 8}
 	// Slot 23 is in epoch 2, where only the rewards of epoch 0 are available.
-	require.True(t, Available(chain, 23, 0))
-	require.False(t, Available(chain, 23, 1))
-	require.True(t, Available(chain, 24, 1))
+	require.True(t, rewardsAvailable(chain, 23, 0))
+	require.False(t, rewardsAvailable(chain, 23, 1))
+	require.True(t, rewardsAvailable(chain, 24, 1))
 
 	// Before epoch 2 no rewards are available.
-	require.False(t, Available(chain, 0, 0))
-	require.False(t, Available(chain, 15, 0))
-	require.True(t, Available(chain, 16, 0))
+	require.False(t, rewardsAvailable(chain, 0, 0))
+	require.False(t, rewardsAvailable(chain, 15, 0))
+	require.True(t, rewardsAvailable(chain, 16, 0))
 }
 
 func TestRewardScanner(t *testing.T) {
