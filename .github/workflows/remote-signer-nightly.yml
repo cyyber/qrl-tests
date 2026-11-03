@@ -60,7 +60,7 @@ env:
   QRYSM_REPOSITORY: ${{ inputs.qrysm-repository || vars.E2E_REMOTE_SIGNER_QRYSM_REPOSITORY || 'rgeraldes24/qrysm' }}
   QRYSM_GIT_REF: ${{ inputs.qrysm-ref || vars.E2E_REMOTE_SIGNER_QRYSM_REF || '47f6b65e6c58bb8c268d3dfd94aca8cbd1718bcc' }}
   QRL_PACKAGE_REPOSITORY: ${{ inputs.qrl-package-repository || vars.E2E_REMOTE_SIGNER_QRL_PACKAGE_REPOSITORY || 'rgeraldes24/qrl-package' }}
-  QRL_PACKAGE_GIT_REF: ${{ inputs.qrl-package-ref || vars.E2E_REMOTE_SIGNER_QRL_PACKAGE_REF || 'ebf3b6ac1701b2ca3c721e325f4ca0d5ecfedea5' }}
+  QRL_PACKAGE_GIT_REF: ${{ inputs.qrl-package-ref || vars.E2E_REMOTE_SIGNER_QRL_PACKAGE_REF || 'f68c0523e2b46f8afeaed4943361afed2f075df3' }}
   # The execution client and the genesis generator, from the nightly's
   # repositories and, unless a variable pins them, from main as the nightly
   # builds them; the generator with the nightly's qrysm, whose genesis the

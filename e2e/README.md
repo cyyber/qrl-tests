@@ -131,7 +131,7 @@ repository variables, then the pinned defaults:
 | --- | --- | --- | --- |
 | go-remotesigner | `go-remotesigner-repository`, `go-remotesigner-ref` | `E2E_REMOTE_SIGNER_GO_REMOTESIGNER_REPOSITORY`, `E2E_REMOTE_SIGNER_GO_REMOTESIGNER_REF` | `rgeraldes24/go-remotesigner` at `8447c2d29add5f52b5157038bc6b74bd0ecef36b` |
 | qrysm | `qrysm-repository`, `qrysm-ref` | `E2E_REMOTE_SIGNER_QRYSM_REPOSITORY`, `E2E_REMOTE_SIGNER_QRYSM_REF` | `rgeraldes24/qrysm` at `47f6b65e6c58bb8c268d3dfd94aca8cbd1718bcc` |
-| qrl-package | `qrl-package-repository`, `qrl-package-ref` | `E2E_REMOTE_SIGNER_QRL_PACKAGE_REPOSITORY`, `E2E_REMOTE_SIGNER_QRL_PACKAGE_REF` | `rgeraldes24/qrl-package` at `ebf3b6ac1701b2ca3c721e325f4ca0d5ecfedea5` |
+| qrl-package | `qrl-package-repository`, `qrl-package-ref` | `E2E_REMOTE_SIGNER_QRL_PACKAGE_REPOSITORY`, `E2E_REMOTE_SIGNER_QRL_PACKAGE_REF` | `rgeraldes24/qrl-package` at `f68c0523e2b46f8afeaed4943361afed2f075df3` |
 | go-qrl | | the nightly's `E2E_GO_QRL_REPOSITORY`, `E2E_REMOTE_SIGNER_GO_QRL_REF` | `cyyber/go-qrl` at `main` |
 | qrl-genesis-generator | | the nightly's `E2E_GENERATOR_REPOSITORY`, `E2E_REMOTE_SIGNER_GENERATOR_REF` | `cyyber/qrl-genesis-generator` at `main` |
 | the generator's qrysm | | the nightly's `E2E_QRYSM_REPOSITORY`, `E2E_REMOTE_SIGNER_GENERATOR_QRYSM_REF` | `cyyber/qrysm` at `main` |

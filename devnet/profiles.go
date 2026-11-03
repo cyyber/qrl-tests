@@ -34,7 +34,15 @@ const (
 	// as well as the sign token. It needs a qrl-package with the participant
 	// field remote_signer_auth_mode, which no qrl-package has yet.
 	ProfileRemoteSignerMTLS Profile = "remote-signer-mtls"
+	// ProfileRemoteSignerExits is ProfileRemoteSigner with go-remotesigner
+	// signing voluntary exits, which it refuses unless it runs with
+	// --voluntary-exit-signing-enabled.
+	ProfileRemoteSignerExits Profile = "remote-signer-exits"
 )
+
+// remoteSignerExitsFlag is the go-remotesigner consensus flag that has it
+// sign voluntary exits.
+const remoteSignerExitsFlag = "--voluntary-exit-signing-enabled"
 
 // go-remotesigner's API authentication, its --http-auth-mode, in the profiles
 // that run it.
@@ -57,6 +65,11 @@ type participantSpec struct {
 	// remoteSignerAuthMode is the signer's authentication when it is not
 	// qrl-package's default, token.
 	remoteSignerAuthMode string
+	// remoteSignerExtraParams are go-remotesigner consensus flags that
+	// qrl-package passes after its own.
+	remoteSignerExtraParams []string
+	// keymanager has the validator client serve the keymanager API.
+	keymanager bool
 }
 
 var profileSpecs = map[Profile]profileSpec{
@@ -65,9 +78,14 @@ var profileSpecs = map[Profile]profileSpec{
 		{validatorCount: 32, clExtraParams: anchorCLExtraParams},
 		{validatorCount: 32, clExtraParams: []string{"--minimum-peers-per-subnet=0"}},
 	}},
-	ProfileRemoteSigner: {participants: []participantSpec{{validatorCount: 64, remoteSigner: true}}},
+	// The remote-signer profiles' validator clients serve the keymanager
+	// API, whose remote keys endpoints change the keys they sign for.
+	ProfileRemoteSigner: {participants: []participantSpec{{validatorCount: 64, remoteSigner: true, keymanager: true}}},
 	ProfileRemoteSignerMTLS: {participants: []participantSpec{
-		{validatorCount: 64, remoteSigner: true, remoteSignerAuthMode: RemoteSignerAuthTokenMTLS},
+		{validatorCount: 64, remoteSigner: true, keymanager: true, remoteSignerAuthMode: RemoteSignerAuthTokenMTLS},
+	}},
+	ProfileRemoteSignerExits: {participants: []participantSpec{
+		{validatorCount: 64, remoteSigner: true, keymanager: true, remoteSignerExtraParams: []string{remoteSignerExitsFlag}},
 	}},
 }
 
@@ -100,4 +118,15 @@ func (profile Profile) RemoteSignerAuthMode() string {
 		return RemoteSignerAuthToken
 	}
 	return ""
+}
+
+// RemoteSignerSignsExits reports whether the go-remotesigner of the profile
+// signs voluntary exits; by default it refuses them.
+func (profile Profile) RemoteSignerSignsExits() bool {
+	for _, participant := range profileSpecs[profile].participants {
+		if participant.remoteSigner && slices.Contains(participant.remoteSignerExtraParams, remoteSignerExitsFlag) {
+			return true
+		}
+	}
+	return false
 }

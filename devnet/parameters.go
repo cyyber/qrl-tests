@@ -41,6 +41,12 @@ type participant struct {
 	// It is left out unless a profile sets it, since no qrl-package release
 	// has the field yet.
 	RemoteSignerAuthMode string `json:"remote_signer_auth_mode,omitempty"`
+	// RemoteSignerExtraParams are go-remotesigner consensus flags, after
+	// qrl-package's own.
+	RemoteSignerExtraParams []string `json:"remote_signer_extra_params,omitempty"`
+	// KeymanagerEnabled has the validator client serve the keymanager API on
+	// its http-validator port.
+	KeymanagerEnabled bool `json:"keymanager_enabled,omitempty"`
 }
 
 type networkParams struct {
@@ -117,6 +123,7 @@ func profileParameters(address string, options StartOptions) (string, error) {
 			RemoteSignerImage:       images.Clef,
 			RemoteSignerAutoApprove: true,
 			ValidatorCount:          configuration.validatorCount,
+			KeymanagerEnabled:       configuration.keymanager,
 			ELExtraLabels:           labels,
 			CLExtraLabels:           labels,
 			VCExtraLabels:           labels,
@@ -130,6 +137,7 @@ func profileParameters(address string, options StartOptions) (string, error) {
 			participants[index].RemoteSignerExtraEnvVars = map[string]string{"REMOTESIGNER_ACCESS_LOGS_ENABLED": "true"}
 			participants[index].RemoteSignerExtraLabels = labels
 			participants[index].RemoteSignerAuthMode = configuration.remoteSignerAuthMode
+			participants[index].RemoteSignerExtraParams = configuration.remoteSignerExtraParams
 		}
 	}
 

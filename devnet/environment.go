@@ -52,6 +52,13 @@ const (
 	ValidatorRemoteSignerClientKeyFile  = "/remote-signer/client-key.pem"
 )
 
+// ValidatorKeymanagerTokenFile holds the token of the keymanager API that a
+// validator client signing through go-remotesigner serves when the profile
+// enables it. qrysm keeps the token in its wallet directory, and in remote
+// mode it opens no wallet and is given no --wallet-dir, so the directory is
+// the default one of the image's root user.
+const ValidatorKeymanagerTokenFile = "/root/.qrlvalidators/qrysm-wallet/auth-token"
+
 type Environment struct {
 	EnclaveName  string        `json:"enclave_name"`
 	Backend      Backend       `json:"backend,omitempty"`
