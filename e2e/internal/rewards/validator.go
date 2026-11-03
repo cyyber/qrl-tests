@@ -148,9 +148,9 @@ func (validator Validator) VoteAmounts(ctx context.Context, epoch uint64) (VoteA
 	return VoteAmounts{}, fmt.Errorf("epoch %d has no ideal reward for effective balance %d", epoch, record.EffectiveBalance)
 }
 
-// BalanceAtEpochStart is the balance in the state at the first slot of epoch:
-// after the processing of the epoch before it, which applies the attestation
-// rewards of the epoch before that, and after the block at that slot.
+// BalanceAtEpochStart is the balance at the first slot of epoch, after that
+// slot's block. It includes the attestation rewards of epoch-2, which the
+// processing at the start of epoch applies.
 func (validator Validator) BalanceAtEpochStart(ctx context.Context, epoch uint64) (uint64, error) {
 	return validator.BalanceAt(ctx, epoch*validator.Chain.SlotsPerEpoch)
 }
