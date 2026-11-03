@@ -60,8 +60,7 @@ func (spec Spec) missedVotePenalties(effectiveBalance, totalActiveBalance uint64
 		baseReward * spec.targetWeight / spec.weightDenominator
 }
 
-// Validator reads the balance and the rewards of one validator a suite
-// follows.
+// Validator reads one validator's balance and rewards from a beacon node.
 type Validator struct {
 	Client *beacon.Client
 	Chain  chaininfo.Info
