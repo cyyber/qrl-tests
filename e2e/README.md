@@ -182,9 +182,10 @@ hold the keys and the token, and the signer's metrics, so that a network that
 did not start is diagnosed too.
 
 The lanes are the JSON list of the `lanes` input, then of the
-`E2E_REMOTE_SIGNER_LANES` variable, then `["consensus-remote-signer"]`: mTLS
-is not covered until a qrl-package issues client certificates and the
-variable names `consensus-remote-signer-mtls` too. Before it builds any image,
+`E2E_REMOTE_SIGNER_LANES` variable, then
+`["consensus-remote-signer","consensus-remote-signer-exits"]`: mTLS is not
+covered until a qrl-package issues client certificates and the variable
+names `consensus-remote-signer-mtls` too. Before it builds any image,
 each lane job checks that the qrl-package takes every participant field the
 lane's profile sets, so a lane whose qrl-package lacks
 `remote_signer_auth_mode` fails in seconds.

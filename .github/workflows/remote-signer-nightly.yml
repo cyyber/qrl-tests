@@ -35,7 +35,8 @@ on:
           vars.E2E_REMOTE_SIGNER_QRL_PACKAGE_REF, else the pinned commit
       lanes:
         description: JSON list of the remote-signer lanes to run; empty uses
-          vars.E2E_REMOTE_SIGNER_LANES, else ["consensus-remote-signer"]
+          vars.E2E_REMOTE_SIGNER_LANES, else ["consensus-remote-signer",
+          "consensus-remote-signer-exits"]
       seed:
         description: ginkgo spec-order seed (empty draws a fresh one per lane)
       runner:
@@ -201,9 +202,11 @@ jobs:
       fail-fast: false
       matrix:
         # consensus-remote-signer-mtls needs a qrl-package option that no
-        # qrl-package has yet (e2e/README.md), so only the token lane runs
-        # unless the variable or the input names the mTLS lane too.
-        lane: ${{ fromJSON(inputs.lanes || vars.E2E_REMOTE_SIGNER_LANES || '["consensus-remote-signer"]') }}
+        # qrl-package has yet (e2e/README.md), so only the token lanes, the
+        # one whose signer refuses exits and the one whose signer signs
+        # them, run unless the variable or the input names the mTLS lane
+        # too.
+        lane: ${{ fromJSON(inputs.lanes || vars.E2E_REMOTE_SIGNER_LANES || '["consensus-remote-signer","consensus-remote-signer-exits"]') }}
     env:
       E2E_LANE: ${{ matrix.lane }}
       E2E_SEED: ${{ inputs.seed }}

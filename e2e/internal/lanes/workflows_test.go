@@ -87,7 +87,7 @@ func TestRemoteSignerNightlyRunsLanesOnTheirProfiles(t *testing.T) {
 	// start today.
 	var defaults []string
 	requireJSONLiteral(t, job.Strategy.Matrix["lane"], &defaults)
-	require.Equal(t, []string{"consensus-remote-signer"}, defaults)
+	require.Equal(t, []string{"consensus-remote-signer", "consensus-remote-signer-exits"}, defaults)
 }
 
 // requireJSONLiteral decodes the one quoted JSON literal of a workflow
