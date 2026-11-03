@@ -13,10 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const (
-	shorPerQRL = 1_000_000_000
-	spareIndex = 64
-)
+const shorPerQRL = 1_000_000_000
 
 func testSpec() Spec {
 	return Spec{
@@ -86,13 +83,13 @@ func testValidator(client *beacon.Client) Validator {
 		Client: client,
 		Chain:  chaininfo.Info{SlotsPerEpoch: 8},
 		Spec:   testSpec(),
-		Index:  spareIndex,
+		Index:  validatorIndex,
 	}
 }
 
 func validatorJSON(balance, effectiveBalance uint64) string {
 	return fmt.Sprintf(`{"index":"%d","balance":"%d","validator":{"effective_balance":"%d"}}`,
-		spareIndex, balance, effectiveBalance)
+		validatorIndex, balance, effectiveBalance)
 }
 
 func finalizedJSON(epoch uint64) string {
@@ -119,7 +116,7 @@ func idealJSON(effectiveBalances ...uint64) string {
 	return `{"ideal_rewards":[` + strings.Join(rewards, ",") + `],"total_rewards":[]}`
 }
 
-func TestVoteAmountsReadTheProcessingState(t *testing.T) {
+func TestVoteAmounts(t *testing.T) {
 	// The rewards of epoch 5 are processed in the state at slot 55, the last
 	// of epoch 6.
 	responses := map[string]string{
@@ -147,7 +144,7 @@ func TestVoteAmountsReadTheProcessingState(t *testing.T) {
 	}
 }
 
-func TestVoteAmountsNeedTheValidatorsIdealReward(t *testing.T) {
+func TestVoteAmountsNeedsIdealReward(t *testing.T) {
 	_, client := newStateBeacon(t, map[string]string{
 		"beacon/states/55/finality_checkpoints": finalizedJSON(3),
 		"beacon/states/55/validators/64":        validatorJSON(39_997*shorPerQRL, 39_997*shorPerQRL),
@@ -158,7 +155,7 @@ func TestVoteAmountsNeedTheValidatorsIdealReward(t *testing.T) {
 	require.EqualError(t, err, "epoch 5 has no ideal reward for effective balance 39997000000000")
 }
 
-func TestVoteAmountsRefuseAnInactivityLeak(t *testing.T) {
+func TestVoteAmountsRefusesLeak(t *testing.T) {
 	// Epoch 5 is four epochs past finalized epoch 1, the most without a leak.
 	_, client := newStateBeacon(t, map[string]string{
 		"beacon/states/55/finality_checkpoints": finalizedJSON(1),
@@ -176,7 +173,7 @@ func TestVoteAmountsRefuseAnInactivityLeak(t *testing.T) {
 		"the rewards of epoch 5 are processed in an inactivity leak: the last finalized epoch is 0")
 }
 
-func TestBalanceAtEpochStartReadsTheFirstSlot(t *testing.T) {
+func TestBalanceAtEpochStart(t *testing.T) {
 	_, client := newStateBeacon(t, map[string]string{
 		"beacon/states/48/validators/64": validatorJSON(39_999*shorPerQRL, 39_999*shorPerQRL),
 	})
@@ -185,7 +182,7 @@ func TestBalanceAtEpochStartReadsTheFirstSlot(t *testing.T) {
 	require.Equal(t, uint64(39_999*shorPerQRL), balance)
 }
 
-func TestBlockBalanceChangesCoverTheBlocksBetweenTwoEpochStarts(t *testing.T) {
+func TestBlockBalanceChanges(t *testing.T) {
 	block := func(withdrawals string) string {
 		return fmt.Sprintf(`{"message":{"proposer_index":"3","body":{"execution_payload":{"withdrawals":[%s]}}}}`, withdrawals)
 	}
@@ -193,14 +190,14 @@ func TestBlockBalanceChangesCoverTheBlocksBetweenTwoEpochStarts(t *testing.T) {
 		return fmt.Sprintf(`{"validator_index":"%d","amount":"%d"}`, index, amount)
 	}
 	syncReward := func(reward int64) string {
-		return fmt.Sprintf(`[{"validator_index":"%d","reward":"%d"}]`, spareIndex, reward)
+		return fmt.Sprintf(`[{"validator_index":"%d","reward":"%d"}]`, validatorIndex, reward)
 	}
-	// Epoch 6 covers slots 49 through 56. Slots 48 and 57 belong to the
-	// balances either side, slot 50 is empty, at slot 52 the validator is
+	// BlockBalanceChanges(6) covers slots 49 through 56. Slots 48 and 57
+	// belong to the balances either side, slot 50 is empty, at slot 52 the validator is
 	// outside the sync committee, and it proposed the block at slot 54.
 	responses := map[string]string{
-		"beacon/blocks/48":                 block(withdrawal(spareIndex, 1000)),
-		"beacon/blocks/49":                 block(withdrawal(spareIndex, 7) + "," + withdrawal(3, 500)),
+		"beacon/blocks/48":                 block(withdrawal(validatorIndex, 1000)),
+		"beacon/blocks/49":                 block(withdrawal(validatorIndex, 7) + "," + withdrawal(3, 500)),
 		"beacon/rewards/sync_committee/49": syncReward(-2),
 		"beacon/blocks/51":                 block(""),
 		"beacon/rewards/sync_committee/51": syncReward(5),
@@ -208,15 +205,15 @@ func TestBlockBalanceChangesCoverTheBlocksBetweenTwoEpochStarts(t *testing.T) {
 		"beacon/rewards/sync_committee/52": `[]`,
 		"beacon/blocks/56":                 block(""),
 		"beacon/rewards/sync_committee/56": syncReward(-3),
-		"beacon/blocks/57":                 block(withdrawal(spareIndex, 1000)),
+		"beacon/blocks/57":                 block(withdrawal(validatorIndex, 1000)),
 	}
 	for slot := 53; slot <= 55; slot++ {
 		responses[fmt.Sprintf("beacon/blocks/%d", slot)] = block("")
 		responses[fmt.Sprintf("beacon/rewards/sync_committee/%d", slot)] = `[]`
 	}
 	responses["beacon/blocks/54"] = fmt.Sprintf(
-		`{"message":{"proposer_index":"%d","body":{"execution_payload":{"withdrawals":[]}}}}`, spareIndex)
-	responses["beacon/rewards/blocks/54"] = fmt.Sprintf(`{"proposer_index":"%d","total":"40"}`, spareIndex)
+		`{"message":{"proposer_index":"%d","body":{"execution_payload":{"withdrawals":[]}}}}`, validatorIndex)
+	responses["beacon/rewards/blocks/54"] = fmt.Sprintf(`{"proposer_index":"%d","total":"40"}`, validatorIndex)
 	fake, client := newStateBeacon(t, responses)
 
 	change, err := testValidator(client).BlockBalanceChanges(t.Context(), 6)
@@ -233,7 +230,7 @@ func TestBlockBalanceChangesCoverTheBlocksBetweenTwoEpochStarts(t *testing.T) {
 	require.NotContains(t, fake.paths(), "beacon/rewards/sync_committee/50")
 }
 
-func TestBlockBalanceChangesReportsAFailedRead(t *testing.T) {
+func TestBlockBalanceChangesFailedRead(t *testing.T) {
 	_, client := newStateBeacon(t, map[string]string{
 		"beacon/blocks/49": `{"message":{"body":{"execution_payload":{}}}}`,
 	})
