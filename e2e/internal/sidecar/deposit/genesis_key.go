@@ -15,14 +15,9 @@ const genesisStartScriptPath = "/derive-genesis-key.sh"
 // GenesisKeyConfig describes one new-seed run that derives the key of a
 // genesis validator.
 type GenesisKeyConfig struct {
-	// Image is the Qrysm all-tools image, which carries the deposit CLI.
-	Image string
-	// Mnemonic is the mnemonic the network's genesis validators derive from.
-	Mnemonic string
-	// Index is the validator's genesis index.
-	Index uint64
-	// WithdrawalRecipient is required by new-seed. Only the deposit data,
-	// which nothing submits, carries it.
+	Image               string
+	Mnemonic            string
+	Index               uint64
 	WithdrawalRecipient string
 	Password            string
 }
