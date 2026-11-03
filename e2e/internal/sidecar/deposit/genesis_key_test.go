@@ -42,6 +42,7 @@ func TestGenesisKeyReportsAFailedRun(t *testing.T) {
 	_, err := genesisKey(t.Context(), genesisKeyTestConfig(), docker)
 	require.ErrorContains(t, err, "deposit CLI container exited with code 1")
 	require.ErrorContains(t, err, "invalid mnemonic")
+	require.Equal(t, []string{sidecartest.ContainerID}, docker.Removed)
 }
 
 func TestGenesisKeyScriptVariablesAreSet(t *testing.T) {
@@ -60,9 +61,9 @@ func TestValidateGenesisKeyConfig(t *testing.T) {
 
 	for want, clearField := range map[string]func(*GenesisKeyConfig){
 		"deposit CLI image is empty":    func(config *GenesisKeyConfig) { config.Image = " " },
-		"mnemonic is empty":             func(config *GenesisKeyConfig) { config.Mnemonic = "" },
-		"withdrawal recipient is empty": func(config *GenesisKeyConfig) { config.WithdrawalRecipient = "" },
-		"keystore password is empty":    func(config *GenesisKeyConfig) { config.Password = "" },
+		"mnemonic is empty":             func(config *GenesisKeyConfig) { config.Mnemonic = " " },
+		"withdrawal recipient is empty": func(config *GenesisKeyConfig) { config.WithdrawalRecipient = " " },
+		"keystore password is empty":    func(config *GenesisKeyConfig) { config.Password = " " },
 	} {
 		t.Run(want, func(t *testing.T) {
 			config := genesisKeyTestConfig()
