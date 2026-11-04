@@ -120,8 +120,8 @@ func bitlistLen(bitlist []byte) uint64 {
 	return uint64(len(bitlist)-1)*8 + uint64(bits.Len8(bitlist[len(bitlist)-1])) - 1
 }
 
-// Committee is the validators that attest together at one slot, in the
-// order their aggregation bits follow.
+// Committee is the validators that attest at one slot, in aggregation bit
+// order.
 type Committee struct {
 	Index      uint64
 	Slot       uint64
