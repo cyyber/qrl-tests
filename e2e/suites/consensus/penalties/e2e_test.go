@@ -160,9 +160,9 @@ var _ = ginkgo.Describe(
 
 			// A healthy client's target vote is always timely: it has the whole
 			// epoch. Its source and head votes must be included within two slots
-			// and one, which an empty slot can prevent, so the source earns its
-			// reward or pays the missed penalty, and the head earns its reward or
-			// nothing.
+			// and one, which a missed or late block can prevent, so the source
+			// earns its reward or pays the missed penalty, and the head earns its
+			// reward or nothing.
 			next := resumed + 1
 			val.AwaitRewards(ctx, next)
 			reward := testsuite.MustSucceed(val.AttestationReward(ctx, next))
