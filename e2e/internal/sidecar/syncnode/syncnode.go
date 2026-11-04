@@ -23,11 +23,9 @@ import (
 )
 
 const (
-	rpcPort    = 8545
-	enginePort = 8551
-	beaconPort = 3500
-	// sourceBeaconPort is the port qrl-package's beacon nodes serve their REST
-	// API on, which a checkpoint sync reads the source's state from.
+	rpcPort          = 8545
+	enginePort       = 8551
+	beaconPort       = 3500
 	sourceBeaconPort = 3500
 
 	networkConfigDir  = "/network-configs"
