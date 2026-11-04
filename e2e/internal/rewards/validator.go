@@ -272,8 +272,7 @@ func (validator Validator) TimelyVotes(ctx context.Context, epoch uint64) (Timel
 	return votes, nil
 }
 
-// duty finds the validator's attestation duty among committees: the slot, the
-// committee index and its position in the committee.
+// duty finds the validator's attestation duty among committees.
 func (validator Validator) duty(committees []beacon.Committee) (slot, committee, position uint64, found bool) {
 	for _, candidate := range committees {
 		for member, index := range candidate.Validators {
