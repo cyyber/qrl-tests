@@ -217,8 +217,8 @@ func (validator Validator) BlockBalanceChange(ctx context.Context, slot uint64) 
 	return change, nil
 }
 
-// TimelyVotes is which of a validator's votes of an epoch the chain counts as
-// timely.
+// TimelyVotes is whether an attestation's source and head votes were timely.
+// Target is left out: a correct target is timely at any delay.
 type TimelyVotes struct {
 	Source bool
 	Head   bool
