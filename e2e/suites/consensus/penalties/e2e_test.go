@@ -124,10 +124,7 @@ var _ = ginkgo.Describe(
 
 		ginkgo.It("loses exactly the missed-vote penalty in every epoch its validator client is stopped", func(ctx ginkgo.SpecContext) {
 			stopValidatorClient()
-			// Skip the epoch the client stopped in, since it may have voted in
-			// it. The later of the clock's epoch and the head's covers both a
-			// lagging head and a clock behind the node's, as Docker Desktop's can
-			// be after sleep.
+			// Skip the epoch the client stopped in, since it may have voted in it.
 			head := testsuite.MustSucceed(node.Beacon.HeadSlot(ctx))
 			first := max(val.Chain.EpochAt(time.Now()), val.Chain.Epoch(head)) + 1
 			last := first + offlineEpochs - 1
