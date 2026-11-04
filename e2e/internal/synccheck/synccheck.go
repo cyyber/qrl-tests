@@ -106,13 +106,10 @@ func WaitForHead(ctx context.Context, node *syncnode.Node, source *live.Node, ch
 	return sync
 }
 
-// ExpectSynced checks a node that has reached the source's head: that it says
-// it is synced, holds the same chain, state and history over the range it
-// serves, keeps up, and passes on transactions. originSlot is the first slot
-// the beacon node holds blocks for: 0 from genesis, the checkpoint's slot
-// after a checkpoint sync, since Qrysm does not backfill. The execution chain
-// is whole either way: gqrl downloads the headers back to genesis on both sync
-// paths.
+// ExpectSynced checks a node that has reached the source's head: it reports
+// synced, holds the source's chain, state and history, keeps up, and relays
+// transactions. Its beacon blocks are compared from originSlot, 0 from genesis
+// or the checkpoint's slot, as Qrysm does not backfill.
 func ExpectSynced(ctx context.Context, node *syncnode.Node, source *live.Node, chain chaininfo.Info, written history.History, originSlot uint64) {
 	ginkgo.GinkgoHelper()
 
