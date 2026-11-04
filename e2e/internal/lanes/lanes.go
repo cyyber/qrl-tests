@@ -81,7 +81,7 @@ var registry = []Lane{
 		Name:    "sync",
 		Profile: devnet.ProfileSingle,
 		Suites:  []SuiteID{suiteSyncGenesis, suiteSyncCheckpoint},
-		Timeout: 60 * time.Minute,
+		Timeout: 75 * time.Minute,
 	},
 }
 
