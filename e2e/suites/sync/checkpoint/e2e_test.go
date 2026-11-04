@@ -108,8 +108,6 @@ var _ = ginkgo.Describe(
 			gomega.Expect(sync.Path.Downloaded).To(gomega.BeTrue(),
 				"neither qrl_syncing nor the log shows the execution client downloading the chain")
 			gomega.Expect(sync.Path.Snap).To(gomega.BeFalse(), "a full-mode node synced state by snapshot")
-			// The beacon node holds the checkpoint's blocks before its execution
-			// client has executed them, and must say so.
 			gomega.Expect(sync.Optimistic).To(gomega.BeTrue(),
 				"the beacon node never reported optimistic while its execution client caught up")
 			synccheck.ExpectSynced(ctx, fullNode, source, chain, written, checkpointSlot)
