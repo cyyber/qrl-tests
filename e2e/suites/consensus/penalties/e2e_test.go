@@ -158,10 +158,11 @@ var _ = ginkgo.Describe(
 			startValidatorClient(ctx)
 			resumed := val.FirstAttestedEpoch(ctx, val.Chain.Epoch(head), attestTimeout)
 
-			// The target vote has the whole epoch, so a healthy client's is
-			// timely. A timely source vote needs inclusion within two slots
-			// and a timely head vote within one, which empty slots can take
-			// away, so each of those earns its reward or costs its penalty.
+			// A healthy client's target vote is always timely: it has the whole
+			// epoch. Its source and head votes must be included within two slots
+			// and one, which an empty slot can prevent, so the source earns its
+			// reward or pays the missed penalty, and the head earns its reward or
+			// nothing.
 			next := resumed + 1
 			val.AwaitRewards(ctx, next)
 			reward := testsuite.MustSucceed(val.AttestationReward(ctx, next))
