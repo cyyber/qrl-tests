@@ -225,10 +225,9 @@ type TimelyVotes struct {
 }
 
 // TimelyVotes reads, from the blocks that include the validator's attestation
-// of epoch, which of its votes the chain counts as timely. The source vote is
-// timely if a block includes it within ⌊√SLOTS_PER_EPOCH⌋ slots; the head vote
-// if a block includes it MIN_ATTESTATION_INCLUSION_DELAY slots after the vote,
-// for the canonical block at that slot and the epoch's canonical target.
+// of epoch, whether its source and head votes were timely. Source must be
+// included within ⌊√SLOTS_PER_EPOCH⌋ slots; head after exactly
+// MIN_ATTESTATION_INCLUSION_DELAY slots, voting the canonical head and target.
 func (validator Validator) TimelyVotes(ctx context.Context, epoch uint64) (TimelyVotes, error) {
 	start := epoch * validator.Chain.SlotsPerEpoch
 	committees, err := validator.Client.Committees(ctx, strconv.FormatUint(start, 10), epoch)
