@@ -115,7 +115,7 @@ var _ = ginkgo.Describe(
 			// client has executed them, and must say so.
 			gomega.Expect(sync.Optimistic).To(gomega.BeTrue(),
 				"the beacon node never reported optimistic while its execution client caught up")
-			synccheck.ExpectSynced(ctx, fullNode, source, chain, written, synccheck.Origin{Slot: checkpointSlot})
+			synccheck.ExpectSynced(ctx, fullNode, source, chain, written, checkpointSlot)
 		}, ginkgo.SpecTimeout(15*time.Minute))
 
 		ginkgo.It("catches up in full mode after the source finalizes two more epochs while it is stopped", func(ctx ginkgo.SpecContext) {
@@ -138,7 +138,7 @@ var _ = ginkgo.Describe(
 
 			sync := synccheck.WaitForHead(ctx, fullNode, source, chain)
 			ginkgo.AddReportEntry("execution sync path after the restart", sync.Path.String())
-			synccheck.ExpectSynced(ctx, fullNode, source, chain, written, synccheck.Origin{Slot: checkpointSlot})
+			synccheck.ExpectSynced(ctx, fullNode, source, chain, written, checkpointSlot)
 		}, ginkgo.SpecTimeout(15*time.Minute))
 	},
 )

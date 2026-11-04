@@ -91,7 +91,7 @@ var _ = ginkgo.Describe(
 
 			sync := synccheck.WaitForHead(ctx, fullNode, source, chain)
 			ginkgo.AddReportEntry("execution sync path", sync.Path.String())
-			synccheck.ExpectSynced(ctx, fullNode, source, chain, written, synccheck.Genesis)
+			synccheck.ExpectSynced(ctx, fullNode, source, chain, written, 0)
 		}, ginkgo.SpecTimeout(15*time.Minute))
 
 		ginkgo.It("catches up after the source finalizes two more epochs while it is stopped", func(ctx ginkgo.SpecContext) {
@@ -114,7 +114,7 @@ var _ = ginkgo.Describe(
 
 			sync := synccheck.WaitForHead(ctx, fullNode, source, chain)
 			ginkgo.AddReportEntry("execution sync path after the restart", sync.Path.String())
-			synccheck.ExpectSynced(ctx, fullNode, source, chain, written, synccheck.Genesis)
+			synccheck.ExpectSynced(ctx, fullNode, source, chain, written, 0)
 		}, ginkgo.SpecTimeout(15*time.Minute))
 	},
 )

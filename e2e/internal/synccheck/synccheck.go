@@ -63,17 +63,6 @@ const (
 	optimisticLogLine = "optimistic block"
 )
 
-// Origin is where the beacon node started from.
-type Origin struct {
-	// Slot is the slot of the origin block, the first one the beacon node
-	// holds: 0 from genesis, the checkpoint's slot after a checkpoint sync,
-	// since Qrysm does not backfill. The execution chain is whole either way:
-	// gqrl downloads the headers back to genesis on both of its sync paths.
-	Slot uint64
-}
-
-var Genesis = Origin{}
-
 // WaitForHead waits until both of the node's clients have the source's head.
 func WaitForHead(ctx context.Context, node *syncnode.Node, source *live.Node, chain chaininfo.Info) Sync {
 	ginkgo.GinkgoHelper()
@@ -119,8 +108,11 @@ func WaitForHead(ctx context.Context, node *syncnode.Node, source *live.Node, ch
 
 // ExpectSynced checks a node that has reached the source's head: that it says
 // it is synced, holds the same chain, state and history over the range it
-// serves, keeps up, and passes on transactions.
-func ExpectSynced(ctx context.Context, node *syncnode.Node, source *live.Node, chain chaininfo.Info, written history.History, origin Origin) {
+// serves, keeps up, and passes on transactions. originSlot is the first slot
+// the beacon node holds blocks for: 0 from genesis, the checkpoint's slot after
+// a checkpoint sync, since Qrysm does not backfill. The execution chain is whole
+// either way: gqrl downloads the headers back to genesis on both sync paths.
+func ExpectSynced(ctx context.Context, node *syncnode.Node, source *live.Node, chain chaininfo.Info, written history.History, originSlot uint64) {
 	ginkgo.GinkgoHelper()
 
 	ginkgo.By("reporting synced")
@@ -146,14 +138,14 @@ func ExpectSynced(ctx context.Context, node *syncnode.Node, source *live.Node, c
 	// A beacon node serves blocks by slot from its database, which the
 	// blocks it has just synced reach a little later.
 	finalizedSlot := testsuite.MustSucceed(node.Beacon.FinalityCheckpoints(ctx)).Finalized.Epoch * chain.SlotsPerEpoch
-	gomega.Expect(finalizedSlot).To(gomega.BeNumerically(">=", origin.Slot), "the finalized slot is before the first slot the node serves")
+	gomega.Expect(finalizedSlot).To(gomega.BeNumerically(">=", originSlot), "the finalized slot is before the first slot the node serves")
 	gomega.Eventually(func(g gomega.Gomega) {
-		for _, slot := range sampledRange(origin.Slot, finalizedSlot) {
+		for _, slot := range sampledRange(originSlot, finalizedSlot) {
 			expectSameBlockAtSlot(ctx, g, node.Beacon, source.Beacon, slot)
 		}
 	}).WithContext(ctx).WithTimeout(2 * chain.EpochDuration).WithPolling(chain.SlotDuration).Should(gomega.Succeed())
-	if origin.Slot > 0 {
-		for _, slot := range sampledRange(0, origin.Slot-1) {
+	if originSlot > 0 {
+		for _, slot := range sampledRange(0, originSlot-1) {
 			expectNoOtherBlockAtSlot(ctx, node.Beacon, source.Beacon, slot)
 		}
 	}

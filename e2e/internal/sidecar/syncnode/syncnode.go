@@ -26,6 +26,9 @@ const (
 	rpcPort    = 8545
 	enginePort = 8551
 	beaconPort = 3500
+	// sourceBeaconPort is the port qrl-package's beacon nodes serve their REST
+	// API on, which a checkpoint sync reads the source's state from.
+	sourceBeaconPort = 3500
 
 	networkConfigDir  = "/network-configs"
 	genesisPath       = networkConfigDir + "/genesis.json"
@@ -77,6 +80,8 @@ type Config struct {
 	Source       devnet.Participant
 }
 
+// BeaconOrigin is where the sync node's beacon node starts from: genesis, or
+// the source's finalized checkpoint.
 type BeaconOrigin string
 
 const (
@@ -312,7 +317,7 @@ func querySourceEndpoints(ctx context.Context, participant devnet.Participant) (
 		networkID:  networkID.String(),
 		qnode:      qnode,
 		beaconPeer: peer,
-		beaconAPI:  "http://" + net.JoinHostPort(participant.Consensus.PrivateIP, strconv.Itoa(beaconPort)),
+		beaconAPI:  "http://" + net.JoinHostPort(participant.Consensus.PrivateIP, strconv.Itoa(sourceBeaconPort)),
 	}, nil
 }
 
@@ -427,10 +432,12 @@ func (node *Node) Resume(ctx context.Context) error {
 	return node.waitForBeacon(ctx)
 }
 
+// ExecutionLog returns the execution client's whole output.
 func (node *Node) ExecutionLog() (string, error) {
 	return node.execution.Logs(0)
 }
 
+// BeaconLog returns the beacon node's whole output.
 func (node *Node) BeaconLog() (string, error) {
 	return node.consensus.Logs(0)
 }
