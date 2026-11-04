@@ -65,9 +65,8 @@ var _ = ginkgo.Describe(
 			ginkgo.GinkgoHelper()
 			client := validatorClient
 			validatorClient = nil
-			// Printed only if the spec fails, such as when an epoch the
-			// client should have missed shows its vote. Removing the
-			// container loses the log, so the AfterEach has none to report.
+			// Removing the container loses its log, so keep it now; Ginkgo shows
+			// it only if the spec fails.
 			if logs, err := client.Logs(); err != nil {
 				ginkgo.GinkgoWriter.Printf("stopped validator client logs unavailable: %v\n", err)
 			} else {
