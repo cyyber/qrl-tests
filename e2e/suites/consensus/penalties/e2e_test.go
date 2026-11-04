@@ -100,8 +100,6 @@ var _ = ginkgo.Describe(
 			}))
 			keystores = derived.Keystores
 
-			// A network from other parameters may have no such validator, or
-			// a validator client that already runs it.
 			record := testsuite.MustSucceed(node.Beacon.Validator(ctx, strconv.FormatUint(val.Index, 10)))
 			gomega.Expect(strings.EqualFold(record.PublicKey, derived.PublicKey)).To(gomega.BeTrue(),
 				"genesis validator %d is not the key derived for its index", val.Index)
