@@ -42,8 +42,6 @@ var _ = ginkgo.Describe(
 			checkpointSlot uint64
 		)
 
-		// startNode returns the node and the slot of its checkpoint block, its
-		// finalized block right after it starts.
 		startNode := func(ctx ginkgo.SpecContext, name, syncMode string) (*syncnode.Node, uint64) {
 			ginkgo.GinkgoHelper()
 			finalizedBefore := testsuite.MustSucceed(source.Beacon.FinalityCheckpoints(ctx)).Finalized
