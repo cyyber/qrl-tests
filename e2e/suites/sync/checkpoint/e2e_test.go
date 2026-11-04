@@ -34,12 +34,11 @@ var _ = ginkgo.Describe(
 	ginkgo.Label("e2e", "sync", "checkpoint"),
 	func() {
 		var (
-			runtime  *live.Runtime
-			source   *live.Node
-			chain    chaininfo.Info
-			written  history.History
-			fullNode *syncnode.Node
-			// checkpointSlot is the slot of the running node's origin block.
+			runtime        *live.Runtime
+			source         *live.Node
+			chain          chaininfo.Info
+			written        history.History
+			fullNode       *syncnode.Node
 			checkpointSlot uint64
 		)
 
