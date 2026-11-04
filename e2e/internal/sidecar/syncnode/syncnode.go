@@ -72,8 +72,7 @@ type Config struct {
 	ExecutionImage string
 	ConsensusImage string
 	// SyncMode is gqrl's --syncmode, "snap" or "full".
-	SyncMode string
-	// BeaconOrigin is where the beacon node starts from, Genesis by default.
+	SyncMode     string
 	BeaconOrigin BeaconOrigin
 	Source       devnet.Participant
 }
