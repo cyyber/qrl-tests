@@ -105,19 +105,19 @@ type Attestation struct {
 	Data            AttestationData
 }
 
-// Includes reports whether the committee member at position voted in the
-// attestation. The aggregation bits are an SSZ bitlist, whose highest set bit
-// marks its length.
+// Includes reports whether the committee member at position voted.
 func (attestation Attestation) Includes(position uint64) bool {
 	aggregation := attestation.AggregationBits
-	var length uint64
-	for index := len(aggregation) - 1; index >= 0; index-- {
-		if aggregation[index] != 0 {
-			length = uint64(index)*8 + uint64(bits.Len8(aggregation[index])) - 1
-			break
-		}
+	return position < bitlistLen(aggregation) && aggregation[position/8]&(1<<(position%8)) != 0
+}
+
+// bitlistLen returns the length of an SSZ bitlist: the index of its highest
+// set bit, which is in the last byte.
+func bitlistLen(bitlist []byte) uint64 {
+	if len(bitlist) == 0 || bitlist[len(bitlist)-1] == 0 {
+		return 0
 	}
-	return position < length && aggregation[position/8]&(1<<(position%8)) != 0
+	return uint64(len(bitlist)-1)*8 + uint64(bits.Len8(bitlist[len(bitlist)-1])) - 1
 }
 
 // Committee is the validators that attest together at one slot, in the
