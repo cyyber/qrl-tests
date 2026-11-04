@@ -155,9 +155,6 @@ var _ = ginkgo.Describe(
 
 		ginkgo.It("earns exactly the timely-vote rewards once its validator client starts again", func(ctx ginkgo.SpecContext) {
 			head := testsuite.MustSucceed(node.Beacon.HeadSlot(ctx))
-			// This client starts with an empty slashing-protection database, but
-			// it can't double sign: the last one was removed, and this one signs
-			// only later epochs.
 			startValidatorClient(ctx)
 			resumed := val.FirstAttestedEpoch(ctx, val.Chain.Epoch(head), attestTimeout)
 
