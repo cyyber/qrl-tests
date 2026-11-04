@@ -98,8 +98,8 @@ type AttestationData struct {
 	Target          Checkpoint `json:"target"`
 }
 
-// Attestation is an aggregate a block includes: one vote of the committee
-// members its aggregation bits set.
+// Attestation is a vote that a block includes. Its aggregation bits mark the
+// committee members who cast it.
 type Attestation struct {
 	AggregationBits []byte
 	Data            AttestationData
