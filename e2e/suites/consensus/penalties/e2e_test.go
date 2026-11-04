@@ -162,15 +162,17 @@ var _ = ginkgo.Describe(
 			// epoch. Its source and head votes must be included within two slots
 			// and one, which a missed or late block can prevent, so the source
 			// earns its reward or pays the missed penalty, and the head earns its
-			// reward or nothing.
+			// reward or nothing. A head vote in time was in time for the source.
 			next := resumed + 1
 			val.AwaitRewards(ctx, next)
 			reward := testsuite.MustSucceed(val.AttestationReward(ctx, next))
 			amounts := testsuite.MustSucceed(val.VoteAmounts(ctx, next))
 			gomega.Expect(reward.Target).To(gomega.Equal(amounts.Timely.Target), "target reward of epoch %d", next)
-			gomega.Expect(reward.Source).To(gomega.BeElementOf(amounts.Timely.Source, -int64(amounts.MissedSource)),
-				"source reward of epoch %d", next)
-			gomega.Expect(reward.Head).To(gomega.BeElementOf(amounts.Timely.Head, int64(0)), "head reward of epoch %d", next)
+			gomega.Expect([]int64{reward.Source, reward.Head}).To(gomega.BeElementOf(
+				[]int64{amounts.Timely.Source, amounts.Timely.Head},
+				[]int64{amounts.Timely.Source, 0},
+				[]int64{-int64(amounts.MissedSource), 0},
+			), "source and head rewards of epoch %d", next)
 
 			// The rewards of next apply when next+2 starts. The blocks of
 			// next+1 add the validator's proposer and sync committee rewards
