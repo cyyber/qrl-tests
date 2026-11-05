@@ -269,3 +269,62 @@ func assertIndices(t *testing.T, request *http.Request, want ...string) {
 	assert.NoError(t, json.NewDecoder(request.Body).Decode(&indices))
 	assert.Equal(t, want, indices)
 }
+
+func TestAttestationIncludes(t *testing.T) {
+	// A committee of three in which members 0 and 2 voted: bits 0 and 2, and
+	// bit 3 marking the length.
+	attestation := Attestation{AggregationBits: []byte{0b1101}}
+	require.True(t, attestation.Includes(0))
+	require.False(t, attestation.Includes(1))
+	require.True(t, attestation.Includes(2))
+	require.False(t, attestation.Includes(3), "the length marker is no vote")
+	require.False(t, attestation.Includes(9))
+
+	// A committee of nine: member 8 is in the second byte, before the marker.
+	require.True(t, Attestation{AggregationBits: []byte{0x00, 0b11}}.Includes(8))
+	require.False(t, Attestation{}.Includes(0))
+}
+
+func TestClientDecodesAttestationsAndCommittees(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		switch request.URL.Path {
+		case "/qrl/v1/beacon/blocks/44":
+			_, _ = writer.Write([]byte(`{"data":{"message":{"slot":"44","proposer_index":"3","body":{"attestations":[` +
+				`{"aggregation_bits":"0x0d","data":{"slot":"43","index":"1","beacon_block_root":"0xaa",` +
+				`"source":{"epoch":"4","root":"0x0a"},"target":{"epoch":"5","root":"0x0b"}},"signatures":["0x00","0x00"]}],` +
+				`"execution_payload":{"block_number":"7","withdrawals":[]}}}}}`))
+		case "/qrl/v1/beacon/blocks/45":
+			_, _ = writer.Write([]byte(`{"data":{"message":{"body":{"attestations":[{"aggregation_bits":"0xzz"}]}}}}`))
+		case "/qrl/v1/beacon/states/40/committees":
+			assert.Equal(t, "5", request.URL.Query().Get("epoch"))
+			_, _ = writer.Write([]byte(`{"data":[{"index":"1","slot":"43","validators":["7","64","9"]}]}`))
+		case "/qrl/v1/beacon/states/41/committees":
+			_, _ = writer.Write([]byte(`{"data":[{"index":"0","slot":"41","validators":["x"]}]}`))
+		default:
+			http.NotFound(writer, request)
+		}
+	}))
+	defer server.Close()
+	client, err := New(server.URL)
+	require.NoError(t, err)
+
+	operations, err := client.BlockOperations(t.Context(), "44")
+	require.NoError(t, err)
+	require.Equal(t, []Attestation{{
+		AggregationBits: []byte{0x0d},
+		Data: AttestationData{
+			Slot: 43, CommitteeIndex: 1, BeaconBlockRoot: "0xaa",
+			Source: Checkpoint{Epoch: 4, Root: "0x0a"}, Target: Checkpoint{Epoch: 5, Root: "0x0b"},
+		},
+	}}, operations.Attestations)
+
+	_, err = client.BlockOperations(t.Context(), "45")
+	require.ErrorContains(t, err, `aggregation bits "0xzz"`)
+
+	committees, err := client.Committees(t.Context(), "40", 5)
+	require.NoError(t, err)
+	require.Equal(t, []Committee{{Index: 1, Slot: 43, Validators: []uint64{7, 64, 9}}}, committees)
+
+	_, err = client.Committees(t.Context(), "41", 5)
+	require.ErrorContains(t, err, `committee validator "x"`)
+}

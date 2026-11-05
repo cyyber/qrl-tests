@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math/big"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/cyyber/qrl-tests/e2e/internal/beacon"
@@ -22,6 +23,7 @@ type Spec struct {
 	targetWeight                 uint64
 	weightDenominator            uint64
 	minEpochsToInactivityPenalty uint64
+	minInclusionDelay            uint64
 }
 
 func LoadSpec(ctx context.Context, client *beacon.Client) (Spec, error) {
@@ -40,6 +42,7 @@ func LoadSpec(ctx context.Context, client *beacon.Client) (Spec, error) {
 		{"TIMELY_TARGET_WEIGHT", &spec.targetWeight},
 		{"WEIGHT_DENOMINATOR", &spec.weightDenominator},
 		{"MIN_EPOCHS_TO_INACTIVITY_PENALTY", &spec.minEpochsToInactivityPenalty},
+		{"MIN_ATTESTATION_INCLUSION_DELAY", &spec.minInclusionDelay},
 	} {
 		value, err := values.Uint(constant.name)
 		if err != nil {
@@ -212,4 +215,86 @@ func (validator Validator) BlockBalanceChange(ctx context.Context, slot uint64) 
 		change += reward.Reward
 	}
 	return change, nil
+}
+
+// TimelyVotes is whether an attestation's source and head votes were timely.
+// Target is left out: a correct target is timely at any delay.
+type TimelyVotes struct {
+	Source bool
+	Head   bool
+}
+
+// TimelyVotes reads, from the blocks that include the validator's attestation
+// of epoch, whether its source and head votes were timely. Source must be
+// included within ⌊√SLOTS_PER_EPOCH⌋ slots; head after exactly
+// MIN_ATTESTATION_INCLUSION_DELAY slots, voting the canonical head and target.
+func (validator Validator) TimelyVotes(ctx context.Context, epoch uint64) (TimelyVotes, error) {
+	start := epoch * validator.Chain.SlotsPerEpoch
+	committees, err := validator.Client.Committees(ctx, strconv.FormatUint(start, 10), epoch)
+	if err != nil {
+		return TimelyVotes{}, err
+	}
+	slot, committee, position, found := validator.duty(committees)
+	if !found {
+		return TimelyVotes{}, fmt.Errorf("validator %d is in no committee of epoch %d", validator.Index, epoch)
+	}
+	headRoot, err := validator.rootAtOrBefore(ctx, slot)
+	if err != nil {
+		return TimelyVotes{}, err
+	}
+	targetRoot, err := validator.rootAtOrBefore(ctx, start)
+	if err != nil {
+		return TimelyVotes{}, err
+	}
+
+	sourceWindow := new(big.Int).Sqrt(new(big.Int).SetUint64(validator.Chain.SlotsPerEpoch)).Uint64()
+	var votes TimelyVotes
+	for delay := validator.Spec.minInclusionDelay; delay <= sourceWindow; delay++ {
+		operations, err := validator.Client.BlockOperations(ctx, strconv.FormatUint(slot+delay, 10))
+		if beacon.IsNotFound(err) {
+			continue
+		}
+		if err != nil {
+			return TimelyVotes{}, err
+		}
+		for _, attestation := range operations.Attestations {
+			data := attestation.Data
+			if data.Slot != slot || data.CommitteeIndex != committee || !attestation.Includes(position) {
+				continue
+			}
+			votes.Source = true
+			if delay == validator.Spec.minInclusionDelay &&
+				strings.EqualFold(data.BeaconBlockRoot, headRoot) && strings.EqualFold(data.Target.Root, targetRoot) {
+				votes.Head = true
+			}
+		}
+	}
+	return votes, nil
+}
+
+// duty finds the validator's attestation duty among committees.
+func (validator Validator) duty(committees []beacon.Committee) (slot, committee, position uint64, found bool) {
+	for _, candidate := range committees {
+		for member, index := range candidate.Validators {
+			if index == validator.Index {
+				return candidate.Slot, candidate.Index, uint64(member), true
+			}
+		}
+	}
+	return 0, 0, 0, false
+}
+
+// rootAtOrBefore returns the root of the canonical block at slot, or of the
+// last one before it if the slot is empty.
+func (validator Validator) rootAtOrBefore(ctx context.Context, slot uint64) (string, error) {
+	for {
+		header, err := validator.Client.BlockHeader(ctx, strconv.FormatUint(slot, 10))
+		if err == nil {
+			return header.Root, nil
+		}
+		if !beacon.IsNotFound(err) || slot == 0 {
+			return "", err
+		}
+		slot--
+	}
 }

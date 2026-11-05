@@ -574,20 +574,22 @@ func TestRunAllProvisionsPerLane(t *testing.T) {
 	require.Equal(t, devnet.ProfileSingle, networks.started.Profile)
 	require.Equal(t, []string{
 		"qrl-tests-execution", "qrl-tests-consensus-staking-automated", "qrl-tests-consensus-staking-operator",
-		"qrl-tests-resilience-network-restart", "qrl-tests-sync",
+		"qrl-tests-consensus-penalties", "qrl-tests-resilience-network-restart", "qrl-tests-sync",
 	}, networks.stopped)
-	require.Len(t, commands, 5)
+	require.Len(t, commands, 6)
 	require.Contains(t, commands[0].Args, "./e2e/suites/execution/abi")
 	require.Contains(t, commands[1].Args, "./e2e/suites/consensus/stakingautomated")
 	require.Contains(t, commands[2].Args, "./e2e/suites/consensus/stakingoperator")
-	require.Contains(t, commands[3].Args, "./e2e/suites/resilience/networkrestart")
-	require.Contains(t, commands[4].Args, "./e2e/suites/sync/genesis")
+	require.Contains(t, commands[3].Args, "./e2e/suites/consensus/penalties")
+	require.Contains(t, commands[4].Args, "./e2e/suites/resilience/networkrestart")
+	require.Contains(t, commands[5].Args, "./e2e/suites/sync/genesis")
 	record := testutil.ReadJSON[runmanifest.Manifest](t, filepath.Join(reports, runmanifest.FileName))
 	require.Equal(t, "qrl-tests-execution", record.Lanes[0].Enclave)
 	require.Equal(t, "qrl-tests-consensus-staking-automated", record.Lanes[1].Enclave)
 	require.Equal(t, "qrl-tests-consensus-staking-operator", record.Lanes[2].Enclave)
-	require.Equal(t, "qrl-tests-resilience-network-restart", record.Lanes[3].Enclave)
-	require.Equal(t, "qrl-tests-sync", record.Lanes[4].Enclave)
+	require.Equal(t, "qrl-tests-consensus-penalties", record.Lanes[3].Enclave)
+	require.Equal(t, "qrl-tests-resilience-network-restart", record.Lanes[4].Enclave)
+	require.Equal(t, "qrl-tests-sync", record.Lanes[5].Enclave)
 }
 
 func TestRunReturnsCleanupFailure(t *testing.T) {

@@ -1,5 +1,7 @@
 package beacon
 
+import "math/bits"
+
 // FarFutureEpoch is the sentinel the beacon API reports for epochs that have
 // not been scheduled, such as the exit epoch of an active validator.
 const FarFutureEpoch = ^uint64(0)
@@ -84,6 +86,46 @@ type BlockOperations struct {
 	ExecutionBlockNumber uint64
 	VoluntaryExits       []uint64
 	Withdrawals          []Withdrawal
+	Attestations         []Attestation
+}
+
+// AttestationData is what an attestation votes for.
+type AttestationData struct {
+	Slot            uint64     `json:"slot,string"`
+	CommitteeIndex  uint64     `json:"index,string"`
+	BeaconBlockRoot string     `json:"beacon_block_root"`
+	Source          Checkpoint `json:"source"`
+	Target          Checkpoint `json:"target"`
+}
+
+// Attestation is a vote that a block includes. Its aggregation bits mark the
+// committee members who cast it.
+type Attestation struct {
+	AggregationBits []byte
+	Data            AttestationData
+}
+
+// Includes reports whether the committee member at position voted.
+func (attestation Attestation) Includes(position uint64) bool {
+	aggregation := attestation.AggregationBits
+	return position < bitlistLen(aggregation) && aggregation[position/8]&(1<<(position%8)) != 0
+}
+
+// bitlistLen returns the length of an SSZ bitlist: the index of its highest
+// set bit, which is in the last byte.
+func bitlistLen(bitlist []byte) uint64 {
+	if len(bitlist) == 0 || bitlist[len(bitlist)-1] == 0 {
+		return 0
+	}
+	return uint64(len(bitlist)-1)*8 + uint64(bits.Len8(bitlist[len(bitlist)-1])) - 1
+}
+
+// Committee is the validators that attest at one slot, in aggregation bit
+// order.
+type Committee struct {
+	Index      uint64
+	Slot       uint64
+	Validators []uint64
 }
 
 type AttesterDuty struct {

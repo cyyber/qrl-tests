@@ -24,6 +24,7 @@ func testSpec() Spec {
 		targetWeight:                 26,
 		weightDenominator:            64,
 		minEpochsToInactivityPenalty: 4,
+		minInclusionDelay:            1,
 	}
 }
 
@@ -101,7 +102,8 @@ func TestLoadSpec(t *testing.T) {
 	_, client := newStateBeacon(t, map[string]string{"config/spec": `{
 		"EFFECTIVE_BALANCE_INCREMENT":"1000000000",
 		"BASE_REWARD_FACTOR":"2048","TIMELY_SOURCE_WEIGHT":"14","TIMELY_TARGET_WEIGHT":"26",
-		"WEIGHT_DENOMINATOR":"64","MIN_EPOCHS_TO_INACTIVITY_PENALTY":"4"}`})
+		"WEIGHT_DENOMINATOR":"64","MIN_EPOCHS_TO_INACTIVITY_PENALTY":"4",
+		"MIN_ATTESTATION_INCLUSION_DELAY":"1"}`})
 
 	spec, err := LoadSpec(t.Context(), client)
 	require.NoError(t, err)
@@ -236,4 +238,80 @@ func TestBlockBalanceChangesFailedRead(t *testing.T) {
 	})
 	_, err := testValidator(client).BlockBalanceChanges(t.Context(), 6)
 	require.ErrorContains(t, err, "sync_committee/49")
+}
+
+func TestTimelyVotes(t *testing.T) {
+	// In epoch 5 the validator is member 1 of committee 1, which attests at
+	// slot 43. The canonical block at 43 is 0xaa and the epoch's target 0x40.
+	header := func(root string) string {
+		return fmt.Sprintf(`{"root":"%s","header":{"message":{}}}`, root)
+	}
+	block := func(head, target, bits string) string {
+		return fmt.Sprintf(`{"message":{"body":{"attestations":[{"aggregation_bits":"%s","data":{"slot":"43","index":"1",`+
+			`"beacon_block_root":"%s","target":{"epoch":"5","root":"%s"}}}],"execution_payload":{}}}}`, bits, head, target)
+	}
+	const voted, otherVoted = "0x0a", "0x09" // members 1 and 0 of three
+	base := func(blocks map[string]string) map[string]string {
+		responses := map[string]string{
+			"beacon/states/40/committees": `[{"index":"1","slot":"43","validators":["7","64","9"]}]`,
+			"beacon/headers/43":           header("0xaa"),
+			"beacon/headers/40":           header("0x40"),
+		}
+		for path, body := range blocks {
+			responses[path] = body
+		}
+		return responses
+	}
+
+	for name, test := range map[string]struct {
+		responses map[string]string
+		want      TimelyVotes
+	}{
+		"included in the next slot": {
+			base(map[string]string{"beacon/blocks/44": block("0xaa", "0x40", voted)}),
+			TimelyVotes{Source: true, Head: true},
+		},
+		"voted for another head": {
+			base(map[string]string{"beacon/blocks/44": block("0xbb", "0x40", voted)}),
+			TimelyVotes{Source: true},
+		},
+		"voted for another target": {
+			base(map[string]string{"beacon/blocks/44": block("0xaa", "0xcc", voted)}),
+			TimelyVotes{Source: true},
+		},
+		"included two slots later, after an empty slot": {
+			base(map[string]string{"beacon/blocks/45": block("0xaa", "0x40", voted)}),
+			TimelyVotes{Source: true},
+		},
+		"included three slots later": {
+			base(map[string]string{"beacon/blocks/46": block("0xaa", "0x40", voted)}),
+			TimelyVotes{},
+		},
+		"only another member voted": {
+			base(map[string]string{"beacon/blocks/44": block("0xaa", "0x40", otherVoted)}),
+			TimelyVotes{},
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, client := newStateBeacon(t, test.responses)
+			votes, err := testValidator(client).TimelyVotes(t.Context(), 5)
+			require.NoError(t, err)
+			require.Equal(t, test.want, votes)
+		})
+	}
+
+	// With slot 43 empty, the canonical head at 43 is the block at 42.
+	responses := base(map[string]string{"beacon/blocks/44": block("0x42", "0x40", voted)})
+	delete(responses, "beacon/headers/43")
+	responses["beacon/headers/42"] = header("0x42")
+	_, client := newStateBeacon(t, responses)
+	votes, err := testValidator(client).TimelyVotes(t.Context(), 5)
+	require.NoError(t, err)
+	require.Equal(t, TimelyVotes{Source: true, Head: true}, votes)
+
+	_, client = newStateBeacon(t, map[string]string{
+		"beacon/states/40/committees": `[{"index":"1","slot":"43","validators":["7","9"]}]`,
+	})
+	_, err = testValidator(client).TimelyVotes(t.Context(), 5)
+	require.EqualError(t, err, "validator 64 is in no committee of epoch 5")
 }

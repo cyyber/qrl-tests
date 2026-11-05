@@ -24,6 +24,10 @@ const (
 
 	// PackageLocator pins the qrl-package revision every network runs.
 	PackageLocator = "github.com/theQRL/qrl-package@25d3a1c53009294f06644c5b49c1011cf86ad0a5"
+
+	// GenesisMnemonic is the pinned qrl-package's default
+	// preregistered_validator_keys_mnemonic.
+	GenesisMnemonic = "veto waiter rail aroma aunt chess fiend than sahara unwary punk dawn belong agent sane reefy loyal from judas clean paste rho madam poor pay convoy duty circa hybrid circus exempt splash"
 )
 
 // enclaveClient owns normal enclave and package operations through the

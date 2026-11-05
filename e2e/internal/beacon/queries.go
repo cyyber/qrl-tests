@@ -2,9 +2,11 @@ package beacon
 
 import (
 	"context"
+	"encoding/hex"
 	"fmt"
 	"net/url"
 	"strconv"
+	"strings"
 )
 
 func (client *Client) Genesis(ctx context.Context) (Genesis, error) {
@@ -180,6 +182,7 @@ type blockWire struct {
 		ProposerIndex uint64 `json:"proposer_index,string"`
 		Body          struct {
 			VoluntaryExits []SignedVoluntaryExit `json:"voluntary_exits"`
+			Attestations   []attestationWire     `json:"attestations"`
 			Payload        struct {
 				BlockNumber uint64       `json:"block_number,string"`
 				Withdrawals []Withdrawal `json:"withdrawals"`
@@ -188,8 +191,13 @@ type blockWire struct {
 	} `json:"message"`
 }
 
-// BlockOperations returns the proposer, exits and withdrawals of one block. A
-// slot without a block is reported through IsNotFound.
+type attestationWire struct {
+	AggregationBits string          `json:"aggregation_bits"`
+	Data            AttestationData `json:"data"`
+}
+
+// BlockOperations returns the proposer, exits, withdrawals and attestations
+// of one block. A slot without a block is reported through IsNotFound.
 func (client *Client) BlockOperations(ctx context.Context, blockID string) (BlockOperations, error) {
 	block, err := getData[blockWire](ctx, client, "/qrl/v1/beacon/blocks/"+url.PathEscape(blockID))
 	if err != nil {
@@ -205,7 +213,48 @@ func (client *Client) BlockOperations(ctx context.Context, blockID string) (Bloc
 	for _, exit := range block.Message.Body.VoluntaryExits {
 		operations.VoluntaryExits = append(operations.VoluntaryExits, exit.Message.ValidatorIndex)
 	}
+	for _, attestation := range block.Message.Body.Attestations {
+		aggregation, err := hex.DecodeString(strings.TrimPrefix(attestation.AggregationBits, "0x"))
+		if err != nil {
+			return BlockOperations{}, fmt.Errorf("aggregation bits %q: %w", attestation.AggregationBits, err)
+		}
+		operations.Attestations = append(operations.Attestations, Attestation{
+			AggregationBits: aggregation,
+			Data:            attestation.Data,
+		})
+	}
 	return operations, nil
+}
+
+type committeeWire struct {
+	Index      uint64   `json:"index,string"`
+	Slot       uint64   `json:"slot,string"`
+	Validators []string `json:"validators"`
+}
+
+// Committees returns the attestation committees of epoch, as the state at
+// stateID assigns them.
+func (client *Client) Committees(ctx context.Context, stateID string, epoch uint64) ([]Committee, error) {
+	records, err := getData[[]committeeWire](
+		ctx, client,
+		"/qrl/v1/beacon/states/"+url.PathEscape(stateID)+"/committees?epoch="+strconv.FormatUint(epoch, 10),
+	)
+	if err != nil {
+		return nil, err
+	}
+	committees := make([]Committee, len(records))
+	for position, record := range records {
+		committee := Committee{Index: record.Index, Slot: record.Slot}
+		for _, raw := range record.Validators {
+			index, err := strconv.ParseUint(raw, 10, 64)
+			if err != nil {
+				return nil, fmt.Errorf("committee validator %q: %w", raw, err)
+			}
+			committee.Validators = append(committee.Validators, index)
+		}
+		committees[position] = committee
+	}
+	return committees, nil
 }
 
 // AttesterDuties returns the slot each of the given validators attests in
