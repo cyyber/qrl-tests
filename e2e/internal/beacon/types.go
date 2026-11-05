@@ -191,10 +191,8 @@ type IdealAttestationReward struct {
 }
 
 type BlockRewards struct {
-	ProposerIndex uint64 `json:"proposer_index,string"`
-	Total         uint64 `json:"total,string"`
-	// ProposerSlashings and AttesterSlashings are what the proposer earned for
-	// including slashing evidence.
+	ProposerIndex     uint64 `json:"proposer_index,string"`
+	Total             uint64 `json:"total,string"`
 	ProposerSlashings uint64 `json:"proposer_slashings,string"`
 	AttesterSlashings uint64 `json:"attester_slashings,string"`
 }
