@@ -35,7 +35,8 @@ const (
 	ProfileSpareValidator Profile = "spare-validator"
 	// ProfileDuplicateValidator has two participants of 32 validators, each
 	// beacon node with a slasher, and a spare genesis validator that no
-	// participant runs.
+	// participant runs. A suite duplicates the spare by running its key in two
+	// validator sidecars, one on each node.
 	ProfileDuplicateValidator Profile = "duplicate-validator"
 )
 
