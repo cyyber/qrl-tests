@@ -138,7 +138,7 @@ type IndexedAttestation struct {
 }
 
 // AttesterSlashing is the evidence of a double or surround vote: two
-// conflicting attestations. Validators that signed both are slashed.
+// conflicting attestations. Every validator that signed both is slashed.
 type AttesterSlashing struct {
 	Attestation1 IndexedAttestation
 	Attestation2 IndexedAttestation
