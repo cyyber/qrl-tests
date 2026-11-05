@@ -86,9 +86,10 @@ func ParseProfile(value string) (Profile, error) {
 	return profile, nil
 }
 
-// ParticipantValidators returns the genesis indices of the validators the
-// participant at position, from zero, runs. qrl-package hands each
-// participant the next indices in order.
+// ParticipantValidators returns the genesis indices of the validators run by
+// the participant at position (from 0). qrl-package assigns participants
+// consecutive indices in order: with 32 validators each, participant 1 runs
+// 32 to 63.
 func (profile Profile) ParticipantValidators(position int) []uint64 {
 	spec := profileSpecs[profile]
 	if position < 0 || position >= len(spec.participants) {
