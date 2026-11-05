@@ -583,6 +583,7 @@ func TestRunAllProvisionsPerLane(t *testing.T) {
 	require.Contains(t, commands[3].Args, "./e2e/suites/consensus/penalties")
 	require.Contains(t, commands[4].Args, "./e2e/suites/resilience/networkrestart")
 	require.Contains(t, commands[5].Args, "./e2e/suites/sync/genesis")
+	require.Contains(t, commands[5].Args, "./e2e/suites/sync/checkpoint")
 	record := testutil.ReadJSON[runmanifest.Manifest](t, filepath.Join(reports, runmanifest.FileName))
 	require.Equal(t, "qrl-tests-execution", record.Lanes[0].Enclave)
 	require.Equal(t, "qrl-tests-consensus-staking-automated", record.Lanes[1].Enclave)

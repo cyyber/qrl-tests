@@ -13,7 +13,7 @@ endpoints; suites do not provision infrastructure.
 | `consensus-staking-operator` | `single` | Staking through the deposit and validator CLIs |
 | `consensus-penalties` | `spare-validator` | Penalties while a validator's client is down, and rewards once it is back |
 | `resilience-network-restart` | `anchored` | Recovery from a full outage: proposing and finalizing after every node stops at once |
-| `sync` | `single` | A new full-mode node syncs from genesis, then catches up after a stop |
+| `sync` | `single` | A new full-mode node syncs from genesis or from a checkpoint, then catches up after a stop |
 
 Run one lane with a fresh network:
 
