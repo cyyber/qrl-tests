@@ -13,7 +13,7 @@ require (
 	github.com/onsi/ginkgo/v2 v2.32.0
 	github.com/onsi/gomega v1.42.1
 	github.com/stretchr/testify v1.11.1
-	github.com/theQRL/go-qrllib v0.8.0
+	github.com/theQRL/go-qrllib v0.10.0
 	github.com/urfave/cli/v2 v2.27.5
 	go.yaml.in/yaml/v3 v3.0.4
 	golang.org/x/crypto v0.53.0
@@ -95,7 +95,7 @@ require (
 	github.com/prometheus/client_model v0.6.2 // indirect
 	github.com/prometheus/common v0.63.0 // indirect
 	github.com/prometheus/procfs v0.16.0 // indirect
-	github.com/prysmaticlabs/fastssz v0.0.0-20221107182844-78142813af44 // indirect
+	github.com/prysmaticlabs/fastssz v0.0.0-20260421202104-7a6eb71e6e45 // indirect
 	github.com/prysmaticlabs/gohashtree v0.0.5-beta // indirect
 	github.com/rogpeppe/go-internal v1.14.1 // indirect
 	github.com/rs/cors v1.7.0 // indirect
@@ -171,4 +171,4 @@ require (
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 )
 
-replace github.com/theQRL/go-qrl => github.com/cyyber/go-qrl v0.3.2-0.20260803100849-6985853a3cbb
+replace github.com/theQRL/go-qrl => github.com/rgeraldes24/go-qrl v0.0.0-20261023161232-0c124c634a28

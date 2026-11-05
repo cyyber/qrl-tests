@@ -616,8 +616,6 @@ github.com/cpuguy83/go-md2man/v2 v2.0.7/go.mod h1:oOW0eioCTA6cOiMLiUPZOpcVxMig6N
 github.com/creack/pty v1.1.7/go.mod h1:lj5s0c3V2DBrqTV7llrYr5NG6My20zk30Fl46Y7DoTY=
 github.com/creack/pty v1.1.9/go.mod h1:oKZEueFk5CKHvIhNR5MUki03XCEU+Q6VDXinZuGJ33E=
 github.com/cyberdelia/templates v0.0.0-20141128023046-ca7fffd4298c/go.mod h1:GyV+0YP4qX0UQ7r2MoYZ+AvYDp12OF5yg4q8rGnyNh4=
-github.com/cyyber/go-qrl v0.3.2-0.20260803100849-6985853a3cbb h1:lwFhLUkKR+aN+zzvp9y8tvLeYBoELbHxnI1CKJCIAzQ=
-github.com/cyyber/go-qrl v0.3.2-0.20260803100849-6985853a3cbb/go.mod h1:J8zJ6s7FHPlE3p8F8UVoQsgaPmnHvT1QhTtpZMeDDlM=
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc h1:U9qPSI2PIWSS1VwoXQT9A3Wy9MM3WgvqSxFWenqJduM=
@@ -1344,13 +1342,15 @@ github.com/prometheus/procfs v0.12.0/go.mod h1:pcuDEFsWDnvcgNzo4EEweacyhjeA9Zk3c
 github.com/prometheus/procfs v0.15.1/go.mod h1:fB45yRUv8NstnjriLhBQLuOUt+WW4BsoGhij/e3PBqk=
 github.com/prometheus/procfs v0.16.0 h1:xh6oHhKwnOJKMYiYBDWmkHqQPyiY40sny36Cmx2bbsM=
 github.com/prometheus/procfs v0.16.0/go.mod h1:8veyXUu3nGP7oaCxhX6yeaM5u4stL2FeMXnCqhDthZg=
-github.com/prysmaticlabs/fastssz v0.0.0-20221107182844-78142813af44 h1:c3p3UzV4vFA7xaCDphnDWOjpxcadrQ26l5b+ypsvyxo=
-github.com/prysmaticlabs/fastssz v0.0.0-20221107182844-78142813af44/go.mod h1:MA5zShstUwCQaE9faGHgCGvEWUbG87p4SAXINhmCkvg=
+github.com/prysmaticlabs/fastssz v0.0.0-20260421202104-7a6eb71e6e45 h1:UkcU1rqEBOInBQdP1mCE4Smo90Eux82VEOyBhEK9TA0=
+github.com/prysmaticlabs/fastssz v0.0.0-20260421202104-7a6eb71e6e45/go.mod h1:6lF+KRHYePGWv4zcbdfmq+EoCy1rch1Ew/oyZmi6AZ0=
 github.com/prysmaticlabs/gohashtree v0.0.5-beta h1:ct41mg7HyIZd7uoSM/ud23f+3DxQG9tlMlQG+BVX23c=
 github.com/prysmaticlabs/gohashtree v0.0.5-beta/go.mod h1:HRuvtXLZ4WkaB1MItToVH2e8ZwKwZPY5/Rcby+CvvLY=
 github.com/rcrowley/go-metrics v0.0.0-20181016184325-3113b8401b8a/go.mod h1:bCqnVzQkZxMG4s8nGwiZ5l3QUCyqpo9Y+/ZMZ9VjZe4=
 github.com/remyoudompheng/bigfft v0.0.0-20200410134404-eec4a21b6bb0/go.mod h1:qqbHyh8v60DhA7CoWK5oRCqLrMHRGoxYCSS9EjAz6Eo=
 github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec/go.mod h1:qqbHyh8v60DhA7CoWK5oRCqLrMHRGoxYCSS9EjAz6Eo=
+github.com/rgeraldes24/go-qrl v0.0.0-20261023161232-0c124c634a28 h1:uUgLdXER7f1MycZjeP93+8SLBMo5R9cloBZn9tSBG14=
+github.com/rgeraldes24/go-qrl v0.0.0-20261023161232-0c124c634a28/go.mod h1:c4FI7fxmIQ4S6uexw0DEkO/+3hQ/BOgo5nQcLiAbwTY=
 github.com/rogpeppe/fastuuid v0.0.0-20150106093220-6724a57986af/go.mod h1:XWv6SoW27p1b0cqNHllgS5HIMJraePCO15w5zCzIWYg=
 github.com/rogpeppe/fastuuid v1.2.0/go.mod h1:jVj6XXZzXRy/MSR5jhDC/2q6DgLz+nrA6LYCDYWNEvQ=
 github.com/rogpeppe/go-internal v1.3.0/go.mod h1:M8bDsm7K2OlrFYOpmOWEs/qY81heoFRclV5y23lUDJ4=
@@ -1431,8 +1431,8 @@ github.com/stretchr/testify v1.11.1/go.mod h1:wZwfW3scLgRK+23gO65QZefKpKQRnfz6sD
 github.com/substrait-io/substrait-go v0.4.2/go.mod h1:qhpnLmrcvAnlZsUyPXZRqldiHapPTXC3t7xFgDi3aQg=
 github.com/syndtr/goleveldb v1.0.1-0.20220721030215-126854af5e6d h1:vfofYNRScrDdvS342BElfbETmL1Aiz3i2t0zfRj16Hs=
 github.com/syndtr/goleveldb v1.0.1-0.20220721030215-126854af5e6d/go.mod h1:RRCYJbIwD5jmqPI9XoAFR0OcDxqUctll6zUj/+B4S48=
-github.com/theQRL/go-qrllib v0.8.0 h1:zbC6N9YlKF5IMCd3AT8QZNZuKycCjmal+Z3GTuDMBxM=
-github.com/theQRL/go-qrllib v0.8.0/go.mod h1:n0CTe8JpRGaYd8puzw125K/tlAWd95JAFsVpDlagT68=
+github.com/theQRL/go-qrllib v0.10.0 h1:zsZ33lgyHZI2HXSUvWftn3T8zioryt6AYXQs6V/I+zA=
+github.com/theQRL/go-qrllib v0.10.0/go.mod h1:cJalbgwzfscRXz7gqwPmmeC2wxB/QJh631N1dpihXuI=
 github.com/tidwall/gjson v1.14.2/go.mod h1:/wbyibRr2FHMks5tjHJ5F8dMZh3AcwJEMf5vlfC0lxk=
 github.com/tidwall/gjson v1.18.0 h1:FIDeeyB800efLX89e5a8Y0BNH+LOngJyGrIWxG2FKQY=
 github.com/tidwall/gjson v1.18.0/go.mod h1:/wbyibRr2FHMks5tjHJ5F8dMZh3AcwJEMf5vlfC0lxk=
