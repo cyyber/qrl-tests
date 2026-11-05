@@ -33,10 +33,9 @@ const (
 	// until a suite starts one with its key, derived from the pinned
 	// qrl-package's default mnemonic.
 	ProfileSpareValidator Profile = "spare-validator"
-	// ProfileDuplicateValidator has two participants that share the
-	// validators, each beacon node with a slasher, and one more genesis
-	// validator than they run: a spare that a suite can run on both nodes at
-	// once, as an operator who duplicates a validator would.
+	// ProfileDuplicateValidator has two participants of 32 validators, each
+	// beacon node with a slasher, and a spare genesis validator that no
+	// participant runs.
 	ProfileDuplicateValidator Profile = "duplicate-validator"
 )
 
