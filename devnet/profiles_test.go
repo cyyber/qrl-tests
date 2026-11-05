@@ -51,6 +51,7 @@ func TestParticipantValidators(t *testing.T) {
 	require.Len(t, second, 32)
 	require.Equal(t, uint64(32), second[0])
 	require.Equal(t, uint64(63), second[31])
+	require.Empty(t, ProfileDuplicateValidator.ParticipantValidators(2))
 	require.Len(t, ProfileSingle.ParticipantValidators(0), 64)
 	require.Empty(t, ProfileSingle.ParticipantValidators(1))
 	require.Empty(t, ProfileSingle.ParticipantValidators(-1))

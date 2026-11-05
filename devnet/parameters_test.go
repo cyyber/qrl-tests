@@ -90,10 +90,11 @@ func TestDuplicateValidatorProfileParameters(t *testing.T) {
 	var parameters map[string]any
 	require.NoError(t, json.Unmarshal([]byte(payload), &parameters))
 	participants := parameters["participants"].([]any)
-	require.Len(t, participants, 2)
-	for _, entry := range participants {
-		participant := entry.(map[string]any)
-		require.Equal(t, float64(32), participant["validator_count"])
+	require.Len(t, participants, 3)
+	// The third participant only watches: it runs a slasher and no validators.
+	for index, want := range []float64{32, 32, 0} {
+		participant := participants[index].(map[string]any)
+		require.Equal(t, want, participant["validator_count"], "participant %d", index)
 		require.Equal(t,
 			[]any{"--min-sync-peers=0", "--minimum-peers-per-subnet=0", "--slasher", "--subscribe-all-subnets"},
 			participant["cl_extra_params"],

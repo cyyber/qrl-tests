@@ -36,7 +36,10 @@ const (
 	// ProfileDuplicateValidator has two participants of 32 validators, each
 	// beacon node with a slasher, and a spare genesis validator that no
 	// participant runs. A suite duplicates the spare by running its key in two
-	// validator sidecars, one on each node.
+	// validator sidecars, one on each node. A third participant runs no
+	// validators: a beacon node never hands a block it proposed to its own
+	// slasher, so only a node that receives both of a double proposal's blocks
+	// through gossip detects it.
 	ProfileDuplicateValidator Profile = "duplicate-validator"
 )
 
@@ -66,6 +69,7 @@ var profileSpecs = map[Profile]profileSpec{
 		participants: []participantSpec{
 			{validatorCount: 32, clExtraParams: slasherCLExtraParams},
 			{validatorCount: 32, clExtraParams: slasherCLExtraParams},
+			{validatorCount: 0, clExtraParams: slasherCLExtraParams},
 		},
 		preregisteredValidators: 65,
 	},

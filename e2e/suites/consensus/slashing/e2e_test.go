@@ -62,7 +62,7 @@ var _ = ginkgo.Describe(
 		ginkgo.BeforeAll(func(ctx ginkgo.SpecContext) {
 			runtime := testsuite.LoadRuntime()
 			nodes := testsuite.MustSucceed(runtime.Nodes(ctx))
-			gomega.Expect(nodes).To(gomega.HaveLen(2), "the suite runs the validator on two nodes")
+			gomega.Expect(nodes).To(gomega.HaveLen(3), "the suite runs the validator on two nodes, and a third watches")
 			for _, node := range nodes {
 				gomega.Expect(node.BeaconGRPC).NotTo(gomega.BeEmpty(), "beacon gRPC is not published")
 			}
@@ -132,13 +132,13 @@ var _ = ginkgo.Describe(
 					if firstVote == 0 {
 						firstVote = slot
 					}
-					if run && scenario.awaitSlashed(ctx) {
+					if run && awaitSlashed(ctx, val) {
 						break
 					}
 				}
 
 				ginkgo.By("finding the evidence a block included")
-				slot, evidence := scenario.findEvidence(ctx, firstVote)
+				slot, evidence := findEvidence(ctx, val, firstVote)
 				gomega.Expect(evidence.proposer).To(gomega.BeNil(),
 					"the block at slot %d slashed the validator for a double proposal", slot)
 				gomega.Expect(evidence.attester).NotTo(gomega.BeNil())
@@ -152,37 +152,7 @@ var _ = ginkgo.Describe(
 
 		ginkgo.It("pays the slashing penalty in the block that includes the evidence, and its proposer the whistleblower reward",
 			func(ctx ginkgo.SpecContext) {
-				index := strconv.FormatUint(val.Index, 10)
-				beforeSlashing := testsuite.MustSucceed(val.Client.ValidatorAt(ctx, strconv.FormatUint(slashingSlot-1, 10), index))
-				onSlashing = testsuite.MustSucceed(val.Client.ValidatorAt(ctx, strconv.FormatUint(slashingSlot, 10), index))
-				gomega.Expect(beforeSlashing.Slashed).To(gomega.BeFalse())
-				gomega.Expect(onSlashing.Slashed).To(gomega.BeTrue())
-				gomega.Expect(onSlashing.Status).To(gomega.Equal("active_slashed"))
-
-				// The block's own duties change the balance too, and a block at
-				// an epoch's first slot also follows epoch processing.
-				epoch := val.Chain.Epoch(slashingSlot)
-				penalty := spec.initialPenalty(beforeSlashing.EffectiveBalance)
-				blocks := testsuite.MustSucceed(val.BlockBalanceChange(ctx, slashingSlot))
-				var processed int64
-				if slashingSlot%val.Chain.SlotsPerEpoch == 0 {
-					reward := testsuite.MustSucceed(val.AttestationReward(ctx, epoch-2))
-					processed = reward.Head + reward.Source + reward.Target
-				}
-				want := int64(beforeSlashing.Balance) - int64(penalty) + blocks + processed
-				gomega.Expect(int64(onSlashing.Balance)).To(gomega.Equal(want),
-					"balance went from %d to %d at slot %d: the %d shor penalty, %d shor from the block and %d from epoch processing make %d",
-					beforeSlashing.Balance, onSlashing.Balance, slashingSlot, penalty, blocks, processed, want)
-
-				exit := spec.exitEpoch(epoch)
-				gomega.Expect(onSlashing.ExitEpoch).To(gomega.Equal(exit), "exit epoch of a validator slashed in epoch %d", epoch)
-				gomega.Expect(onSlashing.WithdrawableEpoch).To(gomega.Equal(spec.withdrawableEpoch(epoch, exit)),
-					"withdrawable epoch of a validator slashed in epoch %d", epoch)
-
-				blockRewards := testsuite.MustSucceed(val.Client.BlockRewards(ctx, strconv.FormatUint(slashingSlot, 10)))
-				gomega.Expect(blockRewards.AttesterSlashings).To(gomega.Equal(spec.whistleblowerReward(beforeSlashing.EffectiveBalance)),
-					"what the block's proposer earned for the evidence")
-				gomega.Expect(blockRewards.ProposerSlashings).To(gomega.BeZero())
+				_, onSlashing = expectSlashedInBlock(ctx, val, spec, slashingSlot, false)
 			}, ginkgo.SpecTimeout(time.Minute))
 
 		ginkgo.It("loses exactly the missed-vote penalty in every epoch from its slashing through its exit",
@@ -219,19 +189,8 @@ var _ = ginkgo.Describe(
 				}
 			}, ginkgo.SpecTimeout(afterExitTimeout))
 
-		ginkgo.It("slashes no other validator, and the chain keeps finalizing", func(ctx ginkgo.SpecContext) {
-			slashed := testsuite.MustSucceed(val.Client.SlashedValidators(ctx))
-			indices := make([]uint64, len(slashed))
-			for position, record := range slashed {
-				indices[position] = record.Index
-			}
-			gomega.Expect(indices).To(gomega.Equal([]uint64{val.Index}))
-
-			// A healthy chain finalizes the epoch before the previous one.
-			head := testsuite.MustSucceed(val.Client.HeadSlot(ctx))
-			checkpoints := testsuite.MustSucceed(val.Client.FinalityCheckpoints(ctx))
-			gomega.Expect(checkpoints.Finalized.Epoch+3).To(gomega.BeNumerically(">=", val.Chain.Epoch(head)),
-				"finalized epoch %d at head slot %d", checkpoints.Finalized.Epoch, head)
+		ginkgo.It("slashes no validator the suite did not set out to, and the chain keeps finalizing", func(ctx ginkgo.SpecContext) {
+			expectOnlySuiteSlashings(ctx, val.Client, val.Chain)
 		}, ginkgo.SpecTimeout(time.Minute))
 	},
 )
