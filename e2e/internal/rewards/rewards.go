@@ -52,10 +52,10 @@ func AttestationReward(ctx context.Context, client *beacon.Client, epoch, index 
 	return rewards[0], nil
 }
 
-// Available reports whether the attestation rewards of epoch are available
-// once the head is at headSlot. Qrysm makes them available two epochs later,
-// so every attestation has had a chance of inclusion.
-func Available(chain chaininfo.Info, headSlot, epoch uint64) bool {
+// rewardsAvailable reports whether the attestation rewards of epoch are
+// available once the head is at headSlot. Qrysm makes them available two
+// epochs later, so every attestation has had a chance of inclusion.
+func rewardsAvailable(chain chaininfo.Info, headSlot, epoch uint64) bool {
 	return epoch+2 <= chain.Epoch(headSlot)
 }
 
@@ -73,7 +73,7 @@ func (scanner *rewardScanner) scan(ctx context.Context) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	for ; Available(scanner.chain, head, scanner.next); scanner.next++ {
+	for ; rewardsAvailable(scanner.chain, head, scanner.next); scanner.next++ {
 		reward, err := AttestationReward(ctx, scanner.client, scanner.next, scanner.index)
 		if err != nil {
 			return false, err
