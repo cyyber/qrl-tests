@@ -26,21 +26,29 @@ func TestPauseService(t *testing.T) {
 }
 
 func TestPauseServiceErrors(t *testing.T) {
-	_, err := pauseService(t.Context(), &fakePauser{}, "consensus-service")
+	client := &fakePauser{}
+	_, err := pauseService(t.Context(), client, "consensus-service")
 	require.ErrorContains(t, err, `expected one running Docker container for service "consensus-service", found 0`)
+	require.Empty(t, client.paused)
 
-	client := &fakePauser{
+	client = &fakePauser{fakeDocker: fakeDocker{listErr: errors.New("daemon unavailable")}}
+	_, err = pauseService(t.Context(), client, "consensus-service")
+	require.EqualError(t, err, "find container: daemon unavailable")
+	require.Empty(t, client.paused)
+
+	client = &fakePauser{
 		fakeDocker: fakeDocker{containers: []containertypes.Summary{{ID: "beacon-container"}}},
 		pauseErr:   errors.New("already paused"),
 	}
-	_, err = pauseService(t.Context(), client, "consensus-service")
+	resume, err := pauseService(t.Context(), client, "consensus-service")
 	require.EqualError(t, err, `pause service "consensus-service": already paused`)
+	require.Nil(t, resume)
 
 	client = &fakePauser{
 		fakeDocker: fakeDocker{containers: []containertypes.Summary{{ID: "beacon-container"}}},
 		unpauseErr: errors.New("not paused"),
 	}
-	resume, err := pauseService(t.Context(), client, "consensus-service")
+	resume, err = pauseService(t.Context(), client, "consensus-service")
 	require.NoError(t, err)
 	require.EqualError(t, resume(t.Context()), `resume service "consensus-service": not paused`)
 }
