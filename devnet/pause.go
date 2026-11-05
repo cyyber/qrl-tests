@@ -9,7 +9,6 @@ import (
 	dockerclient "github.com/moby/moby/client"
 )
 
-// servicePauser is the part of the Docker client PauseService uses.
 type servicePauser interface {
 	containerLister
 	ContainerPause(context.Context, string, dockerclient.ContainerPauseOptions) (dockerclient.ContainerPauseResult, error)
@@ -17,7 +16,7 @@ type servicePauser interface {
 }
 
 // PauseService freezes every process of a Kurtosis service's container until
-// the returned resume runs. A paused client keeps its connections: what its
+// the returned resume runs. A paused service keeps its connections: what its
 // peers and callers send waits in its sockets, and it handles that only once
 // it resumes. resume must run even if the caller fails.
 func PauseService(ctx context.Context, serviceID string) (func(context.Context) error, error) {
