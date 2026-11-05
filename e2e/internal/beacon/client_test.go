@@ -188,10 +188,10 @@ func TestClientDecodesQrysmResponses(t *testing.T) {
 
 	blockRewards, err := client.BlockRewards(t.Context(), "9")
 	require.NoError(t, err)
-	require.Equal(t, BlockRewards{ProposerIndex: 12, Total: 123}, blockRewards)
+	require.Equal(t, BlockRewards{Total: 123}, blockRewards)
 	blockRewards, err = client.BlockRewards(t.Context(), "21")
 	require.NoError(t, err)
-	require.Equal(t, BlockRewards{ProposerIndex: 3, Total: 78125000100, AttesterSlashings: 78125000000}, blockRewards)
+	require.Equal(t, BlockRewards{Total: 78125000100, AttesterSlashings: 78125000000}, blockRewards)
 
 	syncRewards, err := client.SyncCommitteeRewards(t.Context(), "9", []uint64{64})
 	require.NoError(t, err)
