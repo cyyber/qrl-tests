@@ -15,9 +15,12 @@ import (
 
 // expectSlashedInBlock checks the block at slot that slashes the validator: it
 // pays the initial penalty, sets the exit and withdrawable epochs, and pays its
-// proposer the whistleblower reward for an attester slashing. It returns the
-// validator's record at the block.
-func expectSlashedInBlock(ctx context.Context, val rewards.Validator, spec slashingSpec, slot uint64) beacon.Validator {
+// proposer the whistleblower reward for a proposer slashing if doubleProposal,
+// or an attester slashing if not. It returns the validator's record at the
+// block.
+func expectSlashedInBlock(
+	ctx context.Context, val rewards.Validator, spec slashingSpec, slot uint64, doubleProposal bool,
+) beacon.Validator {
 	ginkgo.GinkgoHelper()
 	before := testsuite.MustSucceed(val.RecordAt(ctx, slot-1))
 	on := testsuite.MustSucceed(val.RecordAt(ctx, slot))
@@ -47,9 +50,15 @@ func expectSlashedInBlock(ctx context.Context, val rewards.Validator, spec slash
 		"withdrawable epoch of a validator slashed in epoch %d", epoch)
 
 	blockRewards := testsuite.MustSucceed(val.Client.BlockRewards(ctx, strconv.FormatUint(slot, 10)))
-	gomega.Expect(blockRewards.AttesterSlashings).To(gomega.Equal(spec.whistleblowerReward(before.EffectiveBalance)),
-		"what the block's proposer earned for the evidence")
-	gomega.Expect(blockRewards.ProposerSlashings).To(gomega.BeZero())
+	reward := spec.whistleblowerReward(before.EffectiveBalance)
+	wantProposerSlashings, wantAttesterSlashings := uint64(0), reward
+	if doubleProposal {
+		wantProposerSlashings, wantAttesterSlashings = reward, 0
+	}
+	gomega.Expect(blockRewards.ProposerSlashings).To(gomega.Equal(wantProposerSlashings),
+		"what the block's proposer earned for proposer slashings")
+	gomega.Expect(blockRewards.AttesterSlashings).To(gomega.Equal(wantAttesterSlashings),
+		"what the block's proposer earned for attester slashings")
 	return on
 }
 

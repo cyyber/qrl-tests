@@ -12,7 +12,7 @@ endpoints; suites do not provision infrastructure.
 | `consensus-staking-automated` | `single` | Staking through contract deposits and the keymanager API |
 | `consensus-staking-operator` | `single` | Staking through the deposit and validator CLIs |
 | `consensus-penalties` | `spare-validator` | Penalties while a validator's client is down, and rewards once it is back |
-| `consensus-slashing` | `duplicate-validator` | Slashing of a validator that runs on two nodes at once, from its double vote through its exit |
+| `consensus-slashing` | `duplicate-validator` | Slashing of a validator that runs on two nodes at once, for a double vote and for a double proposal |
 | `resilience-network-restart` | `anchored` | Recovery from a full outage: proposing and finalizing after every node stops at once |
 | `sync` | `single` | A new full-mode node syncs from genesis or from a checkpoint, then catches up after a stop |
 

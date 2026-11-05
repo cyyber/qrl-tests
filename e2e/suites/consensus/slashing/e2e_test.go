@@ -64,7 +64,7 @@ var _ = ginkgo.Describe(
 		ginkgo.BeforeAll(func(ctx ginkgo.SpecContext) {
 			runtime := testsuite.LoadRuntime()
 			nodes := testsuite.MustSucceed(runtime.Nodes(ctx))
-			gomega.Expect(nodes).To(gomega.HaveLen(2), "the suite runs the validator on two nodes")
+			gomega.Expect(nodes).To(gomega.HaveLen(3), "the suite runs the validator on two nodes, and a third watches")
 			for _, participant := range nodes {
 				gomega.Expect(participant.BeaconGRPC).NotTo(gomega.BeEmpty(), "beacon gRPC is not published")
 			}
@@ -128,12 +128,12 @@ var _ = ginkgo.Describe(
 					if attempt == 1 {
 						firstVote = slot
 					}
-					slashed = run && scenario.awaitSlashed(ctx)
+					slashed = run && awaitSlashed(ctx, val)
 				}
 				gomega.Expect(slashed).To(gomega.BeTrue(), "no double vote was slashed in %d attempts", doubleVoteAttempts)
 
 				ginkgo.By("finding the evidence a block included")
-				slot, evidence := scenario.findEvidence(ctx, firstVote)
+				slot, evidence := findEvidence(ctx, val, firstVote)
 				first, second := expectDoubleVoteEvidence(slot, evidence)
 				ginkgo.GinkgoWriter.Printf("slot %d included a double vote of slot %d for heads %s and %s\n",
 					slot, first.Slot, first.BeaconBlockRoot, second.BeaconBlockRoot)
@@ -142,7 +142,7 @@ var _ = ginkgo.Describe(
 
 		ginkgo.It("loses the slashing penalty in the block that includes the evidence, whose proposer earns the whistleblower reward",
 			func(ctx ginkgo.SpecContext) {
-				onSlashing = expectSlashedInBlock(ctx, val, spec, slashingSlot)
+				onSlashing = expectSlashedInBlock(ctx, val, spec, slashingSlot, false)
 			}, ginkgo.SpecTimeout(time.Minute))
 
 		ginkgo.It("loses exactly the missed-vote penalty in every epoch from its slashing through its exit",
@@ -173,14 +173,8 @@ var _ = ginkgo.Describe(
 				}
 			}, ginkgo.SpecTimeout(afterExitTimeout))
 
-		ginkgo.It("is the only validator slashed, and the chain keeps finalizing", func(ctx ginkgo.SpecContext) {
-			slashed := testsuite.MustSucceed(val.Client.SlashedValidators(ctx))
-			gomega.Expect(slashed).To(gomega.HaveExactElements(gomega.HaveField("Index", val.Index)))
-
-			head := testsuite.MustSucceed(val.Client.HeadSlot(ctx))
-			checkpoints := testsuite.MustSucceed(val.Client.FinalityCheckpoints(ctx))
-			gomega.Expect(checkpoints.Finalized.Epoch+maxFinalityLagEpochs).To(gomega.BeNumerically(">=", val.Chain.Epoch(head)),
-				"finalized epoch %d at head slot %d", checkpoints.Finalized.Epoch, head)
+		ginkgo.It("is slashed along with only the suite's other targets, and the chain keeps finalizing", func(ctx ginkgo.SpecContext) {
+			expectOnlySuiteSlashings(ctx, val.Client, val.Chain)
 		}, ginkgo.SpecTimeout(time.Minute))
 	},
 )

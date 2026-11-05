@@ -82,7 +82,7 @@ var registry = []Lane{
 		Name:    "consensus-slashing",
 		Profile: devnet.ProfileDuplicateValidator,
 		Suites:  []SuiteID{suiteConsensusSlashing},
-		Timeout: 40 * time.Minute,
+		Timeout: 60 * time.Minute,
 	},
 	{
 		// Finality, the outage and finality again take about a dozen

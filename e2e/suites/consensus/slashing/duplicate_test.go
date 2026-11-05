@@ -17,8 +17,6 @@ import (
 	gomega "github.com/onsi/gomega"
 )
 
-const detectionEpochs = 4
-
 // doubleVote runs a second copy of the validator's key on the duplicate's node
 // for one vote. Healthy nodes share a head, so both copies would sign the same
 // vote; delaying a block to the duplicate's node makes its vote differ.
@@ -42,7 +40,7 @@ func (scenario *doubleVote) attempt(ctx context.Context) (uint64, bool) {
 	defer func() {
 		gomega.Expect(scenario.duplicate.stopClient()).To(gomega.Succeed())
 	}()
-	if time.Until(scenario.slotStart(slot)) < scenario.val.Chain.SlotDuration {
+	if time.Until(slotStart(scenario.val.Chain, slot)) < scenario.val.Chain.SlotDuration {
 		ginkgo.GinkgoWriter.Printf("the duplicate validator client started too late for slot %d\n", slot)
 		return slot, false
 	}
@@ -51,7 +49,7 @@ func (scenario *doubleVote) attempt(ctx context.Context) (uint64, bool) {
 	scenario.pauseAcrossVote(ctx, slot)
 
 	// Give the duplicate time to publish its vote before it is stopped.
-	gomega.Expect(testsuite.SleepUntil(ctx, scenario.slotStart(slot+1).Add(scenario.val.Chain.SlotDuration/2))).To(gomega.Succeed())
+	gomega.Expect(testsuite.SleepUntil(ctx, slotStart(scenario.val.Chain, slot+1).Add(scenario.val.Chain.SlotDuration/2))).To(gomega.Succeed())
 	return slot, true
 }
 
@@ -66,7 +64,7 @@ func (scenario *doubleVote) planVoteSlot(ctx context.Context) uint64 {
 		now := time.Now()
 		head := testsuite.MustSucceed(scenario.val.Client.HeadSlot(ctx))
 		epoch := max(chain.EpochAt(now), chain.Epoch(head))
-		start := scenario.slotStart(epoch * chain.SlotsPerEpoch)
+		start := slotStart(scenario.val.Chain, epoch*chain.SlotsPerEpoch)
 		if now.Before(start.Add(chain.EpochDuration / 2)) {
 			if slot, ok := scenario.voteSlot(ctx, epoch); ok {
 				return slot
@@ -81,8 +79,9 @@ func (scenario *doubleVote) planVoteSlot(ctx context.Context) uint64 {
 //   - the key proposes in neither epoch nor epoch+1, so the duplicate never
 //     double proposes; a validator is slashed only once, so that would keep
 //     the double vote from being included;
-//   - a node-1 validator proposes the vote's slot, so there is a block that
-//     node 1 sees in time and the paused node 2 sees late;
+//   - a node-1 validator the suite has not slashed proposes the vote's slot,
+//     so there is a block that node 1 sees in time and the paused node 2 sees
+//     late;
 //   - the vote is not the epoch's last slot, so the duplicate is stopped
 //     before epoch+2, whose proposals aren't checked.
 func (scenario *doubleVote) voteSlot(ctx context.Context, epoch uint64) (uint64, bool) {
@@ -105,7 +104,8 @@ func (scenario *doubleVote) voteSlot(ctx context.Context, epoch uint64) (uint64,
 	}
 
 	proposer := slices.IndexFunc(upcoming, func(duty beacon.ProposerDuty) bool { return duty.Slot == slot })
-	if proposer < 0 || slices.Contains(scenario.pausedNodeValidators, upcoming[proposer].ValidatorIndex) {
+	if proposer < 0 || slices.Contains(scenario.pausedNodeValidators, upcoming[proposer].ValidatorIndex) ||
+		slices.Contains(suiteSlashed, upcoming[proposer].ValidatorIndex) {
 		return 0, false
 	}
 	return slot, true
@@ -117,7 +117,7 @@ func (scenario *doubleVote) voteSlot(ctx context.Context, epoch uint64) (uint64,
 // client votes for the previous block as the head.
 func (scenario *doubleVote) pauseAcrossVote(ctx context.Context, slot uint64) {
 	ginkgo.GinkgoHelper()
-	start := scenario.slotStart(slot)
+	start := slotStart(scenario.val.Chain, slot)
 	gomega.Expect(testsuite.SleepUntil(ctx, start.Add(-time.Second))).To(gomega.Succeed())
 	resume := testsuite.MustSucceed(devnet.PauseService(ctx, scenario.duplicate.ConsensusServiceID))
 	defer func() {
@@ -125,45 +125,4 @@ func (scenario *doubleVote) pauseAcrossVote(ctx context.Context, slot uint64) {
 		gomega.Expect(resume(context.WithoutCancel(ctx))).To(gomega.Succeed())
 	}()
 	gomega.Expect(testsuite.SleepUntil(ctx, start.Add(scenario.val.Chain.SlotDuration/3+time.Second))).To(gomega.Succeed())
-}
-
-// awaitSlashed reports whether the validator is slashed within
-// detectionEpochs.
-func (scenario *doubleVote) awaitSlashed(ctx context.Context) bool {
-	ginkgo.GinkgoHelper()
-	deadline := time.Now().Add(detectionEpochs * scenario.val.Chain.EpochDuration)
-	index := strconv.FormatUint(scenario.val.Index, 10)
-	for time.Now().Before(deadline) {
-		record := testsuite.MustSucceed(scenario.val.Client.Validator(ctx, index))
-		if record.Slashed {
-			return true
-		}
-		gomega.Expect(testsuite.SleepUntil(ctx, time.Now().Add(rewards.PollInterval))).To(gomega.Succeed())
-	}
-	ginkgo.GinkgoWriter.Printf("validator %d was not slashed within %d epochs\n", scenario.val.Index, detectionEpochs)
-	return false
-}
-
-// findEvidence searches the blocks from the given slot up to the head, and
-// returns the first one that slashes the validator, with its evidence.
-func (scenario *doubleVote) findEvidence(ctx context.Context, from uint64) (uint64, slashingEvidence) {
-	ginkgo.GinkgoHelper()
-	client := scenario.val.Client
-	head := testsuite.MustSucceed(client.HeadSlot(ctx))
-	for slot := from; slot <= head; slot++ {
-		operations, err := client.BlockOperations(ctx, strconv.FormatUint(slot, 10))
-		if beacon.IsNotFound(err) {
-			continue
-		}
-		gomega.Expect(err).NotTo(gomega.HaveOccurred())
-		if evidence, found := evidenceAgainst(operations, scenario.val.Index); found {
-			return slot, evidence
-		}
-	}
-	ginkgo.Fail("no block from slot " + strconv.FormatUint(from, 10) + " slashes the validator")
-	return 0, slashingEvidence{}
-}
-
-func (scenario *doubleVote) slotStart(slot uint64) time.Time {
-	return scenario.val.Chain.GenesisTime.Add(time.Duration(slot) * scenario.val.Chain.SlotDuration)
 }
