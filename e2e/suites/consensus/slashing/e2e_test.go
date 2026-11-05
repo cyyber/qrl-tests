@@ -24,23 +24,13 @@ import (
 )
 
 const (
-	// doubleVoteAttempts is how many blocks the suite delays: a block late
-	// everywhere gives both clients the same head, which is no offense.
 	doubleVoteAttempts = 3
 
-	// attestTimeout covers a missed first epoch and the two epochs until its
-	// rewards are served.
-	attestTimeout = 5 * time.Minute
-	// doubleVoteTimeout covers every attempt and the epochs the evidence
-	// takes to be included.
+	attestTimeout     = 5 * time.Minute
 	doubleVoteTimeout = 15 * time.Minute
-	// exitTimeout covers the epochs to the exit and the two epochs until their
-	// rewards are served.
-	exitTimeout = 5 * time.Minute
+	exitTimeout       = 5 * time.Minute
 
-	afterExitEpochs = 2
-	// afterExitTimeout covers the epochs after the exit and the two epochs
-	// until their rewards are served.
+	afterExitEpochs  = 2
 	afterExitTimeout = 4 * time.Minute
 )
 
