@@ -53,7 +53,6 @@ func TestPauseServiceErrors(t *testing.T) {
 	require.EqualError(t, resume(t.Context()), `resume service "consensus-service": not paused`)
 }
 
-// fakePauser records the containers it pauses and resumes.
 type fakePauser struct {
 	fakeDocker
 	pauseErr   error
