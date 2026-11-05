@@ -50,13 +50,13 @@ var _ = ginkgo.Describe(
 		var (
 			// primary runs the validator from the start; duplicate is a
 			// second copy of its key, on the node the suite pauses.
-			primary, duplicate         *node
-			val                        rewards.Validator
-			spec                       slashingSpec
-			keystores                  []sidecar.File
-			pausedNodeValidators       []uint64
-			slashingSlot, firstVote    uint64
-			beforeSlashing, onSlashing beacon.Validator
+			primary, duplicate      *node
+			val                     rewards.Validator
+			spec                    slashingSpec
+			keystores               []sidecar.File
+			pausedNodeValidators    []uint64
+			slashingSlot, firstVote uint64
+			onSlashing              beacon.Validator
 		)
 
 		ginkgo.BeforeAll(func(ctx ginkgo.SpecContext) {
@@ -121,7 +121,6 @@ var _ = ginkgo.Describe(
 			func(ctx ginkgo.SpecContext) {
 				scenario := doubleVote{
 					val:                  val,
-					primary:              primary,
 					duplicate:            duplicate,
 					pausedNodeValidators: pausedNodeValidators,
 					keystores:            keystores,
@@ -154,7 +153,7 @@ var _ = ginkgo.Describe(
 		ginkgo.It("pays the slashing penalty in the block that includes the evidence, and its proposer the whistleblower reward",
 			func(ctx ginkgo.SpecContext) {
 				index := strconv.FormatUint(val.Index, 10)
-				beforeSlashing = testsuite.MustSucceed(val.Client.ValidatorAt(ctx, strconv.FormatUint(slashingSlot-1, 10), index))
+				beforeSlashing := testsuite.MustSucceed(val.Client.ValidatorAt(ctx, strconv.FormatUint(slashingSlot-1, 10), index))
 				onSlashing = testsuite.MustSucceed(val.Client.ValidatorAt(ctx, strconv.FormatUint(slashingSlot, 10), index))
 				gomega.Expect(beforeSlashing.Slashed).To(gomega.BeFalse())
 				gomega.Expect(onSlashing.Slashed).To(gomega.BeTrue())

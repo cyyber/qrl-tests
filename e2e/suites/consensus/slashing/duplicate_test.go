@@ -24,7 +24,7 @@ const detectionEpochs = 4
 // vote; delaying a block to the duplicate's node makes its vote differ.
 type doubleVote struct {
 	val                  rewards.Validator
-	primary, duplicate   *node
+	duplicate            *node
 	pausedNodeValidators []uint64
 	keystores            []sidecar.File
 }
