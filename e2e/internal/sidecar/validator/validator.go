@@ -48,6 +48,10 @@ if [ -d "${KEYS_DIR}" ]; then
     --account-password-file="${PASSWORD_FILE}"
 fi
 
+if [ -n "${GRAFFITI}" ]; then
+  set -- "$@" --graffiti="${GRAFFITI}"
+fi
+
 exec /validator "$@" \
   --chain-config-file="${CHAIN_CONFIG_FILE}" \
   --beacon-rpc-provider="${BEACON_RPC_PROVIDER}" \
@@ -57,7 +61,7 @@ exec /validator "$@" \
   --grpc-gateway-port="${GATEWAY_PORT}"
 `
 
-func containerEnv(beaconGRPC, beaconREST string) []string {
+func containerEnv(beaconGRPC, beaconREST, graffiti string) []string {
 	return []string{
 		"WALLET_DIR=" + walletDir,
 		"PASSWORD_FILE=" + passwordPath,
@@ -66,6 +70,7 @@ func containerEnv(beaconGRPC, beaconREST string) []string {
 		"BEACON_RPC_PROVIDER=" + beaconGRPC,
 		"BEACON_REST_API_PROVIDER=" + beaconREST,
 		"GATEWAY_PORT=" + strconv.Itoa(gatewayPort),
+		"GRAFFITI=" + graffiti,
 	}
 }
 
@@ -83,6 +88,9 @@ type Config struct {
 	// Keystores are imported at startup. They must be encrypted with
 	// validatorops.KeystorePassword, which also protects the wallet.
 	Keystores []sidecar.File
+	// Graffiti, when set, goes into every block the client proposes, so two
+	// clients that run the same key never propose the same block.
+	Graffiti string
 }
 
 // Sidecar is a running validator client that the caller must Close.
@@ -136,7 +144,7 @@ func start(ctx context.Context, config Config, client dockerClient) (*Sidecar, e
 		Name:       sidecarName,
 		Image:      config.Image,
 		Entrypoint: []string{"/bin/sh", startScriptPath},
-		Env:        containerEnv(beaconGRPC, beaconREST),
+		Env:        containerEnv(beaconGRPC, beaconREST, config.Graffiti),
 		Files:      files,
 		Port:       gatewayPort,
 	})

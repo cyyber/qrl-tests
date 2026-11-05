@@ -22,7 +22,7 @@ var _ dockerClient = (*sidecartest.Docker)(nil)
 
 func TestStartScriptVariablesAreSet(t *testing.T) {
 	set := map[string]bool{}
-	for _, variable := range containerEnv("beacon:4000", "http://beacon:3500") {
+	for _, variable := range containerEnv("beacon:4000", "http://beacon:3500", "") {
 		name, _, _ := strings.Cut(variable, "=")
 		set[name] = true
 	}
@@ -36,6 +36,7 @@ func TestStartWaitsForKeymanager(t *testing.T) {
 	require.NotNil(t, validator.Keymanager)
 	require.Contains(t, docker.LastCreated().Config.Env, "BEACON_REST_API_PROVIDER=http://host.docker.internal:3500")
 	require.Contains(t, docker.LastCreated().Config.Env, "BEACON_RPC_PROVIDER=host.docker.internal:4000")
+	require.Contains(t, docker.LastCreated().Config.Env, "GRAFFITI=")
 	require.Len(t, docker.Listed, 1)
 	require.Equal(t, dockerclient.Filters{"label": {"com.kurtosistech.guid=consensus-service": true}}, docker.Listed[0].Filters)
 
