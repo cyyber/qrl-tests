@@ -79,9 +79,6 @@ var registry = []Lane{
 		Timeout: 30 * time.Minute,
 	},
 	{
-		// The spare genesis validator attests, a duplicate of its key double
-		// votes and is slashed, and the validator exits and is followed two
-		// epochs more: about nine minutes, within timeouts that add up to 35.
 		Name:    "consensus-slashing",
 		Profile: devnet.ProfileDuplicateValidator,
 		Suites:  []SuiteID{suiteConsensusSlashing},
