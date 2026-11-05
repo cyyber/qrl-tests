@@ -181,9 +181,11 @@ type blockWire struct {
 		Slot          uint64 `json:"slot,string"`
 		ProposerIndex uint64 `json:"proposer_index,string"`
 		Body          struct {
-			VoluntaryExits []SignedVoluntaryExit `json:"voluntary_exits"`
-			Attestations   []attestationWire     `json:"attestations"`
-			Payload        struct {
+			VoluntaryExits    []SignedVoluntaryExit  `json:"voluntary_exits"`
+			ProposerSlashings []proposerSlashingWire `json:"proposer_slashings"`
+			AttesterSlashings []attesterSlashingWire `json:"attester_slashings"`
+			Attestations      []attestationWire      `json:"attestations"`
+			Payload           struct {
 				BlockNumber uint64       `json:"block_number,string"`
 				Withdrawals []Withdrawal `json:"withdrawals"`
 			} `json:"execution_payload"`
@@ -196,8 +198,40 @@ type attestationWire struct {
 	Data            AttestationData `json:"data"`
 }
 
-// BlockOperations returns the proposer, exits, withdrawals and attestations
-// of one block. A slot without a block is reported through IsNotFound.
+type proposerSlashingWire struct {
+	Header1 struct {
+		Message BeaconBlockHeaderMessage `json:"message"`
+	} `json:"signed_header_1"`
+	Header2 struct {
+		Message BeaconBlockHeaderMessage `json:"message"`
+	} `json:"signed_header_2"`
+}
+
+type attesterSlashingWire struct {
+	Attestation1 indexedAttestationWire `json:"attestation_1"`
+	Attestation2 indexedAttestationWire `json:"attestation_2"`
+}
+
+type indexedAttestationWire struct {
+	AttestingIndices []string        `json:"attesting_indices"`
+	Data             AttestationData `json:"data"`
+}
+
+func (wire indexedAttestationWire) indexed() (IndexedAttestation, error) {
+	attestation := IndexedAttestation{Data: wire.Data}
+	for _, raw := range wire.AttestingIndices {
+		index, err := strconv.ParseUint(raw, 10, 64)
+		if err != nil {
+			return IndexedAttestation{}, fmt.Errorf("attesting index %q: %w", raw, err)
+		}
+		attestation.AttestingIndices = append(attestation.AttestingIndices, index)
+	}
+	return attestation, nil
+}
+
+// BlockOperations returns the proposer, exits, withdrawals, attestations and
+// slashings of one block. A slot without a block is reported through
+// IsNotFound.
 func (client *Client) BlockOperations(ctx context.Context, blockID string) (BlockOperations, error) {
 	block, err := getData[blockWire](ctx, client, "/qrl/v1/beacon/blocks/"+url.PathEscape(blockID))
 	if err != nil {
@@ -221,6 +255,26 @@ func (client *Client) BlockOperations(ctx context.Context, blockID string) (Bloc
 		operations.Attestations = append(operations.Attestations, Attestation{
 			AggregationBits: aggregation,
 			Data:            attestation.Data,
+		})
+	}
+	for _, slashing := range block.Message.Body.ProposerSlashings {
+		operations.ProposerSlashings = append(operations.ProposerSlashings, ProposerSlashing{
+			Header1: slashing.Header1.Message,
+			Header2: slashing.Header2.Message,
+		})
+	}
+	for _, slashing := range block.Message.Body.AttesterSlashings {
+		first, err := slashing.Attestation1.indexed()
+		if err != nil {
+			return BlockOperations{}, err
+		}
+		second, err := slashing.Attestation2.indexed()
+		if err != nil {
+			return BlockOperations{}, err
+		}
+		operations.AttesterSlashings = append(operations.AttesterSlashings, AttesterSlashing{
+			Attestation1: first,
+			Attestation2: second,
 		})
 	}
 	return operations, nil
@@ -262,6 +316,12 @@ func (client *Client) Committees(ctx context.Context, stateID string, epoch uint
 func (client *Client) AttesterDuties(ctx context.Context, epoch uint64, indices []uint64) ([]AttesterDuty, error) {
 	path := "/qrl/v1/validator/duties/attester/" + strconv.FormatUint(epoch, 10)
 	return postData[[]AttesterDuty](ctx, client, path, formatIndices(indices))
+}
+
+// ProposerDuties returns who proposes each slot of epoch. Qrysm serves the
+// current epoch and the next.
+func (client *Client) ProposerDuties(ctx context.Context, epoch uint64) ([]ProposerDuty, error) {
+	return getData[[]ProposerDuty](ctx, client, "/qrl/v1/validator/duties/proposer/"+strconv.FormatUint(epoch, 10))
 }
 
 func (client *Client) SubmitVoluntaryExit(ctx context.Context, exit SignedVoluntaryExit) error {

@@ -40,6 +40,20 @@ func TestClientDecodesQrysmResponses(t *testing.T) {
 			_, _ = writer.Write([]byte(`{"data":[{"index":"0","validator":{"effective_balance":"40000000000000"}},{"index":"64","validator":{"effective_balance":"39998000000000"}}]}`))
 		case "/qrl/v1/beacon/blocks/9":
 			_, _ = writer.Write([]byte(`{"data":{"message":{"slot":"9","proposer_index":"12","body":{"voluntary_exits":[{"message":{"epoch":"1","validator_index":"64"},"signature":"0x00"}],"execution_payload":{"block_number":"42","withdrawals":[{"index":"0","validator_index":"64","address":"0xcd","amount":"40000000000000"}]}}}}}`))
+		case "/qrl/v1/beacon/blocks/21":
+			_, _ = writer.Write([]byte(`{"data":{"message":{"slot":"21","proposer_index":"3","body":{` +
+				`"proposer_slashings":[{"signed_header_1":{"message":{"slot":"19","proposer_index":"64","parent_root":"0x01","state_root":"0x02","body_root":"0x03"},"signature":"0x00"},` +
+				`"signed_header_2":{"message":{"slot":"19","proposer_index":"64","parent_root":"0x01","state_root":"0x04","body_root":"0x05"},"signature":"0x00"}}],` +
+				`"attester_slashings":[{"attestation_1":{"attesting_indices":["7","64"],"data":{"slot":"18","index":"0","beacon_block_root":"0xaa","source":{"epoch":"1","root":"0x0a"},"target":{"epoch":"2","root":"0x0b"}},"signatures":["0x00","0x00"]},` +
+				`"attestation_2":{"attesting_indices":["64"],"data":{"slot":"18","index":"0","beacon_block_root":"0xbb","source":{"epoch":"1","root":"0x0a"},"target":{"epoch":"2","root":"0x0b"}},"signatures":["0x00"]}}],` +
+				`"execution_payload":{"block_number":"50","withdrawals":[]}}}}}`))
+		case "/qrl/v1/beacon/rewards/blocks/21":
+			_, _ = writer.Write([]byte(`{"data":{"proposer_index":"3","total":"78125000100","attestations":"100","sync_aggregate":"0","proposer_slashings":"0","attester_slashings":"78125000000"}}`))
+		case "/qrl/v1/beacon/blocks/22":
+			_, _ = writer.Write([]byte(`{"data":{"message":{"slot":"22","body":{"attester_slashings":[{"attestation_1":{"attesting_indices":["x"]},"attestation_2":{}}]}}}}`))
+		case "/qrl/v1/validator/duties/proposer/2":
+			assert.Equal(t, http.MethodGet, request.Method)
+			_, _ = writer.Write([]byte(`{"dependent_root":"0x00","execution_optimistic":false,"data":[{"pubkey":"0xab","validator_index":"64","slot":"16"},{"pubkey":"0xcd","validator_index":"3","slot":"17"}]}`))
 		case "/qrl/v1/validator/duties/attester/2":
 			assertIndices(t, request, "64")
 			_, _ = writer.Write([]byte(`{"dependent_root":"0x00","execution_optimistic":false,"data":[{"pubkey":"0xab","validator_index":"64","committee_index":"0","committee_length":"8","committees_at_slot":"1","validator_committee_index":"3","slot":"17"}]}`))
@@ -131,6 +145,30 @@ func TestClientDecodesQrysmResponses(t *testing.T) {
 		Withdrawals:          []Withdrawal{{ValidatorIndex: 64, Address: "0xcd", Amount: 40000000000000}},
 	}, operations)
 
+	operations, err = client.BlockOperations(t.Context(), "21")
+	require.NoError(t, err)
+	require.Equal(t, []ProposerSlashing{{
+		Header1: BeaconBlockHeaderMessage{Slot: 19, ProposerIndex: 64, ParentRoot: "0x01", StateRoot: "0x02", BodyRoot: "0x03"},
+		Header2: BeaconBlockHeaderMessage{Slot: 19, ProposerIndex: 64, ParentRoot: "0x01", StateRoot: "0x04", BodyRoot: "0x05"},
+	}}, operations.ProposerSlashings)
+	vote := func(blockRoot string) AttestationData {
+		return AttestationData{
+			Slot: 18, BeaconBlockRoot: blockRoot,
+			Source: Checkpoint{Epoch: 1, Root: "0x0a"}, Target: Checkpoint{Epoch: 2, Root: "0x0b"},
+		}
+	}
+	require.Equal(t, []AttesterSlashing{{
+		Attestation1: IndexedAttestation{AttestingIndices: []uint64{7, 64}, Data: vote("0xaa")},
+		Attestation2: IndexedAttestation{AttestingIndices: []uint64{64}, Data: vote("0xbb")},
+	}}, operations.AttesterSlashings)
+
+	_, err = client.BlockOperations(t.Context(), "22")
+	require.ErrorContains(t, err, `attesting index "x"`)
+
+	proposers, err := client.ProposerDuties(t.Context(), 2)
+	require.NoError(t, err)
+	require.Equal(t, []ProposerDuty{{PublicKey: "0xab", ValidatorIndex: 64, Slot: 16}, {PublicKey: "0xcd", ValidatorIndex: 3, Slot: 17}}, proposers)
+
 	duties, err := client.AttesterDuties(t.Context(), 2, []uint64{64})
 	require.NoError(t, err)
 	require.Equal(t, []AttesterDuty{{PublicKey: "0xab", ValidatorIndex: 64, Slot: 17}}, duties)
@@ -150,7 +188,10 @@ func TestClientDecodesQrysmResponses(t *testing.T) {
 
 	blockRewards, err := client.BlockRewards(t.Context(), "9")
 	require.NoError(t, err)
-	require.Equal(t, BlockRewards{Total: 123}, blockRewards)
+	require.Equal(t, BlockRewards{ProposerIndex: 12, Total: 123}, blockRewards)
+	blockRewards, err = client.BlockRewards(t.Context(), "21")
+	require.NoError(t, err)
+	require.Equal(t, BlockRewards{ProposerIndex: 3, Total: 78125000100, AttesterSlashings: 78125000000}, blockRewards)
 
 	syncRewards, err := client.SyncCommitteeRewards(t.Context(), "9", []uint64{64})
 	require.NoError(t, err)

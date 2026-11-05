@@ -87,6 +87,8 @@ type BlockOperations struct {
 	VoluntaryExits       []uint64
 	Withdrawals          []Withdrawal
 	Attestations         []Attestation
+	ProposerSlashings    []ProposerSlashing
+	AttesterSlashings    []AttesterSlashing
 }
 
 // AttestationData is what an attestation votes for.
@@ -128,6 +130,41 @@ type Committee struct {
 	Validators []uint64
 }
 
+// IndexedAttestation is an attestation with its attesters named by validator
+// index, as slashing evidence carries it.
+type IndexedAttestation struct {
+	AttestingIndices []uint64
+	Data             AttestationData
+}
+
+// AttesterSlashing is the evidence of a double or surround vote: two
+// attestations that the validators both attest to may not both sign.
+type AttesterSlashing struct {
+	Attestation1 IndexedAttestation
+	Attestation2 IndexedAttestation
+}
+
+type BeaconBlockHeaderMessage struct {
+	Slot          uint64 `json:"slot,string"`
+	ProposerIndex uint64 `json:"proposer_index,string"`
+	ParentRoot    string `json:"parent_root"`
+	StateRoot     string `json:"state_root"`
+	BodyRoot      string `json:"body_root"`
+}
+
+// ProposerSlashing is the evidence of a double proposal: two headers of one
+// slot that the proposer signed.
+type ProposerSlashing struct {
+	Header1 BeaconBlockHeaderMessage
+	Header2 BeaconBlockHeaderMessage
+}
+
+type ProposerDuty struct {
+	PublicKey      string `json:"pubkey"`
+	ValidatorIndex uint64 `json:"validator_index,string"`
+	Slot           uint64 `json:"slot,string"`
+}
+
 type AttesterDuty struct {
 	PublicKey      string `json:"pubkey"`
 	ValidatorIndex uint64 `json:"validator_index,string"`
@@ -154,5 +191,10 @@ type IdealAttestationReward struct {
 }
 
 type BlockRewards struct {
-	Total uint64 `json:"total,string"`
+	ProposerIndex uint64 `json:"proposer_index,string"`
+	Total         uint64 `json:"total,string"`
+	// ProposerSlashings and AttesterSlashings are what the proposer earned for
+	// including slashing evidence.
+	ProposerSlashings uint64 `json:"proposer_slashings,string"`
+	AttesterSlashings uint64 `json:"attester_slashings,string"`
 }
