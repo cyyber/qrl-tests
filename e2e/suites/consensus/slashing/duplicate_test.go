@@ -17,17 +17,11 @@ import (
 	gomega "github.com/onsi/gomega"
 )
 
-// detectionEpochs is how long the suite gives the slashers and the proposers
-// after a double vote: a slasher reports it within a slot or two of seeing
-// both votes, and the next block whose proposer has the report includes it.
 const detectionEpochs = 4
 
-// doubleVote runs the validator's key on the duplicate's node too, for one
-// vote that the two nodes see differently. On a healthy devnet both nodes
-// have the same head when a vote is due, so two clients sign the same vote,
-// which is no offense. A node that sees a block late, as one on a slow link
-// does on a large network, gives its client the block before as the head:
-// the duplicate then signs a second vote for the same target, a double vote.
+// doubleVote runs a second copy of the validator's key on the duplicate's node
+// for one vote. Healthy nodes share a head, so both copies would sign the same
+// vote; delaying a block to the duplicate's node makes its vote differ.
 type doubleVote struct {
 	val                  rewards.Validator
 	primary, duplicate   *node
@@ -35,10 +29,9 @@ type doubleVote struct {
 	keystores            []sidecar.File
 }
 
-// attempt starts the duplicate for a vote that the primary's node will see
-// the block of, delays that block to the duplicate's node, and stops the
-// duplicate once it has voted. It returns the vote's slot and whether the
-// duplicate was up in time to vote.
+// attempt starts the duplicate, delays the vote slot's block to its node, and
+// stops it once it has voted. It returns the slot and whether the duplicate
+// was up in time.
 func (scenario *doubleVote) attempt(ctx context.Context) (uint64, bool) {
 	ginkgo.GinkgoHelper()
 	slot := scenario.awaitVoteSlot(ctx)
@@ -54,16 +47,14 @@ func (scenario *doubleVote) attempt(ctx context.Context) (uint64, bool) {
 
 	ginkgo.By("delaying the block of slot " + strconv.FormatUint(slot, 10) + " to the duplicate's beacon node")
 	scenario.delayBlock(ctx, slot)
-	// The duplicate publishes its vote once its node answers. Stopping it
-	// within the next slot keeps it from proposing: awaitVoteSlot picked a
-	// vote before the last slot of an epoch in which the key proposes none.
+	// Stopping the duplicate within the next slot keeps it from proposing.
 	gomega.Expect(sleepUntil(ctx, scenario.slotStart(slot+1).Add(scenario.val.Chain.SlotDuration/2))).To(gomega.Succeed())
 	return slot, true
 }
 
-// awaitVoteSlot waits for an epoch whose next epoch suits a double vote, and
-// returns the slot of the validator's vote in that next epoch. Starting the
-// duplicate takes a while, so only the first half of an epoch plans the next.
+// awaitVoteSlot returns the validator's vote slot in the next epoch that suits
+// a double vote. Only the first half of an epoch plans the next, as the
+// duplicate takes a while to start.
 func (scenario *doubleVote) awaitVoteSlot(ctx context.Context) uint64 {
 	ginkgo.GinkgoHelper()
 	chain := scenario.val.Chain
@@ -81,12 +72,10 @@ func (scenario *doubleVote) awaitVoteSlot(ctx context.Context) uint64 {
 	}
 }
 
-// voteSlot returns the slot of the validator's vote in the epoch after epoch
-// if a double vote there is the only offense the duplicate can commit: the
-// key proposes in neither epoch, as a duplicate's proposal is a double
-// proposal, the vote is not the epoch's last slot, and a validator of the
-// primary's node proposes the vote's slot, so the delayed node is the only
-// one that sees that block late.
+// voteSlot returns the validator's vote slot in the epoch after epoch, if a
+// double vote is the only offense the duplicate can commit there: the key
+// proposes in neither epoch, the vote is not the epoch's last slot, and a
+// node-1 validator proposes the vote's slot.
 func (scenario *doubleVote) voteSlot(ctx context.Context, epoch uint64) (uint64, bool) {
 	ginkgo.GinkgoHelper()
 	client := scenario.val.Client
@@ -113,10 +102,9 @@ func (scenario *doubleVote) voteSlot(ctx context.Context, epoch uint64) (uint64,
 	return slot, true
 }
 
-// delayBlock pauses the duplicate's beacon node from just before slot until
-// after its client asks for the vote, a third into the slot. The node answers
-// the waiting request once it resumes, before it has processed the slot's
-// block that waits in its sockets, so its head is still the block before.
+// delayBlock pauses the duplicate's beacon node from just before slot until a
+// third into it. On resuming, the node answers the vote request before it
+// imports the slot's block, so the duplicate votes for the block before.
 func (scenario *doubleVote) delayBlock(ctx context.Context, slot uint64) {
 	ginkgo.GinkgoHelper()
 	start := scenario.slotStart(slot)
