@@ -38,14 +38,9 @@ func TestE2E(t *testing.T) {
 	testsuite.Run(t, "Slashing E2E suite")
 }
 
-// The suite follows the slashed validator through its exit and a few epochs
-// after it. Its correlation penalty and withdrawal come half and all of the
-// slashings vector after the slashing: 256 and 512 epochs, hours on the
-// devnet's mainnet preset. Qrysm's unit tests of process_slashings cover the
-// penalty, and the staking suites the withdrawal sweep; the withdrawable epoch
-// both fall due by is checked here. Following them live is left for a lane on
-// images built with the minimal preset, whose 64-epoch vector brings them
-// within an hour.
+// The suite follows the slashed validator through its exit. Its correlation
+// penalty and withdrawal fall due 256 and 512 epochs after the slashing, hours
+// on the mainnet preset, so they are left for a minimal-preset lane.
 var _ = ginkgo.Describe(
 	"A validator whose key runs on two nodes at once",
 	ginkgo.Serial,
@@ -53,11 +48,8 @@ var _ = ginkgo.Describe(
 	ginkgo.Label("e2e", "consensus", "slashing"),
 	func() {
 		var (
-			// primary runs the validator from the start. duplicate is the
-			// second copy of its key, on the node whose beacon node the suite
-			// pauses: an operator's backup machine brought up while the
-			// first still runs, with a slashing-protection database of its
-			// own.
+			// primary runs the validator from the start; duplicate is a
+			// second copy of its key, on the node the suite pauses.
 			primary, duplicate         *node
 			val                        rewards.Validator
 			spec                       slashingSpec
@@ -168,9 +160,8 @@ var _ = ginkgo.Describe(
 				gomega.Expect(onSlashing.Slashed).To(gomega.BeTrue())
 				gomega.Expect(onSlashing.Status).To(gomega.Equal("active_slashed"))
 
-				// The block's own duties change the balance too. A block at
-				// the first slot of an epoch also follows the processing that
-				// applies the rewards of the epoch two before.
+				// The block's own duties change the balance too, and a block at
+				// an epoch's first slot also follows epoch processing.
 				epoch := val.Chain.Epoch(slashingSlot)
 				penalty := spec.initialPenalty(beforeSlashing.EffectiveBalance)
 				blocks := testsuite.MustSucceed(val.BlockBalanceChange(ctx, slashingSlot))
@@ -211,9 +202,8 @@ var _ = ginkgo.Describe(
 
 		ginkgo.It("keeps losing the missed-vote penalty after its exit, with its stake locked until it can withdraw",
 			func(ctx ginkgo.SpecContext) {
-				// An exited validator has no duties, but a slashed one stays
-				// liable for the votes it would have owed until its
-				// withdrawable epoch.
+				// A slashed validator stays liable for missed votes until it
+				// can withdraw.
 				first := onSlashing.ExitEpoch + 1
 				last := onSlashing.ExitEpoch + afterExitEpochs
 				val.AwaitRewards(ctx, last)
@@ -266,8 +256,7 @@ func (node *node) startClient(ctx context.Context, keystores []sidecar.File) {
 	}))
 }
 
-// stopClient removes the client, printing its last lines first: removing the
-// container loses its log, and the spec that stopped it may still fail.
+// stopClient removes the client, printing its last log lines first.
 func (node *node) stopClient() error {
 	if node == nil {
 		return nil
@@ -285,10 +274,9 @@ func (node *node) stopClient() error {
 	return client.Close()
 }
 
-// expectMissedVotePenalty checks that the validator's votes of epoch earned
-// nothing and cost exactly the missed source and target penalties, and that
-// its balance moved by that and by its block duties alone when those rewards
-// were applied.
+// expectMissedVotePenalty checks that the validator's votes of epoch cost
+// exactly the missed source and target penalties, and that its balance moved
+// by that and its block duties alone.
 func expectMissedVotePenalty(ctx context.Context, validator rewards.Validator, epoch uint64) {
 	ginkgo.GinkgoHelper()
 	reward := testsuite.MustSucceed(validator.AttestationReward(ctx, epoch))
