@@ -31,6 +31,10 @@ func TestParseProfile(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, ProfileSpareValidator, profile)
 
+	profile, err = ParseProfile("duplicate-validator")
+	require.NoError(t, err)
+	require.Equal(t, ProfileDuplicateValidator, profile)
+
 	_, err = ParseProfile("unknown")
 	require.ErrorContains(t, err, "unknown development-network profile")
 }
@@ -39,4 +43,15 @@ func TestSpareValidators(t *testing.T) {
 	require.Empty(t, ProfileSingle.SpareValidators())
 	require.Empty(t, ProfileAnchored.SpareValidators())
 	require.Equal(t, []uint64{64}, ProfileSpareValidator.SpareValidators())
+	require.Equal(t, []uint64{64}, ProfileDuplicateValidator.SpareValidators())
+}
+
+func TestParticipantValidators(t *testing.T) {
+	second := ProfileDuplicateValidator.ParticipantValidators(1)
+	require.Len(t, second, 32)
+	require.Equal(t, uint64(32), second[0])
+	require.Equal(t, uint64(63), second[31])
+	require.Len(t, ProfileSingle.ParticipantValidators(0), 64)
+	require.Empty(t, ProfileSingle.ParticipantValidators(1))
+	require.Empty(t, ProfileSingle.ParticipantValidators(-1))
 }
