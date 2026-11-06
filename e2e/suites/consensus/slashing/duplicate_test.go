@@ -48,7 +48,8 @@ func (scenario *doubleVote) attempt(ctx context.Context) (uint64, bool) {
 
 	ginkgo.By("pausing the duplicate's beacon node so it sees the block of slot " + strconv.FormatUint(slot, 10) + " late")
 	scenario.delayBlock(ctx, slot)
-	// Stopping the duplicate within the next slot keeps it from proposing.
+	// Stopping the duplicate once its vote is out keeps it from signing anything
+	// else.
 	gomega.Expect(sleepUntil(ctx, scenario.slotStart(slot+1).Add(scenario.val.Chain.SlotDuration/2))).To(gomega.Succeed())
 	return slot, true
 }
@@ -96,16 +97,16 @@ func (scenario *doubleVote) voteSlot(ctx context.Context, epoch uint64) (uint64,
 		return 0, false
 	}
 	proposer := slices.IndexFunc(upcoming, func(duty beacon.ProposerDuty) bool { return duty.Slot == slot })
-	if proposer < 0 || slices.Contains(scenario.pausedNodeValidators, upcoming[proposer].ValidatorIndex) ||
-		upcoming[proposer].ValidatorIndex == scenario.val.Index {
+	if proposer < 0 || slices.Contains(scenario.pausedNodeValidators, upcoming[proposer].ValidatorIndex) {
 		return 0, false
 	}
 	return slot, true
 }
 
-// delayBlock pauses the duplicate's beacon node from just before slot until a
-// third into it. On resuming, the node answers the vote request before it
-// imports the slot's block, so the duplicate votes for the block before.
+// delayBlock pauses the duplicate's beacon node from just before slot until
+// just after a third into it. On resuming, the node answers the vote request
+// before it imports the slot's block, so the duplicate votes for the block
+// before.
 func (scenario *doubleVote) delayBlock(ctx context.Context, slot uint64) {
 	ginkgo.GinkgoHelper()
 	start := scenario.slotStart(slot)
