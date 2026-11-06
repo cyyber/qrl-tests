@@ -16,7 +16,7 @@ import (
 	gomega "github.com/onsi/gomega"
 )
 
-// node is a participant that can run a validator client of the suite's own.
+// node is a devnet participant that runs one of the suite's validator sidecars.
 type node struct {
 	*live.Node
 	graffiti string
