@@ -46,7 +46,7 @@ func (scenario *doubleVote) attempt(ctx context.Context) (uint64, bool) {
 		return slot, false
 	}
 
-	ginkgo.By("delaying the block of slot " + strconv.FormatUint(slot, 10) + " to the duplicate's beacon node")
+	ginkgo.By("pausing the duplicate's beacon node so it sees the block of slot " + strconv.FormatUint(slot, 10) + " late")
 	scenario.delayBlock(ctx, slot)
 	// Stopping the duplicate within the next slot keeps it from proposing.
 	gomega.Expect(sleepUntil(ctx, scenario.slotStart(slot+1).Add(scenario.val.Chain.SlotDuration/2))).To(gomega.Succeed())
