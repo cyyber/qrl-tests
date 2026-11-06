@@ -381,5 +381,6 @@ func TestSpecUints(t *testing.T) {
 	// Names are read in order, so the first failing one is always reported.
 	err := spec.Uints(map[string]*uint64{"MISSING": new(uint64), "DEPOSIT_CONTRACT_ADDRESS": new(uint64)})
 	require.ErrorContains(t, err, "parse spec value DEPOSIT_CONTRACT_ADDRESS")
+
 	require.ErrorContains(t, spec.Uints(map[string]*uint64{"MISSING": new(uint64)}), "does not define MISSING")
 }
