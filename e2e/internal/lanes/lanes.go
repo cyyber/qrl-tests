@@ -29,6 +29,7 @@ const (
 	suiteConsensusStakingAutomated SuiteID = "consensus-staking-automated"
 	suiteConsensusStakingOperator  SuiteID = "consensus-staking-operator"
 	suiteConsensusPenalties        SuiteID = "consensus-penalties"
+	suiteConsensusSlashing         SuiteID = "consensus-slashing"
 	suiteResilienceNetworkRestart  SuiteID = "resilience-network-restart"
 	suiteSyncGenesis               SuiteID = "sync-genesis"
 	suiteSyncCheckpoint            SuiteID = "sync-checkpoint"
@@ -41,6 +42,7 @@ var suitePackages = map[SuiteID]string{
 	suiteConsensusStakingAutomated: "./e2e/suites/consensus/stakingautomated",
 	suiteConsensusStakingOperator:  "./e2e/suites/consensus/stakingoperator",
 	suiteConsensusPenalties:        "./e2e/suites/consensus/penalties",
+	suiteConsensusSlashing:         "./e2e/suites/consensus/slashing",
 	suiteResilienceNetworkRestart:  "./e2e/suites/resilience/networkrestart",
 	suiteSyncGenesis:               "./e2e/suites/sync/genesis",
 	suiteSyncCheckpoint:            "./e2e/suites/sync/checkpoint",
@@ -75,6 +77,12 @@ var registry = []Lane{
 		Profile: devnet.ProfileSpareValidator,
 		Suites:  []SuiteID{suiteConsensusPenalties},
 		Timeout: 30 * time.Minute,
+	},
+	{
+		Name:    "consensus-slashing",
+		Profile: devnet.ProfileDuplicateValidator,
+		Suites:  []SuiteID{suiteConsensusSlashing},
+		Timeout: 60 * time.Minute,
 	},
 	{
 		// Finality, the outage and finality again take about a dozen
@@ -155,12 +163,14 @@ func (lane Lane) NeedsConsensusImage() bool {
 func (lane Lane) NeedsValidatorImage() bool {
 	return slices.Contains(lane.Suites, suiteConsensusStakingAutomated) ||
 		slices.Contains(lane.Suites, suiteConsensusStakingOperator) ||
-		slices.Contains(lane.Suites, suiteConsensusPenalties)
+		slices.Contains(lane.Suites, suiteConsensusPenalties) ||
+		slices.Contains(lane.Suites, suiteConsensusSlashing)
 }
 
 func (lane Lane) NeedsQrysmAlltoolsImage() bool {
 	return slices.Contains(lane.Suites, suiteConsensusStakingOperator) ||
-		slices.Contains(lane.Suites, suiteConsensusPenalties)
+		slices.Contains(lane.Suites, suiteConsensusPenalties) ||
+		slices.Contains(lane.Suites, suiteConsensusSlashing)
 }
 
 func RegisteredSuites() []SuiteID {
