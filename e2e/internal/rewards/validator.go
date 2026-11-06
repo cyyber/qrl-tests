@@ -32,23 +32,16 @@ func LoadSpec(ctx context.Context, client *beacon.Client) (Spec, error) {
 		return Spec{}, err
 	}
 	var spec Spec
-	for _, constant := range []struct {
-		name  string
-		field *uint64
-	}{
-		{"EFFECTIVE_BALANCE_INCREMENT", &spec.increment},
-		{"BASE_REWARD_FACTOR", &spec.baseRewardFactor},
-		{"TIMELY_SOURCE_WEIGHT", &spec.sourceWeight},
-		{"TIMELY_TARGET_WEIGHT", &spec.targetWeight},
-		{"WEIGHT_DENOMINATOR", &spec.weightDenominator},
-		{"MIN_EPOCHS_TO_INACTIVITY_PENALTY", &spec.minEpochsToInactivityPenalty},
-		{"MIN_ATTESTATION_INCLUSION_DELAY", &spec.minInclusionDelay},
-	} {
-		value, err := values.Uint(constant.name)
-		if err != nil {
-			return Spec{}, err
-		}
-		*constant.field = value
+	if err := values.Uints(map[string]*uint64{
+		"EFFECTIVE_BALANCE_INCREMENT":      &spec.increment,
+		"BASE_REWARD_FACTOR":               &spec.baseRewardFactor,
+		"TIMELY_SOURCE_WEIGHT":             &spec.sourceWeight,
+		"TIMELY_TARGET_WEIGHT":             &spec.targetWeight,
+		"WEIGHT_DENOMINATOR":               &spec.weightDenominator,
+		"MIN_EPOCHS_TO_INACTIVITY_PENALTY": &spec.minEpochsToInactivityPenalty,
+		"MIN_ATTESTATION_INCLUSION_DELAY":  &spec.minInclusionDelay,
+	}); err != nil {
+		return Spec{}, err
 	}
 	return spec, nil
 }
