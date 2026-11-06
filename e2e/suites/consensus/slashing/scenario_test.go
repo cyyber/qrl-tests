@@ -35,7 +35,6 @@ func (node *node) startClient(ctx context.Context, keystores []sidecar.File) {
 	}))
 }
 
-// stopClient removes the client, printing its last log lines first.
 func (node *node) stopClient() error {
 	if node == nil {
 		return nil
