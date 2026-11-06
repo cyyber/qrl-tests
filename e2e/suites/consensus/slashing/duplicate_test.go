@@ -53,9 +53,9 @@ func (scenario *doubleVote) attempt(ctx context.Context) (uint64, bool) {
 	return slot, true
 }
 
-// awaitVoteSlot returns the validator's vote slot in the next epoch that suits
-// a double vote. Only the first half of an epoch plans the next, as the
-// duplicate takes a while to start.
+// awaitVoteSlot waits until the next epoch suits a double vote, and returns
+// the validator's vote slot in it. It plans only during the first half of an
+// epoch, so the duplicate validator client has time to start.
 func (scenario *doubleVote) awaitVoteSlot(ctx context.Context) uint64 {
 	ginkgo.GinkgoHelper()
 	chain := scenario.val.Chain
