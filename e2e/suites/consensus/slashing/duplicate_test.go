@@ -75,11 +75,14 @@ func (scenario *doubleVote) planVoteSlot(ctx context.Context) uint64 {
 }
 
 // voteSlot returns the validator's vote slot in epoch+1, if a double vote is
-// the only offense the duplicate can commit there:
-//   - the key proposes in neither epoch nor epoch+1;
-//   - a node-1 validator proposes the vote's slot;
+// the only offense the duplicate can commit there, and it does commit one:
+//   - the key proposes in neither epoch nor epoch+1, so the duplicate never
+//     double proposes; a validator is slashed only once, so that would keep
+//     the double vote from being included;
+//   - a node-1 validator proposes the vote's slot, so there is a block that
+//     node 1 sees in time and the paused node 2 sees late;
 //   - the vote is not the epoch's last slot, so the duplicate is stopped
-//     before an epoch whose proposals aren't checked.
+//     before epoch+2, whose proposals aren't checked.
 func (scenario *doubleVote) voteSlot(ctx context.Context, epoch uint64) (uint64, bool) {
 	ginkgo.GinkgoHelper()
 	client := scenario.val.Client
