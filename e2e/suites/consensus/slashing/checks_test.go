@@ -27,7 +27,8 @@ func expectSlashedInBlock(ctx context.Context, val rewards.Validator, spec slash
 	gomega.Expect(on.Status).To(gomega.Equal("active_slashed"))
 
 	// The block's own duties change the balance too, and a block at an
-	// epoch's first slot also follows epoch processing.
+	// epoch's first slot also follows epoch processing, which applies the
+	// attestation rewards of epoch-2.
 	epoch := val.Chain.Epoch(slot)
 	penalty := spec.initialPenalty(before.EffectiveBalance)
 	blocks := testsuite.MustSucceed(val.BlockBalanceChange(ctx, slot))
@@ -56,19 +57,19 @@ func expectSlashedInBlock(ctx context.Context, val rewards.Validator, spec slash
 // expectMissedVotePenalty checks that the validator's votes of epoch cost
 // exactly the missed source and target penalties, and that its balance moved
 // by that and its block duties alone.
-func expectMissedVotePenalty(ctx context.Context, validator rewards.Validator, epoch uint64) {
+func expectMissedVotePenalty(ctx context.Context, val rewards.Validator, epoch uint64) {
 	ginkgo.GinkgoHelper()
-	reward := testsuite.MustSucceed(validator.AttestationReward(ctx, epoch))
-	amounts := testsuite.MustSucceed(validator.VoteAmounts(ctx, epoch))
+	reward := testsuite.MustSucceed(val.AttestationReward(ctx, epoch))
+	amounts := testsuite.MustSucceed(val.VoteAmounts(ctx, epoch))
 	gomega.Expect(reward).To(gomega.Equal(beacon.AttestationReward{
-		ValidatorIndex: validator.Index,
+		ValidatorIndex: val.Index,
 		Source:         -int64(amounts.MissedSource),
 		Target:         -int64(amounts.MissedTarget),
 	}), "attestation rewards of epoch %d", epoch)
 
-	before := testsuite.MustSucceed(validator.BalanceAtEpochStart(ctx, epoch+1))
-	after := testsuite.MustSucceed(validator.BalanceAtEpochStart(ctx, epoch+2))
-	blocks := testsuite.MustSucceed(validator.BlockBalanceChanges(ctx, epoch+1))
+	before := testsuite.MustSucceed(val.BalanceAtEpochStart(ctx, epoch+1))
+	after := testsuite.MustSucceed(val.BalanceAtEpochStart(ctx, epoch+2))
+	blocks := testsuite.MustSucceed(val.BlockBalanceChanges(ctx, epoch+1))
 	penalty := amounts.MissedSource + amounts.MissedTarget
 	want := int64(before) - int64(penalty) + blocks
 	gomega.Expect(int64(after)).To(gomega.Equal(want),
