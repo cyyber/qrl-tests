@@ -39,8 +39,8 @@ func expectSlashedInBlock(ctx context.Context, val rewards.Validator, spec slash
 	}
 	want := int64(before.Balance) - int64(penalty) + blocks + processed
 	gomega.Expect(int64(on.Balance)).To(gomega.Equal(want),
-		"balance went from %d to %d at slot %d: the %d shor penalty, %d shor from the block and %d from epoch processing make %d",
-		before.Balance, on.Balance, slot, penalty, blocks, processed, want)
+		"balance at slot %d is %d, want %d: %d before, minus the %d shor penalty, plus %d shor from the block's duties and %d from epoch processing",
+		slot, on.Balance, want, before.Balance, penalty, blocks, processed)
 
 	exit := spec.exitEpoch(epoch)
 	gomega.Expect(on.ExitEpoch).To(gomega.Equal(exit), "exit epoch of a validator slashed in epoch %d", epoch)
@@ -73,6 +73,6 @@ func expectMissedVotePenalty(ctx context.Context, val rewards.Validator, epoch u
 	penalty := amounts.MissedSource + amounts.MissedTarget
 	want := int64(before) - int64(penalty) + blocks
 	gomega.Expect(int64(after)).To(gomega.Equal(want),
-		"balance went from %d to %d over epoch %d: the %d shor penalty of epoch %d and %d shor from blocks make %d",
-		before, after, epoch+1, penalty, epoch, blocks, want)
+		"balance at the start of epoch %d is %d, want %d: %d before, minus the %d shor penalty of epoch %d, plus %d shor from blocks",
+		epoch+2, after, want, before, penalty, epoch, blocks)
 }
