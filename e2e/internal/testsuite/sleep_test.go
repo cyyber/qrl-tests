@@ -10,8 +10,8 @@ import (
 
 func TestSleepUntil(t *testing.T) {
 	start := time.Now()
-	require.NoError(t, SleepUntil(t.Context(), start.Add(20*time.Millisecond)))
-	require.GreaterOrEqual(t, time.Since(start), 20*time.Millisecond)
+	require.NoError(t, SleepUntil(t.Context(), start.Add(100*time.Millisecond)))
+	require.GreaterOrEqual(t, time.Since(start), 100*time.Millisecond)
 
 	// A deadline already past returns at once.
 	require.NoError(t, SleepUntil(t.Context(), start.Add(-time.Hour)))
