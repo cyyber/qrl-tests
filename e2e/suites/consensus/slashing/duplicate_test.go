@@ -29,9 +29,10 @@ type doubleVote struct {
 	keystores            []sidecar.File
 }
 
-// attempt starts the duplicate, delays the vote slot's block to its node, and
-// stops it once it has voted. It returns the slot and whether the duplicate
-// was up in time.
+// attempt makes one try at a double vote. It starts the duplicate validator
+// client, pauses that client's beacon node so the vote slot's block reaches
+// it late, and then stops the client. It returns the vote slot and whether
+// the client started in time.
 func (scenario *doubleVote) attempt(ctx context.Context) (uint64, bool) {
 	ginkgo.GinkgoHelper()
 	slot := scenario.awaitVoteSlot(ctx)
