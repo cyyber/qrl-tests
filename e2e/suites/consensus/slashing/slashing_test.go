@@ -74,8 +74,7 @@ type slashingEvidence struct {
 }
 
 // evidenceAgainst returns the evidence in a block that slashes the validator
-// at index: an attester slashing whose attestations both name it, or a
-// proposer slashing of a slot it proposed.
+// at index.
 func evidenceAgainst(operations beacon.BlockOperations, index uint64) (slashingEvidence, bool) {
 	for position := range operations.AttesterSlashings {
 		slashing := &operations.AttesterSlashings[position]
