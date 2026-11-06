@@ -23,21 +23,14 @@ func loadSlashingSpec(ctx context.Context, client *beacon.Client) (slashingSpec,
 		return slashingSpec{}, err
 	}
 	var spec slashingSpec
-	for _, constant := range []struct {
-		name  string
-		field *uint64
-	}{
-		{"MIN_SLASHING_PENALTY_QUOTIENT", &spec.minSlashingPenaltyQuotient},
-		{"WHISTLEBLOWER_REWARD_QUOTIENT", &spec.whistleblowerRewardQuotient},
-		{"EPOCHS_PER_SLASHINGS_VECTOR", &spec.epochsPerSlashingsVector},
-		{"MAX_SEED_LOOKAHEAD", &spec.maxSeedLookahead},
-		{"MIN_VALIDATOR_WITHDRAWABILITY_DELAY", &spec.minWithdrawabilityDelay},
-	} {
-		value, err := values.Uint(constant.name)
-		if err != nil {
-			return slashingSpec{}, err
-		}
-		*constant.field = value
+	if err := values.Uints(map[string]*uint64{
+		"MIN_SLASHING_PENALTY_QUOTIENT":       &spec.minSlashingPenaltyQuotient,
+		"WHISTLEBLOWER_REWARD_QUOTIENT":       &spec.whistleblowerRewardQuotient,
+		"EPOCHS_PER_SLASHINGS_VECTOR":         &spec.epochsPerSlashingsVector,
+		"MAX_SEED_LOOKAHEAD":                  &spec.maxSeedLookahead,
+		"MIN_VALIDATOR_WITHDRAWABILITY_DELAY": &spec.minWithdrawabilityDelay,
+	}); err != nil {
+		return slashingSpec{}, err
 	}
 	return spec, nil
 }
@@ -62,8 +55,9 @@ func (spec slashingSpec) exitEpoch(epoch uint64) uint64 {
 }
 
 // withdrawableEpoch is when a validator slashed in epoch, exiting at exit,
-// can withdraw: no earlier than the slashings vector, the window whose
-// slashings its correlation penalty counts, has passed.
+// can withdraw: the later of its exit plus the withdrawability delay, and a
+// whole slashings vector after the slashing, when its correlation penalty is
+// due.
 func (spec slashingSpec) withdrawableEpoch(epoch, exit uint64) uint64 {
 	return max(exit+spec.minWithdrawabilityDelay, epoch+spec.epochsPerSlashingsVector)
 }
