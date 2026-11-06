@@ -49,7 +49,7 @@ func (scenario *doubleVote) attempt(ctx context.Context) (uint64, bool) {
 	ginkgo.By("pausing the duplicate's beacon node so it sees the block of slot " + strconv.FormatUint(slot, 10) + " late")
 	scenario.pauseAcrossVote(ctx, slot)
 	// Give the duplicate time to publish its vote before it is stopped.
-	gomega.Expect(sleepUntil(ctx, scenario.slotStart(slot+1).Add(scenario.val.Chain.SlotDuration/2))).To(gomega.Succeed())
+	gomega.Expect(testsuite.SleepUntil(ctx, scenario.slotStart(slot+1).Add(scenario.val.Chain.SlotDuration/2))).To(gomega.Succeed())
 	return slot, true
 }
 
@@ -69,7 +69,7 @@ func (scenario *doubleVote) planVoteSlot(ctx context.Context) uint64 {
 				return slot
 			}
 		}
-		gomega.Expect(sleepUntil(ctx, start.Add(chain.EpochDuration))).To(gomega.Succeed())
+		gomega.Expect(testsuite.SleepUntil(ctx, start.Add(chain.EpochDuration))).To(gomega.Succeed())
 	}
 }
 
@@ -110,13 +110,13 @@ func (scenario *doubleVote) voteSlot(ctx context.Context, epoch uint64) (uint64,
 func (scenario *doubleVote) pauseAcrossVote(ctx context.Context, slot uint64) {
 	ginkgo.GinkgoHelper()
 	start := scenario.slotStart(slot)
-	gomega.Expect(sleepUntil(ctx, start.Add(-time.Second))).To(gomega.Succeed())
+	gomega.Expect(testsuite.SleepUntil(ctx, start.Add(-time.Second))).To(gomega.Succeed())
 	resume := testsuite.MustSucceed(devnet.PauseService(ctx, scenario.duplicate.ConsensusServiceID))
 	defer func() {
 		// Resume even when the spec has timed out, or the node stays frozen.
 		gomega.Expect(resume(context.WithoutCancel(ctx))).To(gomega.Succeed())
 	}()
-	gomega.Expect(sleepUntil(ctx, start.Add(scenario.val.Chain.SlotDuration/3+time.Second))).To(gomega.Succeed())
+	gomega.Expect(testsuite.SleepUntil(ctx, start.Add(scenario.val.Chain.SlotDuration/3+time.Second))).To(gomega.Succeed())
 }
 
 // awaitSlashed reports whether the validator is slashed within
@@ -130,7 +130,7 @@ func (scenario *doubleVote) awaitSlashed(ctx context.Context) bool {
 		if record.Slashed {
 			return true
 		}
-		gomega.Expect(sleepUntil(ctx, time.Now().Add(rewards.PollInterval))).To(gomega.Succeed())
+		gomega.Expect(testsuite.SleepUntil(ctx, time.Now().Add(rewards.PollInterval))).To(gomega.Succeed())
 	}
 	ginkgo.GinkgoWriter.Printf("validator %d was not slashed within %d epochs\n", scenario.val.Index, detectionEpochs)
 	return false
@@ -158,15 +158,4 @@ func (scenario *doubleVote) findEvidence(ctx context.Context, from uint64) (uint
 
 func (scenario *doubleVote) slotStart(slot uint64) time.Time {
 	return scenario.val.Chain.GenesisTime.Add(time.Duration(slot) * scenario.val.Chain.SlotDuration)
-}
-
-func sleepUntil(ctx context.Context, deadline time.Time) error {
-	timer := time.NewTimer(time.Until(deadline))
-	defer timer.Stop()
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-timer.C:
-		return nil
-	}
 }
