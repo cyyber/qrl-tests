@@ -42,8 +42,7 @@ func (spec slashingSpec) initialPenalty(effectiveBalance uint64) uint64 {
 }
 
 // whistleblowerReward is what the proposer of the block that slashes a
-// validator with effectiveBalance earns. Qrysm names no other whistleblower,
-// so the proposer earns both its share and the whistleblower's.
+// validator with effectiveBalance earns.
 func (spec slashingSpec) whistleblowerReward(effectiveBalance uint64) uint64 {
 	return effectiveBalance / spec.whistleblowerRewardQuotient
 }
