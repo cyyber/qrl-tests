@@ -144,8 +144,8 @@ func (scenario *doubleVote) awaitSlashed(ctx context.Context) bool {
 	return false
 }
 
-// findEvidence returns the first block from slot from on that slashes the
-// validator, and its evidence.
+// findEvidence searches the blocks from the given slot up to the head, and
+// returns the first one that slashes the validator, with its evidence.
 func (scenario *doubleVote) findEvidence(ctx context.Context, from uint64) (uint64, slashingEvidence) {
 	ginkgo.GinkgoHelper()
 	client := scenario.val.Client
