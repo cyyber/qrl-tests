@@ -31,16 +31,16 @@ func expectSlashedInBlock(ctx context.Context, val rewards.Validator, spec slash
 	// attestation rewards of epoch-2.
 	epoch := val.Chain.Epoch(slot)
 	penalty := spec.initialPenalty(before.EffectiveBalance)
-	blocks := testsuite.MustSucceed(val.BlockBalanceChange(ctx, slot))
-	var processed int64
+	blockChange := testsuite.MustSucceed(val.BlockBalanceChange(ctx, slot))
+	var epochChange int64
 	if slot%val.Chain.SlotsPerEpoch == 0 {
 		reward := testsuite.MustSucceed(val.AttestationReward(ctx, epoch-2))
-		processed = reward.Head + reward.Source + reward.Target
+		epochChange = reward.Head + reward.Source + reward.Target
 	}
-	want := int64(before.Balance) - int64(penalty) + blocks + processed
+	want := int64(before.Balance) - int64(penalty) + blockChange + epochChange
 	gomega.Expect(int64(on.Balance)).To(gomega.Equal(want),
 		"balance at slot %d is %d, want %d: %d before, minus the %d shor penalty, plus %d shor from the block's duties and %d from epoch processing",
-		slot, on.Balance, want, before.Balance, penalty, blocks, processed)
+		slot, on.Balance, want, before.Balance, penalty, blockChange, epochChange)
 
 	exit := spec.exitEpoch(epoch)
 	gomega.Expect(on.ExitEpoch).To(gomega.Equal(exit), "exit epoch of a validator slashed in epoch %d", epoch)
@@ -69,10 +69,10 @@ func expectMissedVotePenalty(ctx context.Context, val rewards.Validator, epoch u
 
 	before := testsuite.MustSucceed(val.BalanceAtEpochStart(ctx, epoch+1))
 	after := testsuite.MustSucceed(val.BalanceAtEpochStart(ctx, epoch+2))
-	blocks := testsuite.MustSucceed(val.BlockBalanceChanges(ctx, epoch+1))
+	blocksChange := testsuite.MustSucceed(val.BlockBalanceChanges(ctx, epoch+1))
 	penalty := amounts.MissedSource + amounts.MissedTarget
-	want := int64(before) - int64(penalty) + blocks
+	want := int64(before) - int64(penalty) + blocksChange
 	gomega.Expect(int64(after)).To(gomega.Equal(want),
 		"balance at the start of epoch %d is %d, want %d: %d before, minus the %d shor penalty of epoch %d, plus %d shor from blocks",
-		epoch+2, after, want, before, penalty, epoch, blocks)
+		epoch+2, after, want, before, penalty, epoch, blocksChange)
 }
