@@ -69,18 +69,9 @@ func (spec slashingSpec) withdrawableEpoch(epoch, exit uint64) uint64 {
 }
 
 // isDoubleVote reports whether the two attestations are different votes for
-// the same target epoch, which no validator may sign both of.
+// the same target epoch, which is slashable.
 func isDoubleVote(first, second beacon.AttestationData) bool {
 	return first != second && first.Target.Epoch == second.Target.Epoch
-}
-
-// isSurroundVote reports whether one attestation's source and target
-// surround the other's.
-func isSurroundVote(first, second beacon.AttestationData) bool {
-	surrounds := func(outer, inner beacon.AttestationData) bool {
-		return outer.Source.Epoch < inner.Source.Epoch && inner.Target.Epoch < outer.Target.Epoch
-	}
-	return surrounds(first, second) || surrounds(second, first)
 }
 
 // slashingEvidence is a block's evidence against one validator.
@@ -93,15 +84,17 @@ type slashingEvidence struct {
 // at index: an attester slashing whose attestations both name it, or a
 // proposer slashing of a slot it proposed.
 func evidenceAgainst(operations beacon.BlockOperations, index uint64) (slashingEvidence, bool) {
-	for position, slashing := range operations.AttesterSlashings {
+	for position := range operations.AttesterSlashings {
+		slashing := &operations.AttesterSlashings[position]
 		if slices.Contains(slashing.Attestation1.AttestingIndices, index) &&
 			slices.Contains(slashing.Attestation2.AttestingIndices, index) {
-			return slashingEvidence{attester: &operations.AttesterSlashings[position]}, true
+			return slashingEvidence{attester: slashing}, true
 		}
 	}
-	for position, slashing := range operations.ProposerSlashings {
+	for position := range operations.ProposerSlashings {
+		slashing := &operations.ProposerSlashings[position]
 		if slashing.Header1.ProposerIndex == index {
-			return slashingEvidence{proposer: &operations.ProposerSlashings[position]}, true
+			return slashingEvidence{proposer: slashing}, true
 		}
 	}
 	return slashingEvidence{}, false

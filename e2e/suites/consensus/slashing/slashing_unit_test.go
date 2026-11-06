@@ -64,17 +64,13 @@ func vote(slot, source, target uint64, blockRoot string) beacon.AttestationData 
 	}
 }
 
-func TestConflictingVotes(t *testing.T) {
+func TestDoubleVote(t *testing.T) {
 	// Two heads for one slot, as two nodes with different views vote.
 	require.True(t, isDoubleVote(vote(18, 1, 2, "0xaa"), vote(18, 1, 2, "0xbb")))
-	require.False(t, isSurroundVote(vote(18, 1, 2, "0xaa"), vote(18, 1, 2, "0xbb")))
 	// The same vote signed twice is no offense.
 	require.False(t, isDoubleVote(vote(18, 1, 2, "0xaa"), vote(18, 1, 2, "0xaa")))
-	// Votes for different targets are a double vote only if they surround.
+	// Votes for different targets are no double vote.
 	require.False(t, isDoubleVote(vote(18, 1, 2, "0xaa"), vote(26, 2, 3, "0xbb")))
-	require.False(t, isSurroundVote(vote(18, 1, 2, "0xaa"), vote(26, 2, 3, "0xbb")))
-	require.True(t, isSurroundVote(vote(18, 1, 4, "0xaa"), vote(26, 2, 3, "0xbb")))
-	require.True(t, isSurroundVote(vote(26, 2, 3, "0xbb"), vote(18, 1, 4, "0xaa")))
 }
 
 func TestEvidenceAgainst(t *testing.T) {
