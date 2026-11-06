@@ -32,9 +32,12 @@ func TestE2E(t *testing.T) {
 	testsuite.Run(t, "Slashing E2E suite")
 }
 
-// The suite follows the slashed validator through its exit. Its correlation
-// penalty and withdrawal fall due 256 and 512 epochs after the slashing, hours
-// on the mainnet preset, so they are left for a minimal-preset lane.
+// The suite follows the slashed validator through its exit and checks its
+// withdrawable epoch, but waits for neither its correlation penalty nor its
+// withdrawal: they fall due 256 and 512 epochs after the slashing, hours on
+// the mainnet preset. Following them is future work, for a lane on images
+// built with the minimal preset, whose 64-epoch slashings vector brings them
+// within an hour.
 var _ = ginkgo.Describe(
 	"A validator whose key runs on two nodes at once",
 	ginkgo.Serial,
