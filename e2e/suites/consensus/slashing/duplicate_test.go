@@ -36,6 +36,7 @@ type doubleVote struct {
 func (scenario *doubleVote) attempt(ctx context.Context) (uint64, bool) {
 	ginkgo.GinkgoHelper()
 	slot := scenario.planVoteSlot(ctx)
+
 	ginkgo.By("starting the duplicate validator client for the vote of slot " + strconv.FormatUint(slot, 10))
 	scenario.duplicate.startClient(ctx, scenario.keystores)
 	defer func() {
@@ -48,6 +49,7 @@ func (scenario *doubleVote) attempt(ctx context.Context) (uint64, bool) {
 
 	ginkgo.By("pausing the duplicate's beacon node so it sees the block of slot " + strconv.FormatUint(slot, 10) + " late")
 	scenario.pauseAcrossVote(ctx, slot)
+
 	// Give the duplicate time to publish its vote before it is stopped.
 	gomega.Expect(testsuite.SleepUntil(ctx, scenario.slotStart(slot+1).Add(scenario.val.Chain.SlotDuration/2))).To(gomega.Succeed())
 	return slot, true
