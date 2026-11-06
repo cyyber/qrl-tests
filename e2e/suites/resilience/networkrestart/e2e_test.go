@@ -48,13 +48,6 @@ var _ = ginkgo.Describe(
 			}
 		}
 
-		pause := func(ctx context.Context, duration time.Duration) {
-			select {
-			case <-time.After(duration):
-			case <-ctx.Done():
-			}
-		}
-
 		ginkgo.BeforeAll(func(ctx ginkgo.SpecContext) {
 			runtime = testsuite.LoadRuntime()
 			nodes = testsuite.MustSucceed(runtime.Nodes(ctx))
@@ -74,7 +67,7 @@ var _ = ginkgo.Describe(
 			// Without validators, only a block already in flight can still
 			// change the head. Once a slot has passed and every participant
 			// agrees on it, no later block can replace it.
-			pause(ctx, chain.SlotDuration)
+			gomega.Expect(testsuite.SleepUntil(ctx, time.Now().Add(chain.SlotDuration))).To(gomega.Succeed())
 			gomega.Eventually(func(g gomega.Gomega, ctx context.Context) {
 				anchorHead, err := nodes[0].Beacon.BlockHeader(ctx, "head")
 				g.Expect(err).NotTo(gomega.HaveOccurred())
@@ -97,7 +90,7 @@ var _ = ginkgo.Describe(
 				gomega.Expect(err).To(gomega.HaveOccurred(), "the beacon node of participant %d still answers", index+1)
 			}
 
-			pause(ctx, outageEpochs*chain.EpochDuration)
+			gomega.Expect(testsuite.SleepUntil(ctx, time.Now().Add(outageEpochs*chain.EpochDuration))).To(gomega.Succeed())
 		}, ginkgo.SpecTimeout(2*time.Minute))
 
 		ginkgo.It("starts every node again", func(ctx ginkgo.SpecContext) {
