@@ -101,6 +101,7 @@ func (scenario *doubleVote) voteSlot(ctx context.Context, epoch uint64) (uint64,
 	if slot%scenario.val.Chain.SlotsPerEpoch == scenario.val.Chain.SlotsPerEpoch-1 {
 		return 0, false
 	}
+
 	proposer := slices.IndexFunc(upcoming, func(duty beacon.ProposerDuty) bool { return duty.Slot == slot })
 	if proposer < 0 || slices.Contains(scenario.pausedNodeValidators, upcoming[proposer].ValidatorIndex) {
 		return 0, false
