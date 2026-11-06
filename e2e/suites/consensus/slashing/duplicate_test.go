@@ -35,7 +35,7 @@ type doubleVote struct {
 // the client started in time.
 func (scenario *doubleVote) attempt(ctx context.Context) (uint64, bool) {
 	ginkgo.GinkgoHelper()
-	slot := scenario.awaitVoteSlot(ctx)
+	slot := scenario.planVoteSlot(ctx)
 	ginkgo.By("starting the duplicate validator client for the vote of slot " + strconv.FormatUint(slot, 10))
 	scenario.duplicate.startClient(ctx, scenario.keystores)
 	defer func() {
@@ -54,10 +54,10 @@ func (scenario *doubleVote) attempt(ctx context.Context) (uint64, bool) {
 	return slot, true
 }
 
-// awaitVoteSlot waits until the next epoch suits a double vote, and returns
+// planVoteSlot waits until the next epoch suits a double vote, and returns
 // the validator's vote slot in it. It plans only during the first half of an
 // epoch, so the duplicate validator client has time to start.
-func (scenario *doubleVote) awaitVoteSlot(ctx context.Context) uint64 {
+func (scenario *doubleVote) planVoteSlot(ctx context.Context) uint64 {
 	ginkgo.GinkgoHelper()
 	chain := scenario.val.Chain
 	for {
