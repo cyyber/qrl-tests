@@ -5,17 +5,14 @@ package slashing
 import (
 	"context"
 	"strconv"
-	"strings"
 	"testing"
 	"time"
 
-	"github.com/cyyber/qrl-tests/devnet"
 	"github.com/cyyber/qrl-tests/e2e/internal/beacon"
 	"github.com/cyyber/qrl-tests/e2e/internal/chaininfo"
 	"github.com/cyyber/qrl-tests/e2e/internal/live"
 	"github.com/cyyber/qrl-tests/e2e/internal/rewards"
 	"github.com/cyyber/qrl-tests/e2e/internal/sidecar"
-	"github.com/cyyber/qrl-tests/e2e/internal/sidecar/deposit"
 	"github.com/cyyber/qrl-tests/e2e/internal/sidecar/validator"
 	"github.com/cyyber/qrl-tests/e2e/internal/testsuite"
 	"github.com/cyyber/qrl-tests/e2e/internal/validatorops"
@@ -83,19 +80,8 @@ var _ = ginkgo.Describe(
 			}
 			spec = testsuite.MustSucceed(loadSlashingSpec(ctx, beaconClient))
 
-			derived := testsuite.MustSucceed(deposit.GenesisKey(ctx, deposit.GenesisKeyConfig{
-				Image:               runtime.QrysmAlltoolsImage,
-				Mnemonic:            devnet.GenesisMnemonic,
-				Index:               val.Index,
-				WithdrawalRecipient: primary.Address.Hex(),
-				Password:            validatorops.KeystorePassword,
-			}))
-			keystores = derived.Keystores
-
-			record := testsuite.MustSucceed(beaconClient.Validator(ctx, strconv.FormatUint(val.Index, 10)))
-			gomega.Expect(strings.EqualFold(record.PublicKey, derived.PublicKey)).To(gomega.BeTrue(),
-				"genesis validator %d is not the key derived for its index", val.Index)
-			gomega.Expect(record.Status).To(gomega.Equal("active_ongoing"))
+			keystores = testsuite.MustSucceed(validatorops.GenesisKeystores(
+				ctx, beaconClient, runtime.QrysmAlltoolsImage, primary.Address.Hex(), val.Index))
 		}, ginkgo.NodeTimeout(3*time.Minute))
 
 		ginkgo.AfterEach(func() {
@@ -152,37 +138,7 @@ var _ = ginkgo.Describe(
 
 		ginkgo.It("pays the slashing penalty in the block that includes the evidence, and its proposer the whistleblower reward",
 			func(ctx ginkgo.SpecContext) {
-				index := strconv.FormatUint(val.Index, 10)
-				beforeSlashing := testsuite.MustSucceed(val.Client.ValidatorAt(ctx, strconv.FormatUint(slashingSlot-1, 10), index))
-				onSlashing = testsuite.MustSucceed(val.Client.ValidatorAt(ctx, strconv.FormatUint(slashingSlot, 10), index))
-				gomega.Expect(beforeSlashing.Slashed).To(gomega.BeFalse())
-				gomega.Expect(onSlashing.Slashed).To(gomega.BeTrue())
-				gomega.Expect(onSlashing.Status).To(gomega.Equal("active_slashed"))
-
-				// The block's own duties change the balance too, and a block at
-				// an epoch's first slot also follows epoch processing.
-				epoch := val.Chain.Epoch(slashingSlot)
-				penalty := spec.initialPenalty(beforeSlashing.EffectiveBalance)
-				blocks := testsuite.MustSucceed(val.BlockBalanceChange(ctx, slashingSlot))
-				var processed int64
-				if slashingSlot%val.Chain.SlotsPerEpoch == 0 {
-					reward := testsuite.MustSucceed(val.AttestationReward(ctx, epoch-2))
-					processed = reward.Head + reward.Source + reward.Target
-				}
-				want := int64(beforeSlashing.Balance) - int64(penalty) + blocks + processed
-				gomega.Expect(int64(onSlashing.Balance)).To(gomega.Equal(want),
-					"balance went from %d to %d at slot %d: the %d shor penalty, %d shor from the block and %d from epoch processing make %d",
-					beforeSlashing.Balance, onSlashing.Balance, slashingSlot, penalty, blocks, processed, want)
-
-				exit := spec.exitEpoch(epoch)
-				gomega.Expect(onSlashing.ExitEpoch).To(gomega.Equal(exit), "exit epoch of a validator slashed in epoch %d", epoch)
-				gomega.Expect(onSlashing.WithdrawableEpoch).To(gomega.Equal(spec.withdrawableEpoch(epoch, exit)),
-					"withdrawable epoch of a validator slashed in epoch %d", epoch)
-
-				blockRewards := testsuite.MustSucceed(val.Client.BlockRewards(ctx, strconv.FormatUint(slashingSlot, 10)))
-				gomega.Expect(blockRewards.AttesterSlashings).To(gomega.Equal(spec.whistleblowerReward(beforeSlashing.EffectiveBalance)),
-					"what the block's proposer earned for the evidence")
-				gomega.Expect(blockRewards.ProposerSlashings).To(gomega.BeZero())
+				onSlashing = expectSlashedInBlock(ctx, val, spec, slashingSlot)
 			}, ginkgo.SpecTimeout(time.Minute))
 
 		ginkgo.It("loses exactly the missed-vote penalty in every epoch from its slashing through its exit",
@@ -271,6 +227,46 @@ func (node *node) stopClient() error {
 		ginkgo.GinkgoWriter.Printf("%s validator client, last log lines:\n%s\n", node.graffiti, logs)
 	}
 	return client.Close()
+}
+
+// expectSlashedInBlock checks the block at slot that slashes the validator: it
+// pays the initial penalty, sets the exit and withdrawable epochs, and pays its
+// proposer the whistleblower reward for an attester slashing. It returns the
+// validator's record at the block.
+func expectSlashedInBlock(ctx context.Context, val rewards.Validator, spec slashingSpec, slot uint64) beacon.Validator {
+	ginkgo.GinkgoHelper()
+	index := strconv.FormatUint(val.Index, 10)
+	before := testsuite.MustSucceed(val.Client.ValidatorAt(ctx, strconv.FormatUint(slot-1, 10), index))
+	on := testsuite.MustSucceed(val.Client.ValidatorAt(ctx, strconv.FormatUint(slot, 10), index))
+	gomega.Expect(before.Slashed).To(gomega.BeFalse())
+	gomega.Expect(on.Slashed).To(gomega.BeTrue())
+	gomega.Expect(on.Status).To(gomega.Equal("active_slashed"))
+
+	// The block's own duties change the balance too, and a block at an
+	// epoch's first slot also follows epoch processing.
+	epoch := val.Chain.Epoch(slot)
+	penalty := spec.initialPenalty(before.EffectiveBalance)
+	blocks := testsuite.MustSucceed(val.BlockBalanceChange(ctx, slot))
+	var processed int64
+	if slot%val.Chain.SlotsPerEpoch == 0 {
+		reward := testsuite.MustSucceed(val.AttestationReward(ctx, epoch-2))
+		processed = reward.Head + reward.Source + reward.Target
+	}
+	want := int64(before.Balance) - int64(penalty) + blocks + processed
+	gomega.Expect(int64(on.Balance)).To(gomega.Equal(want),
+		"balance went from %d to %d at slot %d: the %d shor penalty, %d shor from the block and %d from epoch processing make %d",
+		before.Balance, on.Balance, slot, penalty, blocks, processed, want)
+
+	exit := spec.exitEpoch(epoch)
+	gomega.Expect(on.ExitEpoch).To(gomega.Equal(exit), "exit epoch of a validator slashed in epoch %d", epoch)
+	gomega.Expect(on.WithdrawableEpoch).To(gomega.Equal(spec.withdrawableEpoch(epoch, exit)),
+		"withdrawable epoch of a validator slashed in epoch %d", epoch)
+
+	blockRewards := testsuite.MustSucceed(val.Client.BlockRewards(ctx, strconv.FormatUint(slot, 10)))
+	gomega.Expect(blockRewards.AttesterSlashings).To(gomega.Equal(spec.whistleblowerReward(before.EffectiveBalance)),
+		"what the block's proposer earned for the evidence")
+	gomega.Expect(blockRewards.ProposerSlashings).To(gomega.BeZero())
+	return on
 }
 
 // expectMissedVotePenalty checks that the validator's votes of epoch cost

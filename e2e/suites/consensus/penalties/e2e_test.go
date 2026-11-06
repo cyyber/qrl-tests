@@ -3,18 +3,14 @@
 package penalties
 
 import (
-	"strconv"
-	"strings"
 	"testing"
 	"time"
 
-	"github.com/cyyber/qrl-tests/devnet"
 	"github.com/cyyber/qrl-tests/e2e/internal/beacon"
 	"github.com/cyyber/qrl-tests/e2e/internal/chaininfo"
 	"github.com/cyyber/qrl-tests/e2e/internal/live"
 	"github.com/cyyber/qrl-tests/e2e/internal/rewards"
 	"github.com/cyyber/qrl-tests/e2e/internal/sidecar"
-	"github.com/cyyber/qrl-tests/e2e/internal/sidecar/deposit"
 	"github.com/cyyber/qrl-tests/e2e/internal/sidecar/validator"
 	"github.com/cyyber/qrl-tests/e2e/internal/testsuite"
 	"github.com/cyyber/qrl-tests/e2e/internal/validatorops"
@@ -91,19 +87,8 @@ var _ = ginkgo.Describe(
 				Index:  spares[0],
 			}
 
-			derived := testsuite.MustSucceed(deposit.GenesisKey(ctx, deposit.GenesisKeyConfig{
-				Image:               node.QrysmAlltoolsImage,
-				Mnemonic:            devnet.GenesisMnemonic,
-				Index:               val.Index,
-				WithdrawalRecipient: node.Address.Hex(),
-				Password:            validatorops.KeystorePassword,
-			}))
-			keystores = derived.Keystores
-
-			record := testsuite.MustSucceed(node.Beacon.Validator(ctx, strconv.FormatUint(val.Index, 10)))
-			gomega.Expect(strings.EqualFold(record.PublicKey, derived.PublicKey)).To(gomega.BeTrue(),
-				"genesis validator %d is not the key derived for its index", val.Index)
-			gomega.Expect(record.Status).To(gomega.Equal("active_ongoing"))
+			keystores = testsuite.MustSucceed(validatorops.GenesisKeystores(
+				ctx, node.Beacon, node.QrysmAlltoolsImage, node.Address.Hex(), val.Index))
 		}, ginkgo.NodeTimeout(3*time.Minute))
 
 		ginkgo.AfterEach(func() {
