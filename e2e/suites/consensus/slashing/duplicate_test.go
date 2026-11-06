@@ -113,8 +113,8 @@ func (scenario *doubleVote) voteSlot(ctx context.Context, epoch uint64) (uint64,
 
 // pauseAcrossVote pauses the duplicate's beacon node from just before slot
 // until just after a third into it. On resuming, the node answers the vote
-// request before it imports the slot's block, so the duplicate votes for the
-// block before.
+// request before it imports the slot's block, so the duplicate validator
+// client votes for the previous block as the head.
 func (scenario *doubleVote) pauseAcrossVote(ctx context.Context, slot uint64) {
 	ginkgo.GinkgoHelper()
 	start := scenario.slotStart(slot)
