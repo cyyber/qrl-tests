@@ -369,3 +369,18 @@ func TestClientDecodesAttestationsAndCommittees(t *testing.T) {
 	_, err = client.Committees(t.Context(), "41", 5)
 	require.ErrorContains(t, err, `committee validator "x"`)
 }
+
+func TestSpecUints(t *testing.T) {
+	spec := Spec{"SLOTS_PER_EPOCH": "8", "SECONDS_PER_SLOT": "5", "DEPOSIT_CONTRACT_ADDRESS": "0x01"}
+
+	var slots, seconds uint64
+	require.NoError(t, spec.Uints(map[string]*uint64{"SLOTS_PER_EPOCH": &slots, "SECONDS_PER_SLOT": &seconds}))
+	require.Equal(t, uint64(8), slots)
+	require.Equal(t, uint64(5), seconds)
+
+	// Names are read in order, so the first failing one is always reported.
+	err := spec.Uints(map[string]*uint64{"MISSING": new(uint64), "DEPOSIT_CONTRACT_ADDRESS": new(uint64)})
+	require.ErrorContains(t, err, "parse spec value DEPOSIT_CONTRACT_ADDRESS")
+
+	require.ErrorContains(t, spec.Uints(map[string]*uint64{"MISSING": new(uint64)}), "does not define MISSING")
+}

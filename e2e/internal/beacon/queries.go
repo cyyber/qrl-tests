@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/hex"
 	"fmt"
+	"maps"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -43,6 +45,18 @@ func (spec Spec) Uint(name string) (uint64, error) {
 		return 0, fmt.Errorf("parse spec value %s=%q: %w", name, value, err)
 	}
 	return parsed, nil
+}
+
+// Uints parses each named numeric constant into its field, in name order.
+func (spec Spec) Uints(fields map[string]*uint64) error {
+	for _, name := range slices.Sorted(maps.Keys(fields)) {
+		value, err := spec.Uint(name)
+		if err != nil {
+			return err
+		}
+		*fields[name] = value
+	}
+	return nil
 }
 
 // SyncStatus reports how far the node is from the head of the chain.

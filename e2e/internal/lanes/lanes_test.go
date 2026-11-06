@@ -80,6 +80,14 @@ func TestLaneWithSuites(t *testing.T) {
 	require.True(t, penalties.NeedsQrysmAlltoolsImage())
 	require.False(t, penalties.NeedsExecutionImage())
 
+	slashing, err := Named("consensus-slashing")
+	require.NoError(t, err)
+	require.Equal(t, devnet.ProfileDuplicateValidator, slashing.Profile)
+	require.True(t, slashing.NeedsValidatorImage())
+	require.True(t, slashing.NeedsQrysmAlltoolsImage())
+	require.False(t, slashing.NeedsExecutionImage())
+	require.False(t, slashing.RestartsServices)
+
 	restart, err := Named("resilience-network-restart")
 	require.NoError(t, err)
 	require.Equal(t, devnet.ProfileAnchored, restart.Profile)
