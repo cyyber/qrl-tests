@@ -227,7 +227,7 @@ var _ = ginkgo.Describe(
 			}
 			gomega.Expect(indices).To(gomega.Equal([]uint64{val.Index}))
 
-			// A healthy chain finalizes the epoch before the previous one.
+			// A healthy chain finalizes within three epochs of its head.
 			head := testsuite.MustSucceed(val.Client.HeadSlot(ctx))
 			checkpoints := testsuite.MustSucceed(val.Client.FinalityCheckpoints(ctx))
 			gomega.Expect(checkpoints.Finalized.Epoch+3).To(gomega.BeNumerically(">=", val.Chain.Epoch(head)),
