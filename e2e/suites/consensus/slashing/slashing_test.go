@@ -48,7 +48,7 @@ func (spec slashingSpec) whistleblowerReward(effectiveBalance uint64) uint64 {
 }
 
 // exitEpoch is the exit epoch a slashing in epoch assigns when no other exit
-// is queued: the earliest the exit churn allows.
+// is queued: the earliest epoch any exit can take effect.
 func (spec slashingSpec) exitEpoch(epoch uint64) uint64 {
 	return epoch + 1 + spec.maxSeedLookahead
 }
