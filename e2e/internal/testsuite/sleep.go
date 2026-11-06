@@ -5,8 +5,7 @@ import (
 	"time"
 )
 
-// SleepUntil waits until deadline, or until ctx ends and returns its error. A
-// ctx that has already ended wins over a deadline that has already passed.
+// SleepUntil waits until ctx ends and returns its error, or until deadline.
 func SleepUntil(ctx context.Context, deadline time.Time) error {
 	if err := ctx.Err(); err != nil {
 		return err
