@@ -18,7 +18,7 @@ import (
 // nsenter is used: the helper enters the Docker host's mount namespace for
 // that host's nsenter and iptables, and the service's network namespace for
 // the rules, so the service's own image needs neither.
-const isolationImage = "alpine:3.17"
+const isolationImage = "alpine:3.22"
 
 // isolationTimeout bounds one run of the helper, pulling its image included.
 const isolationTimeout = 2 * time.Minute
