@@ -4,6 +4,7 @@ package inactivityleak
 
 import (
 	"context"
+	"fmt"
 	"strconv"
 	"testing"
 	"time"
@@ -44,10 +45,11 @@ func TestE2E(t *testing.T) {
 	testsuite.Run(t, "Inactivity leak E2E suite")
 }
 
-// The suite stops the leak after a few epochs, long before it has drained
-// enough of the offline stake for the rest to finalize on its own, which takes
-// hours on the mainnet preset's constants. Following it that far is future work,
-// for a weekly lane.
+// The suite ends the leak after a few epochs by restarting the stopped client.
+// Letting the leak alone drain the offline stake until the rest finalizes is
+// future work: with half the stake offline it takes hours, even at Qrysm's
+// INACTIVITY_PENALTY_QUOTIENT of 2^16, though far less on a profile with just
+// over a third of the stake offline.
 var _ = ginkgo.Describe(
 	"A chain with more than a third of its stake offline",
 	ginkgo.Serial,
@@ -205,10 +207,7 @@ var _ = ginkgo.Describe(
 		}, ginkgo.SpecTimeout(resumeTimeout))
 
 		ginkgo.It("brings the restarted validators' inactivity scores back to zero", func(ctx ginkgo.SpecContext) {
-			for epoch := nextEpoch; ; epoch++ {
-				gomega.Expect(epoch).To(gomega.BeNumerically("<=", restarted+decayEpochs),
-					"validator %d's inactivity score is still %d after epoch %d, %d epochs after the restart",
-					offline.Index, score, epoch-1, epoch-1-restarted)
+			for epoch := nextEpoch; epoch <= restarted+decayEpochs; epoch++ {
 				offline.AwaitRewards(ctx, epoch)
 				if epoch < restarted {
 					score = expectMissedEpoch(ctx, offline, epoch, score).ScoreAfter
@@ -234,6 +233,8 @@ var _ = ginkgo.Describe(
 					return
 				}
 			}
+			ginkgo.Fail(fmt.Sprintf("validator %d's inactivity score is still %d, %d epochs after the restart in epoch %d",
+				offline.Index, score, decayEpochs, restarted))
 		}, ginkgo.SpecTimeout(decayTimeout))
 
 		ginkgo.It("slashes no validator, and every node finalizes the same checkpoint", func(ctx ginkgo.SpecContext) {
