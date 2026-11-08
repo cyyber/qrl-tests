@@ -18,8 +18,6 @@ import (
 )
 
 const (
-	// The devnet participants that run the primary and the duplicate copy of
-	// the validator's key.
 	primaryParticipant   = 0
 	duplicateParticipant = 1
 
