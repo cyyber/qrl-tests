@@ -66,8 +66,8 @@ func expectDoubleVoteEvidence(slot uint64, evidence slashingEvidence) (first, se
 }
 
 // expectExitedSlashed checks the validator's record at the start of epoch: it
-// has exited as slashed, and its stake stays locked until the withdrawable
-// epoch its slashing set.
+// has exited as slashed, and the withdrawable epoch set when it was slashed is
+// still ahead.
 func expectExitedSlashed(ctx context.Context, val rewards.Validator, epoch uint64, onSlashing beacon.Validator) {
 	ginkgo.GinkgoHelper()
 	record := testsuite.MustSucceed(val.RecordAtEpochStart(ctx, epoch))
