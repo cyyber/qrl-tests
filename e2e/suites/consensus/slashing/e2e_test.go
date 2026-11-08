@@ -140,7 +140,7 @@ var _ = ginkgo.Describe(
 				slashingSlot = slot
 			}, ginkgo.SpecTimeout(doubleVoteTimeout))
 
-		ginkgo.It("pays the slashing penalty in the block that includes the evidence, and its proposer the whistleblower reward",
+		ginkgo.It("loses the slashing penalty in the block that includes the evidence, whose proposer earns the whistleblower reward",
 			func(ctx ginkgo.SpecContext) {
 				onSlashing = expectSlashedInBlock(ctx, val, spec, slashingSlot)
 			}, ginkgo.SpecTimeout(time.Minute))
@@ -158,7 +158,7 @@ var _ = ginkgo.Describe(
 				expectExitedSlashed(ctx, val, exit, onSlashing)
 			}, ginkgo.SpecTimeout(exitTimeout))
 
-		ginkgo.It("keeps losing the missed-vote penalty after its exit, with its stake locked until it can withdraw",
+		ginkgo.It("keeps losing the missed-vote penalty after its exit, before it can withdraw",
 			func(ctx ginkgo.SpecContext) {
 				// A slashed validator stays liable for missed votes until it
 				// can withdraw.
@@ -173,7 +173,7 @@ var _ = ginkgo.Describe(
 				}
 			}, ginkgo.SpecTimeout(afterExitTimeout))
 
-		ginkgo.It("slashes no other validator, and the chain keeps finalizing", func(ctx ginkgo.SpecContext) {
+		ginkgo.It("is the only validator slashed, and the chain keeps finalizing", func(ctx ginkgo.SpecContext) {
 			slashed := testsuite.MustSucceed(val.Client.SlashedValidators(ctx))
 			gomega.Expect(slashed).To(gomega.HaveExactElements(gomega.HaveField("Index", val.Index)))
 
