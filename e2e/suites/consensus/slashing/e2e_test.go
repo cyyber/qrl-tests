@@ -27,9 +27,9 @@ const (
 
 	attestTimeout     = 5 * time.Minute
 	doubleVoteTimeout = 15 * time.Minute
-	// The exit spec waits for the rewards of the exit epoch, which is
-	// MAX_SEED_LOOKAHEAD+1 epochs after the slashing: up to 7 epochs, or 280s
-	// on the devnet's 40s epochs.
+	// The exit epoch is MAX_SEED_LOOKAHEAD+1 epochs after the slashing, and
+	// its rewards come two epochs later: up to 7 epochs, or 280s on the
+	// devnet's 40s epochs.
 	exitTimeout = 7 * time.Minute
 
 	afterExitEpochs  = 2
@@ -168,7 +168,8 @@ var _ = ginkgo.Describe(
 				last := onSlashing.ExitEpoch + afterExitEpochs
 				val.AwaitRewards(ctx, last)
 				for epoch := first; epoch <= last; epoch++ {
-					// This also checks the balance at the start of epoch+2.
+					// expectMissedVotePenalty checks the exact balance at the
+					// start of epoch+2, so expectExitedSlashed leaves it out.
 					expectMissedVotePenalty(ctx, val, epoch)
 					expectExitedSlashed(ctx, val, epoch+2, onSlashing)
 				}
