@@ -51,8 +51,8 @@ func expectMissedEpoch(ctx context.Context, val rewards.Validator, epoch, score 
 func expectUnpaidVotes(ctx context.Context, val rewards.Validator, epoch uint64) {
 	ginkgo.GinkgoHelper()
 	amounts := testsuite.MustSucceed(val.LeakVoteAmounts(ctx, epoch))
-	gomega.Expect(amounts.Leak).To(gomega.BeTrue(), "epoch %d is processed in a leak", epoch)
-	gomega.Expect(amounts.ReportedLeak).To(gomega.BeTrue(), "the rewards API counts epoch %d as in a leak", epoch)
+	gomega.Expect(amounts.Leak).To(gomega.BeTrue(), "epoch %d is not processed in a leak", epoch)
+	gomega.Expect(amounts.ReportedLeak).To(gomega.BeTrue(), "the rewards API does not count epoch %d as in a leak", epoch)
 	gomega.Expect(amounts.Timely).To(gomega.Equal(beacon.IdealAttestationReward{EffectiveBalance: amounts.Timely.EffectiveBalance}),
 		"what timely votes earn in epoch %d", epoch)
 	expectScores(val, epoch, amounts, 0, true)

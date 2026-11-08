@@ -173,9 +173,9 @@ var _ = ginkgo.Describe(
 				score = amounts.ScoreAfter
 				for epoch := first; epoch <= last; epoch++ {
 					amounts := expectMissedEpoch(ctx, offline, epoch, score)
-					gomega.Expect(amounts.Leak).To(gomega.BeTrue(), "epoch %d, %d after finalized epoch %d, is processed in a leak",
+					gomega.Expect(amounts.Leak).To(gomega.BeTrue(), "epoch %d, %d after finalized epoch %d, is not processed in a leak",
 						epoch, epoch-frozen.Epoch, frozen.Epoch)
-					gomega.Expect(amounts.ReportedLeak).To(gomega.BeTrue(), "the rewards API counts epoch %d as in a leak", epoch)
+					gomega.Expect(amounts.ReportedLeak).To(gomega.BeTrue(), "the rewards API does not count epoch %d as in a leak", epoch)
 					score = amounts.ScoreAfter
 				}
 				nextEpoch = last + 1
