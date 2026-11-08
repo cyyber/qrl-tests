@@ -25,11 +25,13 @@ const (
 
 	doubleVoteAttempts = 3
 
+	// The timeouts below assume epochs no longer than the devnet's.
+	maxEpochDuration = 40 * time.Second
+
 	attestTimeout     = 5 * time.Minute
 	doubleVoteTimeout = 15 * time.Minute
 	// The exit epoch is MAX_SEED_LOOKAHEAD+1 epochs after the slashing, and
-	// its rewards come two epochs later: up to 7 epochs, or 280s on the
-	// devnet's 40s epochs.
+	// its rewards come two epochs later: up to 7 epochs, or 280s.
 	exitTimeout = 7 * time.Minute
 
 	afterExitEpochs  = 2
@@ -87,7 +89,9 @@ var _ = ginkgo.Describe(
 				Spec:   testsuite.MustSucceed(rewards.LoadSpec(ctx, beaconClient)),
 				Index:  spares[0],
 			}
-			spec = testsuite.MustSucceed(loadSlashingSpec(ctx, beaconClient))
+			gomega.Expect(val.Chain.EpochDuration).To(gomega.BeNumerically("<=", maxEpochDuration),
+				"the suite's timeouts assume epochs of at most %s", maxEpochDuration)
+			spec =testsuite.MustSucceed(loadSlashingSpec(ctx, beaconClient))
 
 			keystores = testsuite.MustSucceed(validatorops.GenesisKeystores(
 				ctx, beaconClient, runtime.QrysmAlltoolsImage, primary.Address.Hex(), val.Index))
