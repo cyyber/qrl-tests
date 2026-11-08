@@ -165,7 +165,8 @@ var _ = ginkgo.Describe(
 			}, ginkgo.SpecTimeout(afterExitTimeout))
 
 		ginkgo.It("is the only validator slashed, and the chain keeps finalizing", func(ctx ginkgo.SpecContext) {
-			slashingops.ExpectOnlySlashed(ctx, val.Client, val.Chain, []uint64{val.Index})
+			slashingops.ExpectOnlySlashed(ctx, val.Client, []uint64{val.Index})
+			slashingops.ExpectFinalizing(ctx, val.Client, val.Chain)
 		}, ginkgo.SpecTimeout(time.Minute))
 	},
 )

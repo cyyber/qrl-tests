@@ -87,9 +87,8 @@ func ExpectDoubleProposalEvidence(slot uint64, evidence Evidence) (first, second
 	return first, second
 }
 
-// ExpectOnlySlashed checks that every slashed validator is one of allowed, and
-// that the chain keeps finalizing.
-func ExpectOnlySlashed(ctx context.Context, client *beacon.Client, chain chaininfo.Info, allowed []uint64) {
+// ExpectOnlySlashed checks that every slashed validator is one of allowed.
+func ExpectOnlySlashed(ctx context.Context, client *beacon.Client, allowed []uint64) {
 	ginkgo.GinkgoHelper()
 	slashed := testsuite.MustSucceed(client.SlashedValidators(ctx))
 	indices := make([]uint64, len(slashed))
@@ -98,7 +97,12 @@ func ExpectOnlySlashed(ctx context.Context, client *beacon.Client, chain chainin
 	}
 	gomega.Expect(indices).To(gomega.HaveEach(gomega.BeElementOf(allowed)),
 		"slashed validators, where only %v may be", allowed)
+}
 
+// ExpectFinalizing checks that the chain has finalized an epoch within
+// maxFinalityLagEpochs of its head.
+func ExpectFinalizing(ctx context.Context, client *beacon.Client, chain chaininfo.Info) {
+	ginkgo.GinkgoHelper()
 	head := testsuite.MustSucceed(client.HeadSlot(ctx))
 	checkpoints := testsuite.MustSucceed(client.FinalityCheckpoints(ctx))
 	gomega.Expect(checkpoints.Finalized.Epoch+maxFinalityLagEpochs).To(gomega.BeNumerically(">=", chain.Epoch(head)),

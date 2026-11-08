@@ -14,17 +14,17 @@ import (
 )
 
 const (
-	MaxEpochDuration = 40 * time.Second
+	maxEpochDuration = 40 * time.Second
 
-	DetectionEpochs = 4
+	detectionEpochs = 4
 )
 
 // ExpectShortEpochs fails fast on epochs longer than the suites' timeouts
 // assume.
 func ExpectShortEpochs(chain chaininfo.Info) {
 	ginkgo.GinkgoHelper()
-	gomega.Expect(chain.EpochDuration).To(gomega.BeNumerically("<=", MaxEpochDuration),
-		"the suite's timeouts assume epochs of at most %s", MaxEpochDuration)
+	gomega.Expect(chain.EpochDuration).To(gomega.BeNumerically("<=", maxEpochDuration),
+		"the suite's timeouts assume epochs of at most %s", maxEpochDuration)
 }
 
 // PlanNextEpoch waits for an epoch in whose first half pick accepts a duty of
@@ -50,10 +50,10 @@ func PlanNextEpoch[Duty any](
 }
 
 // AwaitSlashed reports whether the validator is slashed within
-// DetectionEpochs.
+// detectionEpochs.
 func AwaitSlashed(ctx context.Context, val rewards.Validator) bool {
 	ginkgo.GinkgoHelper()
-	deadline := time.Now().Add(DetectionEpochs * val.Chain.EpochDuration)
+	deadline := time.Now().Add(detectionEpochs * val.Chain.EpochDuration)
 	index := strconv.FormatUint(val.Index, 10)
 	for time.Now().Before(deadline) {
 		record := testsuite.MustSucceed(val.Client.Validator(ctx, index))
@@ -62,7 +62,7 @@ func AwaitSlashed(ctx context.Context, val rewards.Validator) bool {
 		}
 		gomega.Expect(testsuite.SleepUntil(ctx, time.Now().Add(rewards.PollInterval))).To(gomega.Succeed())
 	}
-	ginkgo.GinkgoWriter.Printf("validator %d was not slashed within %d epochs\n", val.Index, DetectionEpochs)
+	ginkgo.GinkgoWriter.Printf("validator %d was not slashed within %d epochs\n", val.Index, detectionEpochs)
 	return false
 }
 

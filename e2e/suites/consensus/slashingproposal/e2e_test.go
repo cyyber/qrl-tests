@@ -115,7 +115,8 @@ var _ = ginkgo.Describe(
 		// A failed attempt's duplicate can still be slashed later, so any
 		// validator the suite duplicated may end up slashed.
 		ginkgo.It("is slashed with no validator the suite did not duplicate, and the chain keeps finalizing", func(ctx ginkgo.SpecContext) {
-			slashingops.ExpectOnlySlashed(ctx, client, chain, scenario.duplicated)
+			slashingops.ExpectOnlySlashed(ctx, client, scenario.duplicated)
+			slashingops.ExpectFinalizing(ctx, client, chain)
 		}, ginkgo.SpecTimeout(time.Minute))
 	},
 )
