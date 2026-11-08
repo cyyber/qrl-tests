@@ -98,6 +98,11 @@ func TestIsolateServiceErrors(t *testing.T) {
 	rejoin, err := isolateService(t.Context(), client, "consensus-service", peers)
 	require.NoError(t, err)
 	require.EqualError(t, rejoin(t.Context()), `rejoin service "consensus-service": helper exited with code 1`)
+	// A failed rejoin is also followed by the cleanup, so no rule after the
+	// one it stopped at stays in place.
+	require.Len(t, client.created, 3)
+	cleanup = client.created[2].Config.Cmd
+	require.Equal(t, cleanupRules(peers), cleanup[len(cleanup)-1])
 }
 
 type fakeIsolator struct {

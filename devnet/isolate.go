@@ -93,19 +93,26 @@ func isolateService(
 		return nil, err
 	}
 	if err := runIsolationRules(ctx, client, pid, isolationRules("-I", peers)); err != nil {
-		// An insert that failed partway leaves the rules before it in place.
-		cleanupErr := runIsolationRules(context.WithoutCancel(ctx), client, pid, cleanupRules(peers))
-		return nil, errors.Join(
-			fmt.Errorf("isolate service %q: %w", serviceID, err),
-			wrapCleanup(serviceID, cleanupErr),
-		)
+		return nil, cleanUpAfter(ctx, client, pid, serviceID, peers, fmt.Errorf("isolate service %q: %w", serviceID, err))
 	}
 	return func(ctx context.Context) error {
 		if err := runIsolationRules(ctx, client, pid, isolationRules("-D", peers)); err != nil {
-			return fmt.Errorf("rejoin service %q: %w", serviceID, err)
+			return cleanUpAfter(ctx, client, pid, serviceID, peers, fmt.Errorf("rejoin service %q: %w", serviceID, err))
 		}
 		return nil
 	}, nil
+}
+
+// cleanUpAfter deletes whichever of the rules exist after failed, an insert
+// or delete that may have stopped partway and left some in place. It returns
+// failed, with the cleanup's own error if it fails too.
+func cleanUpAfter(
+	ctx context.Context, client serviceIsolator, pid int, serviceID string, peers []netip.Addr, failed error,
+) error {
+	if err := runIsolationRules(context.WithoutCancel(ctx), client, pid, cleanupRules(peers)); err != nil {
+		return errors.Join(failed, fmt.Errorf("remove the rules of service %q: %w", serviceID, err))
+	}
+	return failed
 }
 
 // isolationRules is the script that inserts (-I) or deletes (-D) a rule
@@ -132,13 +139,6 @@ func peerRules(action string, peers []netip.Addr) []string {
 		)
 	}
 	return rules
-}
-
-func wrapCleanup(serviceID string, err error) error {
-	if err == nil {
-		return nil
-	}
-	return fmt.Errorf("remove the rules of service %q: %w", serviceID, err)
 }
 
 func ensureImage(ctx context.Context, client imagePuller, image string) error {
