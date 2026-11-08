@@ -91,7 +91,7 @@ var _ = ginkgo.Describe(
 			}
 			gomega.Expect(val.Chain.EpochDuration).To(gomega.BeNumerically("<=", maxEpochDuration),
 				"the suite's timeouts assume epochs of at most %s", maxEpochDuration)
-			spec =testsuite.MustSucceed(loadSlashingSpec(ctx, beaconClient))
+			spec = testsuite.MustSucceed(loadSlashingSpec(ctx, beaconClient))
 
 			keystores = testsuite.MustSucceed(validatorops.GenesisKeystores(
 				ctx, beaconClient, runtime.QrysmAlltoolsImage, primary.Address.Hex(), val.Index))
