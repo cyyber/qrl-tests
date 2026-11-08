@@ -23,19 +23,15 @@ const (
 
 	doubleVoteAttempts = 3
 
-	// The timeouts below assume epochs no longer than the devnet's.
 	maxEpochDuration = 40 * time.Second
 
 	attestTimeout     = 5 * time.Minute
 	doubleVoteTimeout = 15 * time.Minute
-	// The exit epoch is MAX_SEED_LOOKAHEAD+1 epochs after the slashing, and
-	// its rewards come two epochs later: up to 7 epochs, or 280s.
-	exitTimeout = 7 * time.Minute
+	exitTimeout       = 7 * time.Minute
 
 	afterExitEpochs  = 2
 	afterExitTimeout = 4 * time.Minute
 
-	// A healthy chain finalizes within this many epochs of its head.
 	maxFinalityLagEpochs = 3
 )
 
