@@ -370,6 +370,33 @@ func TestClientDecodesAttestationsAndCommittees(t *testing.T) {
 	require.ErrorContains(t, err, `committee validator "x"`)
 }
 
+func TestClientDecodesInactivityScores(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		switch request.URL.Path {
+		case "/qrl/v1/debug/beacon/states/55":
+			_, _ = writer.Write([]byte(`{"version":"zond","data":{"slot":"55","balances":["40000000000000","39990000000000"],` +
+				`"inactivity_scores":["0","12"],"finalized_checkpoint":{"epoch":"1","root":"0x01"}}}`))
+		case "/qrl/v1/debug/beacon/states/56":
+			_, _ = writer.Write([]byte(`{"version":"zond","data":{"inactivity_scores":["0","-4"]}}`))
+		default:
+			http.NotFound(writer, request)
+		}
+	}))
+	defer server.Close()
+	client, err := New(server.URL)
+	require.NoError(t, err)
+
+	scores, err := client.InactivityScores(t.Context(), "55")
+	require.NoError(t, err)
+	require.Equal(t, []uint64{0, 12}, scores)
+
+	_, err = client.InactivityScores(t.Context(), "56")
+	require.ErrorContains(t, err, `inactivity score "-4" of validator 1`)
+
+	_, err = client.InactivityScores(t.Context(), "57")
+	require.True(t, IsNotFound(err))
+}
+
 func TestSpecUints(t *testing.T) {
 	spec := Spec{"SLOTS_PER_EPOCH": "8", "SECONDS_PER_SLOT": "5", "DEPOSIT_CONTRACT_ADDRESS": "0x01"}
 
