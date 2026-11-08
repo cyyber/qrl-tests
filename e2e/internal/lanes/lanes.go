@@ -31,6 +31,7 @@ const (
 	suiteConsensusPenalties              SuiteID = "consensus-penalties"
 	suiteConsensusSlashingDoubleVote     SuiteID = "consensus-slashing-double-vote"
 	suiteConsensusSlashingDoubleProposal SuiteID = "consensus-slashing-double-proposal"
+	suiteConsensusInactivityLeak         SuiteID = "consensus-inactivity-leak"
 	suiteResilienceNetworkRestart        SuiteID = "resilience-network-restart"
 	suiteSyncGenesis                     SuiteID = "sync-genesis"
 	suiteSyncCheckpoint                  SuiteID = "sync-checkpoint"
@@ -45,6 +46,7 @@ var suitePackages = map[SuiteID]string{
 	suiteConsensusPenalties:              "./e2e/suites/consensus/penalties",
 	suiteConsensusSlashingDoubleVote:     "./e2e/suites/consensus/slashing/doublevote",
 	suiteConsensusSlashingDoubleProposal: "./e2e/suites/consensus/slashing/doubleproposal",
+	suiteConsensusInactivityLeak:         "./e2e/suites/consensus/inactivityleak",
 	suiteResilienceNetworkRestart:        "./e2e/suites/resilience/networkrestart",
 	suiteSyncGenesis:                     "./e2e/suites/sync/genesis",
 	suiteSyncCheckpoint:                  "./e2e/suites/sync/checkpoint",
@@ -91,6 +93,14 @@ var registry = []Lane{
 		Profile: devnet.ProfileDoubleProposal,
 		Suites:  []SuiteID{suiteConsensusSlashingDoubleProposal},
 		Timeout: 30 * time.Minute,
+	},
+	{
+		// Finality, the outage, the leak and finality again take about two
+		// dozen 40-second epochs.
+		Name:    "consensus-inactivity-leak",
+		Profile: devnet.ProfileDuplicateValidator,
+		Suites:  []SuiteID{suiteConsensusInactivityLeak},
+		Timeout: 35 * time.Minute,
 	},
 	{
 		// Finality, the outage and finality again take about a dozen

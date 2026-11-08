@@ -97,6 +97,18 @@ func TestLaneWithSuites(t *testing.T) {
 	require.False(t, proposal.NeedsExecutionImage())
 	require.False(t, proposal.RestartsServices)
 
+	// The suite stops and starts the network's own validator client, so it
+	// runs no image of its own.
+	leak, err := Named("consensus-inactivity-leak")
+	require.NoError(t, err)
+	require.Equal(t, devnet.ProfileDuplicateValidator, leak.Profile)
+	require.Equal(t, []string{"./e2e/suites/consensus/inactivityleak"}, leak.Packages())
+	require.False(t, leak.NeedsValidatorImage())
+	require.False(t, leak.NeedsQrysmAlltoolsImage())
+	require.False(t, leak.NeedsExecutionImage())
+	require.False(t, leak.NeedsConsensusImage())
+	require.False(t, leak.RestartsServices)
+
 	restart, err := Named("resilience-network-restart")
 	require.NoError(t, err)
 	require.Equal(t, devnet.ProfileAnchored, restart.Profile)
