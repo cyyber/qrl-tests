@@ -11,6 +11,7 @@ import (
 	"github.com/cyyber/qrl-tests/e2e/internal/chaininfo"
 	"github.com/cyyber/qrl-tests/e2e/internal/rewards"
 	"github.com/cyyber/qrl-tests/e2e/internal/sidecar"
+	"github.com/cyyber/qrl-tests/e2e/internal/slashingops"
 	"github.com/cyyber/qrl-tests/e2e/internal/testsuite"
 	"github.com/cyyber/qrl-tests/e2e/internal/validatorops"
 	ginkgo "github.com/onsi/ginkgo/v2"
@@ -26,8 +27,6 @@ const (
 
 	afterExitEpochs  = 2
 	afterExitTimeout = 4 * time.Minute
-
-	maxFinalityLagEpochs = 3
 )
 
 func TestE2E(t *testing.T) {
@@ -47,9 +46,9 @@ var _ = ginkgo.Describe(
 		var (
 			// primary runs the validator from the start; duplicate is a
 			// second copy of its key, on the node the suite pauses.
-			primary, duplicate      *node
+			primary, duplicate      *slashingops.Node
 			val                     rewards.Validator
-			spec                    slashingSpec
+			spec                    slashingops.Spec
 			keystores               []sidecar.File
 			duplicateNodeValidators []uint64
 			slashingSlot            uint64
@@ -58,15 +57,16 @@ var _ = ginkgo.Describe(
 
 		ginkgo.BeforeAll(func(ctx ginkgo.SpecContext) {
 			runtime := testsuite.LoadRuntime()
-			nodes := loadNodes(ctx, runtime)
+			nodes := testsuite.MustSucceed(runtime.Nodes(ctx))
+			gomega.Expect(nodes).To(gomega.HaveLen(2), "the suite runs the validator on two nodes")
 			for _, participant := range nodes {
 				gomega.Expect(participant.BeaconGRPC).NotTo(gomega.BeEmpty(), "beacon gRPC is not published")
 			}
 			gomega.Expect(runtime.ValidatorImage).NotTo(gomega.BeEmpty(), "validator image is not configured")
 			gomega.Expect(runtime.QrysmAlltoolsImage).NotTo(gomega.BeEmpty(), "Qrysm all-tools image is not configured")
-			primary = &node{Node: nodes[primaryParticipant], graffiti: "primary"}
-			duplicate = &node{Node: nodes[duplicateParticipant], graffiti: "duplicate"}
-			duplicateNodeValidators = runtime.Profile.ParticipantValidators(duplicateParticipant)
+			primary = &slashingops.Node{Node: nodes[slashingops.PrimaryParticipant], Graffiti: "primary"}
+			duplicate = &slashingops.Node{Node: nodes[slashingops.DuplicateParticipant], Graffiti: "duplicate"}
+			duplicateNodeValidators = runtime.Profile.ParticipantValidators(slashingops.DuplicateParticipant)
 
 			spares := runtime.Profile.SpareValidators()
 			gomega.Expect(spares).NotTo(gomega.BeEmpty(), "profile %q has no genesis validator that no client runs", runtime.Profile)
@@ -77,8 +77,8 @@ var _ = ginkgo.Describe(
 				Spec:   testsuite.MustSucceed(rewards.LoadSpec(ctx, beaconClient)),
 				Index:  spares[0],
 			}
-			expectShortEpochs(val.Chain)
-			spec = testsuite.MustSucceed(loadSlashingSpec(ctx, beaconClient))
+			slashingops.ExpectShortEpochs(val.Chain)
+			spec = testsuite.MustSucceed(slashingops.LoadSpec(ctx, beaconClient))
 
 			keystores = testsuite.MustSucceed(validatorops.GenesisKeystores(
 				ctx, beaconClient, runtime.QrysmAlltoolsImage, primary.Address.Hex(), val.Index))
@@ -87,19 +87,17 @@ var _ = ginkgo.Describe(
 		// Each double-vote attempt stops the duplicate's client and prints its
 		// logs, so only the primary's are left to report.
 		ginkgo.AfterEach(func() {
-			if primary != nil {
-				testsuite.ReportLogsOnFailure(primary.graffiti+" validator client", primary.client)
-			}
+			primary.ReportLogsOnFailure()
 		})
 
 		ginkgo.AfterAll(func() {
 			// Stop both clients even when one fails to stop.
-			gomega.Expect(errors.Join(primary.stopClient(), duplicate.stopClient())).To(gomega.Succeed())
+			gomega.Expect(errors.Join(primary.StopClient(), duplicate.StopClient())).To(gomega.Succeed())
 		})
 
 		ginkgo.It("attests through its validator client", func(ctx ginkgo.SpecContext) {
 			head := testsuite.MustSucceed(primary.Beacon.HeadSlot(ctx))
-			primary.startClient(ctx, keystores)
+			primary.StartClient(ctx, keystores)
 			val.FirstAttestedEpoch(ctx, val.Chain.Epoch(head), attestTimeout)
 		}, ginkgo.SpecTimeout(attestTimeout+time.Minute))
 
@@ -121,13 +119,13 @@ var _ = ginkgo.Describe(
 					if attempt == 1 {
 						firstVote = slot
 					}
-					slashed = run && awaitSlashed(ctx, val)
+					slashed = run && slashingops.AwaitSlashed(ctx, val)
 				}
 				gomega.Expect(slashed).To(gomega.BeTrue(), "no double vote was slashed in %d attempts", doubleVoteAttempts)
 
 				ginkgo.By("finding the evidence a block included")
-				slot, evidence := findEvidence(ctx, val, firstVote)
-				first, second := expectDoubleVoteEvidence(slot, evidence)
+				slot, evidence := slashingops.FindEvidence(ctx, val, firstVote)
+				first, second := slashingops.ExpectDoubleVoteEvidence(slot, evidence)
 				ginkgo.GinkgoWriter.Printf("slot %d included a double vote of slot %d for heads %s and %s\n",
 					slot, first.Slot, first.BeaconBlockRoot, second.BeaconBlockRoot)
 				slashingSlot = slot
@@ -135,7 +133,7 @@ var _ = ginkgo.Describe(
 
 		ginkgo.It("loses the slashing penalty in the block that includes the evidence, whose proposer earns the whistleblower reward",
 			func(ctx ginkgo.SpecContext) {
-				onSlashing = expectSlashedInBlock(ctx, val, spec, slashingSlot, false)
+				onSlashing = slashingops.ExpectSlashedInBlock(ctx, val, spec, slashingSlot, slashingops.DoubleVote)
 			}, ginkgo.SpecTimeout(time.Minute))
 
 		ginkgo.It("loses exactly the missed-vote penalty in every epoch from its slashing through its exit",
@@ -166,8 +164,8 @@ var _ = ginkgo.Describe(
 				}
 			}, ginkgo.SpecTimeout(afterExitTimeout))
 
-		ginkgo.It("is slashed with no validator the suite did not duplicate, and the chain keeps finalizing", func(ctx ginkgo.SpecContext) {
-			expectOnlyDuplicatesSlashed(ctx, val.Client, val.Chain)
+		ginkgo.It("is the only validator slashed, and the chain keeps finalizing", func(ctx ginkgo.SpecContext) {
+			slashingops.ExpectOnlySlashed(ctx, val.Client, val.Chain, []uint64{val.Index})
 		}, ginkgo.SpecTimeout(time.Minute))
 	},
 )

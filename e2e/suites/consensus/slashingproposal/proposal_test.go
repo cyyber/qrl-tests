@@ -1,6 +1,6 @@
 //go:build e2e
 
-package slashing
+package slashingproposal
 
 import (
 	"context"
@@ -11,105 +11,14 @@ import (
 
 	"github.com/cyyber/qrl-tests/devnet"
 	"github.com/cyyber/qrl-tests/e2e/internal/beacon"
-	"github.com/cyyber/qrl-tests/e2e/internal/chaininfo"
 	"github.com/cyyber/qrl-tests/e2e/internal/live"
 	"github.com/cyyber/qrl-tests/e2e/internal/rewards"
 	"github.com/cyyber/qrl-tests/e2e/internal/sidecar/deposit"
+	"github.com/cyyber/qrl-tests/e2e/internal/slashingops"
 	"github.com/cyyber/qrl-tests/e2e/internal/testsuite"
 	"github.com/cyyber/qrl-tests/e2e/internal/validatorops"
 	ginkgo "github.com/onsi/ginkgo/v2"
 	gomega "github.com/onsi/gomega"
-)
-
-const (
-	doubleProposalAttempts = 3
-	doubleProposalTimeout  = 15 * time.Minute
-)
-
-var _ = ginkgo.Describe(
-	"A validator whose key a second client runs while it proposes",
-	ginkgo.Serial,
-	ginkgo.Ordered,
-	ginkgo.Label("e2e", "consensus", "slashing"),
-	func() {
-		var (
-			// The primary is the validator client node 1's participant runs.
-			// duplicate runs a second copy of one of its keys on node 2 across
-			// that key's proposal, with a graffiti of its own, so the two
-			// blocks differ, while node 2 is cut off from the other nodes so
-			// that neither sees the other's block in time. The third node runs
-			// no validators: it receives both blocks once the split ends, and
-			// its slasher reports them.
-			duplicate    *node
-			scenario     doubleProposal
-			client       *beacon.Client
-			chain        chaininfo.Info
-			rewardsSpec  rewards.Spec
-			spec         slashingSpec
-			candidates   []uint64
-			val          rewards.Validator
-			proposalSlot uint64
-			slashingSlot uint64
-		)
-
-		ginkgo.BeforeAll(func(ctx ginkgo.SpecContext) {
-			runtime := testsuite.LoadRuntime()
-			nodes := loadNodes(ctx, runtime)
-			gomega.Expect(nodes[duplicateParticipant].BeaconGRPC).NotTo(gomega.BeEmpty(), "beacon gRPC is not published")
-			gomega.Expect(runtime.ValidatorImage).NotTo(gomega.BeEmpty(), "validator image is not configured")
-			gomega.Expect(runtime.QrysmAlltoolsImage).NotTo(gomega.BeEmpty(), "Qrysm all-tools image is not configured")
-			duplicate = &node{Node: nodes[duplicateParticipant], graffiti: "duplicate-proposer"}
-			scenario = doubleProposal{
-				duplicate:           duplicate,
-				peers:               []netip.Addr{beaconAddress(nodes[primaryParticipant]), beaconAddress(nodes[watcherParticipant])},
-				alltoolsImage:       runtime.QrysmAlltoolsImage,
-				withdrawalRecipient: nodes[primaryParticipant].Address.Hex(),
-			}
-			candidates = runtime.Profile.ParticipantValidators(primaryParticipant)
-			gomega.Expect(candidates).NotTo(gomega.BeEmpty(), "profile %q runs no validators on node 1", runtime.Profile)
-
-			client = nodes[primaryParticipant].Beacon
-			chain = testsuite.MustSucceed(chaininfo.Load(ctx, client))
-			expectShortEpochs(chain)
-			rewardsSpec = testsuite.MustSucceed(rewards.LoadSpec(ctx, client))
-			spec = testsuite.MustSucceed(loadSlashingSpec(ctx, client))
-		}, ginkgo.NodeTimeout(time.Minute))
-
-		ginkgo.AfterAll(func() {
-			gomega.Expect(duplicate.stopClient()).To(gomega.Succeed())
-		})
-
-		ginkgo.It("is slashed for a double proposal once a second client runs its key on another node",
-			func(ctx ginkgo.SpecContext) {
-				slashed := false
-				for attempt := 1; attempt <= doubleProposalAttempts && !slashed; attempt++ {
-					duty := planNextEpoch(ctx, client, chain, func(epoch uint64) (beacon.ProposerDuty, bool) {
-						return proposalDuty(ctx, client, epoch, candidates)
-					})
-					val = rewards.Validator{Client: client, Chain: chain, Spec: rewardsSpec, Index: duty.ValidatorIndex}
-					proposalSlot = duty.Slot
-					slashed = scenario.run(ctx, val, duty.Slot) && awaitSlashed(ctx, val)
-				}
-				gomega.Expect(slashed).To(gomega.BeTrue(), "no double proposal was slashed in %d attempts", doubleProposalAttempts)
-
-				ginkgo.By("finding the evidence a block included")
-				slot, evidence := findEvidence(ctx, val, proposalSlot)
-				first, second := expectDoubleProposalEvidence(slot, evidence)
-				gomega.Expect(first.Slot).To(gomega.Equal(proposalSlot), "the slot the duplicate proposed")
-				ginkgo.GinkgoWriter.Printf("slot %d included a double proposal of slot %d with bodies %s and %s\n",
-					slot, first.Slot, first.BodyRoot, second.BodyRoot)
-				slashingSlot = slot
-			}, ginkgo.SpecTimeout(doubleProposalTimeout))
-
-		ginkgo.It("loses the slashing penalty in the block that includes the evidence, whose proposer earns the whistleblower reward",
-			func(ctx ginkgo.SpecContext) {
-				expectSlashedInBlock(ctx, val, spec, slashingSlot, true)
-			}, ginkgo.SpecTimeout(time.Minute))
-
-		ginkgo.It("is slashed with no validator the suite did not duplicate, and the chain keeps finalizing", func(ctx ginkgo.SpecContext) {
-			expectOnlyDuplicatesSlashed(ctx, client, chain)
-		}, ginkgo.SpecTimeout(time.Minute))
-	},
 )
 
 // proposalDuty returns a proposal of the epoch after epoch that the duplicate
@@ -117,12 +26,14 @@ var _ = ginkgo.Describe(
 // proposalCandidates checks, the proposer must not vote in the proposal's
 // slot or the next: the two blocks split the nodes' heads until the next block,
 // so a vote of the duplicate's then could differ from the primary's.
-func proposalDuty(ctx context.Context, client *beacon.Client, epoch uint64, candidates []uint64) (beacon.ProposerDuty, bool) {
+func proposalDuty(
+	ctx context.Context, client *beacon.Client, epoch uint64, candidates, duplicated []uint64,
+) (beacon.ProposerDuty, bool) {
 	ginkgo.GinkgoHelper()
 	next := epoch + 1
 	current := testsuite.MustSucceed(client.ProposerDuties(ctx, epoch))
 	upcoming := testsuite.MustSucceed(client.ProposerDuties(ctx, next))
-	for _, duty := range proposalCandidates(current, upcoming, candidates, suiteDuplicated) {
+	for _, duty := range proposalCandidates(current, upcoming, candidates, duplicated) {
 		duties := testsuite.MustSucceed(client.AttesterDuties(ctx, next, []uint64{duty.ValidatorIndex}))
 		gomega.Expect(duties).To(gomega.HaveLen(1), "attester duties of validator %d in epoch %d", duty.ValidatorIndex, next)
 		if vote := duties[0].Slot; vote != duty.Slot && vote != duty.Slot+1 {
@@ -141,12 +52,14 @@ const splitSeconds = 2
 // doubleProposal runs a second copy of a node-1 validator's key on the
 // duplicate's node, across that key's proposal.
 type doubleProposal struct {
-	duplicate *node
+	duplicate *slashingops.Node
 	// peers are the addresses of the other nodes' beacon nodes, which the
 	// duplicate's node is cut off from for the proposal.
 	peers               []netip.Addr
 	alltoolsImage       string
 	withdrawalRecipient string
+	// duplicated is every validator whose key run has started a duplicate of.
+	duplicated []uint64
 }
 
 // run runs the validator's key on the duplicate's node until the proposal of
@@ -161,7 +74,7 @@ type doubleProposal struct {
 // duplicate's node is cut off from the others across the start of slot, as
 // across a network split. Once it rejoins, each side receives the other's
 // block.
-func (scenario doubleProposal) run(ctx context.Context, val rewards.Validator, slot uint64) bool {
+func (scenario *doubleProposal) run(ctx context.Context, val rewards.Validator, slot uint64) bool {
 	ginkgo.GinkgoHelper()
 	derived := testsuite.MustSucceed(deposit.GenesisKey(ctx, deposit.GenesisKeyConfig{
 		Image:               scenario.alltoolsImage,
@@ -177,12 +90,12 @@ func (scenario doubleProposal) run(ctx context.Context, val rewards.Validator, s
 	duplicate := scenario.duplicate
 	ginkgo.By("starting a duplicate of validator " + strconv.FormatUint(val.Index, 10) +
 		" for its proposal of slot " + strconv.FormatUint(slot, 10))
-	duplicating(val.Index)
-	duplicate.startClient(ctx, derived.Keystores)
+	scenario.duplicated = append(scenario.duplicated, val.Index)
+	duplicate.StartClient(ctx, derived.Keystores)
 	defer func() {
-		gomega.Expect(duplicate.stopClient()).To(gomega.Succeed())
+		gomega.Expect(duplicate.StopClient()).To(gomega.Succeed())
 	}()
-	start := slotStart(val.Chain, slot)
+	start := slashingops.SlotStart(val.Chain, slot)
 	split := splitSeconds * time.Second
 	if time.Until(start) < split+time.Second {
 		ginkgo.GinkgoWriter.Printf("the duplicate validator client started too late for slot %d\n", slot)
@@ -204,12 +117,13 @@ func (scenario doubleProposal) run(ctx context.Context, val rewards.Validator, s
 		return false
 	}
 	gomega.Expect(testsuite.SleepUntil(ctx, start.Add(split))).To(gomega.Succeed())
-	rejoined = true
-	gomega.Expect(rejoin(context.WithoutCancel(ctx))).To(gomega.Succeed())
+	err := rejoin(context.WithoutCancel(ctx))
+	rejoined = err == nil
+	gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 	// Stopping the duplicate once the slot is over keeps it from voting while
 	// the two blocks split the heads.
-	gomega.Expect(testsuite.SleepUntil(ctx, slotStart(val.Chain, slot+1))).To(gomega.Succeed())
+	gomega.Expect(testsuite.SleepUntil(ctx, slashingops.SlotStart(val.Chain, slot+1))).To(gomega.Succeed())
 	return true
 }
 

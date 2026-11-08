@@ -12,6 +12,7 @@ import (
 	"github.com/cyyber/qrl-tests/e2e/internal/beacon"
 	"github.com/cyyber/qrl-tests/e2e/internal/rewards"
 	"github.com/cyyber/qrl-tests/e2e/internal/sidecar"
+	"github.com/cyyber/qrl-tests/e2e/internal/slashingops"
 	"github.com/cyyber/qrl-tests/e2e/internal/testsuite"
 	ginkgo "github.com/onsi/ginkgo/v2"
 	gomega "github.com/onsi/gomega"
@@ -22,7 +23,7 @@ import (
 // vote; delaying a block to the duplicate's node makes its vote differ.
 type doubleVote struct {
 	val                  rewards.Validator
-	duplicate            *node
+	duplicate            *slashingops.Node
 	pausedNodeValidators []uint64
 	keystores            []sidecar.File
 }
@@ -33,17 +34,16 @@ type doubleVote struct {
 // the client started in time.
 func (scenario *doubleVote) attempt(ctx context.Context) (uint64, bool) {
 	ginkgo.GinkgoHelper()
-	slot := planNextEpoch(ctx, scenario.val.Client, scenario.val.Chain, func(epoch uint64) (uint64, bool) {
+	slot := slashingops.PlanNextEpoch(ctx, scenario.val.Client, scenario.val.Chain, func(epoch uint64) (uint64, bool) {
 		return scenario.voteSlot(ctx, epoch)
 	})
 
 	ginkgo.By("starting the duplicate validator client for the vote of slot " + strconv.FormatUint(slot, 10))
-	duplicating(scenario.val.Index)
-	scenario.duplicate.startClient(ctx, scenario.keystores)
+	scenario.duplicate.StartClient(ctx, scenario.keystores)
 	defer func() {
-		gomega.Expect(scenario.duplicate.stopClient()).To(gomega.Succeed())
+		gomega.Expect(scenario.duplicate.StopClient()).To(gomega.Succeed())
 	}()
-	if time.Until(slotStart(scenario.val.Chain, slot)) < scenario.val.Chain.SlotDuration {
+	if time.Until(slashingops.SlotStart(scenario.val.Chain, slot)) < scenario.val.Chain.SlotDuration {
 		ginkgo.GinkgoWriter.Printf("the duplicate validator client started too late for slot %d\n", slot)
 		return slot, false
 	}
@@ -52,7 +52,7 @@ func (scenario *doubleVote) attempt(ctx context.Context) (uint64, bool) {
 	scenario.pauseAcrossVote(ctx, slot)
 
 	// Give the duplicate time to publish its vote before it is stopped.
-	gomega.Expect(testsuite.SleepUntil(ctx, slotStart(scenario.val.Chain, slot+1).Add(scenario.val.Chain.SlotDuration/2))).To(gomega.Succeed())
+	gomega.Expect(testsuite.SleepUntil(ctx, slashingops.SlotStart(scenario.val.Chain, slot+1).Add(scenario.val.Chain.SlotDuration/2))).To(gomega.Succeed())
 	return slot, true
 }
 
@@ -61,10 +61,8 @@ func (scenario *doubleVote) attempt(ctx context.Context) (uint64, bool) {
 //   - the key proposes in neither epoch nor epoch+1, so the duplicate never
 //     double proposes; a validator is slashed only once, so that would keep
 //     the double vote from being included;
-//   - a node-1 validator the suite has not duplicated proposes the vote's
-//     slot, so there is a block that node 1 sees in time and the paused node 2
-//     sees late; a duplicated validator may be slashed by then, and its block
-//     would be invalid;
+//   - a node-1 validator proposes the vote's slot, so there is a block that
+//     node 1 sees in time and the paused node 2 sees late;
 //   - the vote is not the epoch's last slot, so the duplicate is stopped
 //     before epoch+2, whose proposals aren't checked.
 func (scenario *doubleVote) voteSlot(ctx context.Context, epoch uint64) (uint64, bool) {
@@ -87,8 +85,7 @@ func (scenario *doubleVote) voteSlot(ctx context.Context, epoch uint64) (uint64,
 	}
 
 	proposer := slices.IndexFunc(upcoming, func(duty beacon.ProposerDuty) bool { return duty.Slot == slot })
-	if proposer < 0 || slices.Contains(scenario.pausedNodeValidators, upcoming[proposer].ValidatorIndex) ||
-		slices.Contains(suiteDuplicated, upcoming[proposer].ValidatorIndex) {
+	if proposer < 0 || slices.Contains(scenario.pausedNodeValidators, upcoming[proposer].ValidatorIndex) {
 		return 0, false
 	}
 	return slot, true
@@ -100,7 +97,7 @@ func (scenario *doubleVote) voteSlot(ctx context.Context, epoch uint64) (uint64,
 // client votes for the previous block as the head.
 func (scenario *doubleVote) pauseAcrossVote(ctx context.Context, slot uint64) {
 	ginkgo.GinkgoHelper()
-	start := slotStart(scenario.val.Chain, slot)
+	start := slashingops.SlotStart(scenario.val.Chain, slot)
 	gomega.Expect(testsuite.SleepUntil(ctx, start.Add(-time.Second))).To(gomega.Succeed())
 	resume := testsuite.MustSucceed(devnet.PauseService(ctx, scenario.duplicate.ConsensusServiceID))
 	defer func() {

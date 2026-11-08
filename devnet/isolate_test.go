@@ -6,6 +6,7 @@ import (
 	"io"
 	"iter"
 	"net/netip"
+	"strconv"
 	"testing"
 
 	containertypes "github.com/moby/moby/api/types/container"
@@ -39,10 +40,19 @@ func TestIsolateService(t *testing.T) {
 
 	require.NoError(t, rejoin(t.Context()))
 	require.Len(t, client.created, 2)
-	require.Contains(t, client.created[1].Config.Cmd[12], "iptables -D INPUT -s 172.16.0.11 -j DROP")
+	rejoinCmd := client.created[1].Config.Cmd
+	require.Contains(t, rejoinCmd[len(rejoinCmd)-1], "iptables -D INPUT -s 172.16.0.11 -j DROP")
 	require.Equal(t, []string{"helper-1", "helper-2"}, client.removed)
 	// The image is pulled only once it is missing.
 	require.Len(t, client.pulled, 1)
+}
+
+func TestEnsureImage(t *testing.T) {
+	client := newFakeIsolator()
+	require.NoError(t, ensureImage(t.Context(), client, isolationImage))
+	require.NoError(t, ensureImage(t.Context(), client, isolationImage))
+	// The image is pulled only while it is missing.
+	require.Equal(t, []string{isolationImage}, client.pulled)
 }
 
 func TestIsolateServiceErrors(t *testing.T) {
@@ -109,7 +119,7 @@ func (client *fakeIsolator) ContainerInspect(context.Context, string, dockerclie
 
 func (client *fakeIsolator) ContainerCreate(_ context.Context, options dockerclient.ContainerCreateOptions) (dockerclient.ContainerCreateResult, error) {
 	client.created = append(client.created, options)
-	return dockerclient.ContainerCreateResult{ID: "helper-" + string(rune('0'+len(client.created)))}, nil
+	return dockerclient.ContainerCreateResult{ID: "helper-" + strconv.Itoa(len(client.created))}, nil
 }
 
 func (client *fakeIsolator) ContainerStart(context.Context, string, dockerclient.ContainerStartOptions) (dockerclient.ContainerStartResult, error) {

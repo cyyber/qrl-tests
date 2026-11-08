@@ -18,20 +18,34 @@ import (
 // nsenter is used: the helper enters the Docker host's mount namespace for
 // that host's nsenter and iptables, and the service's network namespace for
 // the rules, so the service's own image needs neither.
-const isolationImage = "alpine:3.22"
+const isolationImage = "alpine:3.22@sha256:49340b346798875b5592e5d420241f2f9cfba5f47e62ebb1446a1b34734e898f"
 
 // isolationTimeout bounds one run of the helper, pulling its image included.
 const isolationTimeout = 2 * time.Minute
 
-type serviceIsolator interface {
-	containerLister
+type imagePuller interface {
 	imageInspector
 	ImagePull(context.Context, string, dockerclient.ImagePullOptions) (dockerclient.ImagePullResponse, error)
+}
+
+type serviceIsolator interface {
+	containerLister
+	imagePuller
 	ContainerInspect(context.Context, string, dockerclient.ContainerInspectOptions) (dockerclient.ContainerInspectResult, error)
 	ContainerCreate(context.Context, dockerclient.ContainerCreateOptions) (dockerclient.ContainerCreateResult, error)
 	ContainerStart(context.Context, string, dockerclient.ContainerStartOptions) (dockerclient.ContainerStartResult, error)
 	ContainerWait(context.Context, string, dockerclient.ContainerWaitOptions) dockerclient.ContainerWaitResult
 	ContainerRemove(context.Context, string, dockerclient.ContainerRemoveOptions) (dockerclient.ContainerRemoveResult, error)
+}
+
+// PrepareIsolation pulls the helper IsolateService runs, so that a first
+// isolation timed to a slot doesn't wait for the pull.
+func PrepareIsolation(ctx context.Context) error {
+	client, err := dockerapi.New()
+	if err != nil {
+		return fmt.Errorf("create Docker client: %w", err)
+	}
+	return errors.Join(ensureImage(ctx, client, isolationImage), client.Close())
 }
 
 // IsolateService drops every packet between a Kurtosis service's container
@@ -102,7 +116,7 @@ func isolationRules(action string, peers []netip.Addr) string {
 	return "set -e\n" + strings.Join(rules, "\n")
 }
 
-func ensureImage(ctx context.Context, client serviceIsolator, image string) error {
+func ensureImage(ctx context.Context, client imagePuller, image string) error {
 	if _, err := client.ImageInspect(ctx, image); err == nil {
 		return nil
 	}

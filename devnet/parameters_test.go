@@ -90,6 +90,27 @@ func TestDuplicateValidatorProfileParameters(t *testing.T) {
 	var parameters map[string]any
 	require.NoError(t, json.Unmarshal([]byte(payload), &parameters))
 	participants := parameters["participants"].([]any)
+	require.Len(t, participants, 2)
+	for _, entry := range participants {
+		participant := entry.(map[string]any)
+		require.Equal(t, float64(32), participant["validator_count"])
+		require.Equal(t,
+			[]any{"--min-sync-peers=0", "--minimum-peers-per-subnet=0", "--slasher", "--subscribe-all-subnets"},
+			participant["cl_extra_params"],
+		)
+	}
+	network := parameters["network_params"].(map[string]any)
+	require.Equal(t, float64(65), network["preregistered_validator_count"])
+	require.Equal(t, []string{"--min-sync-peers=0", "--minimum-peers-per-subnet=0"}, defaultCLExtraParams)
+}
+
+func TestDoubleProposalProfileParameters(t *testing.T) {
+	payload, err := resolveParameters("Q"+strings.Repeat("a", 128), StartOptions{Profile: ProfileDoubleProposal})
+	require.NoError(t, err)
+
+	var parameters map[string]any
+	require.NoError(t, json.Unmarshal([]byte(payload), &parameters))
+	participants := parameters["participants"].([]any)
 	require.Len(t, participants, 3)
 	// The third participant only watches: it runs a slasher and no validators.
 	for index, want := range []float64{32, 32, 0} {
@@ -101,8 +122,7 @@ func TestDuplicateValidatorProfileParameters(t *testing.T) {
 		)
 	}
 	network := parameters["network_params"].(map[string]any)
-	require.Equal(t, float64(65), network["preregistered_validator_count"])
-	require.Equal(t, []string{"--min-sync-peers=0", "--minimum-peers-per-subnet=0"}, defaultCLExtraParams)
+	require.NotContains(t, network, "preregistered_validator_count")
 }
 
 func TestFileParametersPassThroughUnchanged(t *testing.T) {
