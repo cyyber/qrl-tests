@@ -19,9 +19,8 @@ import (
 // validator's record at the block.
 func expectSlashedInBlock(ctx context.Context, val rewards.Validator, spec slashingSpec, slot uint64) beacon.Validator {
 	ginkgo.GinkgoHelper()
-	index := strconv.FormatUint(val.Index, 10)
-	before := testsuite.MustSucceed(val.Client.ValidatorAt(ctx, strconv.FormatUint(slot-1, 10), index))
-	on := testsuite.MustSucceed(val.Client.ValidatorAt(ctx, strconv.FormatUint(slot, 10), index))
+	before := testsuite.MustSucceed(val.RecordAt(ctx, slot-1))
+	on := testsuite.MustSucceed(val.RecordAt(ctx, slot))
 	gomega.Expect(before.Slashed).To(gomega.BeFalse())
 	gomega.Expect(on.Slashed).To(gomega.BeTrue())
 	gomega.Expect(on.Status).To(gomega.Equal("active_slashed"))
@@ -52,6 +51,31 @@ func expectSlashedInBlock(ctx context.Context, val rewards.Validator, spec slash
 		"what the block's proposer earned for the evidence")
 	gomega.Expect(blockRewards.ProposerSlashings).To(gomega.BeZero())
 	return on
+}
+
+// expectDoubleVoteEvidence checks that the evidence the block at slot holds is
+// an attester slashing for a double vote, and returns its two votes.
+func expectDoubleVoteEvidence(slot uint64, evidence slashingEvidence) (first, second beacon.AttestationData) {
+	ginkgo.GinkgoHelper()
+	gomega.Expect(evidence.attester).NotTo(gomega.BeNil(),
+		"the block at slot %d slashed the validator for a double proposal", slot)
+	first, second = evidence.attester.Attestation1.Data, evidence.attester.Attestation2.Data
+	gomega.Expect(isDoubleVote(first, second)).To(gomega.BeTrue(),
+		"the attestations of slots %d and %d are not a double vote", first.Slot, second.Slot)
+	return first, second
+}
+
+// expectExitedSlashed checks the validator's record at the start of epoch: it
+// has exited as slashed, and its stake stays locked until the withdrawable
+// epoch its slashing set.
+func expectExitedSlashed(ctx context.Context, val rewards.Validator, epoch uint64, onSlashing beacon.Validator) {
+	ginkgo.GinkgoHelper()
+	record := testsuite.MustSucceed(val.RecordAtEpochStart(ctx, epoch))
+	gomega.Expect(record.Status).To(gomega.Equal("exited_slashed"), "status at the start of epoch %d", epoch)
+	gomega.Expect(record.WithdrawableEpoch).To(gomega.Equal(onSlashing.WithdrawableEpoch),
+		"withdrawable epoch at the start of epoch %d", epoch)
+	gomega.Expect(epoch).To(gomega.BeNumerically("<", record.WithdrawableEpoch),
+		"the validator can withdraw at the start of epoch %d", epoch)
 }
 
 // expectMissedVotePenalty checks that the validator's votes of epoch cost

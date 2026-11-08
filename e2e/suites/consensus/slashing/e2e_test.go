@@ -3,7 +3,7 @@
 package slashing
 
 import (
-	"strconv"
+	"errors"
 	"testing"
 	"time"
 
@@ -18,14 +18,25 @@ import (
 )
 
 const (
+	// The devnet participants that run the primary and the duplicate copy of
+	// the validator's key.
+	primaryParticipant   = 0
+	duplicateParticipant = 1
+
 	doubleVoteAttempts = 3
 
 	attestTimeout     = 5 * time.Minute
 	doubleVoteTimeout = 15 * time.Minute
-	exitTimeout       = 5 * time.Minute
+	// The exit spec waits for the rewards of the exit epoch, which is
+	// MAX_SEED_LOOKAHEAD+1 epochs after the slashing: up to 7 epochs, or 280s
+	// on the devnet's 40s epochs.
+	exitTimeout = 7 * time.Minute
 
 	afterExitEpochs  = 2
 	afterExitTimeout = 4 * time.Minute
+
+	// A healthy chain finalizes within this many epochs of its head.
+	maxFinalityLagEpochs = 3
 )
 
 func TestE2E(t *testing.T) {
@@ -49,8 +60,8 @@ var _ = ginkgo.Describe(
 			val                     rewards.Validator
 			spec                    slashingSpec
 			keystores               []sidecar.File
-			pausedNodeValidators    []uint64
-			slashingSlot, firstVote uint64
+			duplicateNodeValidators []uint64
+			slashingSlot            uint64
 			onSlashing              beacon.Validator
 		)
 
@@ -58,14 +69,14 @@ var _ = ginkgo.Describe(
 			runtime := testsuite.LoadRuntime()
 			nodes := testsuite.MustSucceed(runtime.Nodes(ctx))
 			gomega.Expect(nodes).To(gomega.HaveLen(2), "the suite runs the validator on two nodes")
-			for _, node := range nodes {
-				gomega.Expect(node.BeaconGRPC).NotTo(gomega.BeEmpty(), "beacon gRPC is not published")
+			for _, participant := range nodes {
+				gomega.Expect(participant.BeaconGRPC).NotTo(gomega.BeEmpty(), "beacon gRPC is not published")
 			}
 			gomega.Expect(runtime.ValidatorImage).NotTo(gomega.BeEmpty(), "validator image is not configured")
 			gomega.Expect(runtime.QrysmAlltoolsImage).NotTo(gomega.BeEmpty(), "Qrysm all-tools image is not configured")
-			primary = &node{Node: nodes[0], graffiti: "primary"}
-			duplicate = &node{Node: nodes[1], graffiti: "duplicate"}
-			pausedNodeValidators = runtime.Profile.ParticipantValidators(1)
+			primary = &node{Node: nodes[primaryParticipant], graffiti: "primary"}
+			duplicate = &node{Node: nodes[duplicateParticipant], graffiti: "duplicate"}
+			duplicateNodeValidators = runtime.Profile.ParticipantValidators(duplicateParticipant)
 
 			spares := runtime.Profile.SpareValidators()
 			gomega.Expect(spares).NotTo(gomega.BeEmpty(), "profile %q has no genesis validator that no client runs", runtime.Profile)
@@ -82,17 +93,17 @@ var _ = ginkgo.Describe(
 				ctx, beaconClient, runtime.QrysmAlltoolsImage, primary.Address.Hex(), val.Index))
 		}, ginkgo.NodeTimeout(3*time.Minute))
 
+		// Each double-vote attempt stops the duplicate's client and prints its
+		// logs, so only the primary's are left to report.
 		ginkgo.AfterEach(func() {
-			for _, node := range []*node{primary, duplicate} {
-				if node != nil {
-					testsuite.ReportLogsOnFailure(node.graffiti+" validator client", node.client)
-				}
+			if primary != nil {
+				testsuite.ReportLogsOnFailure(primary.graffiti+" validator client", primary.client)
 			}
 		})
 
 		ginkgo.AfterAll(func() {
-			gomega.Expect(primary.stopClient()).To(gomega.Succeed())
-			gomega.Expect(duplicate.stopClient()).To(gomega.Succeed())
+			// Stop both clients even when one fails to stop.
+			gomega.Expect(errors.Join(primary.stopClient(), duplicate.stopClient())).To(gomega.Succeed())
 		})
 
 		ginkgo.It("attests through its validator client", func(ctx ginkgo.SpecContext) {
@@ -106,29 +117,26 @@ var _ = ginkgo.Describe(
 				scenario := doubleVote{
 					val:                  val,
 					duplicate:            duplicate,
-					pausedNodeValidators: pausedNodeValidators,
+					pausedNodeValidators: duplicateNodeValidators,
 					keystores:            keystores,
 				}
-				for attempt := 1; ; attempt++ {
-					gomega.Expect(attempt).To(gomega.BeNumerically("<=", doubleVoteAttempts),
-						"no double vote was slashed after %d delayed blocks", doubleVoteAttempts)
+				// A double vote missed by one attempt may still be included
+				// during a later one, so the evidence is searched for from the
+				// first attempt's vote.
+				var firstVote uint64
+				slashed := false
+				for attempt := 1; attempt <= doubleVoteAttempts && !slashed; attempt++ {
 					slot, run := scenario.attempt(ctx)
-					if firstVote == 0 {
+					if attempt == 1 {
 						firstVote = slot
 					}
-					if run && scenario.awaitSlashed(ctx) {
-						break
-					}
+					slashed = run && scenario.awaitSlashed(ctx)
 				}
+				gomega.Expect(slashed).To(gomega.BeTrue(), "no double vote was slashed in %d attempts", doubleVoteAttempts)
 
 				ginkgo.By("finding the evidence a block included")
 				slot, evidence := scenario.findEvidence(ctx, firstVote)
-				gomega.Expect(evidence.proposer).To(gomega.BeNil(),
-					"the block at slot %d slashed the validator for a double proposal", slot)
-				gomega.Expect(evidence.attester).NotTo(gomega.BeNil())
-				first, second := evidence.attester.Attestation1.Data, evidence.attester.Attestation2.Data
-				gomega.Expect(isDoubleVote(first, second)).To(gomega.BeTrue(),
-					"the attestations of slots %d and %d are not a double vote", first.Slot, second.Slot)
+				first, second := expectDoubleVoteEvidence(slot, evidence)
 				ginkgo.GinkgoWriter.Printf("slot %d included a double vote of slot %d for heads %s and %s\n",
 					slot, first.Slot, first.BeaconBlockRoot, second.BeaconBlockRoot)
 				slashingSlot = slot
@@ -141,16 +149,15 @@ var _ = ginkgo.Describe(
 
 		ginkgo.It("loses exactly the missed-vote penalty in every epoch from its slashing through its exit",
 			func(ctx ginkgo.SpecContext) {
-				// Its votes no longer count, whatever its clients sign.
+				// Its votes no longer count, whatever its clients sign. The
+				// slashing epoch's rewards are processed an epoch later, by
+				// when the validator is slashed, so they are penalties too.
 				exit := onSlashing.ExitEpoch
 				val.AwaitRewards(ctx, exit)
-				for epoch := val.Chain.Epoch(slashingSlot) + 1; epoch <= exit; epoch++ {
+				for epoch := val.Chain.Epoch(slashingSlot); epoch <= exit; epoch++ {
 					expectMissedVotePenalty(ctx, val, epoch)
 				}
-
-				exitState := strconv.FormatUint(exit*val.Chain.SlotsPerEpoch, 10)
-				exited := testsuite.MustSucceed(val.Client.ValidatorAt(ctx, exitState, strconv.FormatUint(val.Index, 10)))
-				gomega.Expect(exited.Status).To(gomega.Equal("exited_slashed"), "status at the start of epoch %d", exit)
+				expectExitedSlashed(ctx, val, exit, onSlashing)
 			}, ginkgo.SpecTimeout(exitTimeout))
 
 		ginkgo.It("keeps losing the missed-vote penalty after its exit, with its stake locked until it can withdraw",
@@ -160,31 +167,20 @@ var _ = ginkgo.Describe(
 				first := onSlashing.ExitEpoch + 1
 				last := onSlashing.ExitEpoch + afterExitEpochs
 				val.AwaitRewards(ctx, last)
-				index := strconv.FormatUint(val.Index, 10)
 				for epoch := first; epoch <= last; epoch++ {
+					// This also checks the balance at the start of epoch+2.
 					expectMissedVotePenalty(ctx, val, epoch)
-
-					state := strconv.FormatUint((epoch+2)*val.Chain.SlotsPerEpoch, 10)
-					record := testsuite.MustSucceed(val.Client.ValidatorAt(ctx, state, index))
-					gomega.Expect(record.Status).To(gomega.Equal("exited_slashed"), "status at the start of epoch %d", epoch+2)
-					gomega.Expect(record.WithdrawableEpoch).To(gomega.Equal(onSlashing.WithdrawableEpoch),
-						"withdrawable epoch at the start of epoch %d", epoch+2)
-					gomega.Expect(record.Balance).To(gomega.BeNumerically(">", 0), "balance at the start of epoch %d", epoch+2)
+					expectExitedSlashed(ctx, val, epoch+2, onSlashing)
 				}
 			}, ginkgo.SpecTimeout(afterExitTimeout))
 
 		ginkgo.It("slashes no other validator, and the chain keeps finalizing", func(ctx ginkgo.SpecContext) {
 			slashed := testsuite.MustSucceed(val.Client.SlashedValidators(ctx))
-			indices := make([]uint64, len(slashed))
-			for position, record := range slashed {
-				indices[position] = record.Index
-			}
-			gomega.Expect(indices).To(gomega.Equal([]uint64{val.Index}))
+			gomega.Expect(slashed).To(gomega.HaveExactElements(gomega.HaveField("Index", val.Index)))
 
-			// A healthy chain finalizes within three epochs of its head.
 			head := testsuite.MustSucceed(val.Client.HeadSlot(ctx))
 			checkpoints := testsuite.MustSucceed(val.Client.FinalityCheckpoints(ctx))
-			gomega.Expect(checkpoints.Finalized.Epoch+3).To(gomega.BeNumerically(">=", val.Chain.Epoch(head)),
+			gomega.Expect(checkpoints.Finalized.Epoch+maxFinalityLagEpochs).To(gomega.BeNumerically(">=", val.Chain.Epoch(head)),
 				"finalized epoch %d at head slot %d", checkpoints.Finalized.Epoch, head)
 		}, ginkgo.SpecTimeout(time.Minute))
 	},
