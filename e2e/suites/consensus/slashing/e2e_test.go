@@ -118,9 +118,9 @@ var _ = ginkgo.Describe(
 					pausedNodeValidators: duplicateNodeValidators,
 					keystores:            keystores,
 				}
-				// A double vote missed by one attempt may still be included
-				// during a later one, so the evidence is searched for from the
-				// first attempt's vote.
+				// An earlier attempt's double vote can be slashed during a
+				// later attempt, so the evidence search starts from the first
+				// attempt's vote.
 				var firstVote uint64
 				slashed := false
 				for attempt := 1; attempt <= doubleVoteAttempts && !slashed; attempt++ {
