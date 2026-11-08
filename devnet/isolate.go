@@ -20,7 +20,7 @@ import (
 // the rules, so the service's own image needs neither.
 const isolationImage = "alpine:3.22@sha256:49340b346798875b5592e5d420241f2f9cfba5f47e62ebb1446a1b34734e898f"
 
-// isolationTimeout bounds one run of the helper, pulling its image included.
+// isolationTimeout bounds one run of the helper.
 const isolationTimeout = 2 * time.Minute
 
 type imagePuller interface {
@@ -93,7 +93,12 @@ func isolateService(
 		return nil, err
 	}
 	if err := runIsolationRules(ctx, client, pid, isolationRules("-I", peers)); err != nil {
-		return nil, fmt.Errorf("isolate service %q: %w", serviceID, err)
+		// An insert that failed partway leaves the rules before it in place.
+		cleanupErr := runIsolationRules(context.WithoutCancel(ctx), client, pid, cleanupRules(peers))
+		return nil, errors.Join(
+			fmt.Errorf("isolate service %q: %w", serviceID, err),
+			wrapCleanup(serviceID, cleanupErr),
+		)
 	}
 	return func(ctx context.Context) error {
 		if err := runIsolationRules(ctx, client, pid, isolationRules("-D", peers)); err != nil {
@@ -106,6 +111,19 @@ func isolateService(
 // isolationRules is the script that inserts (-I) or deletes (-D) a rule
 // dropping each direction of the traffic with every peer.
 func isolationRules(action string, peers []netip.Addr) string {
+	return "set -e\n" + strings.Join(peerRules(action, peers), "\n")
+}
+
+// cleanupRules is the script that deletes whichever of the rules exist.
+func cleanupRules(peers []netip.Addr) string {
+	rules := peerRules("-D", peers)
+	for position := range rules {
+		rules[position] += " || true"
+	}
+	return strings.Join(rules, "\n")
+}
+
+func peerRules(action string, peers []netip.Addr) []string {
 	rules := make([]string, 0, 2*len(peers))
 	for _, peer := range peers {
 		rules = append(rules,
@@ -113,7 +131,14 @@ func isolationRules(action string, peers []netip.Addr) string {
 			"iptables "+action+" OUTPUT -d "+peer.String()+" -j DROP",
 		)
 	}
-	return "set -e\n" + strings.Join(rules, "\n")
+	return rules
+}
+
+func wrapCleanup(serviceID string, err error) error {
+	if err == nil {
+		return nil
+	}
+	return fmt.Errorf("remove the rules of service %q: %w", serviceID, err)
 }
 
 func ensureImage(ctx context.Context, client imagePuller, image string) error {

@@ -73,11 +73,25 @@ func TestIsolateServiceErrors(t *testing.T) {
 	require.EqualError(t, err, `service "consensus-service" has no running process`)
 	require.Empty(t, client.created)
 
+	// A failed insert is followed by a cleanup that deletes whichever rules
+	// it left, without stopping at one that is missing.
 	client = newFakeIsolator()
 	client.exitCodes = []int64{3}
 	_, err = isolateService(t.Context(), client, "consensus-service", peers)
 	require.EqualError(t, err, `isolate service "consensus-service": helper exited with code 3`)
-	require.Equal(t, []string{"helper-1"}, client.removed)
+	require.Len(t, client.created, 2)
+	cleanup := client.created[1].Config.Cmd
+	require.Equal(t,
+		"iptables -D INPUT -s 172.16.0.11 -j DROP || true\niptables -D OUTPUT -d 172.16.0.11 -j DROP || true",
+		cleanup[len(cleanup)-1],
+	)
+	require.Equal(t, []string{"helper-1", "helper-2"}, client.removed)
+
+	client = newFakeIsolator()
+	client.exitCodes = []int64{3, 4}
+	_, err = isolateService(t.Context(), client, "consensus-service", peers)
+	require.EqualError(t, err, "isolate service \"consensus-service\": helper exited with code 3\n"+
+		"remove the rules of service \"consensus-service\": helper exited with code 4")
 
 	client = newFakeIsolator()
 	client.exitCodes = []int64{0, 1}
