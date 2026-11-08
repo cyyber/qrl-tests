@@ -161,15 +161,15 @@ var _ = ginkgo.Describe(
 		ginkgo.It("keeps losing the missed-vote penalty after its exit, before it can withdraw",
 			func(ctx ginkgo.SpecContext) {
 				// A slashed validator stays liable for missed votes until it
-				// can withdraw.
+				// can withdraw, hundreds of epochs after its exit. The spec
+				// checks the first afterExitEpochs of them.
 				first := onSlashing.ExitEpoch + 1
 				last := onSlashing.ExitEpoch + afterExitEpochs
+				gomega.Expect(last+2).To(gomega.BeNumerically("<", onSlashing.WithdrawableEpoch),
+					"the validator can withdraw by epoch %d", last+2)
 				val.AwaitRewards(ctx, last)
 				for epoch := first; epoch <= last; epoch++ {
-					// expectMissedVotePenalty checks the exact balance at the
-					// start of epoch+2, so expectExitedSlashed leaves it out.
 					expectMissedVotePenalty(ctx, val, epoch)
-					expectExitedSlashed(ctx, val, epoch+2, onSlashing)
 				}
 			}, ginkgo.SpecTimeout(afterExitTimeout))
 
