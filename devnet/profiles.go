@@ -36,7 +36,9 @@ const (
 	// ProfileDuplicateValidator has two participants of 32 validators, each
 	// beacon node with a slasher, and a spare genesis validator that no
 	// participant runs. A suite duplicates the spare by running its key in two
-	// validator sidecars, one on each node.
+	// validator sidecars, one on each node. Each participant also runs more
+	// than a third of the stake, so stopping one's validator client stops
+	// finality, and the slashers catch a double vote when it restarts.
 	ProfileDuplicateValidator Profile = "duplicate-validator"
 	// ProfileDoubleProposal has three participants, each beacon node with a
 	// slasher: the first two run 32 validators each, and the third runs none. A
