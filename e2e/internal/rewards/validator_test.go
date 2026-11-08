@@ -185,6 +185,17 @@ func TestBalanceAtEpochStart(t *testing.T) {
 	require.Equal(t, uint64(39_999*shorPerQRL), balance)
 }
 
+func TestRecordAtEpochStart(t *testing.T) {
+	_, client := newStateBeacon(t, map[string]string{
+		"beacon/states/48/validators/64": validatorJSON(39_999*shorPerQRL, 39_000*shorPerQRL),
+	})
+	record, err := testValidator(client).RecordAtEpochStart(t.Context(), 6)
+	require.NoError(t, err)
+	require.Equal(t, uint64(validatorIndex), record.Index)
+	require.Equal(t, uint64(39_999*shorPerQRL), record.Balance)
+	require.Equal(t, uint64(39_000*shorPerQRL), record.EffectiveBalance)
+}
+
 func TestBlockBalanceChanges(t *testing.T) {
 	block := func(withdrawals string) string {
 		return fmt.Sprintf(`{"message":{"proposer_index":"3","body":{"execution_payload":{"withdrawals":[%s]}}}}`, withdrawals)

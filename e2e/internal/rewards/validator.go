@@ -32,23 +32,16 @@ func LoadSpec(ctx context.Context, client *beacon.Client) (Spec, error) {
 		return Spec{}, err
 	}
 	var spec Spec
-	for _, constant := range []struct {
-		name  string
-		field *uint64
-	}{
-		{"EFFECTIVE_BALANCE_INCREMENT", &spec.increment},
-		{"BASE_REWARD_FACTOR", &spec.baseRewardFactor},
-		{"TIMELY_SOURCE_WEIGHT", &spec.sourceWeight},
-		{"TIMELY_TARGET_WEIGHT", &spec.targetWeight},
-		{"WEIGHT_DENOMINATOR", &spec.weightDenominator},
-		{"MIN_EPOCHS_TO_INACTIVITY_PENALTY", &spec.minEpochsToInactivityPenalty},
-		{"MIN_ATTESTATION_INCLUSION_DELAY", &spec.minInclusionDelay},
-	} {
-		value, err := values.Uint(constant.name)
-		if err != nil {
-			return Spec{}, err
-		}
-		*constant.field = value
+	if err := values.Uints(map[string]*uint64{
+		"EFFECTIVE_BALANCE_INCREMENT":      &spec.increment,
+		"BASE_REWARD_FACTOR":               &spec.baseRewardFactor,
+		"TIMELY_SOURCE_WEIGHT":             &spec.sourceWeight,
+		"TIMELY_TARGET_WEIGHT":             &spec.targetWeight,
+		"WEIGHT_DENOMINATOR":               &spec.weightDenominator,
+		"MIN_EPOCHS_TO_INACTIVITY_PENALTY": &spec.minEpochsToInactivityPenalty,
+		"MIN_ATTESTATION_INCLUSION_DELAY":  &spec.minInclusionDelay,
+	}); err != nil {
+		return Spec{}, err
 	}
 	return spec, nil
 }
@@ -158,11 +151,21 @@ func (validator Validator) BalanceAtEpochStart(ctx context.Context, epoch uint64
 	return validator.BalanceAt(ctx, epoch*validator.Chain.SlotsPerEpoch)
 }
 
-// BalanceAt is the balance in the state at slot, after its block if it has
-// one.
+// BalanceAt is the balance in the state at slot.
 func (validator Validator) BalanceAt(ctx context.Context, slot uint64) (uint64, error) {
-	record, err := validator.Client.ValidatorAt(ctx, strconv.FormatUint(slot, 10), strconv.FormatUint(validator.Index, 10))
+	record, err := validator.RecordAt(ctx, slot)
 	return record.Balance, err
+}
+
+// RecordAtEpochStart is the validator's record in the state at the first slot
+// of epoch.
+func (validator Validator) RecordAtEpochStart(ctx context.Context, epoch uint64) (beacon.Validator, error) {
+	return validator.RecordAt(ctx, epoch*validator.Chain.SlotsPerEpoch)
+}
+
+// RecordAt is the validator's record in the state at slot.
+func (validator Validator) RecordAt(ctx context.Context, slot uint64) (beacon.Validator, error) {
+	return validator.Client.ValidatorAt(ctx, strconv.FormatUint(slot, 10), strconv.FormatUint(validator.Index, 10))
 }
 
 // BlockBalanceChanges sums BlockBalanceChange over the blocks between
