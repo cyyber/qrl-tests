@@ -151,6 +151,39 @@ func (runtime *Runtime) StopValidators(ctx context.Context) error {
 	return devnet.NewManager().StopServices(ctx, runtime.environment.EnclaveName, validators)
 }
 
+// StopValidator stops the validator client of the participant at position
+// (from 0). Its beacon node and execution client keep running.
+func (runtime *Runtime) StopValidator(ctx context.Context, position int) error {
+	service, err := runtime.validatorService(position)
+	if err != nil {
+		return err
+	}
+	return devnet.NewManager().StopServices(ctx, runtime.environment.EnclaveName, []string{service})
+}
+
+// StartValidator starts the validator client that StopValidator stopped, with
+// its keys and slashing protection. It comes back on other host ports, which
+// no suite reads.
+func (runtime *Runtime) StartValidator(ctx context.Context, position int) error {
+	service, err := runtime.validatorService(position)
+	if err != nil {
+		return err
+	}
+	return devnet.NewManager().StartServices(ctx, runtime.environment.EnclaveName, []string{service})
+}
+
+func (runtime *Runtime) validatorService(position int) (string, error) {
+	participants := runtime.environment.Participants
+	if position < 0 || position >= len(participants) {
+		return "", fmt.Errorf("the network has no participant at position %d", position)
+	}
+	service := participants[position].Validator.Name
+	if service == "" {
+		return "", fmt.Errorf("participant %d runs no validator client", participants[position].Index)
+	}
+	return service, nil
+}
+
 // StopNodes stops every beacon node, then every execution client. They keep
 // their data.
 func (runtime *Runtime) StopNodes(ctx context.Context) error {
