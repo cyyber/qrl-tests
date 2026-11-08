@@ -1,6 +1,6 @@
 //go:build e2e
 
-package slashingproposal
+package slashingdoubleproposal
 
 import (
 	"net/netip"

@@ -1,4 +1,4 @@
-package slashingproposal
+package slashingdoubleproposal
 
 import (
 	"cmp"

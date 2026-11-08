@@ -1,6 +1,6 @@
 //go:build e2e
 
-package slashing
+package slashingdoublevote
 
 import (
 	"errors"
@@ -30,7 +30,7 @@ const (
 )
 
 func TestE2E(t *testing.T) {
-	testsuite.Run(t, "Slashing E2E suite")
+	testsuite.Run(t, "Double-vote slashing E2E suite")
 }
 
 // The suite follows the slashed validator through its exit and checks its

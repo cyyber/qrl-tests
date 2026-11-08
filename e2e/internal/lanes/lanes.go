@@ -23,31 +23,31 @@ type Lane struct {
 type SuiteID string
 
 const (
-	suiteExecutionABI              SuiteID = "execution-abi"
-	suiteExecutionConsole          SuiteID = "execution-console"
-	suiteExecutionTxpool           SuiteID = "execution-txpool"
-	suiteConsensusStakingAutomated SuiteID = "consensus-staking-automated"
-	suiteConsensusStakingOperator  SuiteID = "consensus-staking-operator"
-	suiteConsensusPenalties        SuiteID = "consensus-penalties"
-	suiteConsensusSlashing         SuiteID = "consensus-slashing"
-	suiteConsensusSlashingProposal SuiteID = "consensus-slashing-proposal"
-	suiteResilienceNetworkRestart  SuiteID = "resilience-network-restart"
-	suiteSyncGenesis               SuiteID = "sync-genesis"
-	suiteSyncCheckpoint            SuiteID = "sync-checkpoint"
+	suiteExecutionABI                    SuiteID = "execution-abi"
+	suiteExecutionConsole                SuiteID = "execution-console"
+	suiteExecutionTxpool                 SuiteID = "execution-txpool"
+	suiteConsensusStakingAutomated       SuiteID = "consensus-staking-automated"
+	suiteConsensusStakingOperator        SuiteID = "consensus-staking-operator"
+	suiteConsensusPenalties              SuiteID = "consensus-penalties"
+	suiteConsensusSlashingDoubleVote     SuiteID = "consensus-slashing-double-vote"
+	suiteConsensusSlashingDoubleProposal SuiteID = "consensus-slashing-double-proposal"
+	suiteResilienceNetworkRestart        SuiteID = "resilience-network-restart"
+	suiteSyncGenesis                     SuiteID = "sync-genesis"
+	suiteSyncCheckpoint                  SuiteID = "sync-checkpoint"
 )
 
 var suitePackages = map[SuiteID]string{
-	suiteExecutionABI:              "./e2e/suites/execution/abi",
-	suiteExecutionConsole:          "./e2e/suites/execution/console",
-	suiteExecutionTxpool:           "./e2e/suites/execution/txpool",
-	suiteConsensusStakingAutomated: "./e2e/suites/consensus/staking/automated",
-	suiteConsensusStakingOperator:  "./e2e/suites/consensus/staking/operator",
-	suiteConsensusPenalties:        "./e2e/suites/consensus/penalties",
-	suiteConsensusSlashing:         "./e2e/suites/consensus/slashing",
-	suiteConsensusSlashingProposal: "./e2e/suites/consensus/slashingproposal",
-	suiteResilienceNetworkRestart:  "./e2e/suites/resilience/networkrestart",
-	suiteSyncGenesis:               "./e2e/suites/sync/genesis",
-	suiteSyncCheckpoint:            "./e2e/suites/sync/checkpoint",
+	suiteExecutionABI:                    "./e2e/suites/execution/abi",
+	suiteExecutionConsole:                "./e2e/suites/execution/console",
+	suiteExecutionTxpool:                 "./e2e/suites/execution/txpool",
+	suiteConsensusStakingAutomated:       "./e2e/suites/consensus/staking/automated",
+	suiteConsensusStakingOperator:        "./e2e/suites/consensus/staking/operator",
+	suiteConsensusPenalties:              "./e2e/suites/consensus/penalties",
+	suiteConsensusSlashingDoubleVote:     "./e2e/suites/consensus/slashingdoublevote",
+	suiteConsensusSlashingDoubleProposal: "./e2e/suites/consensus/slashingdoubleproposal",
+	suiteResilienceNetworkRestart:        "./e2e/suites/resilience/networkrestart",
+	suiteSyncGenesis:                     "./e2e/suites/sync/genesis",
+	suiteSyncCheckpoint:                  "./e2e/suites/sync/checkpoint",
 }
 
 var registry = []Lane{
@@ -81,15 +81,15 @@ var registry = []Lane{
 		Timeout: 30 * time.Minute,
 	},
 	{
-		Name:    "consensus-slashing",
+		Name:    "consensus-slashing-double-vote",
 		Profile: devnet.ProfileDuplicateValidator,
-		Suites:  []SuiteID{suiteConsensusSlashing},
+		Suites:  []SuiteID{suiteConsensusSlashingDoubleVote},
 		Timeout: 40 * time.Minute,
 	},
 	{
-		Name:    "consensus-slashing-proposal",
+		Name:    "consensus-slashing-double-proposal",
 		Profile: devnet.ProfileDoubleProposal,
-		Suites:  []SuiteID{suiteConsensusSlashingProposal},
+		Suites:  []SuiteID{suiteConsensusSlashingDoubleProposal},
 		Timeout: 30 * time.Minute,
 	},
 	{
@@ -172,15 +172,15 @@ func (lane Lane) NeedsValidatorImage() bool {
 	return slices.Contains(lane.Suites, suiteConsensusStakingAutomated) ||
 		slices.Contains(lane.Suites, suiteConsensusStakingOperator) ||
 		slices.Contains(lane.Suites, suiteConsensusPenalties) ||
-		slices.Contains(lane.Suites, suiteConsensusSlashing) ||
-		slices.Contains(lane.Suites, suiteConsensusSlashingProposal)
+		slices.Contains(lane.Suites, suiteConsensusSlashingDoubleVote) ||
+		slices.Contains(lane.Suites, suiteConsensusSlashingDoubleProposal)
 }
 
 func (lane Lane) NeedsQrysmAlltoolsImage() bool {
 	return slices.Contains(lane.Suites, suiteConsensusStakingOperator) ||
 		slices.Contains(lane.Suites, suiteConsensusPenalties) ||
-		slices.Contains(lane.Suites, suiteConsensusSlashing) ||
-		slices.Contains(lane.Suites, suiteConsensusSlashingProposal)
+		slices.Contains(lane.Suites, suiteConsensusSlashingDoubleVote) ||
+		slices.Contains(lane.Suites, suiteConsensusSlashingDoubleProposal)
 }
 
 func RegisteredSuites() []SuiteID {

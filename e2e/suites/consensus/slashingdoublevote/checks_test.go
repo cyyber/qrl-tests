@@ -1,6 +1,6 @@
 //go:build e2e
 
-package slashing
+package slashingdoublevote
 
 import (
 	"context"

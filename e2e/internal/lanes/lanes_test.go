@@ -80,7 +80,7 @@ func TestLaneWithSuites(t *testing.T) {
 	require.True(t, penalties.NeedsQrysmAlltoolsImage())
 	require.False(t, penalties.NeedsExecutionImage())
 
-	slashing, err := Named("consensus-slashing")
+	slashing, err := Named("consensus-slashing-double-vote")
 	require.NoError(t, err)
 	require.Equal(t, devnet.ProfileDuplicateValidator, slashing.Profile)
 	require.True(t, slashing.NeedsValidatorImage())
@@ -88,10 +88,10 @@ func TestLaneWithSuites(t *testing.T) {
 	require.False(t, slashing.NeedsExecutionImage())
 	require.False(t, slashing.RestartsServices)
 
-	proposal, err := Named("consensus-slashing-proposal")
+	proposal, err := Named("consensus-slashing-double-proposal")
 	require.NoError(t, err)
 	require.Equal(t, devnet.ProfileDoubleProposal, proposal.Profile)
-	require.Equal(t, []SuiteID{suiteConsensusSlashingProposal}, proposal.Suites)
+	require.Equal(t, []SuiteID{suiteConsensusSlashingDoubleProposal}, proposal.Suites)
 	require.True(t, proposal.NeedsValidatorImage())
 	require.True(t, proposal.NeedsQrysmAlltoolsImage())
 	require.False(t, proposal.NeedsExecutionImage())
