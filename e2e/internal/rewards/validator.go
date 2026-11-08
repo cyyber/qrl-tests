@@ -151,21 +151,19 @@ func (validator Validator) BalanceAtEpochStart(ctx context.Context, epoch uint64
 	return validator.BalanceAt(ctx, epoch*validator.Chain.SlotsPerEpoch)
 }
 
-// BalanceAt is the balance in the state at slot. That state includes the
-// slot's block, if one was proposed.
+// BalanceAt is the balance in the state at slot.
 func (validator Validator) BalanceAt(ctx context.Context, slot uint64) (uint64, error) {
 	record, err := validator.RecordAt(ctx, slot)
 	return record.Balance, err
 }
 
 // RecordAtEpochStart is the validator's record in the state at the first slot
-// of epoch. That state includes the slot's block, if one was proposed.
+// of epoch.
 func (validator Validator) RecordAtEpochStart(ctx context.Context, epoch uint64) (beacon.Validator, error) {
 	return validator.RecordAt(ctx, epoch*validator.Chain.SlotsPerEpoch)
 }
 
-// RecordAt is the validator's record in the state at slot. That state
-// includes the slot's block, if one was proposed.
+// RecordAt is the validator's record in the state at slot.
 func (validator Validator) RecordAt(ctx context.Context, slot uint64) (beacon.Validator, error) {
 	return validator.Client.ValidatorAt(ctx, strconv.FormatUint(slot, 10), strconv.FormatUint(validator.Index, 10))
 }
