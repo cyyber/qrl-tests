@@ -186,7 +186,7 @@ type LeakVoteAmounts struct {
 	// when the target vote was missed, at ScoreAfter. ReportedInactivity is
 	// what the rewards API adds to the target figure instead: it skips the
 	// processing's score update and charges ScoreBefore. The two Reported
-	// fields follow the API until theQRL/qrysm#112 is fixed.
+	// fields follow the API until cyyber/qrysm#113 is fixed.
 	Inactivity, ReportedInactivity uint64
 }
 

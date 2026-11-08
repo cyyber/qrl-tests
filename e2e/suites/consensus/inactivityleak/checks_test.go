@@ -16,7 +16,7 @@ import (
 // inactivity score having been score before the epoch was processed. The
 // score rises by the bias, and drops back outside a leak. The rewards API
 // reports the missed-vote penalties, with the inactivity penalty at the old
-// score in the target's (theQRL/qrysm#112); the balance loses the inactivity
+// score in the target's (cyyber/qrysm#113); the balance loses the inactivity
 // penalty at the new one. It returns the epoch's amounts.
 func expectMissedEpoch(ctx context.Context, val rewards.Validator, epoch, score uint64) rewards.LeakVoteAmounts {
 	ginkgo.GinkgoHelper()
