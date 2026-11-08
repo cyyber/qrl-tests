@@ -25,6 +25,9 @@ func testSpec() Spec {
 		weightDenominator:            64,
 		minEpochsToInactivityPenalty: 4,
 		minInclusionDelay:            1,
+		inactivityScoreBias:          4,
+		inactivityScoreRecoveryRate:  16,
+		inactivityPenaltyQuotient:    1 << 16,
 	}
 }
 
@@ -42,6 +45,47 @@ func TestMissedVotePenalties(t *testing.T) {
 	source, target = spec.missedVotePenalties(39_997*shorPerQRL+shorPerQRL/2, 64*40_000*shorPerQRL+39_997*shorPerQRL)
 	require.Equal(t, uint64(351_408_642), source)
 	require.Equal(t, uint64(652_616_050), target)
+}
+
+func TestInactivityPenalty(t *testing.T) {
+	spec := testSpec()
+	require.Zero(t, spec.inactivityPenalty(40_000*shorPerQRL, 0))
+	// 40,000 QRL at a score of 4 over 4 × 65,536 is 610,351,562.5 shor,
+	// rounded down.
+	require.Equal(t, uint64(610_351_562), spec.inactivityPenalty(40_000*shorPerQRL, 4))
+	require.Equal(t, uint64(1_830_917_358), spec.inactivityPenalty(39_997*shorPerQRL, 12))
+}
+
+func TestInactivityLeakEpochs(t *testing.T) {
+	spec := testSpec()
+	// With epoch 3 finalized, epoch 7 is four epochs behind, the most
+	// without a leak.
+	require.Equal(t, uint64(8), spec.FirstLeakEpoch(3))
+	require.False(t, spec.inInactivityLeak(7, 3))
+	require.True(t, spec.inInactivityLeak(8, 3))
+	require.False(t, spec.inInactivityLeak(2, 3))
+}
+
+func TestNextInactivityScore(t *testing.T) {
+	spec := testSpec()
+	for name, test := range map[string]struct {
+		score        uint64
+		timelyTarget bool
+		leak         bool
+		want         uint64
+	}{
+		"missed in a leak":                               {score: 8, leak: true, want: 12},
+		"timely in a leak":                               {score: 8, timelyTarget: true, leak: true, want: 7},
+		"timely in a leak at zero":                       {score: 0, timelyTarget: true, leak: true, want: 0},
+		"missed outside a leak":                          {score: 20, want: 8},
+		"missed outside a leak at 0":                     {score: 0, want: 0},
+		"timely outside a leak":                          {score: 20, timelyTarget: true, want: 3},
+		"timely outside a leak, below the recovery rate": {score: 3, timelyTarget: true, want: 0},
+	} {
+		t.Run(name, func(t *testing.T) {
+			require.Equal(t, test.want, spec.NextInactivityScore(test.score, test.timelyTarget, test.leak))
+		})
+	}
 }
 
 // stateBeacon serves canned data per path and records every path requested.
@@ -103,7 +147,8 @@ func TestLoadSpec(t *testing.T) {
 		"EFFECTIVE_BALANCE_INCREMENT":"1000000000",
 		"BASE_REWARD_FACTOR":"2048","TIMELY_SOURCE_WEIGHT":"14","TIMELY_TARGET_WEIGHT":"26",
 		"WEIGHT_DENOMINATOR":"64","MIN_EPOCHS_TO_INACTIVITY_PENALTY":"4",
-		"MIN_ATTESTATION_INCLUSION_DELAY":"1"}`})
+		"MIN_ATTESTATION_INCLUSION_DELAY":"1","INACTIVITY_SCORE_BIAS":"4",
+		"INACTIVITY_SCORE_RECOVERY_RATE":"16","INACTIVITY_PENALTY_QUOTIENT":"65536"}`})
 
 	spec, err := LoadSpec(t.Context(), client)
 	require.NoError(t, err)
@@ -174,6 +219,59 @@ func TestVoteAmountsRefusesLeak(t *testing.T) {
 	_, err = testValidator(client).VoteAmounts(t.Context(), 5)
 	require.EqualError(t, err,
 		"the rewards of epoch 5 are processed in an inactivity leak: the last finalized epoch is 0")
+}
+
+// scoresJSON is a debug state whose validators all have an inactivity score
+// of zero but the validator under test, whose score is score.
+func scoresJSON(score uint64) string {
+	scores := slices.Repeat([]string{`"0"`}, validatorIndex+1)
+	scores[validatorIndex] = fmt.Sprintf(`"%d"`, score)
+	return `{"inactivity_scores":[` + strings.Join(scores, ",") + `]}`
+}
+
+func TestLeakVoteAmounts(t *testing.T) {
+	// The rewards of epoch 5 are processed between the states at slots 55
+	// and 56. Epoch 0 is finalized before and after, so both count it as a
+	// leak, and the processing raises the score from 8 to 12.
+	responses := map[string]string{
+		"beacon/states/55/finality_checkpoints": finalizedJSON(0),
+		"beacon/states/56/finality_checkpoints": finalizedJSON(0),
+		"debug/beacon/states/55":                scoresJSON(8),
+		"debug/beacon/states/56":                scoresJSON(12),
+		"beacon/states/55/validators/64":        validatorJSON(39_997*shorPerQRL, 39_997*shorPerQRL),
+		"beacon/states/55/validators":           fmt.Sprintf(`[{"validator":{"effective_balance":"%d"}},{"validator":{"effective_balance":"%d"}}]`, 64*40_000*shorPerQRL, 39_997*shorPerQRL),
+		"beacon/rewards/attestations/5":         idealJSON(39_997 * shorPerQRL),
+	}
+	fake, client := newStateBeacon(t, responses)
+
+	amounts, err := testValidator(client).LeakVoteAmounts(t.Context(), 5)
+	require.NoError(t, err)
+	require.Equal(t, uint64(351_408_642), amounts.MissedSource)
+	require.Equal(t, uint64(652_616_050), amounts.MissedTarget)
+	require.True(t, amounts.Leak)
+	require.True(t, amounts.ReportedLeak)
+	require.Equal(t, uint64(8), amounts.ScoreBefore)
+	require.Equal(t, uint64(12), amounts.ScoreAfter)
+	require.Equal(t, uint64(1_830_917_358), amounts.Inactivity)
+	require.Equal(t, uint64(1_220_611_572), amounts.ReportedInactivity)
+	for _, path := range fake.paths() {
+		require.True(t, strings.Contains(path, "/states/55") || strings.Contains(path, "/states/56") ||
+			path == "beacon/rewards/attestations/5", "read %s", path)
+	}
+
+	// The processing finalizes epoch 1, which ends the leak; the rewards API
+	// still goes by epoch 0.
+	responses["beacon/states/56/finality_checkpoints"] = finalizedJSON(1)
+	_, client = newStateBeacon(t, responses)
+	amounts, err = testValidator(client).LeakVoteAmounts(t.Context(), 5)
+	require.NoError(t, err)
+	require.False(t, amounts.Leak)
+	require.True(t, amounts.ReportedLeak)
+
+	responses["debug/beacon/states/56"] = `{"inactivity_scores":["0"]}`
+	_, client = newStateBeacon(t, responses)
+	_, err = testValidator(client).LeakVoteAmounts(t.Context(), 5)
+	require.EqualError(t, err, "the state at slot 56 has no inactivity score for validator 64")
 }
 
 func TestBalanceAtEpochStart(t *testing.T) {
