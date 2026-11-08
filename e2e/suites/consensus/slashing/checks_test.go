@@ -7,6 +7,7 @@ import (
 	"strconv"
 
 	"github.com/cyyber/qrl-tests/e2e/internal/beacon"
+	"github.com/cyyber/qrl-tests/e2e/internal/chaininfo"
 	"github.com/cyyber/qrl-tests/e2e/internal/rewards"
 	"github.com/cyyber/qrl-tests/e2e/internal/testsuite"
 	ginkgo "github.com/onsi/ginkgo/v2"
@@ -72,6 +73,36 @@ func expectDoubleVoteEvidence(slot uint64, evidence slashingEvidence) (first, se
 	gomega.Expect(isDoubleVote(first, second)).To(gomega.BeTrue(),
 		"the attestations of slots %d and %d are not a double vote", first.Slot, second.Slot)
 	return first, second
+}
+
+// expectDoubleProposalEvidence checks that the evidence the block at slot holds
+// is a proposer slashing for a double proposal, and returns its two headers.
+func expectDoubleProposalEvidence(slot uint64, evidence slashingEvidence) (first, second beacon.BeaconBlockHeaderMessage) {
+	ginkgo.GinkgoHelper()
+	gomega.Expect(evidence.proposer).NotTo(gomega.BeNil(),
+		"the block at slot %d slashed the validator for a double vote", slot)
+	first, second = evidence.proposer.Header1, evidence.proposer.Header2
+	gomega.Expect(isDoubleProposal(first, second)).To(gomega.BeTrue(),
+		"the headers of slots %d and %d are not a double proposal", first.Slot, second.Slot)
+	return first, second
+}
+
+// expectOnlyDuplicatesSlashed checks that every slashed validator is one whose
+// key the suite ran in a second client, and that the chain keeps finalizing.
+func expectOnlyDuplicatesSlashed(ctx context.Context, client *beacon.Client, chain chaininfo.Info) {
+	ginkgo.GinkgoHelper()
+	slashed := testsuite.MustSucceed(client.SlashedValidators(ctx))
+	indices := make([]uint64, len(slashed))
+	for position, record := range slashed {
+		indices[position] = record.Index
+	}
+	gomega.Expect(indices).To(gomega.HaveEach(gomega.BeElementOf(suiteDuplicated)),
+		"slashed validators, where only the duplicated %v may be", suiteDuplicated)
+
+	head := testsuite.MustSucceed(client.HeadSlot(ctx))
+	checkpoints := testsuite.MustSucceed(client.FinalityCheckpoints(ctx))
+	gomega.Expect(checkpoints.Finalized.Epoch+maxFinalityLagEpochs).To(gomega.BeNumerically(">=", chain.Epoch(head)),
+		"finalized epoch %d at head slot %d", checkpoints.Finalized.Epoch, head)
 }
 
 // expectExitedSlashed checks the validator's record at the start of epoch: it

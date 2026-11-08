@@ -33,9 +33,12 @@ type doubleVote struct {
 // the client started in time.
 func (scenario *doubleVote) attempt(ctx context.Context) (uint64, bool) {
 	ginkgo.GinkgoHelper()
-	slot := scenario.planVoteSlot(ctx)
+	slot := planNextEpoch(ctx, scenario.val.Client, scenario.val.Chain, func(epoch uint64) (uint64, bool) {
+		return scenario.voteSlot(ctx, epoch)
+	})
 
 	ginkgo.By("starting the duplicate validator client for the vote of slot " + strconv.FormatUint(slot, 10))
+	duplicating(scenario.val.Index)
 	scenario.duplicate.startClient(ctx, scenario.keystores)
 	defer func() {
 		gomega.Expect(scenario.duplicate.stopClient()).To(gomega.Succeed())
@@ -53,35 +56,15 @@ func (scenario *doubleVote) attempt(ctx context.Context) (uint64, bool) {
 	return slot, true
 }
 
-// planVoteSlot waits until the next epoch suits a double vote, and returns
-// the validator's vote slot in it. It plans only during the first half of an
-// epoch, so at least half an epoch is left to start the duplicate validator
-// client, even for a vote in the next epoch's first slot.
-func (scenario *doubleVote) planVoteSlot(ctx context.Context) uint64 {
-	ginkgo.GinkgoHelper()
-	chain := scenario.val.Chain
-	for {
-		now := time.Now()
-		head := testsuite.MustSucceed(scenario.val.Client.HeadSlot(ctx))
-		epoch := max(chain.EpochAt(now), chain.Epoch(head))
-		start := slotStart(scenario.val.Chain, epoch*chain.SlotsPerEpoch)
-		if now.Before(start.Add(chain.EpochDuration / 2)) {
-			if slot, ok := scenario.voteSlot(ctx, epoch); ok {
-				return slot
-			}
-		}
-		gomega.Expect(testsuite.SleepUntil(ctx, start.Add(chain.EpochDuration))).To(gomega.Succeed())
-	}
-}
-
 // voteSlot returns the validator's vote slot in epoch+1, if a double vote is
 // the only offense the duplicate can commit there, and it does commit one:
 //   - the key proposes in neither epoch nor epoch+1, so the duplicate never
 //     double proposes; a validator is slashed only once, so that would keep
 //     the double vote from being included;
-//   - a node-1 validator the suite has not slashed proposes the vote's slot,
-//     so there is a block that node 1 sees in time and the paused node 2 sees
-//     late;
+//   - a node-1 validator the suite has not duplicated proposes the vote's
+//     slot, so there is a block that node 1 sees in time and the paused node 2
+//     sees late; a duplicated validator may be slashed by then, and its block
+//     would be invalid;
 //   - the vote is not the epoch's last slot, so the duplicate is stopped
 //     before epoch+2, whose proposals aren't checked.
 func (scenario *doubleVote) voteSlot(ctx context.Context, epoch uint64) (uint64, bool) {
@@ -105,7 +88,7 @@ func (scenario *doubleVote) voteSlot(ctx context.Context, epoch uint64) (uint64,
 
 	proposer := slices.IndexFunc(upcoming, func(duty beacon.ProposerDuty) bool { return duty.Slot == slot })
 	if proposer < 0 || slices.Contains(scenario.pausedNodeValidators, upcoming[proposer].ValidatorIndex) ||
-		slices.Contains(suiteSlashed, upcoming[proposer].ValidatorIndex) {
+		slices.Contains(suiteDuplicated, upcoming[proposer].ValidatorIndex) {
 		return 0, false
 	}
 	return slot, true

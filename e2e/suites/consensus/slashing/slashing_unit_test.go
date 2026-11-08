@@ -79,7 +79,7 @@ func TestProposalCandidates(t *testing.T) {
 	}
 	current := []beacon.ProposerDuty{duty(16, 3), duty(17, 40), duty(18, 9)}
 	next := []beacon.ProposerDuty{duty(24, 1), duty(25, 9), duty(26, 33), duty(27, 2), duty(28, 1), duty(29, 5)}
-	// Node 1 runs 0 to 31; validator 5 is already slashed.
+	// Node 1 runs 0 to 31; validator 5 has already been duplicated.
 	candidates := []uint64{1, 2, 3, 5, 9}
 
 	// 1 proposes twice and 9 proposed in the current epoch, so another

@@ -18,12 +18,7 @@ import (
 )
 
 const (
-	primaryParticipant   = 0
-	duplicateParticipant = 1
-
 	doubleVoteAttempts = 3
-
-	maxEpochDuration = 40 * time.Second
 
 	attestTimeout     = 5 * time.Minute
 	doubleVoteTimeout = 15 * time.Minute
@@ -63,8 +58,7 @@ var _ = ginkgo.Describe(
 
 		ginkgo.BeforeAll(func(ctx ginkgo.SpecContext) {
 			runtime := testsuite.LoadRuntime()
-			nodes := testsuite.MustSucceed(runtime.Nodes(ctx))
-			gomega.Expect(nodes).To(gomega.HaveLen(3), "the suite runs the validator on two nodes, and a third watches")
+			nodes := loadNodes(ctx, runtime)
 			for _, participant := range nodes {
 				gomega.Expect(participant.BeaconGRPC).NotTo(gomega.BeEmpty(), "beacon gRPC is not published")
 			}
@@ -83,8 +77,7 @@ var _ = ginkgo.Describe(
 				Spec:   testsuite.MustSucceed(rewards.LoadSpec(ctx, beaconClient)),
 				Index:  spares[0],
 			}
-			gomega.Expect(val.Chain.EpochDuration).To(gomega.BeNumerically("<=", maxEpochDuration),
-				"the suite's timeouts assume epochs of at most %s", maxEpochDuration)
+			expectShortEpochs(val.Chain)
 			spec = testsuite.MustSucceed(loadSlashingSpec(ctx, beaconClient))
 
 			keystores = testsuite.MustSucceed(validatorops.GenesisKeystores(
@@ -173,8 +166,8 @@ var _ = ginkgo.Describe(
 				}
 			}, ginkgo.SpecTimeout(afterExitTimeout))
 
-		ginkgo.It("is slashed along with only the suite's other targets, and the chain keeps finalizing", func(ctx ginkgo.SpecContext) {
-			expectOnlySuiteSlashings(ctx, val.Client, val.Chain)
+		ginkgo.It("is slashed with no validator the suite did not duplicate, and the chain keeps finalizing", func(ctx ginkgo.SpecContext) {
+			expectOnlyDuplicatesSlashed(ctx, val.Client, val.Chain)
 		}, ginkgo.SpecTimeout(time.Minute))
 	},
 )
