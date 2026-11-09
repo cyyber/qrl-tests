@@ -38,11 +38,12 @@ const (
 	// participant runs. A suite duplicates the spare by running its key in two
 	// validator sidecars, one on each node.
 	ProfileDuplicateValidator Profile = "duplicate-validator"
-	// ProfileDoubleProposal has two participants of 32 validators and a third
-	// that runs none, each beacon node with a slasher. A suite runs one of the
-	// first participant's keys in a sidecar on the second. A beacon node never
-	// hands a block it proposed to its own slasher, so only the third, which
-	// receives both of a double proposal's blocks through gossip, detects it.
+	// ProfileDoubleProposal has three participants, each beacon node with a
+	// slasher: the first two run 32 validators each, and the third runs none. A
+	// suite runs one of the first participant's keys a second time, in a sidecar
+	// on the second. A beacon node never hands its own block to its slasher, so
+	// only the third, which receives both blocks through gossip, detects the
+	// double proposal.
 	ProfileDoubleProposal Profile = "double-proposal"
 )
 
