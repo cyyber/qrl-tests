@@ -100,8 +100,7 @@ func (scenario *doubleProposal) run(ctx context.Context, val rewards.Validator, 
 	return true
 }
 
-// beaconAddress is the address a node's beacon node has on the devnet's
-// network, where its peers reach it.
+// beaconAddress is the devnet address the node's beacon peers reach it at.
 func beaconAddress(node *live.Node) netip.Addr {
 	ginkgo.GinkgoHelper()
 	address, err := netip.ParseAddr(node.Participant.Consensus.PrivateIP)
