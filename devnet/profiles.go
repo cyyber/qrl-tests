@@ -41,9 +41,9 @@ const (
 	// ProfileDoubleProposal has three participants, each beacon node with a
 	// slasher: the first two run 32 validators each, and the third runs none. A
 	// suite runs one of the first participant's keys again, in a sidecar
-	// attached to the second participant's beacon node. A beacon node never
-	// hands its own block to its slasher, so only the third, which receives both
-	// blocks through gossip, detects the double proposal.
+	// attached to the second participant's beacon node. A beacon node feeds its
+	// slasher only blocks it receives from peers, so only the third, which
+	// receives both blocks through gossip, detects the double proposal.
 	ProfileDoubleProposal Profile = "double-proposal"
 )
 
