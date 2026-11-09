@@ -31,7 +31,7 @@ func proposalDuty(
 	for _, duty := range proposalCandidates(current, upcoming, candidates, duplicated) {
 		duties := testsuite.MustSucceed(client.AttesterDuties(ctx, next, []uint64{duty.ValidatorIndex}))
 		gomega.Expect(duties).To(gomega.HaveLen(1), "attester duties of validator %d in epoch %d", duty.ValidatorIndex, next)
-		if vote := duties[0].Slot; vote != duty.Slot && vote != duty.Slot+1 {
+		if voteSlot := duties[0].Slot; voteSlot != duty.Slot && voteSlot != duty.Slot+1 {
 			return duty, true
 		}
 	}
