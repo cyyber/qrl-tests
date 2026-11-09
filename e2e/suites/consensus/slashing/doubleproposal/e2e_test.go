@@ -37,8 +37,9 @@ var _ = ginkgo.Describe(
 	ginkgo.Label("e2e", "consensus", "slashing"),
 	func() {
 		var (
-			// duplicate runs a second copy of one of node 1's keys on node 2,
-			// with its own graffiti so the two blocks differ.
+			// duplicate runs a second copy of one of node 1's keys, in a sidecar
+			// attached to node 2's beacon node, with its own graffiti so the
+			// two blocks differ.
 			duplicate    *slashingops.Node
 			scenario     *doubleProposal
 			client       *beacon.Client
