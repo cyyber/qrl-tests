@@ -10,7 +10,7 @@ import (
 	ginkgo "github.com/onsi/ginkgo/v2"
 )
 
-// Node is a devnet participant that runs one of a suite's validator sidecars.
+// Node is a devnet participant on which a suite runs a validator sidecar.
 type Node struct {
 	*live.Node
 	Graffiti string
