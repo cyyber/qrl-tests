@@ -25,9 +25,10 @@ func expectExitedSlashed(ctx context.Context, val rewards.Validator, epoch uint6
 		"the validator can withdraw at the start of epoch %d", epoch)
 }
 
-// expectMissedVotePenalty checks that the validator's votes of epoch cost
-// exactly the missed source and target penalties, and that its balance moved
-// by that and its block duties alone.
+// expectMissedVotePenalty checks that the validator's votes in epoch cost it
+// exactly the missed source and target penalties, and that its balance from
+// the start of epoch+1 to the start of epoch+2 changed by that penalty and
+// its block duties alone.
 func expectMissedVotePenalty(ctx context.Context, val rewards.Validator, epoch uint64) {
 	ginkgo.GinkgoHelper()
 	reward := testsuite.MustSucceed(val.AttestationReward(ctx, epoch))
