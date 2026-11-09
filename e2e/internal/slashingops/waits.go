@@ -39,7 +39,7 @@ func PlanNextEpoch[Duty any](
 		now := time.Now()
 		head := testsuite.MustSucceed(client.HeadSlot(ctx))
 		epoch := max(chain.EpochAt(now), chain.Epoch(head))
-		start := SlotStart(chain, epoch*chain.SlotsPerEpoch)
+		start := chain.SlotStart(epoch * chain.SlotsPerEpoch)
 		if now.Before(start.Add(chain.EpochDuration / 2)) {
 			if duty, ok := pick(epoch); ok {
 				return duty
@@ -83,8 +83,4 @@ func FindEvidence(ctx context.Context, val rewards.Validator, from uint64) (uint
 	}
 	ginkgo.Fail("no block from slot " + strconv.FormatUint(from, 10) + " slashes the validator")
 	return 0, Evidence{}
-}
-
-func SlotStart(chain chaininfo.Info, slot uint64) time.Time {
-	return chain.GenesisTime.Add(time.Duration(slot) * chain.SlotDuration)
 }

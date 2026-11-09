@@ -43,6 +43,8 @@ func TestLoad(t *testing.T) {
 	require.Equal(t, uint64(0), chain.EpochAt(chain.GenesisTime.Add(-time.Hour)))
 	require.Equal(t, uint64(0), chain.EpochAt(chain.GenesisTime.Add(chain.EpochDuration-time.Second)))
 	require.Equal(t, uint64(3), chain.EpochAt(chain.GenesisTime.Add(3*chain.EpochDuration)))
+	require.Equal(t, chain.GenesisTime, chain.SlotStart(0))
+	require.Equal(t, chain.GenesisTime.Add(300*12*time.Second), chain.SlotStart(300))
 	require.Equal(t, 12*time.Second, chain.SlotDuration)
 	require.Equal(t, 128*12*time.Second, chain.EpochDuration)
 	require.Equal(t, 4*128*12*time.Second, chain.ExecutionVotingPeriod)

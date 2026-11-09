@@ -95,7 +95,7 @@ func (scenario *doubleProposal) run(ctx context.Context, val rewards.Validator, 
 	defer func() {
 		gomega.Expect(duplicate.StopClient()).To(gomega.Succeed())
 	}()
-	start := slashingops.SlotStart(val.Chain, slot)
+	start := val.Chain.SlotStart(slot)
 	split := splitSeconds * time.Second
 	if time.Until(start) < split+time.Second {
 		ginkgo.GinkgoWriter.Printf("the duplicate validator client started too late for slot %d\n", slot)
@@ -123,7 +123,7 @@ func (scenario *doubleProposal) run(ctx context.Context, val rewards.Validator, 
 
 	// Stopping the duplicate once the slot is over keeps it from voting while
 	// the two blocks split the heads.
-	gomega.Expect(testsuite.SleepUntil(ctx, slashingops.SlotStart(val.Chain, slot+1))).To(gomega.Succeed())
+	gomega.Expect(testsuite.SleepUntil(ctx, val.Chain.SlotStart(slot+1))).To(gomega.Succeed())
 	return true
 }
 
