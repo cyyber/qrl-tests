@@ -1,6 +1,6 @@
 //go:build e2e
 
-package slashingdoublevote
+package doublevote
 
 import (
 	"errors"
