@@ -19,11 +19,8 @@ import (
 	gomega "github.com/onsi/gomega"
 )
 
-// proposalDuty returns a proposal in epoch+1 that the duplicate can turn into
-// a double proposal and nothing else. Besides what proposalCandidates checks,
-// the proposer must not vote in the proposal's slot or the next: the two
-// blocks split the nodes' heads until the next block, so a vote of the
-// duplicate's then could differ from the primary's.
+// proposalDuty returns a candidate proposal in epoch+1 whose proposer doesn't
+// vote in its slot or the next, while the two blocks split the nodes' heads.
 func proposalDuty(
 	ctx context.Context, client *beacon.Client, epoch uint64, candidates, duplicated []uint64,
 ) (beacon.ProposerDuty, bool) {
