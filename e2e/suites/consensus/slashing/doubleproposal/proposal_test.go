@@ -52,12 +52,10 @@ type doubleProposal struct {
 	duplicated []uint64
 }
 
-// run runs the validator's key on the duplicate's node across the proposal of
-// slot, which node 1's client also proposes, and reports whether the duplicate
-// was up and its node cut off in time. Each block reveals the proposer's next
-// RANDAO secret, so a node that has imported one copy's block rejects the
-// other's: the duplicate's node is cut off from the others across the slot's
-// start, and each side receives the other's block once it rejoins.
+// run duplicates the validator's key on node 2 for its proposal of slot, and
+// reports whether the duplicate was up and node 2 cut off in time. Node 2 is
+// cut off across the slot's start because a node that has imported one copy's
+// block rejects the other's RANDAO reveal.
 func (scenario *doubleProposal) run(ctx context.Context, val rewards.Validator, slot uint64) bool {
 	ginkgo.GinkgoHelper()
 	keystores := testsuite.MustSucceed(validatorops.GenesisKeystores(
