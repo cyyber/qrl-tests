@@ -31,7 +31,7 @@ func TestE2E(t *testing.T) {
 }
 
 var _ = ginkgo.Describe(
-	"A validator whose key a second client runs while it proposes",
+	"A validator whose key runs on two nodes when it proposes",
 	ginkgo.Serial,
 	ginkgo.Ordered,
 	ginkgo.Label("e2e", "consensus", "slashing"),
@@ -87,7 +87,7 @@ var _ = ginkgo.Describe(
 			gomega.Expect(duplicate.StopClient()).To(gomega.Succeed())
 		})
 
-		ginkgo.It("is slashed for a double proposal once a second client runs its key on another node",
+		ginkgo.It("is slashed for a double proposal once the two nodes don't see each other's block in time",
 			func(ctx ginkgo.SpecContext) {
 				slashed := false
 				for attempt := 1; attempt <= doubleProposalAttempts && !slashed; attempt++ {
