@@ -7,9 +7,8 @@ import (
 	"github.com/cyyber/qrl-tests/e2e/internal/beacon"
 )
 
-// proposalCandidates returns the next epoch's proposals by a proposer in
-// candidates, not in excluded, and with no other proposal this epoch or next,
-// latest first so the duplicate has the most time to start.
+// proposalCandidates returns the next epoch's proposals the suite can
+// duplicate, latest first.
 func proposalCandidates(current, next []beacon.ProposerDuty, candidates, excluded []uint64) []beacon.ProposerDuty {
 	proposals := make(map[uint64]int)
 	for _, duty := range slices.Concat(current, next) {
