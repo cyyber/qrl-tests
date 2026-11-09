@@ -30,7 +30,7 @@ func ExpectShortEpochs(chain chaininfo.Info) {
 // PlanNextEpoch asks pick, during the first half of each epoch, for a duty in
 // the next epoch, and returns the first one it accepts. Asking only in the
 // first half leaves at least half an epoch to start the duplicate validator
-// client, even for a duty in the next epoch's first slot.
+// client.
 func PlanNextEpoch[Duty any](
 	ctx context.Context, client *beacon.Client, chain chaininfo.Info, pick func(epoch uint64) (Duty, bool),
 ) Duty {
