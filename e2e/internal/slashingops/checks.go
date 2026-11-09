@@ -5,14 +5,11 @@ import (
 	"strconv"
 
 	"github.com/cyyber/qrl-tests/e2e/internal/beacon"
-	"github.com/cyyber/qrl-tests/e2e/internal/chaininfo"
 	"github.com/cyyber/qrl-tests/e2e/internal/rewards"
 	"github.com/cyyber/qrl-tests/e2e/internal/testsuite"
 	ginkgo "github.com/onsi/ginkgo/v2"
 	gomega "github.com/onsi/gomega"
 )
-
-const maxFinalityLagEpochs = 3
 
 // ExpectSlashedInBlock checks the block at slot that slashes the validator for
 // offense: it pays the initial penalty, sets the exit and withdrawable epochs,
@@ -97,14 +94,4 @@ func ExpectOnlySlashed(ctx context.Context, client *beacon.Client, allowed []uin
 	}
 	gomega.Expect(indices).To(gomega.HaveEach(gomega.BeElementOf(allowed)),
 		"slashed validators, where only %v may be", allowed)
-}
-
-// ExpectFinalizing checks that the chain has finalized an epoch within
-// maxFinalityLagEpochs of its head.
-func ExpectFinalizing(ctx context.Context, client *beacon.Client, chain chaininfo.Info) {
-	ginkgo.GinkgoHelper()
-	head := testsuite.MustSucceed(client.HeadSlot(ctx))
-	checkpoints := testsuite.MustSucceed(client.FinalityCheckpoints(ctx))
-	gomega.Expect(checkpoints.Finalized.Epoch+maxFinalityLagEpochs).To(gomega.BeNumerically(">=", chain.Epoch(head)),
-		"finalized epoch %d at head slot %d", checkpoints.Finalized.Epoch, head)
 }
