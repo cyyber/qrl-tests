@@ -89,7 +89,8 @@ func (chain Info) EpochAt(now time.Time) uint64 {
 	return uint64(now.Sub(chain.GenesisTime) / chain.EpochDuration)
 }
 
-// SlotStartTime is when slot begins.
+// SlotStartTime is the wall-clock time slot starts at: genesis plus slot
+// slot durations.
 func (chain Info) SlotStartTime(slot uint64) time.Time {
 	return chain.GenesisTime.Add(time.Duration(slot) * chain.SlotDuration)
 }
