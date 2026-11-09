@@ -1,3 +1,3 @@
-// Package slashingops runs the second validator clients the slashing suites
-// duplicate keys with, and checks the slashings that follow.
+// Package slashingops is shared by the slashing suites: it runs a second copy
+// of a validator's key in a sidecar, and checks the slashing that follows.
 package slashingops
