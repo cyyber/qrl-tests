@@ -43,7 +43,7 @@ func (scenario *doubleVote) attempt(ctx context.Context) (uint64, bool) {
 	defer func() {
 		gomega.Expect(scenario.duplicate.StopClient()).To(gomega.Succeed())
 	}()
-	if time.Until(scenario.val.Chain.SlotStart(slot)) < scenario.val.Chain.SlotDuration {
+	if time.Until(scenario.val.Chain.SlotStartTime(slot)) < scenario.val.Chain.SlotDuration {
 		ginkgo.GinkgoWriter.Printf("the duplicate validator client started too late for slot %d\n", slot)
 		return slot, false
 	}
@@ -52,7 +52,7 @@ func (scenario *doubleVote) attempt(ctx context.Context) (uint64, bool) {
 	scenario.pauseAcrossVote(ctx, slot)
 
 	// Give the duplicate time to publish its vote before it is stopped.
-	gomega.Expect(testsuite.SleepUntil(ctx, scenario.val.Chain.SlotStart(slot+1).Add(scenario.val.Chain.SlotDuration/2))).To(gomega.Succeed())
+	gomega.Expect(testsuite.SleepUntil(ctx, scenario.val.Chain.SlotStartTime(slot+1).Add(scenario.val.Chain.SlotDuration/2))).To(gomega.Succeed())
 	return slot, true
 }
 
@@ -97,7 +97,7 @@ func (scenario *doubleVote) voteSlot(ctx context.Context, epoch uint64) (uint64,
 // client votes for the previous block as the head.
 func (scenario *doubleVote) pauseAcrossVote(ctx context.Context, slot uint64) {
 	ginkgo.GinkgoHelper()
-	start := scenario.val.Chain.SlotStart(slot)
+	start := scenario.val.Chain.SlotStartTime(slot)
 	gomega.Expect(testsuite.SleepUntil(ctx, start.Add(-time.Second))).To(gomega.Succeed())
 	resume := testsuite.MustSucceed(devnet.PauseService(ctx, scenario.duplicate.ConsensusServiceID))
 	defer func() {

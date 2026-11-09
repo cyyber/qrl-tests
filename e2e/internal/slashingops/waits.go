@@ -39,7 +39,7 @@ func PlanNextEpoch[Duty any](
 		now := time.Now()
 		head := testsuite.MustSucceed(client.HeadSlot(ctx))
 		epoch := max(chain.EpochAt(now), chain.Epoch(head))
-		start := chain.SlotStart(epoch * chain.SlotsPerEpoch)
+		start := chain.SlotStartTime(epoch * chain.SlotsPerEpoch)
 		if now.Before(start.Add(chain.EpochDuration / 2)) {
 			if duty, ok := pick(epoch); ok {
 				return duty

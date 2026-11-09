@@ -89,8 +89,8 @@ func (chain Info) EpochAt(now time.Time) uint64 {
 	return uint64(now.Sub(chain.GenesisTime) / chain.EpochDuration)
 }
 
-// SlotStart is when slot begins.
-func (chain Info) SlotStart(slot uint64) time.Time {
+// SlotStartTime is when slot begins.
+func (chain Info) SlotStartTime(slot uint64) time.Time {
 	return chain.GenesisTime.Add(time.Duration(slot) * chain.SlotDuration)
 }
 
