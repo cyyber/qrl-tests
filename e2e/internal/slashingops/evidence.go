@@ -45,8 +45,8 @@ func IsDoubleVote(first, second beacon.AttestationData) bool {
 	return first != second && first.Target.Epoch == second.Target.Epoch
 }
 
-// IsDoubleProposal reports whether the two headers are different blocks that
-// one proposer signed for the same slot.
+// IsDoubleProposal reports whether the two headers are different blocks from
+// the same proposer for the same slot, which is slashable.
 func IsDoubleProposal(first, second beacon.BeaconBlockHeaderMessage) bool {
 	return first != second && first.Slot == second.Slot && first.ProposerIndex == second.ProposerIndex
 }
