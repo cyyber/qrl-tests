@@ -38,10 +38,6 @@ func proposalDuty(
 	return beacon.ProposerDuty{}, false
 }
 
-// splitDuration is how long before and after the start of the proposal's slot
-// the duplicate's node is cut off from the others. Setting up the split takes
-// a helper container's run, about a second; the two blocks are built and
-// published within a second of the slot's start.
 const splitDuration = 2 * time.Second
 
 // doubleProposal runs a second copy of a node-1 validator's key on the
