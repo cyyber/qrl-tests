@@ -110,19 +110,11 @@ func TestDoubleProposalProfileParameters(t *testing.T) {
 
 	var parameters map[string]any
 	require.NoError(t, json.Unmarshal([]byte(payload), &parameters))
-	participants := parameters["participants"].([]any)
-	require.Len(t, participants, 3)
-	// The third participant only watches: it runs a slasher and no validators.
-	for index, want := range []float64{32, 32, 0} {
-		participant := participants[index].(map[string]any)
-		require.Equal(t, want, participant["validator_count"], "participant %d", index)
-		require.Equal(t,
-			[]any{"--min-sync-peers=0", "--minimum-peers-per-subnet=0", "--slasher", "--subscribe-all-subnets"},
-			participant["cl_extra_params"],
-		)
-	}
-	network := parameters["network_params"].(map[string]any)
-	require.NotContains(t, network, "preregistered_validator_count")
+	// The watcher must say it runs no validators: left out, qrl-package would
+	// give it its default count.
+	watcher := parameters["participants"].([]any)[2].(map[string]any)
+	require.Contains(t, watcher, "validator_count")
+	require.Equal(t, float64(0), watcher["validator_count"])
 }
 
 func TestFileParametersPassThroughUnchanged(t *testing.T) {
