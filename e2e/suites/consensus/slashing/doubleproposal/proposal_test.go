@@ -44,8 +44,7 @@ const splitDuration = 2 * time.Second
 // duplicate's node, across that key's proposal.
 type doubleProposal struct {
 	duplicate *slashingops.Node
-	// peers are the addresses of the other nodes' beacon nodes, which the
-	// duplicate's node is cut off from for the proposal.
+	// peers are the beacon nodes the duplicate's node is cut off from.
 	peers               []netip.Addr
 	alltoolsImage       string
 	withdrawalRecipient string
