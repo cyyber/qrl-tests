@@ -37,13 +37,8 @@ var _ = ginkgo.Describe(
 	ginkgo.Label("e2e", "consensus", "slashing"),
 	func() {
 		var (
-			// The primary is the validator client node 1's participant runs.
-			// duplicate runs a second copy of one of its keys on node 2 across
-			// that key's proposal, with a graffiti of its own, so the two
-			// blocks differ, while node 2 is cut off from the other nodes so
-			// that neither sees the other's block in time. The third node runs
-			// no validators: it receives both blocks once the split ends, and
-			// its slasher reports them.
+			// duplicate runs a second copy of one of node 1's keys on node 2,
+			// with its own graffiti so the two blocks differ.
 			duplicate    *slashingops.Node
 			scenario     *doubleProposal
 			client       *beacon.Client
