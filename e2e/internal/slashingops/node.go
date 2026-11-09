@@ -10,13 +10,6 @@ import (
 	ginkgo "github.com/onsi/ginkgo/v2"
 )
 
-// The devnet participants whose nodes run the primary and the duplicate copy
-// of a key.
-const (
-	PrimaryParticipant   = 0
-	DuplicateParticipant = 1
-)
-
 // Node is a devnet participant that runs one of a suite's validator sidecars.
 type Node struct {
 	*live.Node

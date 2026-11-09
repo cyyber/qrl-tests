@@ -19,6 +19,9 @@ import (
 )
 
 const (
+	primaryParticipant   = 0
+	duplicateParticipant = 1
+
 	doubleVoteAttempts = 3
 
 	attestTimeout     = 5 * time.Minute
@@ -64,9 +67,9 @@ var _ = ginkgo.Describe(
 			}
 			gomega.Expect(runtime.ValidatorImage).NotTo(gomega.BeEmpty(), "validator image is not configured")
 			gomega.Expect(runtime.QrysmAlltoolsImage).NotTo(gomega.BeEmpty(), "Qrysm all-tools image is not configured")
-			primary = &slashingops.Node{Node: nodes[slashingops.PrimaryParticipant], Graffiti: "primary"}
-			duplicate = &slashingops.Node{Node: nodes[slashingops.DuplicateParticipant], Graffiti: "duplicate"}
-			duplicateNodeValidators = runtime.Profile.ParticipantValidators(slashingops.DuplicateParticipant)
+			primary = &slashingops.Node{Node: nodes[primaryParticipant], Graffiti: "primary"}
+			duplicate = &slashingops.Node{Node: nodes[duplicateParticipant], Graffiti: "duplicate"}
+			duplicateNodeValidators = runtime.Profile.ParticipantValidators(duplicateParticipant)
 
 			spares := runtime.Profile.SpareValidators()
 			gomega.Expect(spares).NotTo(gomega.BeEmpty(), "profile %q has no genesis validator that no client runs", runtime.Profile)

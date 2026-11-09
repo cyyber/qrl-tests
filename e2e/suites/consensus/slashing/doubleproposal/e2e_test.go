@@ -18,7 +18,9 @@ import (
 )
 
 const (
-	watcherParticipant = 2
+	primaryParticipant   = 0
+	duplicateParticipant = 1
+	watcherParticipant   = 2
 
 	doubleProposalAttempts = 3
 	doubleProposalTimeout  = 15 * time.Minute
@@ -58,22 +60,22 @@ var _ = ginkgo.Describe(
 			runtime := testsuite.LoadRuntime()
 			nodes := testsuite.MustSucceed(runtime.Nodes(ctx))
 			gomega.Expect(nodes).To(gomega.HaveLen(watcherParticipant+1), "the suite proposes on two nodes, and a third watches")
-			gomega.Expect(nodes[slashingops.DuplicateParticipant].BeaconGRPC).NotTo(gomega.BeEmpty(), "beacon gRPC is not published")
+			gomega.Expect(nodes[duplicateParticipant].BeaconGRPC).NotTo(gomega.BeEmpty(), "beacon gRPC is not published")
 			gomega.Expect(runtime.ValidatorImage).NotTo(gomega.BeEmpty(), "validator image is not configured")
 			gomega.Expect(runtime.QrysmAlltoolsImage).NotTo(gomega.BeEmpty(), "Qrysm all-tools image is not configured")
-			duplicate = &slashingops.Node{Node: nodes[slashingops.DuplicateParticipant], Graffiti: "duplicate-proposer"}
+			duplicate = &slashingops.Node{Node: nodes[duplicateParticipant], Graffiti: "duplicate-proposer"}
 			scenario = &doubleProposal{
 				duplicate: duplicate,
 				peers: []netip.Addr{
-					beaconAddress(nodes[slashingops.PrimaryParticipant]), beaconAddress(nodes[watcherParticipant]),
+					beaconAddress(nodes[primaryParticipant]), beaconAddress(nodes[watcherParticipant]),
 				},
 				alltoolsImage:       runtime.QrysmAlltoolsImage,
-				withdrawalRecipient: nodes[slashingops.PrimaryParticipant].Address.Hex(),
+				withdrawalRecipient: nodes[primaryParticipant].Address.Hex(),
 			}
-			candidates = runtime.Profile.ParticipantValidators(slashingops.PrimaryParticipant)
+			candidates = runtime.Profile.ParticipantValidators(primaryParticipant)
 			gomega.Expect(candidates).NotTo(gomega.BeEmpty(), "profile %q runs no validators on node 1", runtime.Profile)
 
-			client = nodes[slashingops.PrimaryParticipant].Beacon
+			client = nodes[primaryParticipant].Beacon
 			chain = testsuite.MustSucceed(chaininfo.Load(ctx, client))
 			slashingops.ExpectShortEpochs(chain)
 			rewardsSpec = testsuite.MustSucceed(rewards.LoadSpec(ctx, client))
