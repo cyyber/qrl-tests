@@ -7,11 +7,11 @@ import (
 	"github.com/cyyber/qrl-tests/e2e/internal/beacon"
 )
 
-// proposalCandidates returns the proposals of the next epoch that a duplicate
-// of their proposer's key can turn into a double proposal and nothing else:
-// the proposer is one of candidates, not one of excluded, and proposes no
-// other slot in the current epoch or the next. The latest come first, to give
-// the duplicate the most time to start.
+// proposalCandidates returns the next epoch's proposals that a duplicate of
+// the proposer's key would turn into a double proposal and nothing else: the
+// proposer is in candidates, not in excluded, and has no other proposal in the
+// current or next epoch. The latest slots come first, to give the duplicate
+// the most time to start.
 func proposalCandidates(current, next []beacon.ProposerDuty, candidates, excluded []uint64) []beacon.ProposerDuty {
 	proposals := make(map[uint64]int)
 	for _, duty := range slices.Concat(current, next) {
