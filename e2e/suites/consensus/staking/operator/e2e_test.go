@@ -1,6 +1,6 @@
 //go:build e2e
 
-package stakingoperator
+package operator
 
 import (
 	"context"
