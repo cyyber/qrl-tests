@@ -1,6 +1,6 @@
 //go:build e2e
 
-package stakingautomated
+package automated
 
 import (
 	"context"
