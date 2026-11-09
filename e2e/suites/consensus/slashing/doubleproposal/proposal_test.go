@@ -49,7 +49,7 @@ type doubleProposal struct {
 	peers               []netip.Addr
 	alltoolsImage       string
 	withdrawalRecipient string
-	// duplicated is the validators whose keys run has started a duplicate of.
+	// duplicated is the validators run has duplicated.
 	duplicated []uint64
 }
 
