@@ -8,10 +8,8 @@ func moreThanAThird(stake, total uint64) bool {
 	return 3*stake > total
 }
 
-// timelyTarget reports whether a validator's target vote of an epoch was
-// timely, from its attestation reward. A missed target always costs a
-// penalty, and a timely one never does: it earns a reward, or nothing in a
-// leak.
+// timelyTarget reports whether a validator's target vote was timely, from its
+// reward: a missed target always costs a penalty, a timely one never does.
 func timelyTarget(reward beacon.AttestationReward) bool {
 	return reward.Target >= 0
 }

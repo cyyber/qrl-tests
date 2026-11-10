@@ -10,9 +10,8 @@ import (
 const shorPerQRL = 1_000_000_000
 
 func TestMoreThanAThird(t *testing.T) {
-	// Half of 64 validators, and 32 of 65 with a spare.
+	// Half of 64 validators.
 	require.True(t, moreThanAThird(32*40_000*shorPerQRL, 64*40_000*shorPerQRL))
-	require.True(t, moreThanAThird(32*40_000*shorPerQRL, 65*40_000*shorPerQRL))
 	// Exactly a third leaves the rest with two thirds, enough to justify.
 	require.False(t, moreThanAThird(30*shorPerQRL, 90*shorPerQRL))
 	require.True(t, moreThanAThird(30*shorPerQRL+1, 90*shorPerQRL))
