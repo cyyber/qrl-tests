@@ -118,7 +118,7 @@ var _ = ginkgo.Describe(
 
 		ginkgo.AfterAll(func(ctx ginkgo.SpecContext) {
 			if clientStopped {
-				gomega.Expect(runtime.StartValidator(ctx, offlineParticipant)).To(gomega.Succeed())
+				gomega.Expect(runtime.StartParticipantValidators(ctx, offlineParticipant)).To(gomega.Succeed())
 			}
 		}, ginkgo.NodeTimeout(time.Minute))
 
@@ -131,7 +131,7 @@ var _ = ginkgo.Describe(
 
 		ginkgo.It("stops finalizing while blocks keep coming",
 			func(ctx ginkgo.SpecContext) {
-				gomega.Expect(runtime.StopValidator(ctx, offlineParticipant)).To(gomega.Succeed())
+				gomega.Expect(runtime.StopParticipantValidators(ctx, offlineParticipant)).To(gomega.Succeed())
 				clientStopped = true
 				stopped = currentEpoch(ctx)
 
@@ -186,7 +186,7 @@ var _ = ginkgo.Describe(
 			// Read before the start, so the client cannot have voted in an
 			// epoch before restarted.
 			restarted = currentEpoch(ctx)
-			gomega.Expect(runtime.StartValidator(ctx, offlineParticipant)).To(gomega.Succeed())
+			gomega.Expect(runtime.StartParticipantValidators(ctx, offlineParticipant)).To(gomega.Succeed())
 			clientStopped = false
 
 			// The online participant alone holds less than two thirds of the

@@ -151,9 +151,9 @@ func (runtime *Runtime) StopValidators(ctx context.Context) error {
 	return devnet.NewManager().StopServices(ctx, runtime.environment.EnclaveName, validators)
 }
 
-// StopValidator stops the validator client of the participant at position
-// (from 0).
-func (runtime *Runtime) StopValidator(ctx context.Context, position int) error {
+// StopParticipantValidators stops the validator client of the participant at
+// position (from 0).
+func (runtime *Runtime) StopParticipantValidators(ctx context.Context, position int) error {
 	service, err := runtime.validatorService(position)
 	if err != nil {
 		return err
@@ -161,9 +161,10 @@ func (runtime *Runtime) StopValidator(ctx context.Context, position int) error {
 	return devnet.NewManager().StopServices(ctx, runtime.environment.EnclaveName, []string{service})
 }
 
-// StartValidator starts the validator client that StopValidator stopped. It
-// comes back on other host ports, which no suite reads.
-func (runtime *Runtime) StartValidator(ctx context.Context, position int) error {
+// StartParticipantValidators starts the validator client that
+// StopParticipantValidators stopped. It comes back on other host ports, which
+// no suite reads.
+func (runtime *Runtime) StartParticipantValidators(ctx context.Context, position int) error {
 	service, err := runtime.validatorService(position)
 	if err != nil {
 		return err
