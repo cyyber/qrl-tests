@@ -175,8 +175,7 @@ func (client *Client) TotalActiveBalance(ctx context.Context, stateID string) (u
 }
 
 // InactivityScores returns every validator's inactivity score in the state at
-// stateID, by validator index. No standard endpoint serves the scores, so it
-// reads the whole state from Qrysm's debug API, which qrl-package enables.
+// stateID, by validator index.
 func (client *Client) InactivityScores(ctx context.Context, stateID string) ([]uint64, error) {
 	state, err := getData[struct {
 		InactivityScores []string `json:"inactivity_scores"`
