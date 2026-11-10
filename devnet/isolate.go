@@ -85,36 +85,30 @@ func isolateService(
 	if pid <= 0 {
 		return nil, fmt.Errorf("service %q has no running process", serviceID)
 	}
-	if err := runIsolationRules(ctx, client, pid, isolationRules("-I", peers)); err != nil {
-		return nil, cleanUpAfter(ctx, client, pid, serviceID, peers, fmt.Errorf("isolate service %q: %w", serviceID, err))
+	if err := runIsolationRules(ctx, client, pid, insertRules(peers)); err != nil {
+		err = fmt.Errorf("isolate service %q: %w", serviceID, err)
+		// An insert that failed partway leaves the rules before it in place.
+		if cleanupErr := runIsolationRules(context.WithoutCancel(ctx), client, pid, deleteRules(peers)); cleanupErr != nil {
+			err = errors.Join(err, fmt.Errorf("remove the rules of service %q: %w", serviceID, cleanupErr))
+		}
+		return nil, err
 	}
 	return func(ctx context.Context) error {
-		if err := runIsolationRules(ctx, client, pid, isolationRules("-D", peers)); err != nil {
-			return cleanUpAfter(ctx, client, pid, serviceID, peers, fmt.Errorf("rejoin service %q: %w", serviceID, err))
+		if err := runIsolationRules(ctx, client, pid, deleteRules(peers)); err != nil {
+			return fmt.Errorf("rejoin service %q: %w", serviceID, err)
 		}
 		return nil
 	}, nil
 }
 
-// cleanUpAfter deletes any rules left by a failed insert or delete, and returns
-// failed joined with the cleanup's own error, if any.
-func cleanUpAfter(
-	ctx context.Context, client serviceIsolator, pid int, serviceID string, peers []netip.Addr, failed error,
-) error {
-	if err := runIsolationRules(context.WithoutCancel(ctx), client, pid, cleanupRules(peers)); err != nil {
-		return errors.Join(failed, fmt.Errorf("remove the rules of service %q: %w", serviceID, err))
-	}
-	return failed
+// insertRules is the script that inserts a rule dropping each direction of the
+// traffic with every peer, stopping at the first one it can't insert.
+func insertRules(peers []netip.Addr) string {
+	return "set -e\n" + strings.Join(peerRules("-I", peers), "\n")
 }
 
-// isolationRules is the script that inserts (-I) or deletes (-D) a rule
-// dropping each direction of the traffic with every peer.
-func isolationRules(action string, peers []netip.Addr) string {
-	return "set -e\n" + strings.Join(peerRules(action, peers), "\n")
-}
-
-// cleanupRules is the script that deletes whichever of the rules exist.
-func cleanupRules(peers []netip.Addr) string {
+// deleteRules is the script that deletes whichever of the rules exist.
+func deleteRules(peers []netip.Addr) string {
 	rules := peerRules("-D", peers)
 	for position := range rules {
 		rules[position] += " || true"

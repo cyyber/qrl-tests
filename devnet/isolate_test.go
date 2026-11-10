@@ -41,10 +41,11 @@ func TestIsolateService(t *testing.T) {
 
 	require.NoError(t, rejoin(t.Context()))
 	require.Len(t, client.created, 2)
+	// Rejoining deletes whichever rules exist, without stopping at one that is
+	// missing.
 	require.Equal(t,
-		"set -e\n"+
-			"iptables -D INPUT -s 172.16.0.11 -j DROP\niptables -D OUTPUT -d 172.16.0.11 -j DROP\n"+
-			"iptables -D INPUT -s 172.16.0.13 -j DROP\niptables -D OUTPUT -d 172.16.0.13 -j DROP",
+		"iptables -D INPUT -s 172.16.0.11 -j DROP || true\niptables -D OUTPUT -d 172.16.0.11 -j DROP || true\n"+
+			"iptables -D INPUT -s 172.16.0.13 -j DROP || true\niptables -D OUTPUT -d 172.16.0.13 -j DROP || true",
 		script(client.created[1]),
 	)
 	require.Equal(t, []string{"helper-1", "helper-2"}, client.removed)
@@ -60,9 +61,8 @@ func TestEnsureImage(t *testing.T) {
 
 func TestIsolateServiceErrors(t *testing.T) {
 	peers := []netip.Addr{netip.MustParseAddr("172.16.0.11")}
-	// The cleanup deletes whichever rules exist, without stopping at one that
-	// is missing.
-	const cleanup = "iptables -D INPUT -s 172.16.0.11 -j DROP || true\niptables -D OUTPUT -d 172.16.0.11 -j DROP || true"
+	// Both the cleanup after a failed insert and the rejoin run this script.
+	const deleteScript = "iptables -D INPUT -s 172.16.0.11 -j DROP || true\niptables -D OUTPUT -d 172.16.0.11 -j DROP || true"
 
 	t.Run("no peers", func(t *testing.T) {
 		_, err := isolateService(t.Context(), newFakeIsolator(), "consensus-service", nil)
@@ -91,7 +91,7 @@ func TestIsolateServiceErrors(t *testing.T) {
 		_, err := isolateService(t.Context(), client, "consensus-service", peers)
 		require.EqualError(t, err, `isolate service "consensus-service": helper exited with code 3`)
 		require.Len(t, client.created, 2)
-		require.Equal(t, cleanup, script(client.created[1]))
+		require.Equal(t, deleteScript, script(client.created[1]))
 		require.Equal(t, []string{"helper-1", "helper-2"}, client.removed)
 	})
 
@@ -109,8 +109,9 @@ func TestIsolateServiceErrors(t *testing.T) {
 		rejoin, err := isolateService(t.Context(), client, "consensus-service", peers)
 		require.NoError(t, err)
 		require.EqualError(t, rejoin(t.Context()), `rejoin service "consensus-service": helper exited with code 1`)
-		require.Len(t, client.created, 3)
-		require.Equal(t, cleanup, script(client.created[2]))
+		// The rejoin already deletes best-effort, so nothing runs after it.
+		require.Len(t, client.created, 2)
+		require.Equal(t, deleteScript, script(client.created[1]))
 	})
 }
 
