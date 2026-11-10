@@ -38,6 +38,13 @@ const (
 	// participant runs. A suite duplicates the spare by running its key in two
 	// validator sidecars, one on each node.
 	ProfileDuplicateValidator Profile = "duplicate-validator"
+	// ProfileDoubleProposal has three participants, each beacon node with a
+	// slasher: the first two run 32 validators each, and the third runs none. A
+	// suite runs one of the first participant's keys again, in a sidecar
+	// attached to the second participant's beacon node. A beacon node feeds its
+	// slasher only blocks it receives from peers, so only the third, which
+	// receives both blocks through gossip, detects the double proposal.
+	ProfileDoubleProposal Profile = "double-proposal"
 )
 
 type profileSpec struct {
@@ -69,6 +76,11 @@ var profileSpecs = map[Profile]profileSpec{
 		},
 		preregisteredValidators: 65,
 	},
+	ProfileDoubleProposal: {participants: []participantSpec{
+		{validatorCount: 32, clExtraParams: slasherCLExtraParams},
+		{validatorCount: 32, clExtraParams: slasherCLExtraParams},
+		{validatorCount: 0, clExtraParams: slasherCLExtraParams},
+	}},
 }
 
 // ParseProfile validates the raw value, resolving the empty value to the

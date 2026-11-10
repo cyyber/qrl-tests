@@ -104,6 +104,19 @@ func TestDuplicateValidatorProfileParameters(t *testing.T) {
 	require.Equal(t, []string{"--min-sync-peers=0", "--minimum-peers-per-subnet=0"}, defaultCLExtraParams)
 }
 
+func TestDoubleProposalProfileParameters(t *testing.T) {
+	payload, err := resolveParameters("Q"+strings.Repeat("a", 128), StartOptions{Profile: ProfileDoubleProposal})
+	require.NoError(t, err)
+
+	var parameters map[string]any
+	require.NoError(t, json.Unmarshal([]byte(payload), &parameters))
+	// The watcher must say it runs no validators: left out, qrl-package would
+	// give it its default count.
+	watcher := parameters["participants"].([]any)[2].(map[string]any)
+	require.Contains(t, watcher, "validator_count")
+	require.Equal(t, float64(0), watcher["validator_count"])
+}
+
 func TestFileParametersPassThroughUnchanged(t *testing.T) {
 	address := "Q" + strings.Repeat("b", 128)
 	custom := []byte(fmt.Sprintf(`participants:

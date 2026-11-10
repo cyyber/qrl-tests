@@ -89,6 +89,12 @@ func (chain Info) EpochAt(now time.Time) uint64 {
 	return uint64(now.Sub(chain.GenesisTime) / chain.EpochDuration)
 }
 
+// SlotStartTime is the wall-clock time slot starts at: genesis plus slot
+// slot durations.
+func (chain Info) SlotStartTime(slot uint64) time.Time {
+	return chain.GenesisTime.Add(time.Duration(slot) * chain.SlotDuration)
+}
+
 // DepositWait is how long a deposit takes to reach the beacon state on a
 // healthy chain. A voting period's votes cover deposits made at least the
 // follow distance before it began, and take effect once they hold a majority,

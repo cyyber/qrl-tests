@@ -1,6 +1,4 @@
-//go:build e2e
-
-package slashing
+package slashingops
 
 import (
 	"context"
@@ -12,14 +10,14 @@ import (
 	ginkgo "github.com/onsi/ginkgo/v2"
 )
 
-// node is a devnet participant that runs one of the suite's validator sidecars.
-type node struct {
+// Node is a devnet participant on which a suite runs a validator sidecar.
+type Node struct {
 	*live.Node
-	graffiti string
+	Graffiti string
 	client   *validator.Sidecar
 }
 
-func (node *node) startClient(ctx context.Context, keystores []sidecar.File) {
+func (node *Node) StartClient(ctx context.Context, keystores []sidecar.File) {
 	ginkgo.GinkgoHelper()
 	node.client = testsuite.MustSucceed(validator.Start(ctx, validator.Config{
 		Image:              node.ValidatorImage,
@@ -27,11 +25,12 @@ func (node *node) startClient(ctx context.Context, keystores []sidecar.File) {
 		BeaconGRPC:         node.BeaconGRPC,
 		ConsensusServiceID: node.ConsensusServiceID,
 		Keystores:          keystores,
-		Graffiti:           node.graffiti,
+		Graffiti:           node.Graffiti,
 	}))
 }
 
-func (node *node) stopClient() error {
+// StopClient prints the client's last log lines and stops it.
+func (node *Node) StopClient() error {
 	if node == nil {
 		return nil
 	}
@@ -41,9 +40,17 @@ func (node *node) stopClient() error {
 		return nil
 	}
 	if logs, err := client.Logs(); err != nil {
-		ginkgo.GinkgoWriter.Printf("%s validator client logs unavailable: %v\n", node.graffiti, err)
+		ginkgo.GinkgoWriter.Printf("%s validator client logs unavailable: %v\n", node.Graffiti, err)
 	} else {
-		ginkgo.GinkgoWriter.Printf("%s validator client, last log lines:\n%s\n", node.graffiti, logs)
+		ginkgo.GinkgoWriter.Printf("%s validator client, last log lines:\n%s\n", node.Graffiti, logs)
 	}
 	return client.Close()
+}
+
+// ReportLogsOnFailure prints the running client's last log lines if the
+// current spec failed.
+func (node *Node) ReportLogsOnFailure() {
+	if node != nil {
+		testsuite.ReportLogsOnFailure(node.Graffiti+" validator client", node.client)
+	}
 }
