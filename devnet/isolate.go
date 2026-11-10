@@ -15,9 +15,8 @@ import (
 )
 
 // isolationImage runs the helper that adds and removes the rules. Only its
-// nsenter is used: the helper enters the Docker host's mount namespace for
-// that host's nsenter and iptables, and the service's network namespace for
-// the rules, so the service's own image needs neither.
+// nsenter is used, to run the Docker host's iptables in the service's network,
+// so neither image needs iptables.
 const isolationImage = "alpine:3.22@sha256:49340b346798875b5592e5d420241f2f9cfba5f47e62ebb1446a1b34734e898f"
 
 // isolationTimeout bounds one run of the helper.
