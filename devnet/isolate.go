@@ -46,11 +46,10 @@ func PrepareIsolation(ctx context.Context) error {
 	return errors.Join(ensureImage(ctx, client, isolationImage), client.Close())
 }
 
-// IsolateService drops every packet between a Kurtosis service's container
-// and the peers until the returned rejoin runs, as across a network split.
-// Connections stay open: what either side sends meanwhile is retransmitted
-// once the rules go. The host-published ports keep working, so the service's
-// own clients still reach it. rejoin must run even if the caller fails.
+// IsolateService drops all traffic between a Kurtosis service's container and
+// the peers until rejoin runs, like a network split. Connections stay open,
+// and the service's own clients still reach it through the host's ports.
+// rejoin must run even if the caller fails.
 func IsolateService(ctx context.Context, serviceID string, peers []netip.Addr) (func(context.Context) error, error) {
 	client, err := dockerapi.New()
 	if err != nil {
