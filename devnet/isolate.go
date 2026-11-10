@@ -36,8 +36,8 @@ type serviceIsolator interface {
 	ContainerRemove(context.Context, string, dockerclient.ContainerRemoveOptions) (dockerclient.ContainerRemoveResult, error)
 }
 
-// PrepareIsolation pulls the helper IsolateService runs, so that a first
-// isolation timed to a slot doesn't wait for the pull.
+// PrepareIsolation pulls the helper image ahead of time, so a timed
+// IsolateService call doesn't wait for the download.
 func PrepareIsolation(ctx context.Context) error {
 	client, err := dockerapi.New()
 	if err != nil {
