@@ -18,7 +18,7 @@ import (
 // reports the missed-vote penalties, with the inactivity penalty at the old
 // score in the target's (cyyber/qrysm#113); the balance loses the inactivity
 // penalty at the new one. It returns the epoch's amounts.
-func expectMissedEpoch(ctx context.Context, val rewards.Validator, epoch, score uint64) rewards.LeakVoteAmounts {
+func expectMissedEpoch(ctx context.Context, val rewards.Validator, epoch, score uint64) rewards.LeakAmounts {
 	ginkgo.GinkgoHelper()
 	amounts := testsuite.MustSucceed(val.LeakVoteAmounts(ctx, epoch))
 	expectScores(val, epoch, amounts, score, false)
@@ -80,7 +80,7 @@ func expectUnpaidVotes(ctx context.Context, val rewards.Validator, epoch uint64)
 
 // expectScores checks the validator's inactivity score before and after the
 // processing of epoch: score before, and the rule's next score after.
-func expectScores(val rewards.Validator, epoch uint64, amounts rewards.LeakVoteAmounts, score uint64, timely bool) {
+func expectScores(val rewards.Validator, epoch uint64, amounts rewards.LeakAmounts, score uint64, timely bool) {
 	ginkgo.GinkgoHelper()
 	gomega.Expect(amounts.ScoreBefore).To(gomega.Equal(score),
 		"inactivity score of validator %d before the processing of epoch %d", val.Index, epoch)

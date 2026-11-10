@@ -169,9 +169,9 @@ func (validator Validator) VoteAmounts(ctx context.Context, epoch uint64) (VoteA
 	return validator.voteAmountsAt(ctx, epoch, stateID)
 }
 
-// LeakVoteAmounts are the vote amounts of an epoch that may be processed in an
+// LeakAmounts are the vote amounts of an epoch that may be processed in an
 // inactivity leak, or while the validator's inactivity score is above zero.
-type LeakVoteAmounts struct {
+type LeakAmounts struct {
 	VoteAmounts
 	// Leak is whether the epoch processing that counts the epoch's votes does
 	// so in a leak, by the finalized checkpoint after its justification step.
@@ -193,18 +193,18 @@ type LeakVoteAmounts struct {
 // LeakVoteAmounts computes the vote amounts of epoch like VoteAmounts, and the
 // inactivity penalties of a missed target vote, from the states just before
 // and just after the epoch processing that counts the epoch's votes.
-func (validator Validator) LeakVoteAmounts(ctx context.Context, epoch uint64) (LeakVoteAmounts, error) {
+func (validator Validator) LeakVoteAmounts(ctx context.Context, epoch uint64) (LeakAmounts, error) {
 	before := validator.rewardsSlot(epoch)
 	amounts, err := validator.voteAmountsAt(ctx, epoch, strconv.FormatUint(before, 10))
 	if err != nil {
-		return LeakVoteAmounts{}, err
+		return LeakAmounts{}, err
 	}
-	leak := LeakVoteAmounts{VoteAmounts: amounts}
+	leak := LeakAmounts{VoteAmounts: amounts}
 	if leak.ReportedLeak, leak.ScoreBefore, err = validator.leakAndScore(ctx, epoch, before); err != nil {
-		return LeakVoteAmounts{}, err
+		return LeakAmounts{}, err
 	}
 	if leak.Leak, leak.ScoreAfter, err = validator.leakAndScore(ctx, epoch, before+1); err != nil {
-		return LeakVoteAmounts{}, err
+		return LeakAmounts{}, err
 	}
 	effectiveBalance := amounts.Timely.EffectiveBalance
 	leak.Inactivity = validator.Spec.inactivityPenalty(effectiveBalance, leak.ScoreAfter)
