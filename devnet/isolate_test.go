@@ -40,11 +40,13 @@ func TestIsolateService(t *testing.T) {
 
 	require.NoError(t, rejoin(t.Context()))
 	require.Len(t, client.created, 2)
-	rejoinCmd := client.created[1].Config.Cmd
-	require.Contains(t, rejoinCmd[len(rejoinCmd)-1], "iptables -D INPUT -s 172.16.0.11 -j DROP")
+	require.Equal(t,
+		"set -e\n"+
+			"iptables -D INPUT -s 172.16.0.11 -j DROP\niptables -D OUTPUT -d 172.16.0.11 -j DROP\n"+
+			"iptables -D INPUT -s 172.16.0.13 -j DROP\niptables -D OUTPUT -d 172.16.0.13 -j DROP",
+		script(client.created[1]),
+	)
 	require.Equal(t, []string{"helper-1", "helper-2"}, client.removed)
-	// The image is pulled only once it is missing.
-	require.Len(t, client.pulled, 1)
 }
 
 func TestEnsureImage(t *testing.T) {
@@ -57,52 +59,63 @@ func TestEnsureImage(t *testing.T) {
 
 func TestIsolateServiceErrors(t *testing.T) {
 	peers := []netip.Addr{netip.MustParseAddr("172.16.0.11")}
+	// The cleanup deletes whichever rules exist, without stopping at one that
+	// is missing.
+	const cleanup = "iptables -D INPUT -s 172.16.0.11 -j DROP || true\niptables -D OUTPUT -d 172.16.0.11 -j DROP || true"
 
-	_, err := isolateService(t.Context(), newFakeIsolator(), "consensus-service", nil)
-	require.EqualError(t, err, `isolate service "consensus-service": no peers`)
+	t.Run("no peers", func(t *testing.T) {
+		_, err := isolateService(t.Context(), newFakeIsolator(), "consensus-service", nil)
+		require.EqualError(t, err, `isolate service "consensus-service": no peers`)
+	})
 
-	client := newFakeIsolator()
-	client.containers = nil
-	_, err = isolateService(t.Context(), client, "consensus-service", peers)
-	require.ErrorContains(t, err, `find container: expected one running Docker container for service "consensus-service", found 0`)
-	require.Empty(t, client.created)
+	t.Run("no container", func(t *testing.T) {
+		client := newFakeIsolator()
+		client.containers = nil
+		_, err := isolateService(t.Context(), client, "consensus-service", peers)
+		require.ErrorContains(t, err, `find container: expected one running Docker container for service "consensus-service", found 0`)
+		require.Empty(t, client.created)
+	})
 
-	client = newFakeIsolator()
-	client.pid = 0
-	_, err = isolateService(t.Context(), client, "consensus-service", peers)
-	require.EqualError(t, err, `service "consensus-service" has no running process`)
-	require.Empty(t, client.created)
+	t.Run("no running process", func(t *testing.T) {
+		client := newFakeIsolator()
+		client.pid = 0
+		_, err := isolateService(t.Context(), client, "consensus-service", peers)
+		require.EqualError(t, err, `service "consensus-service" has no running process`)
+		require.Empty(t, client.created)
+	})
 
-	// A failed insert is followed by a cleanup that deletes whichever rules
-	// it left, without stopping at one that is missing.
-	client = newFakeIsolator()
-	client.exitCodes = []int64{3}
-	_, err = isolateService(t.Context(), client, "consensus-service", peers)
-	require.EqualError(t, err, `isolate service "consensus-service": helper exited with code 3`)
-	require.Len(t, client.created, 2)
-	cleanup := client.created[1].Config.Cmd
-	require.Equal(t,
-		"iptables -D INPUT -s 172.16.0.11 -j DROP || true\niptables -D OUTPUT -d 172.16.0.11 -j DROP || true",
-		cleanup[len(cleanup)-1],
-	)
-	require.Equal(t, []string{"helper-1", "helper-2"}, client.removed)
+	t.Run("insert fails", func(t *testing.T) {
+		client := newFakeIsolator()
+		client.exitCodes = []int64{3}
+		_, err := isolateService(t.Context(), client, "consensus-service", peers)
+		require.EqualError(t, err, `isolate service "consensus-service": helper exited with code 3`)
+		require.Len(t, client.created, 2)
+		require.Equal(t, cleanup, script(client.created[1]))
+		require.Equal(t, []string{"helper-1", "helper-2"}, client.removed)
+	})
 
-	client = newFakeIsolator()
-	client.exitCodes = []int64{3, 4}
-	_, err = isolateService(t.Context(), client, "consensus-service", peers)
-	require.EqualError(t, err, "isolate service \"consensus-service\": helper exited with code 3\n"+
-		"remove the rules of service \"consensus-service\": helper exited with code 4")
+	t.Run("insert and cleanup fail", func(t *testing.T) {
+		client := newFakeIsolator()
+		client.exitCodes = []int64{3, 4}
+		_, err := isolateService(t.Context(), client, "consensus-service", peers)
+		require.EqualError(t, err, "isolate service \"consensus-service\": helper exited with code 3\n"+
+			"remove the rules of service \"consensus-service\": helper exited with code 4")
+	})
 
-	client = newFakeIsolator()
-	client.exitCodes = []int64{0, 1}
-	rejoin, err := isolateService(t.Context(), client, "consensus-service", peers)
-	require.NoError(t, err)
-	require.EqualError(t, rejoin(t.Context()), `rejoin service "consensus-service": helper exited with code 1`)
-	// A failed rejoin is also followed by the cleanup, so no rule after the
-	// one it stopped at stays in place.
-	require.Len(t, client.created, 3)
-	cleanup = client.created[2].Config.Cmd
-	require.Equal(t, cleanupRules(peers), cleanup[len(cleanup)-1])
+	t.Run("rejoin fails", func(t *testing.T) {
+		client := newFakeIsolator()
+		client.exitCodes = []int64{0, 1}
+		rejoin, err := isolateService(t.Context(), client, "consensus-service", peers)
+		require.NoError(t, err)
+		require.EqualError(t, rejoin(t.Context()), `rejoin service "consensus-service": helper exited with code 1`)
+		require.Len(t, client.created, 3)
+		require.Equal(t, cleanup, script(client.created[2]))
+	})
+}
+
+// script is the shell script a helper container runs.
+func script(helper dockerclient.ContainerCreateOptions) string {
+	return helper.Config.Cmd[len(helper.Config.Cmd)-1]
 }
 
 type fakeIsolator struct {
