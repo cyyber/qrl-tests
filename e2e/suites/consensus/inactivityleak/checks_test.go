@@ -12,12 +12,9 @@ import (
 	gomega "github.com/onsi/gomega"
 )
 
-// expectMissedEpoch checks an epoch in which the validator cast no vote, its
-// inactivity score having been score before the epoch was processed. The
-// score rises by the bias, and drops back outside a leak. The rewards API
-// reports the missed-vote penalties, with the inactivity penalty at the old
-// score in the target's (cyyber/qrysm#113); the balance loses the inactivity
-// penalty at the new one. It returns the epoch's amounts.
+// expectMissedEpoch checks an epoch the validator missed, starting at score.
+// The rewards API charges the inactivity penalty at the old score
+// (cyyber/qrysm#113); the balance loses it at the new one.
 func expectMissedEpoch(ctx context.Context, val rewards.Validator, epoch, score uint64) rewards.LeakAmounts {
 	ginkgo.GinkgoHelper()
 	amounts := testsuite.MustSucceed(val.LeakVoteAmounts(ctx, epoch))
@@ -57,8 +54,7 @@ func expectUnpaidVotes(ctx context.Context, val rewards.Validator, epoch uint64)
 		"what timely votes earn in epoch %d", epoch)
 	expectScores(val, epoch, amounts, 0, true)
 
-	// A healthy client's target vote is always timely. Whether its source
-	// vote was depends on when a block included it, which the chain records.
+	// The target vote is always timely; the source vote depends on inclusion.
 	timely := testsuite.MustSucceed(val.TimelyVotes(ctx, epoch))
 	want := beacon.AttestationReward{ValidatorIndex: val.Index}
 	if !timely.Source {
@@ -67,8 +63,7 @@ func expectUnpaidVotes(ctx context.Context, val rewards.Validator, epoch uint64)
 	reward := testsuite.MustSucceed(val.AttestationReward(ctx, epoch))
 	gomega.Expect(reward).To(gomega.Equal(want), "attestation rewards of epoch %d, whose votes were %+v", epoch, timely)
 
-	// The blocks of epoch+1 add the validator's proposer and sync committee
-	// rewards, which the leak leaves alone, and take any withdrawal.
+	// Block rewards and withdrawals are unaffected by the leak.
 	before := testsuite.MustSucceed(val.BalanceAtEpochStart(ctx, epoch+1))
 	after := testsuite.MustSucceed(val.BalanceAtEpochStart(ctx, epoch+2))
 	blocks := testsuite.MustSucceed(val.BlockBalanceChanges(ctx, epoch+1))

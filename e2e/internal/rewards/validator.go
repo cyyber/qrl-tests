@@ -173,20 +173,13 @@ func (validator Validator) VoteAmounts(ctx context.Context, epoch uint64) (VoteA
 // inactivity leak, or while the validator's inactivity score is above zero.
 type LeakAmounts struct {
 	VoteAmounts
-	// Leak is whether the epoch processing that counts the epoch's votes does
-	// so in a leak, by the finalized checkpoint after its justification step.
-	// ReportedLeak is the rewards API's view, by the checkpoint before that
-	// step. They differ only in a processing that finalizes, where Timely,
-	// zero in a reported leak, is not what timely votes earn.
+	// Leak is whether the epoch is processed in a leak; ReportedLeak is the
+	// rewards API's view, which lags it (cyyber/qrysm#113).
 	Leak, ReportedLeak bool
-	// ScoreBefore and ScoreAfter are the validator's inactivity score before
-	// and after that epoch processing.
+	// ScoreBefore and ScoreAfter are the inactivity score around processing.
 	ScoreBefore, ScoreAfter uint64
-	// Inactivity is what that epoch processing charges on top of MissedTarget
-	// when the target vote was missed, at ScoreAfter. ReportedInactivity is
-	// what the rewards API adds to the target figure instead: it skips the
-	// processing's score update and charges ScoreBefore. The two Reported
-	// fields follow the API until cyyber/qrysm#113 is fixed.
+	// Inactivity is the penalty a missed target costs, at ScoreAfter;
+	// ReportedInactivity is the API's figure, at ScoreBefore.
 	Inactivity, ReportedInactivity uint64
 }
 
