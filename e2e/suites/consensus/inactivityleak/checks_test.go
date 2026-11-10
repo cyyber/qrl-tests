@@ -13,8 +13,6 @@ import (
 )
 
 // expectMissedEpoch checks an epoch the validator missed, starting at score.
-// The rewards API charges the inactivity penalty at the old score
-// (cyyber/qrysm#113); the balance loses it at the new one.
 func expectMissedEpoch(ctx context.Context, val rewards.Validator, epoch, score uint64) rewards.LeakAmounts {
 	ginkgo.GinkgoHelper()
 	amounts := testsuite.MustSucceed(val.LeakVoteAmounts(ctx, epoch))
@@ -24,9 +22,9 @@ func expectMissedEpoch(ctx context.Context, val rewards.Validator, epoch, score 
 	gomega.Expect(reward).To(gomega.Equal(beacon.AttestationReward{
 		ValidatorIndex: val.Index,
 		Source:         -int64(amounts.MissedSource),
-		Target:         -int64(amounts.MissedTarget + amounts.ReportedInactivity),
+		Target:         -int64(amounts.MissedTarget + amounts.Inactivity),
 	}), "attestation rewards of epoch %d: the target's is the %d shor missed-target penalty and the %d shor inactivity penalty at score %d",
-		epoch, amounts.MissedTarget, amounts.ReportedInactivity, amounts.ScoreBefore)
+		epoch, amounts.MissedTarget, amounts.Inactivity, amounts.ScoreAfter)
 
 	// The rewards of epoch apply when epoch+2 starts. The blocks of epoch+1
 	// add the missed sync committee duties; the offline validator proposes
@@ -49,7 +47,6 @@ func expectUnpaidVotes(ctx context.Context, val rewards.Validator, epoch uint64)
 	ginkgo.GinkgoHelper()
 	amounts := testsuite.MustSucceed(val.LeakVoteAmounts(ctx, epoch))
 	gomega.Expect(amounts.Leak).To(gomega.BeTrue(), "epoch %d is not processed in a leak", epoch)
-	gomega.Expect(amounts.ReportedLeak).To(gomega.BeTrue(), "the rewards API does not count epoch %d as in a leak", epoch)
 	gomega.Expect(amounts.Timely).To(gomega.Equal(beacon.IdealAttestationReward{EffectiveBalance: amounts.Timely.EffectiveBalance}),
 		"what timely votes earn in epoch %d", epoch)
 	expectScores(val, epoch, amounts, 0, true)

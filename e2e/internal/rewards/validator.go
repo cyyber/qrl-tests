@@ -173,54 +173,50 @@ func (validator Validator) VoteAmounts(ctx context.Context, epoch uint64) (VoteA
 // inactivity leak, or while the validator's inactivity score is above zero.
 type LeakAmounts struct {
 	VoteAmounts
-	// Leak is whether the epoch is processed in a leak; ReportedLeak is the
-	// rewards API's view, which lags it (cyyber/qrysm#113).
-	Leak, ReportedLeak bool
+	// Leak is whether the epoch is processed in a leak.
+	Leak bool
 	// ScoreBefore and ScoreAfter are the inactivity score around processing.
 	ScoreBefore, ScoreAfter uint64
-	// Inactivity is the penalty a missed target costs, at ScoreAfter;
-	// ReportedInactivity is the API's figure, at ScoreBefore.
-	Inactivity, ReportedInactivity uint64
+	// Inactivity is the penalty a missed target costs, at ScoreAfter.
+	Inactivity uint64
 }
 
 // LeakVoteAmounts computes the vote amounts of epoch like VoteAmounts, and the
-// inactivity penalties of a missed target vote, from the states just before
-// and just after the epoch processing that counts the epoch's votes.
+// inactivity penalty of a missed target vote, from the states just before and
+// just after the epoch processing that counts the epoch's votes.
 func (validator Validator) LeakVoteAmounts(ctx context.Context, epoch uint64) (LeakAmounts, error) {
 	before := validator.rewardsSlot(epoch)
+	after := before + 1
 	amounts, err := validator.voteAmountsAt(ctx, epoch, strconv.FormatUint(before, 10))
 	if err != nil {
 		return LeakAmounts{}, err
 	}
-	leak := LeakAmounts{VoteAmounts: amounts}
-	if leak.ReportedLeak, leak.ScoreBefore, err = validator.leakAndScore(ctx, epoch, before); err != nil {
+	checkpoints, err := validator.Client.FinalityCheckpointsAt(ctx, strconv.FormatUint(after, 10))
+	if err != nil {
 		return LeakAmounts{}, err
 	}
-	if leak.Leak, leak.ScoreAfter, err = validator.leakAndScore(ctx, epoch, before+1); err != nil {
+	leak := LeakAmounts{VoteAmounts: amounts, Leak: validator.Spec.inInactivityLeak(epoch, checkpoints.Finalized.Epoch)}
+	if leak.ScoreBefore, err = validator.inactivityScore(ctx, before); err != nil {
 		return LeakAmounts{}, err
 	}
-	effectiveBalance := amounts.Timely.EffectiveBalance
-	leak.Inactivity = validator.Spec.inactivityPenalty(effectiveBalance, leak.ScoreAfter)
-	leak.ReportedInactivity = validator.Spec.inactivityPenalty(effectiveBalance, leak.ScoreBefore)
+	if leak.ScoreAfter, err = validator.inactivityScore(ctx, after); err != nil {
+		return LeakAmounts{}, err
+	}
+	leak.Inactivity = validator.Spec.inactivityPenalty(amounts.Timely.EffectiveBalance, leak.ScoreAfter)
 	return leak, nil
 }
 
-// leakAndScore reads, from the state at slot, whether the rewards of epoch
-// count as processed in a leak there, and the validator's inactivity score.
-func (validator Validator) leakAndScore(ctx context.Context, epoch, slot uint64) (bool, uint64, error) {
-	stateID := strconv.FormatUint(slot, 10)
-	checkpoints, err := validator.Client.FinalityCheckpointsAt(ctx, stateID)
+// inactivityScore reads the validator's inactivity score from the state at
+// slot.
+func (validator Validator) inactivityScore(ctx context.Context, slot uint64) (uint64, error) {
+	scores, err := validator.Client.InactivityScores(ctx, strconv.FormatUint(slot, 10))
 	if err != nil {
-		return false, 0, err
-	}
-	scores, err := validator.Client.InactivityScores(ctx, stateID)
-	if err != nil {
-		return false, 0, err
+		return 0, err
 	}
 	if validator.Index >= uint64(len(scores)) {
-		return false, 0, fmt.Errorf("the state at slot %d has no inactivity score for validator %d", slot, validator.Index)
+		return 0, fmt.Errorf("the state at slot %d has no inactivity score for validator %d", slot, validator.Index)
 	}
-	return validator.Spec.inInactivityLeak(epoch, checkpoints.Finalized.Epoch), scores[validator.Index], nil
+	return scores[validator.Index], nil
 }
 
 // rewardsSlot is the slot of the state the rewards of epoch are processed in:

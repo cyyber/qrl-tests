@@ -231,10 +231,9 @@ func scoresJSON(score uint64) string {
 
 func TestLeakVoteAmounts(t *testing.T) {
 	// The rewards of epoch 5 are processed between the states at slots 55
-	// and 56. Epoch 0 is finalized before and after, so both count it as a
-	// leak, and the processing raises the score from 8 to 12.
+	// and 56. Epoch 0 is still finalized after, so it is a leak, and the
+	// processing raises the score from 8 to 12.
 	responses := map[string]string{
-		"beacon/states/55/finality_checkpoints": finalizedJSON(0),
 		"beacon/states/56/finality_checkpoints": finalizedJSON(0),
 		"debug/beacon/states/55":                scoresJSON(8),
 		"debug/beacon/states/56":                scoresJSON(12),
@@ -249,24 +248,20 @@ func TestLeakVoteAmounts(t *testing.T) {
 	require.Equal(t, uint64(351_408_642), amounts.MissedSource)
 	require.Equal(t, uint64(652_616_050), amounts.MissedTarget)
 	require.True(t, amounts.Leak)
-	require.True(t, amounts.ReportedLeak)
 	require.Equal(t, uint64(8), amounts.ScoreBefore)
 	require.Equal(t, uint64(12), amounts.ScoreAfter)
 	require.Equal(t, uint64(1_830_917_358), amounts.Inactivity)
-	require.Equal(t, uint64(1_220_611_572), amounts.ReportedInactivity)
 	for _, path := range fake.paths() {
 		require.True(t, strings.Contains(path, "/states/55") || strings.Contains(path, "/states/56") ||
 			path == "beacon/rewards/attestations/5", "read %s", path)
 	}
 
-	// The processing finalizes epoch 1, which ends the leak; the rewards API
-	// still goes by epoch 0.
+	// The processing finalizes epoch 1, which ends the leak.
 	responses["beacon/states/56/finality_checkpoints"] = finalizedJSON(1)
 	_, client = newStateBeacon(t, responses)
 	amounts, err = testValidator(client).LeakVoteAmounts(t.Context(), 5)
 	require.NoError(t, err)
 	require.False(t, amounts.Leak)
-	require.True(t, amounts.ReportedLeak)
 
 	responses["debug/beacon/states/56"] = `{"inactivity_scores":["0"]}`
 	_, client = newStateBeacon(t, responses)

@@ -169,7 +169,6 @@ var _ = ginkgo.Describe(
 					amounts := expectMissedEpoch(ctx, offline, epoch, score)
 					gomega.Expect(amounts.Leak).To(gomega.BeTrue(), "epoch %d, %d after finalized epoch %d, is not processed in a leak",
 						epoch, epoch-frozen.Epoch, frozen.Epoch)
-					gomega.Expect(amounts.ReportedLeak).To(gomega.BeTrue(), "the rewards API does not count epoch %d as in a leak", epoch)
 					score = amounts.ScoreAfter
 				}
 				nextEpoch = last + 1
@@ -214,10 +213,10 @@ var _ = ginkgo.Describe(
 				timely := reward.Target >= 0
 				wantTarget := amounts.Timely.Target
 				if !timely {
-					wantTarget = -int64(amounts.MissedTarget + amounts.ReportedInactivity)
+					wantTarget = -int64(amounts.MissedTarget + amounts.Inactivity)
 				}
 				gomega.Expect(reward.Target).To(gomega.Equal(wantTarget),
-					"target figure of epoch %d, whose target vote was timely: %t, at score %d", epoch, timely, amounts.ScoreBefore)
+					"target figure of epoch %d, whose target vote was timely: %t, at score %d", epoch, timely, amounts.ScoreAfter)
 				expectScores(offline, epoch, amounts, score, timely)
 				score = amounts.ScoreAfter
 				if timely && score == 0 {
