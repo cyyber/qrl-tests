@@ -96,7 +96,7 @@ var registry = []Lane{
 	},
 	{
 		Name:    "consensus-inactivity-leak",
-		Profile: devnet.ProfileDuplicateValidator,
+		Profile: devnet.ProfileInactivityLeak,
 		Suites:  []SuiteID{suiteConsensusInactivityLeak},
 		Timeout: 35 * time.Minute,
 	},

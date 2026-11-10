@@ -36,9 +36,7 @@ const (
 	// ProfileDuplicateValidator has two participants of 32 validators, each
 	// beacon node with a slasher, and a spare genesis validator that no
 	// participant runs. A suite duplicates the spare by running its key in two
-	// validator sidecars, one on each node. Each participant also runs more
-	// than a third of the stake, so stopping one's validator client stops
-	// finality, and the slashers catch a double vote when it restarts.
+	// validator sidecars, one on each node.
 	ProfileDuplicateValidator Profile = "duplicate-validator"
 	// ProfileDoubleProposal has three participants, each beacon node with a
 	// slasher: the first two run 32 validators each, and the third runs none. A
@@ -47,6 +45,11 @@ const (
 	// slasher only blocks it receives from peers, so only the third, which
 	// receives both blocks through gossip, detects the double proposal.
 	ProfileDoubleProposal Profile = "double-proposal"
+	// ProfileInactivityLeak has two participants of 32 validators, each beacon
+	// node with a slasher. Stopping one participant's validator client takes
+	// half the stake offline, so finality stops, and the slashers catch a
+	// double vote when it restarts.
+	ProfileInactivityLeak Profile = "inactivity-leak"
 )
 
 type profileSpec struct {
@@ -82,6 +85,10 @@ var profileSpecs = map[Profile]profileSpec{
 		{validatorCount: 32, clExtraParams: slasherCLExtraParams},
 		{validatorCount: 32, clExtraParams: slasherCLExtraParams},
 		{validatorCount: 0, clExtraParams: slasherCLExtraParams},
+	}},
+	ProfileInactivityLeak: {participants: []participantSpec{
+		{validatorCount: 32, clExtraParams: slasherCLExtraParams},
+		{validatorCount: 32, clExtraParams: slasherCLExtraParams},
 	}},
 }
 

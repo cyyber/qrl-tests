@@ -101,7 +101,7 @@ func TestLaneWithSuites(t *testing.T) {
 	// runs no image of its own.
 	leak, err := Named("consensus-inactivity-leak")
 	require.NoError(t, err)
-	require.Equal(t, devnet.ProfileDuplicateValidator, leak.Profile)
+	require.Equal(t, devnet.ProfileInactivityLeak, leak.Profile)
 	require.Equal(t, []string{"./e2e/suites/consensus/inactivityleak"}, leak.Packages())
 	require.False(t, leak.NeedsValidatorImage())
 	require.False(t, leak.NeedsQrysmAlltoolsImage())
