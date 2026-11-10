@@ -28,7 +28,6 @@ type imagePuller interface {
 
 type serviceIsolator interface {
 	containerLister
-	imagePuller
 	ContainerInspect(context.Context, string, dockerclient.ContainerInspectOptions) (dockerclient.ContainerInspectResult, error)
 	ContainerCreate(context.Context, dockerclient.ContainerCreateOptions) (dockerclient.ContainerCreateResult, error)
 	ContainerStart(context.Context, string, dockerclient.ContainerStartOptions) (dockerclient.ContainerStartResult, error)
@@ -49,7 +48,7 @@ func PrepareIsolation(ctx context.Context) error {
 // IsolateService drops all traffic between a Kurtosis service's container and
 // the peers until rejoin runs, like a network split. Connections stay open,
 // and the service's own clients still reach it through the host's ports.
-// rejoin must run even if the caller fails.
+// Call PrepareIsolation first. rejoin must run even if the caller fails.
 func IsolateService(ctx context.Context, serviceID string, peers []netip.Addr) (func(context.Context) error, error) {
 	client, err := dockerapi.New()
 	if err != nil {
@@ -85,9 +84,6 @@ func isolateService(
 	}
 	if pid <= 0 {
 		return nil, fmt.Errorf("service %q has no running process", serviceID)
-	}
-	if err := ensureImage(ctx, client, isolationImage); err != nil {
-		return nil, err
 	}
 	if err := runIsolationRules(ctx, client, pid, isolationRules("-I", peers)); err != nil {
 		return nil, cleanUpAfter(ctx, client, pid, serviceID, peers, fmt.Errorf("isolate service %q: %w", serviceID, err))

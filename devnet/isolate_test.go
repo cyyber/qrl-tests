@@ -24,7 +24,8 @@ func TestIsolateService(t *testing.T) {
 	require.Equal(t, dockerclient.Filters{
 		"label": {kurtosisServiceUUIDDockerLabel + "=consensus-service": true},
 	}, client.listed.Filters)
-	require.Equal(t, []string{isolationImage}, client.pulled)
+	// PrepareIsolation pulls the image; isolating doesn't.
+	require.Empty(t, client.pulled)
 	require.Len(t, client.created, 1)
 	helper := client.created[0]
 	require.Equal(t, isolationImage, helper.Config.Image)
