@@ -120,7 +120,8 @@ var _ = ginkgo.Describe(
 			for _, index := range offlineValidators {
 				stake += testsuite.MustSucceed(client.Validator(ctx, strconv.FormatUint(index, 10))).EffectiveBalance
 			}
-			gomega.Expect(moreThanAThird(stake, total)).To(gomega.BeTrue(),
+			// More than a third goes offline, so the rest can't justify.
+			gomega.Expect(3*stake > total).To(gomega.BeTrue(),
 				"participant %d runs %d of the %d shor staked, not more than a third", offlineParticipant+1, stake, total)
 		}, ginkgo.NodeTimeout(time.Minute))
 
@@ -219,7 +220,8 @@ var _ = ginkgo.Describe(
 				// whatever the score.
 				reward := testsuite.MustSucceed(offline.AttestationReward(ctx, epoch))
 				amounts := testsuite.MustSucceed(offline.LeakVoteAmounts(ctx, epoch))
-				timely := timelyTarget(reward)
+				// Only a missed target vote is penalized.
+				timely := reward.Target >= 0
 				wantTarget := amounts.Timely.Target
 				if !timely {
 					wantTarget = -int64(amounts.MissedTarget + amounts.ReportedInactivity)
