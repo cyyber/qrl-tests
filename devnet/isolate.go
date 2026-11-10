@@ -96,9 +96,8 @@ func isolateService(
 	}, nil
 }
 
-// cleanUpAfter deletes whichever of the rules exist after failed, an insert
-// or delete that may have stopped partway and left some in place. It returns
-// failed, with the cleanup's own error if it fails too.
+// cleanUpAfter deletes any rules left by a failed insert or delete, and returns
+// failed joined with the cleanup's own error, if any.
 func cleanUpAfter(
 	ctx context.Context, client serviceIsolator, pid int, serviceID string, peers []netip.Addr, failed error,
 ) error {
