@@ -47,8 +47,7 @@ const (
 	ProfileDoubleProposal Profile = "double-proposal"
 	// ProfileInactivityLeak has two participants of 32 validators, each beacon
 	// node with a slasher. Stopping one participant's validator client takes
-	// half the stake offline, so finality stops; the slashers would catch a
-	// double vote if the restarted client signed one.
+	// half the stake offline, so finality stops.
 	ProfileInactivityLeak Profile = "inactivity-leak"
 )
 
