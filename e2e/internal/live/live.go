@@ -152,7 +152,7 @@ func (runtime *Runtime) StopValidators(ctx context.Context) error {
 }
 
 // StopValidator stops the validator client of the participant at position
-// (from 0). Its beacon node and execution client keep running.
+// (from 0).
 func (runtime *Runtime) StopValidator(ctx context.Context, position int) error {
 	service, err := runtime.validatorService(position)
 	if err != nil {
