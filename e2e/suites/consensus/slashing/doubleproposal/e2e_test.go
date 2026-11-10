@@ -55,7 +55,7 @@ var _ = ginkgo.Describe(
 		ginkgo.BeforeAll(func(ctx ginkgo.SpecContext) {
 			runtime := testsuite.LoadRuntime()
 			nodes := testsuite.MustSucceed(runtime.Nodes(ctx))
-			gomega.Expect(nodes).To(gomega.HaveLen(watcherParticipant+1), "the suite proposes on two nodes, and a third watches")
+			gomega.Expect(nodes).To(gomega.HaveLen(3), "the suite proposes on two nodes, and a third watches")
 			gomega.Expect(nodes[duplicateParticipant].BeaconGRPC).NotTo(gomega.BeEmpty(), "beacon gRPC is not published")
 			gomega.Expect(runtime.ValidatorImage).NotTo(gomega.BeEmpty(), "validator image is not configured")
 			gomega.Expect(runtime.QrysmAlltoolsImage).NotTo(gomega.BeEmpty(), "Qrysm all-tools image is not configured")
