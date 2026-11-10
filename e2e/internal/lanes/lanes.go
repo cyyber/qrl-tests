@@ -95,8 +95,6 @@ var registry = []Lane{
 		Timeout: 30 * time.Minute,
 	},
 	{
-		// Finality, the outage, the leak and finality again take about two
-		// dozen 40-second epochs.
 		Name:    "consensus-inactivity-leak",
 		Profile: devnet.ProfileDuplicateValidator,
 		Suites:  []SuiteID{suiteConsensusInactivityLeak},
