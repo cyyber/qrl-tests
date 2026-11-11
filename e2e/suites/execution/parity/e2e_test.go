@@ -3,6 +3,7 @@
 package parity
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -51,6 +52,16 @@ var _ = ginkgo.Describe(
 
 			ginkgo.By("reading every block from genesis and its receipts by number")
 			blocks = readBlocks(ctx, node, testsuite.MustSucceed(node.Execution.BlockNumber(ctx)))
+			var transactions, logs, withWithdrawals int
+			for _, block := range blocks {
+				transactions += len(block.transactions())
+				logs += len(block.logs())
+				if len(block.full["withdrawals"].([]any)) > 0 {
+					withWithdrawals++
+				}
+			}
+			ginkgo.AddReportEntry("blocks from genesis", fmt.Sprintf("%d blocks, %d with withdrawals, %d transactions and %d logs",
+				len(blocks), withWithdrawals, transactions, logs))
 		}, ginkgo.NodeTimeout(10*time.Minute))
 
 		ginkgo.It("returns every block alike by number and by hash, as a header or a block with or without full transactions, and as qrlclient decodes it", func(ctx ginkgo.SpecContext) {
@@ -176,7 +187,7 @@ var _ = ginkgo.Describe(
 						"type":              "type",
 						"effectiveGasPrice": "gasPrice",
 					} {
-						gomega.Expect(receipt[receiptField]).To(gomega.Equal(transaction[transactionField]), "receipt %s of transaction %s", receiptField, txHash)
+						gomega.Expect(receipt[receiptField]).To(equal(transaction[transactionField]), "receipt %s of transaction %s", receiptField, txHash)
 					}
 					gomega.Expect(fromGraphQLReceipt(graphQLReceipts[index].(object))).To(gomega.Equal(receiptFields(receipt)), "GraphQL receipt of transaction %s", txHash)
 				}

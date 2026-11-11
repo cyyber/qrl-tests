@@ -216,6 +216,14 @@ func withoutRemoved(logs []object) []object {
 	return result
 }
 
+// equal matches want, or nil when want is nil, which gomega.Equal refuses.
+func equal(want any) gomega.OmegaMatcher {
+	if want == nil {
+		return gomega.BeNil()
+	}
+	return gomega.Equal(want)
+}
+
 func toObjects(values []any) []object {
 	objects := make([]object, 0, len(values))
 	for _, value := range values {
