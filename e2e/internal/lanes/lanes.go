@@ -181,14 +181,16 @@ func (lane Lane) NeedsValidatorImage() bool {
 		slices.Contains(lane.Suites, suiteConsensusStakingOperator) ||
 		slices.Contains(lane.Suites, suiteConsensusPenalties) ||
 		slices.Contains(lane.Suites, suiteConsensusSlashingDoubleVote) ||
-		slices.Contains(lane.Suites, suiteConsensusSlashingDoubleProposal)
+		slices.Contains(lane.Suites, suiteConsensusSlashingDoubleProposal) ||
+		slices.Contains(lane.Suites, suiteConsensusInactivityLeak)
 }
 
 func (lane Lane) NeedsQrysmAlltoolsImage() bool {
 	return slices.Contains(lane.Suites, suiteConsensusStakingOperator) ||
 		slices.Contains(lane.Suites, suiteConsensusPenalties) ||
 		slices.Contains(lane.Suites, suiteConsensusSlashingDoubleVote) ||
-		slices.Contains(lane.Suites, suiteConsensusSlashingDoubleProposal)
+		slices.Contains(lane.Suites, suiteConsensusSlashingDoubleProposal) ||
+		slices.Contains(lane.Suites, suiteConsensusInactivityLeak)
 }
 
 func RegisteredSuites() []SuiteID {

@@ -138,7 +138,7 @@ jobs:
       consensus-image: ${{ needs.images.outputs.consensus-image }}
       validator-image: ${{ needs.images.outputs.validator-image }}
       # Only these lanes run Qrysm's command-line tools.
-      qrysm-alltools-image: ${{ (matrix.lane == 'consensus-staking-operator' || matrix.lane == 'consensus-penalties' || matrix.lane == 'consensus-slashing-double-vote' || matrix.lane == 'consensus-slashing-double-proposal') && needs.images.outputs.qrysm-alltools-image || '' }}
+      qrysm-alltools-image: ${{ (matrix.lane == 'consensus-staking-operator' || matrix.lane == 'consensus-penalties' || matrix.lane == 'consensus-slashing-double-vote' || matrix.lane == 'consensus-slashing-double-proposal' || matrix.lane == 'consensus-inactivity-leak') && needs.images.outputs.qrysm-alltools-image || '' }}
       genesis-image: ${{ needs.images.outputs.genesis-image }}
       source-go-qrl: ${{ needs.images.outputs.go-qrl-sha }}
       source-qrysm: ${{ needs.images.outputs.qrysm-sha }}

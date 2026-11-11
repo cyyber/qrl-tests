@@ -13,7 +13,10 @@ import (
 	"github.com/cyyber/qrl-tests/e2e/internal/chaininfo"
 	"github.com/cyyber/qrl-tests/e2e/internal/live"
 	"github.com/cyyber/qrl-tests/e2e/internal/rewards"
+	"github.com/cyyber/qrl-tests/e2e/internal/sidecar"
+	"github.com/cyyber/qrl-tests/e2e/internal/sidecar/validator"
 	"github.com/cyyber/qrl-tests/e2e/internal/testsuite"
+	"github.com/cyyber/qrl-tests/e2e/internal/validatorops"
 	ginkgo "github.com/onsi/ginkgo/v2"
 	gomega "github.com/onsi/gomega"
 )
@@ -54,10 +57,15 @@ var _ = ginkgo.Describe(
 			chain   chaininfo.Info
 			// online runs on the participant that keeps its validator client,
 			// offline on the one whose client the suite stops.
-			online, offline rewards.Validator
-			clientStopped   bool
+			online, offline  rewards.Validator
+			onlineValidators []uint64
+			clientStopped    bool
+			// returned runs the offline validator's key alone, in place of its
+			// participant's stopped client.
+			keystores []sidecar.File
+			returned  *validator.Sidecar
 			// stopped is the epoch the validator client stopped in, and
-			// restarted the one it started again in.
+			// restarted the one the offline validator returned in.
 			stopped, restarted uint64
 			frozen             beacon.Checkpoint
 			// score is the offline validator's inactivity score after the
@@ -87,6 +95,15 @@ var _ = ginkgo.Describe(
 			return max(chain.EpochAt(time.Now()), chain.Epoch(head))
 		}
 
+		effectiveStake := func(ctx context.Context, indices []uint64) uint64 {
+			ginkgo.GinkgoHelper()
+			var stake uint64
+			for _, index := range indices {
+				stake += testsuite.MustSucceed(online.Client.Validator(ctx, strconv.FormatUint(index, 10))).EffectiveBalance
+			}
+			return stake
+		}
+
 		ginkgo.BeforeAll(func(ctx ginkgo.SpecContext) {
 			runtime = testsuite.LoadRuntime()
 			nodes = testsuite.MustSucceed(runtime.Nodes(ctx))
@@ -96,7 +113,7 @@ var _ = ginkgo.Describe(
 			testsuite.ExpectShortEpochs(chain)
 			spec := testsuite.MustSucceed(rewards.LoadSpec(ctx, client))
 
-			onlineValidators := runtime.Profile.ParticipantValidators(onlineParticipant)
+			onlineValidators = runtime.Profile.ParticipantValidators(onlineParticipant)
 			offlineValidators := runtime.Profile.ParticipantValidators(offlineParticipant)
 			gomega.Expect(onlineValidators).NotTo(gomega.BeEmpty(), "profile %q runs no validator on participant %d", runtime.Profile, onlineParticipant+1)
 			gomega.Expect(offlineValidators).NotTo(gomega.BeEmpty(), "profile %q runs no validator on participant %d", runtime.Profile, offlineParticipant+1)
@@ -104,20 +121,37 @@ var _ = ginkgo.Describe(
 			offline = rewards.Validator{Client: client, Chain: chain, Spec: spec, Index: offlineValidators[0]}
 
 			total := testsuite.MustSucceed(client.TotalActiveBalance(ctx, "head"))
-			var stake uint64
-			for _, index := range offlineValidators {
-				stake += testsuite.MustSucceed(client.Validator(ctx, strconv.FormatUint(index, 10))).EffectiveBalance
-			}
+			stake := effectiveStake(ctx, offlineValidators)
 			// More than a third goes offline, so the rest can't justify.
 			gomega.Expect(3*stake > total).To(gomega.BeTrue(),
 				"participant %d runs %d of the %d shor staked, not more than a third", offlineParticipant+1, stake, total)
-		}, ginkgo.NodeTimeout(time.Minute))
+
+			node := nodes[offlineParticipant]
+			gomega.Expect(node.ValidatorImage).NotTo(gomega.BeEmpty(), "validator image is not configured")
+			gomega.Expect(node.QrysmAlltoolsImage).NotTo(gomega.BeEmpty(), "Qrysm all-tools image is not configured")
+			gomega.Expect(node.BeaconGRPC).NotTo(gomega.BeEmpty(), "beacon gRPC is not published")
+			keystores = testsuite.MustSucceed(validatorops.GenesisKeystores(
+				ctx, client, node.QrysmAlltoolsImage, node.Address.Hex(), offline.Index))
+		}, ginkgo.NodeTimeout(3*time.Minute))
+
+		ginkgo.AfterEach(func() {
+			if returned != nil {
+				testsuite.ReportLogsOnFailure("returned validator's client", returned)
+			}
+		})
 
 		ginkgo.AfterAll(func(ctx ginkgo.SpecContext) {
+			if returned != nil {
+				gomega.Expect(returned.Close()).To(gomega.Succeed())
+				// The participant's client signs for the same key from the next
+				// epoch on, so no target gets a second vote.
+				next := currentEpoch(ctx) + 1
+				gomega.Expect(testsuite.SleepUntil(ctx, chain.SlotStartTime(next*chain.SlotsPerEpoch))).To(gomega.Succeed())
+			}
 			if clientStopped {
 				gomega.Expect(runtime.StartParticipantValidators(ctx, offlineParticipant)).To(gomega.Succeed())
 			}
-		}, ginkgo.NodeTimeout(time.Minute))
+		}, ginkgo.NodeTimeout(2*time.Minute))
 
 		ginkgo.It("finalizes before the stake goes offline", func(ctx ginkgo.SpecContext) {
 			gomega.Eventually(finalizedEpoch).WithContext(ctx).
@@ -182,16 +216,30 @@ var _ = ginkgo.Describe(
 			}
 		}, ginkgo.SpecTimeout(onlineTimeout))
 
-		ginkgo.It("finalizes again once the stopped validator client starts", func(ctx ginkgo.SpecContext) {
-			// Read before the start, so the client cannot have voted in an
+		ginkgo.It("finalizes again once one stopped validator returns", func(ctx ginkgo.SpecContext) {
+			// The online participant holds just under two thirds of the stake,
+			// and one more validator takes it over.
+			total := testsuite.MustSucceed(online.Client.TotalActiveBalance(ctx, "head"))
+			onlineStake := effectiveStake(ctx, onlineValidators)
+			returning := effectiveStake(ctx, []uint64{offline.Index})
+			gomega.Expect(3*onlineStake < 2*total).To(gomega.BeTrue(),
+				"participant %d alone runs %d of the %d shor staked, two thirds or more", onlineParticipant+1, onlineStake, total)
+			gomega.Expect(3*(onlineStake+returning) >= 2*total).To(gomega.BeTrue(),
+				"participant %d and validator %d run %d of the %d shor staked, less than two thirds",
+				onlineParticipant+1, offline.Index, onlineStake+returning, total)
+
+			// Read before the start, so the validator cannot have voted in an
 			// epoch before restarted.
 			restarted = currentEpoch(ctx)
-			gomega.Expect(runtime.StartParticipantValidators(ctx, offlineParticipant)).To(gomega.Succeed())
-			clientStopped = false
+			node := nodes[offlineParticipant]
+			returned = testsuite.MustSucceed(validator.Start(ctx, validator.Config{
+				Image:              node.ValidatorImage,
+				BeaconURL:          node.BeaconURL,
+				BeaconGRPC:         node.BeaconGRPC,
+				ConsensusServiceID: node.ConsensusServiceID,
+				Keystores:          keystores,
+			}))
 
-			// The online participant alone holds less than two thirds of the
-			// stake, so an epoch from the restart on is justified, and then
-			// finalized, only with the restarted client's votes.
 			gomega.Eventually(finalizedEpoch).WithContext(ctx).
 				WithTimeout(resumeEpochs*chain.EpochDuration).
 				WithPolling(chain.SlotDuration).
