@@ -23,13 +23,11 @@ const (
 	offlineParticipant = 1
 
 	finalityTimeoutEpochs = 8
-	// Votes cast before the stop are all processed this many epochs after
-	// the epoch it happened in; after that, finality cannot move.
-	settleEpochs  = 2
-	stalledEpochs = 4
-	leakEpochs    = 4
-	resumeEpochs  = 5
-	decayEpochs   = 5
+	settleEpochs          = 2
+	stalledEpochs         = 4
+	leakEpochs            = 4
+	resumeEpochs          = 5
+	decayEpochs           = 5
 
 	finalityTimeout = 7 * time.Minute
 	stallTimeout    = 6 * time.Minute
@@ -135,6 +133,8 @@ var _ = ginkgo.Describe(
 				clientStopped = true
 				stopped = currentEpoch(ctx)
 
+				// Votes cast before the stop are processed within settleEpochs;
+				// after that, finality can't move.
 				settled := stopped + settleEpochs
 				last := settled + stalledEpochs
 				gomega.Eventually(headEpoch).WithContext(ctx).
@@ -176,7 +176,9 @@ var _ = ginkgo.Describe(
 
 		ginkgo.It("pays its online validators nothing for their votes during the leak", func(ctx ginkgo.SpecContext) {
 			first := online.Spec.FirstLeakEpoch(frozen.Epoch)
-			for epoch := first; epoch < first+leakEpochs; epoch++ {
+			last := first + leakEpochs - 1
+			online.AwaitRewards(ctx, last)
+			for epoch := first; epoch <= last; epoch++ {
 				expectUnpaidVotes(ctx, online, epoch)
 			}
 		}, ginkgo.SpecTimeout(onlineTimeout))
