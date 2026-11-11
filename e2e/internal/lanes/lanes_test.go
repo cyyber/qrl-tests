@@ -97,8 +97,6 @@ func TestLaneWithSuites(t *testing.T) {
 	require.False(t, proposal.NeedsExecutionImage())
 	require.False(t, proposal.RestartsServices)
 
-	// The suite brings one stopped validator back in a validator sidecar, with
-	// its key from the all-tools image.
 	leak, err := Named("consensus-inactivity-leak")
 	require.NoError(t, err)
 	require.Equal(t, devnet.ProfileInactivityLeak, leak.Profile)
