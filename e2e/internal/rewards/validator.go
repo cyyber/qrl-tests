@@ -138,7 +138,8 @@ func (validator Validator) AttestationReward(ctx context.Context, epoch uint64) 
 }
 
 // FirstAttestedEpoch waits for the first epoch, starting at epoch from, whose
-// source and target votes were both timely, and returns it.
+// source and target votes were both timely, and returns it. It reads timely
+// votes from positive rewards, so it finds no epoch processed in a leak.
 func (validator Validator) FirstAttestedEpoch(ctx context.Context, from uint64, timeout time.Duration) uint64 {
 	ginkgo.GinkgoHelper()
 	return AwaitAttestationReward(ctx, validator.Client, validator.Chain, validator.Index, from, timeout, attested)
