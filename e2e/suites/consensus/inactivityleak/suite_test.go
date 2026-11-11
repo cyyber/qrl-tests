@@ -36,16 +36,14 @@ type leakSuite struct {
 	runtime *live.Runtime
 	nodes   []*live.Node
 	chain   chaininfo.Info
-	// online runs on the participant that keeps its validator client,
-	// offline on the one whose client the suite stops.
-	online, offline                     rewards.Validator
-	onlineValidators, offlineValidators []uint64
-	states                              beaconStates
-	increment                           uint64
-	// returned runs the offline validator's key alone, in place of its
-	// participant's stopped client.
-	keystores []sidecar.File
-	returned  *validator.Sidecar
+
+	onlineValidator, offlineValidator rewards.Validator
+	onlineIndices, offlineIndices     []uint64
+	states                            beaconStates
+	balanceIncrement                  uint64
+
+	returningKeystores []sidecar.File
+	returnedClient     *validator.Sidecar
 
 	returning returningOutage
 	lasting   lastingOutage
@@ -61,17 +59,17 @@ func (suite *leakSuite) setUp(ctx ginkgo.SpecContext) {
 	spec := testsuite.MustSucceed(rewards.LoadSpec(ctx, client))
 
 	profile := suite.runtime.Profile
-	suite.onlineValidators = profile.ParticipantValidators(onlineParticipant)
-	suite.offlineValidators = profile.ParticipantValidators(offlineParticipant)
-	gomega.Expect(suite.onlineValidators).NotTo(gomega.BeEmpty(), "profile %q runs no validator on participant %d", profile, onlineParticipant+1)
-	gomega.Expect(suite.offlineValidators).NotTo(gomega.BeEmpty(), "profile %q runs no validator on participant %d", profile, offlineParticipant+1)
-	suite.online = rewards.Validator{Client: client, Chain: suite.chain, Spec: spec, Index: suite.onlineValidators[0]}
-	suite.offline = rewards.Validator{Client: client, Chain: suite.chain, Spec: spec, Index: suite.offlineValidators[0]}
-	suite.states = beaconStates{client: client, chain: suite.chain, online: suite.onlineValidators, offline: suite.offlineValidators}
-	suite.increment = testsuite.MustSucceed(client.SpecUint(ctx, "EFFECTIVE_BALANCE_INCREMENT"))
+	suite.onlineIndices = profile.ParticipantValidators(onlineParticipant)
+	suite.offlineIndices = profile.ParticipantValidators(offlineParticipant)
+	gomega.Expect(suite.onlineIndices).NotTo(gomega.BeEmpty(), "profile %q runs no validator on participant %d", profile, onlineParticipant+1)
+	gomega.Expect(suite.offlineIndices).NotTo(gomega.BeEmpty(), "profile %q runs no validator on participant %d", profile, offlineParticipant+1)
+	suite.onlineValidator = rewards.Validator{Client: client, Chain: suite.chain, Spec: spec, Index: suite.onlineIndices[0]}
+	suite.offlineValidator = rewards.Validator{Client: client, Chain: suite.chain, Spec: spec, Index: suite.offlineIndices[0]}
+	suite.states = beaconStates{client: client, chain: suite.chain, online: suite.onlineIndices, offline: suite.offlineIndices}
+	suite.balanceIncrement = testsuite.MustSucceed(client.SpecUint(ctx, "EFFECTIVE_BALANCE_INCREMENT"))
 
 	total := testsuite.MustSucceed(client.TotalActiveBalance(ctx, "head"))
-	stake := suite.effectiveStake(ctx, suite.offlineValidators)
+	stake := suite.effectiveStake(ctx, suite.offlineIndices)
 	// More than a third goes offline, so the rest can't justify.
 	gomega.Expect(3*stake > total).To(gomega.BeTrue(),
 		"participant %d runs %d of the %d shor staked, not more than a third", offlineParticipant+1, stake, total)
@@ -80,13 +78,13 @@ func (suite *leakSuite) setUp(ctx ginkgo.SpecContext) {
 	gomega.Expect(node.ValidatorImage).NotTo(gomega.BeEmpty(), "validator image is not configured")
 	gomega.Expect(node.QrysmAlltoolsImage).NotTo(gomega.BeEmpty(), "Qrysm all-tools image is not configured")
 	gomega.Expect(node.BeaconGRPC).NotTo(gomega.BeEmpty(), "beacon gRPC is not published")
-	suite.keystores = testsuite.MustSucceed(validatorops.GenesisKeystores(
-		ctx, client, node.QrysmAlltoolsImage, node.Address.Hex(), suite.offline.Index))
+	suite.returningKeystores = testsuite.MustSucceed(validatorops.GenesisKeystores(
+		ctx, client, node.QrysmAlltoolsImage, node.Address.Hex(), suite.offlineValidator.Index))
 }
 
 func (suite *leakSuite) reportReturnedLogs() {
-	if suite.returned != nil {
-		testsuite.ReportLogsOnFailure("returned validator's client", suite.returned)
+	if suite.returnedClient != nil {
+		testsuite.ReportLogsOnFailure("returned validator's client", suite.returnedClient)
 	}
 }
 
@@ -94,20 +92,20 @@ func (suite *leakSuite) reportReturnedLogs() {
 // stops the network but not the suite's own containers.
 func (suite *leakSuite) closeReturned() {
 	ginkgo.GinkgoHelper()
-	if suite.returned != nil {
-		gomega.Expect(suite.returned.Close()).To(gomega.Succeed())
-		suite.returned = nil
+	if suite.returnedClient != nil {
+		gomega.Expect(suite.returnedClient.Close()).To(gomega.Succeed())
+		suite.returnedClient = nil
 	}
 }
 
 func (suite *leakSuite) headEpoch(ctx context.Context) (uint64, error) {
-	head, err := suite.online.Client.HeadSlot(ctx)
+	head, err := suite.onlineValidator.Client.HeadSlot(ctx)
 	return suite.chain.Epoch(head), err
 }
 
 func (suite *leakSuite) currentEpoch(ctx context.Context) uint64 {
 	ginkgo.GinkgoHelper()
-	head := testsuite.MustSucceed(suite.online.Client.HeadSlot(ctx))
+	head := testsuite.MustSucceed(suite.onlineValidator.Client.HeadSlot(ctx))
 	return max(suite.chain.EpochAt(time.Now()), suite.chain.Epoch(head))
 }
 
@@ -115,7 +113,7 @@ func (suite *leakSuite) effectiveStake(ctx context.Context, indices []uint64) ui
 	ginkgo.GinkgoHelper()
 	var stake uint64
 	for _, index := range indices {
-		stake += testsuite.MustSucceed(suite.online.Client.Validator(ctx, strconv.FormatUint(index, 10))).EffectiveBalance
+		stake += testsuite.MustSucceed(suite.onlineValidator.Client.Validator(ctx, strconv.FormatUint(index, 10))).EffectiveBalance
 	}
 	return stake
 }

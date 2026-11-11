@@ -65,7 +65,7 @@ func (suite *leakSuite) stopsFinalizing(ctx ginkgo.SpecContext) {
 
 func (suite *leakSuite) leaksOfflineStake(ctx ginkgo.SpecContext) {
 	outage := &suite.returning
-	offline := suite.offline
+	offline := suite.offlineValidator
 	first := offline.Spec.FirstLeakEpoch(outage.frozen.Epoch)
 	last := first + leakEpochs - 1
 	// The epoch before the leak shows the score starts from zero, and must be
@@ -88,7 +88,7 @@ func (suite *leakSuite) leaksOfflineStake(ctx ginkgo.SpecContext) {
 }
 
 func (suite *leakSuite) paysOnlineVotesNothing(ctx ginkgo.SpecContext) {
-	online := suite.online
+	online := suite.onlineValidator
 	first := online.Spec.FirstLeakEpoch(suite.returning.frozen.Epoch)
 	last := first + leakEpochs - 1
 	online.AwaitRewards(ctx, last)
@@ -101,33 +101,33 @@ func (suite *leakSuite) finalizesWithOneReturned(ctx ginkgo.SpecContext) {
 	outage := &suite.returning
 	// The online participant holds just under two thirds of the stake, and
 	// one more validator takes it over.
-	total := testsuite.MustSucceed(suite.online.Client.TotalActiveBalance(ctx, "head"))
-	onlineStake := suite.effectiveStake(ctx, suite.onlineValidators)
-	returning := suite.effectiveStake(ctx, []uint64{suite.offline.Index})
+	total := testsuite.MustSucceed(suite.onlineValidator.Client.TotalActiveBalance(ctx, "head"))
+	onlineStake := suite.effectiveStake(ctx, suite.onlineIndices)
+	returning := suite.effectiveStake(ctx, []uint64{suite.offlineValidator.Index})
 	gomega.Expect(3*onlineStake < 2*total).To(gomega.BeTrue(),
 		"participant %d alone runs %d of the %d shor staked, two thirds or more", onlineParticipant+1, onlineStake, total)
 	gomega.Expect(3*(onlineStake+returning) >= 2*total).To(gomega.BeTrue(),
 		"participant %d and validator %d run %d of the %d shor staked, less than two thirds",
-		onlineParticipant+1, suite.offline.Index, onlineStake+returning, total)
+		onlineParticipant+1, suite.offlineValidator.Index, onlineStake+returning, total)
 
 	// Read before the start, so the validator cannot have voted in an epoch
 	// before restarted.
 	outage.restarted = suite.currentEpoch(ctx)
 	node := suite.nodes[offlineParticipant]
-	suite.returned = testsuite.MustSucceed(validator.Start(ctx, validator.Config{
+	suite.returnedClient = testsuite.MustSucceed(validator.Start(ctx, validator.Config{
 		Image:              node.ValidatorImage,
 		BeaconURL:          node.BeaconURL,
 		BeaconGRPC:         node.BeaconGRPC,
 		ConsensusServiceID: node.ConsensusServiceID,
-		Keystores:          suite.keystores,
+		Keystores:          suite.returningKeystores,
 	}))
 
-	testsuite.AwaitFinalizedEpoch(ctx, suite.online.Client, suite.chain, outage.restarted, resumeEpochs)
+	testsuite.AwaitFinalizedEpoch(ctx, suite.onlineValidator.Client, suite.chain, outage.restarted, resumeEpochs)
 }
 
 func (suite *leakSuite) zeroesReturnedScore(ctx ginkgo.SpecContext) {
 	outage := &suite.returning
-	offline := suite.offline
+	offline := suite.offlineValidator
 	for epoch := outage.nextEpoch; epoch <= outage.restarted+decayEpochs; epoch++ {
 		offline.AwaitRewards(ctx, epoch)
 		if epoch < outage.restarted {
@@ -169,13 +169,13 @@ func (suite *leakSuite) finalizesWithEveryValidatorBack(ctx ginkgo.SpecContext) 
 	next := suite.currentEpoch(ctx) + 1
 	gomega.Expect(testsuite.SleepUntil(ctx, suite.chain.SlotStartTime(next*suite.chain.SlotsPerEpoch))).To(gomega.Succeed())
 	gomega.Expect(suite.runtime.StartParticipantValidators(ctx, offlineParticipant)).To(gomega.Succeed())
-	testsuite.AwaitFinalizedEpoch(ctx, suite.online.Client, suite.chain, suite.currentEpoch(ctx), finalityTimeoutEpochs)
+	testsuite.AwaitFinalizedEpoch(ctx, suite.onlineValidator.Client, suite.chain, suite.currentEpoch(ctx), finalityTimeoutEpochs)
 }
 
 func (suite *leakSuite) finalizedAtEpochStart(ctx context.Context, epoch uint64) beacon.Checkpoint {
 	ginkgo.GinkgoHelper()
 	stateID := strconv.FormatUint(epoch*suite.chain.SlotsPerEpoch, 10)
-	return testsuite.MustSucceed(suite.online.Client.FinalityCheckpointsAt(ctx, stateID)).Finalized
+	return testsuite.MustSucceed(suite.onlineValidator.Client.FinalityCheckpointsAt(ctx, stateID)).Finalized
 }
 
 // expectMissedEpoch checks the inactivity scores, rewards and balance change
