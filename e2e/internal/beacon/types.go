@@ -152,11 +152,31 @@ type BeaconBlockHeaderMessage struct {
 	BodyRoot      string `json:"body_root"`
 }
 
+type SignedBeaconBlockHeader struct {
+	Message   BeaconBlockHeaderMessage `json:"message"`
+	Signature string                   `json:"signature"`
+}
+
 // ProposerSlashing is the evidence of a double proposal: two headers of one
 // slot that the proposer signed.
 type ProposerSlashing struct {
 	Header1 BeaconBlockHeaderMessage
 	Header2 BeaconBlockHeaderMessage
+}
+
+// SignedProposerSlashing is a proposer slashing with its signatures, as the
+// beacon API takes it.
+type SignedProposerSlashing struct {
+	SignedHeader1 SignedBeaconBlockHeader `json:"signed_header_1"`
+	SignedHeader2 SignedBeaconBlockHeader `json:"signed_header_2"`
+}
+
+// Fork is the fork a state signs with: CurrentVersion from Epoch on, and
+// PreviousVersion before it.
+type Fork struct {
+	PreviousVersion string `json:"previous_version"`
+	CurrentVersion  string `json:"current_version"`
+	Epoch           uint64 `json:"epoch,string"`
 }
 
 type ProposerDuty struct {

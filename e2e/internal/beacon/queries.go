@@ -195,10 +195,10 @@ type blockWire struct {
 		Slot          uint64 `json:"slot,string"`
 		ProposerIndex uint64 `json:"proposer_index,string"`
 		Body          struct {
-			VoluntaryExits    []SignedVoluntaryExit  `json:"voluntary_exits"`
-			ProposerSlashings []proposerSlashingWire `json:"proposer_slashings"`
-			AttesterSlashings []attesterSlashingWire `json:"attester_slashings"`
-			Attestations      []attestationWire      `json:"attestations"`
+			VoluntaryExits    []SignedVoluntaryExit    `json:"voluntary_exits"`
+			ProposerSlashings []SignedProposerSlashing `json:"proposer_slashings"`
+			AttesterSlashings []attesterSlashingWire   `json:"attester_slashings"`
+			Attestations      []attestationWire        `json:"attestations"`
 			Payload           struct {
 				BlockNumber uint64       `json:"block_number,string"`
 				Withdrawals []Withdrawal `json:"withdrawals"`
@@ -210,15 +210,6 @@ type blockWire struct {
 type attestationWire struct {
 	AggregationBits string          `json:"aggregation_bits"`
 	Data            AttestationData `json:"data"`
-}
-
-type proposerSlashingWire struct {
-	Header1 struct {
-		Message BeaconBlockHeaderMessage `json:"message"`
-	} `json:"signed_header_1"`
-	Header2 struct {
-		Message BeaconBlockHeaderMessage `json:"message"`
-	} `json:"signed_header_2"`
 }
 
 type attesterSlashingWire struct {
@@ -273,8 +264,8 @@ func (client *Client) BlockOperations(ctx context.Context, blockID string) (Bloc
 	}
 	for _, slashing := range block.Message.Body.ProposerSlashings {
 		operations.ProposerSlashings = append(operations.ProposerSlashings, ProposerSlashing{
-			Header1: slashing.Header1.Message,
-			Header2: slashing.Header2.Message,
+			Header1: slashing.SignedHeader1.Message,
+			Header2: slashing.SignedHeader2.Message,
 		})
 	}
 	for _, slashing := range block.Message.Body.AttesterSlashings {
@@ -340,6 +331,17 @@ func (client *Client) ProposerDuties(ctx context.Context, epoch uint64) ([]Propo
 
 func (client *Client) SubmitVoluntaryExit(ctx context.Context, exit SignedVoluntaryExit) error {
 	return client.postJSON(ctx, "/qrl/v1/beacon/pool/voluntary_exits", exit, nil)
+}
+
+// SubmitProposerSlashing hands proposer slashing evidence to the node's pool,
+// which verifies it and broadcasts it to its peers.
+func (client *Client) SubmitProposerSlashing(ctx context.Context, slashing SignedProposerSlashing) error {
+	return client.postJSON(ctx, "/qrl/v1/beacon/pool/proposer_slashings", slashing, nil)
+}
+
+// Fork returns the fork of the state at stateID.
+func (client *Client) Fork(ctx context.Context, stateID string) (Fork, error) {
+	return getData[Fork](ctx, client, "/qrl/v1/beacon/states/"+url.PathEscape(stateID)+"/fork")
 }
 
 // AttestationRewards returns the given validators' attestation rewards for a

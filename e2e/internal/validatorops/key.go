@@ -21,6 +21,10 @@ func DeterministicKey(marker byte) (*Key, error) {
 		raw[index] = marker + byte(index)
 	}
 
+	return keyFromSeed(raw)
+}
+
+func keyFromSeed(raw []byte) (*Key, error) {
 	seed, err := walletcommon.ToSeed(raw)
 	if err != nil {
 		return nil, err

@@ -59,6 +59,22 @@ func (data DepositData) HashTreeRoot() (Root, error) {
 	return merkleize(append(fields, signature)), nil
 }
 
+// BeaconBlockHeader is what a proposer signs for a block: the block with its
+// body replaced by the body's root.
+type BeaconBlockHeader struct {
+	Slot          uint64
+	ProposerIndex uint64
+	ParentRoot    Root
+	StateRoot     Root
+	BodyRoot      Root
+}
+
+func (header BeaconBlockHeader) HashTreeRoot() Root {
+	return merkleize([]Root{
+		uint64Root(header.Slot), uint64Root(header.ProposerIndex), header.ParentRoot, header.StateRoot, header.BodyRoot,
+	})
+}
+
 func uint64Root(value uint64) Root {
 	var root Root
 	binary.LittleEndian.PutUint64(root[:8], value)

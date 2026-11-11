@@ -77,6 +77,26 @@ func TestClientDecodesQrysmResponses(t *testing.T) {
 			var exit SignedVoluntaryExit
 			assert.NoError(t, json.NewDecoder(request.Body).Decode(&exit))
 			assert.Equal(t, SignedVoluntaryExit{Message: VoluntaryExit{Epoch: 1, ValidatorIndex: 64}, Signature: "0x00"}, exit)
+		case "/qrl/v1/beacon/pool/proposer_slashings":
+			assert.Equal(t, http.MethodPost, request.Method)
+			var body map[string]any
+			assert.NoError(t, json.NewDecoder(request.Body).Decode(&body))
+			assert.Equal(t, map[string]any{
+				"signed_header_1": map[string]any{
+					"message": map[string]any{
+						"slot": "19", "proposer_index": "64", "parent_root": "0x01", "state_root": "0x02", "body_root": "0x03",
+					},
+					"signature": "0xaa",
+				},
+				"signed_header_2": map[string]any{
+					"message": map[string]any{
+						"slot": "19", "proposer_index": "64", "parent_root": "0x01", "state_root": "0x02", "body_root": "0x04",
+					},
+					"signature": "0xbb",
+				},
+			}, body)
+		case "/qrl/v1/beacon/states/head/fork":
+			_, _ = writer.Write([]byte(`{"execution_optimistic":false,"finalized":false,"data":{"previous_version":"0x10000020","current_version":"0x10000021","epoch":"5"}}`))
 		case "/qrl/v1/beacon/blocks/broken":
 			http.Error(writer, `{"message":"state not available"}`, http.StatusInternalServerError)
 		default:
@@ -200,6 +220,18 @@ func TestClientDecodesQrysmResponses(t *testing.T) {
 	require.NoError(t, client.SubmitVoluntaryExit(t.Context(), SignedVoluntaryExit{
 		Message: VoluntaryExit{Epoch: 1, ValidatorIndex: 64}, Signature: "0x00",
 	}))
+
+	header := BeaconBlockHeaderMessage{Slot: 19, ProposerIndex: 64, ParentRoot: "0x01", StateRoot: "0x02", BodyRoot: "0x03"}
+	other := header
+	other.BodyRoot = "0x04"
+	require.NoError(t, client.SubmitProposerSlashing(t.Context(), SignedProposerSlashing{
+		SignedHeader1: SignedBeaconBlockHeader{Message: header, Signature: "0xaa"},
+		SignedHeader2: SignedBeaconBlockHeader{Message: other, Signature: "0xbb"},
+	}))
+
+	fork, err := client.Fork(t.Context(), "head")
+	require.NoError(t, err)
+	require.Equal(t, Fork{PreviousVersion: "0x10000020", CurrentVersion: "0x10000021", Epoch: 5}, fork)
 
 	_, err = client.Validator(t.Context(), "65")
 	require.True(t, IsNotFound(err), "expected a not-found error, got %v", err)

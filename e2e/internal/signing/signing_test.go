@@ -41,6 +41,48 @@ func TestDepositDomainMatchesQrysm(t *testing.T) {
 	require.Equal(t, "0300000014a245e19985c526271213b92ac915999e4bd92e4c4a3c05e19f7557", hex.EncodeToString(domain[:]))
 }
 
+func repeatedRoot(value byte) Root {
+	return Root(bytes.Repeat([]byte{value}, RootLength))
+}
+
+func TestBeaconBlockHeaderRootMatchesQrysm(t *testing.T) {
+	header := BeaconBlockHeader{
+		Slot: 123, ProposerIndex: 45,
+		ParentRoot: repeatedRoot(0x11), StateRoot: repeatedRoot(0x22), BodyRoot: repeatedRoot(0x33),
+	}
+	root := header.HashTreeRoot()
+	require.Equal(t, "43d88b69660aef4a5898e981591de4f5114841ab7e04c312212bbb8d0fe0c85a", hex.EncodeToString(root[:]))
+
+	fork := Fork{CurrentVersion: ForkVersion{0x10, 0x00, 0x00, 0x20}}
+	signingRoot := SigningRoot(root, fork.Domain(DomainBeaconProposer, 3, repeatedRoot(0x77)))
+	require.Equal(t, "b08ecc69319a6b725dd53b0469e8a80c4db96b9239e6c1ee5b5e3d18dcf74db7", hex.EncodeToString(signingRoot[:]))
+}
+
+func TestForkDomainKeepsThePreviousVersionBeforeTheFork(t *testing.T) {
+	fork := Fork{PreviousVersion: ForkVersion{0x01}, CurrentVersion: ForkVersion{0x02}, Epoch: 10}
+	genesisValidatorsRoot := repeatedRoot(0x77)
+	require.Equal(t, ComputeDomain(DomainBeaconProposer, ForkVersion{0x01}, genesisValidatorsRoot),
+		fork.Domain(DomainBeaconProposer, 9, genesisValidatorsRoot))
+	require.Equal(t, ComputeDomain(DomainBeaconProposer, ForkVersion{0x02}, genesisValidatorsRoot),
+		fork.Domain(DomainBeaconProposer, 10, genesisValidatorsRoot))
+	domain := ComputeDomain(DomainBeaconProposer, ForkVersion{0x10, 0x00, 0x00, 0x20}, genesisValidatorsRoot)
+	require.Equal(t, "000000007c84f6ac711e7d87eadc076350fd55347d33483c0005bd0867748499", hex.EncodeToString(domain[:]))
+}
+
+func TestParseHex(t *testing.T) {
+	root, err := ParseRoot("0x" + hex.EncodeToString(bytes.Repeat([]byte{0xab}, RootLength)))
+	require.NoError(t, err)
+	require.Equal(t, repeatedRoot(0xab), root)
+	_, err = ParseRoot("0xabcd")
+	require.EqualError(t, err, `root "0xabcd" is 2 bytes, want 32`)
+
+	version, err := ParseForkVersion("0x10000020")
+	require.NoError(t, err)
+	require.Equal(t, ForkVersion{0x10, 0x00, 0x00, 0x20}, version)
+	_, err = ParseForkVersion("0xzz")
+	require.ErrorContains(t, err, `decode fork version "0xzz"`)
+}
+
 func testSeed() common.Seed {
 	var seed common.Seed
 	for index := range seed {

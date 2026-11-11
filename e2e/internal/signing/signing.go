@@ -4,8 +4,10 @@ package signing
 
 import (
 	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
+	"strings"
 
 	walletmldsa "github.com/theQRL/go-qrllib/wallet/ml_dsa_87"
 )
@@ -16,7 +18,10 @@ const (
 	SignatureLength = walletmldsa.SigSize
 )
 
-var DomainDeposit = DomainType{0x03, 0x00, 0x00, 0x00}
+var (
+	DomainBeaconProposer = DomainType{0x00, 0x00, 0x00, 0x00}
+	DomainDeposit        = DomainType{0x03, 0x00, 0x00, 0x00}
+)
 
 type (
 	DomainType  [4]byte
@@ -24,6 +29,48 @@ type (
 	Root        [RootLength]byte
 	Domain      [RootLength]byte
 )
+
+// Fork is a state's fork: the version it signs with from Epoch on, and the
+// one before.
+type Fork struct {
+	PreviousVersion ForkVersion
+	CurrentVersion  ForkVersion
+	Epoch           uint64
+}
+
+// Domain mirrors get_domain for a state with this fork: messages of earlier
+// epochs keep the previous version.
+func (fork Fork) Domain(domainType DomainType, epoch uint64, genesisValidatorsRoot Root) Domain {
+	version := fork.CurrentVersion
+	if epoch < fork.Epoch {
+		version = fork.PreviousVersion
+	}
+	return ComputeDomain(domainType, version, genesisValidatorsRoot)
+}
+
+// ParseRoot decodes a 0x-prefixed 32-byte root.
+func ParseRoot(value string) (Root, error) {
+	var root Root
+	return root, decodeFixed("root", value, root[:])
+}
+
+// ParseForkVersion decodes a 0x-prefixed 4-byte fork version.
+func ParseForkVersion(value string) (ForkVersion, error) {
+	var version ForkVersion
+	return version, decodeFixed("fork version", value, version[:])
+}
+
+func decodeFixed(name, value string, result []byte) error {
+	decoded, err := hex.DecodeString(strings.TrimPrefix(value, "0x"))
+	if err != nil {
+		return fmt.Errorf("decode %s %q: %w", name, value, err)
+	}
+	if len(decoded) != len(result) {
+		return fmt.Errorf("%s %q is %d bytes, want %d", name, value, len(decoded), len(result))
+	}
+	copy(result, decoded)
+	return nil
+}
 
 // ComputeDomain mirrors compute_domain: the domain type followed by the first
 // 28 bytes of the fork data root.

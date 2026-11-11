@@ -87,11 +87,18 @@ func ExpectDoubleProposalEvidence(slot uint64, evidence Evidence) (first, second
 // ExpectOnlySlashed checks that every slashed validator is one of allowed.
 func ExpectOnlySlashed(ctx context.Context, client *beacon.Client, allowed []uint64) {
 	ginkgo.GinkgoHelper()
+	gomega.Expect(SlashedIndices(ctx, client)).To(gomega.HaveEach(gomega.BeElementOf(allowed)),
+		"slashed validators, where only %v may be", allowed)
+}
+
+// SlashedIndices returns the indices of the validators the head state holds
+// as slashed. A lane's earlier suites may have slashed some.
+func SlashedIndices(ctx context.Context, client *beacon.Client) []uint64 {
+	ginkgo.GinkgoHelper()
 	slashed := testsuite.MustSucceed(client.SlashedValidators(ctx))
 	indices := make([]uint64, len(slashed))
 	for position, record := range slashed {
 		indices[position] = record.Index
 	}
-	gomega.Expect(indices).To(gomega.HaveEach(gomega.BeElementOf(allowed)),
-		"slashed validators, where only %v may be", allowed)
+	return indices
 }

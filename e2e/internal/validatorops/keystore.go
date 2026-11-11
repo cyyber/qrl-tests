@@ -84,6 +84,24 @@ func (key *Key) KeystoreJSON(password string) (string, error) {
 	return string(payload), nil
 }
 
+// KeyFromKeystore decrypts a keystore in the format KeystoreJSON and the
+// deposit CLI write.
+func KeyFromKeystore(keystore []byte, password string) (*Key, error) {
+	var file keystoreFile
+	if err := json.Unmarshal(keystore, &file); err != nil {
+		return nil, fmt.Errorf("decode keystore: %w", err)
+	}
+	if file.Crypto.KDF.Function != "argon2id" || file.Crypto.Cipher.Function != "aes-256-gcm" {
+		return nil, fmt.Errorf("keystore uses %s and %s, want argon2id and aes-256-gcm",
+			file.Crypto.KDF.Function, file.Crypto.Cipher.Function)
+	}
+	seed, err := decryptSecret(file.Crypto, password)
+	if err != nil {
+		return nil, fmt.Errorf("decrypt keystore: %w", err)
+	}
+	return keyFromSeed(seed)
+}
+
 func encryptSecret(secret []byte, password string) (keystoreCrypto, error) {
 	salt := make([]byte, keystoreSalt)
 	if _, err := rand.Read(salt); err != nil {
