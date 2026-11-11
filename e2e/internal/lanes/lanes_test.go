@@ -102,7 +102,7 @@ func TestLaneWithSuites(t *testing.T) {
 	leak, err := Named("consensus-inactivity-leak")
 	require.NoError(t, err)
 	require.Equal(t, devnet.ProfileInactivityLeak, leak.Profile)
-	require.Equal(t, []string{"./e2e/suites/consensus/inactivityleak", "./e2e/suites/consensus/leakrecovery"}, leak.Packages())
+	require.Equal(t, []string{"./e2e/suites/consensus/inactivityleak"}, leak.Packages())
 	require.True(t, leak.NeedsValidatorImage())
 	require.True(t, leak.NeedsQrysmAlltoolsImage())
 	require.False(t, leak.NeedsExecutionImage())

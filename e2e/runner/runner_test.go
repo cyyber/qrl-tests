@@ -585,7 +585,6 @@ func TestRunAllProvisionsPerLane(t *testing.T) {
 	require.Contains(t, commands[4].Args, "./e2e/suites/consensus/slashing/doublevote")
 	require.Contains(t, commands[5].Args, "./e2e/suites/consensus/slashing/doubleproposal")
 	require.Contains(t, commands[6].Args, "./e2e/suites/consensus/inactivityleak")
-	require.Contains(t, commands[6].Args, "./e2e/suites/consensus/leakrecovery")
 	require.Contains(t, commands[7].Args, "./e2e/suites/resilience/networkrestart")
 	require.Contains(t, commands[8].Args, "./e2e/suites/sync/genesis")
 	require.Contains(t, commands[8].Args, "./e2e/suites/sync/checkpoint")
