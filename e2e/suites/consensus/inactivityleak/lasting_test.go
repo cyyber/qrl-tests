@@ -40,7 +40,6 @@ type lastingOutage struct {
 func (suite *leakSuite) stopsFinalizingForGood(ctx ginkgo.SpecContext) {
 	outage, states := &suite.lasting, suite.states
 	gomega.Expect(suite.runtime.StopParticipantValidators(ctx, offlineParticipant)).To(gomega.Succeed())
-	suite.clientStopped = true
 	outage.stopped = suite.currentEpoch(ctx)
 
 	outage.settled = outage.stopped + settleEpochs

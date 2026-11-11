@@ -42,7 +42,6 @@ type leakSuite struct {
 	onlineValidators, offlineValidators []uint64
 	states                              beaconStates
 	increment                           uint64
-	clientStopped                       bool
 	// returned runs the offline validator's key alone, in place of its
 	// participant's stopped client.
 	keystores []sidecar.File
@@ -91,23 +90,13 @@ func (suite *leakSuite) reportReturnedLogs() {
 	}
 }
 
-// endOutage closes the returned validator's sidecar, if open, and starts the
-// stopped validator client, if stopped.
-func (suite *leakSuite) endOutage(ctx context.Context) {
+// closeReturned closes the returned validator's sidecar, if open. The lane
+// stops the network but not the suite's own containers.
+func (suite *leakSuite) closeReturned() {
 	ginkgo.GinkgoHelper()
 	if suite.returned != nil {
 		gomega.Expect(suite.returned.Close()).To(gomega.Succeed())
 		suite.returned = nil
-		if suite.clientStopped {
-			// The participant's client signs for the same key from the next
-			// epoch on, so no target gets a second vote.
-			next := suite.currentEpoch(ctx) + 1
-			gomega.Expect(testsuite.SleepUntil(ctx, suite.chain.SlotStartTime(next*suite.chain.SlotsPerEpoch))).To(gomega.Succeed())
-		}
-	}
-	if suite.clientStopped {
-		gomega.Expect(suite.runtime.StartParticipantValidators(ctx, offlineParticipant)).To(gomega.Succeed())
-		suite.clientStopped = false
 	}
 }
 

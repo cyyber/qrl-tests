@@ -24,7 +24,7 @@ var _ = ginkgo.Describe(
 
 		ginkgo.BeforeAll(suite.setUp, ginkgo.NodeTimeout(3*time.Minute))
 		ginkgo.AfterEach(suite.reportReturnedLogs)
-		ginkgo.AfterAll(suite.endOutage, ginkgo.NodeTimeout(2*time.Minute))
+		ginkgo.AfterAll(suite.closeReturned)
 
 		ginkgo.It("finalizes before the stake goes offline", func(ctx ginkgo.SpecContext) {
 			testsuite.AwaitFinalizedEpoch(ctx, suite.online.Client, suite.chain, 1, finalityTimeoutEpochs)

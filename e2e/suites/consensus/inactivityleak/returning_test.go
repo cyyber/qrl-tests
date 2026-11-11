@@ -43,7 +43,6 @@ type returningOutage struct {
 func (suite *leakSuite) stopsFinalizing(ctx ginkgo.SpecContext) {
 	outage := &suite.returning
 	gomega.Expect(suite.runtime.StopParticipantValidators(ctx, offlineParticipant)).To(gomega.Succeed())
-	suite.clientStopped = true
 	outage.stopped = suite.currentEpoch(ctx)
 
 	// Votes cast before the stop are processed within settleEpochs; after
@@ -164,7 +163,12 @@ func (suite *leakSuite) agreesAfterReturn(ctx ginkgo.SpecContext) {
 }
 
 func (suite *leakSuite) finalizesWithEveryValidatorBack(ctx ginkgo.SpecContext) {
-	suite.endOutage(ctx)
+	suite.closeReturned()
+	// The participant's client signs for the returned validator's key from the
+	// next epoch on, so no target gets a second vote.
+	next := suite.currentEpoch(ctx) + 1
+	gomega.Expect(testsuite.SleepUntil(ctx, suite.chain.SlotStartTime(next*suite.chain.SlotsPerEpoch))).To(gomega.Succeed())
+	gomega.Expect(suite.runtime.StartParticipantValidators(ctx, offlineParticipant)).To(gomega.Succeed())
 	testsuite.AwaitFinalizedEpoch(ctx, suite.online.Client, suite.chain, suite.currentEpoch(ctx), finalityTimeoutEpochs)
 }
 
