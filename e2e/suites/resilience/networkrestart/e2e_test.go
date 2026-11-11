@@ -41,13 +41,6 @@ var _ = ginkgo.Describe(
 			head beacon.BlockHeader
 		)
 
-		finalizedEpoch := func(node *live.Node) func(context.Context) (uint64, error) {
-			return func(ctx context.Context) (uint64, error) {
-				checkpoints, err := node.Beacon.FinalityCheckpoints(ctx)
-				return checkpoints.Finalized.Epoch, err
-			}
-		}
-
 		ginkgo.BeforeAll(func(ctx ginkgo.SpecContext) {
 			runtime = testsuite.LoadRuntime()
 			nodes = testsuite.MustSucceed(runtime.Nodes(ctx))
@@ -56,10 +49,7 @@ var _ = ginkgo.Describe(
 		}, ginkgo.NodeTimeout(time.Minute))
 
 		ginkgo.It("finalizes before the outage", func(ctx ginkgo.SpecContext) {
-			gomega.Eventually(finalizedEpoch(nodes[0])).WithContext(ctx).
-				WithTimeout(finalityTimeoutEpochs * chain.EpochDuration).
-				WithPolling(chain.SlotDuration).
-				Should(gomega.BeNumerically(">", 0))
+			testsuite.AwaitFinalizedEpoch(ctx, nodes[0].Beacon, chain, 1, finalityTimeoutEpochs)
 		}, ginkgo.SpecTimeout(7*time.Minute))
 
 		ginkgo.It("agrees on a head once its validators stop", func(ctx ginkgo.SpecContext) {
@@ -122,10 +112,8 @@ var _ = ginkgo.Describe(
 			for index, node := range nodes {
 				// An epoch after the outage began can only be finalized by
 				// votes cast since the restart.
-				gomega.Eventually(finalizedEpoch(node)).WithContext(ctx).
-					WithTimeout(finalityTimeoutEpochs*chain.EpochDuration).
-					WithPolling(chain.SlotDuration).
-					Should(gomega.BeNumerically(">", chain.Epoch(head.Slot)), "participant %d", index+1)
+				ginkgo.By("waiting for participant " + strconv.Itoa(index+1) + " to finalize an epoch after the outage began")
+				testsuite.AwaitFinalizedEpoch(ctx, node.Beacon, chain, chain.Epoch(head.Slot)+1, finalityTimeoutEpochs)
 			}
 
 			finalized := testsuite.MustSucceed(nodes[0].Beacon.BlockHeader(ctx, "finalized"))
