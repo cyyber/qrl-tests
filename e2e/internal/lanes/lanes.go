@@ -32,6 +32,7 @@ const (
 	suiteConsensusSlashingDoubleVote     SuiteID = "consensus-slashing-double-vote"
 	suiteConsensusSlashingDoubleProposal SuiteID = "consensus-slashing-double-proposal"
 	suiteConsensusInactivityLeak         SuiteID = "consensus-inactivity-leak"
+	suiteConsensusLeakRecovery           SuiteID = "consensus-leak-recovery"
 	suiteResilienceNetworkRestart        SuiteID = "resilience-network-restart"
 	suiteSyncGenesis                     SuiteID = "sync-genesis"
 	suiteSyncCheckpoint                  SuiteID = "sync-checkpoint"
@@ -47,6 +48,7 @@ var suitePackages = map[SuiteID]string{
 	suiteConsensusSlashingDoubleVote:     "./e2e/suites/consensus/slashing/doublevote",
 	suiteConsensusSlashingDoubleProposal: "./e2e/suites/consensus/slashing/doubleproposal",
 	suiteConsensusInactivityLeak:         "./e2e/suites/consensus/inactivityleak",
+	suiteConsensusLeakRecovery:           "./e2e/suites/consensus/leakrecovery",
 	suiteResilienceNetworkRestart:        "./e2e/suites/resilience/networkrestart",
 	suiteSyncGenesis:                     "./e2e/suites/sync/genesis",
 	suiteSyncCheckpoint:                  "./e2e/suites/sync/checkpoint",
@@ -95,10 +97,12 @@ var registry = []Lane{
 		Timeout: 30 * time.Minute,
 	},
 	{
+		// The second suite waits about 55 40-second epochs for the leak alone
+		// to restore finality.
 		Name:    "consensus-inactivity-leak",
 		Profile: devnet.ProfileInactivityLeak,
-		Suites:  []SuiteID{suiteConsensusInactivityLeak},
-		Timeout: 35 * time.Minute,
+		Suites:  []SuiteID{suiteConsensusInactivityLeak, suiteConsensusLeakRecovery},
+		Timeout: 90 * time.Minute,
 	},
 	{
 		// Finality, the outage and finality again take about a dozen
