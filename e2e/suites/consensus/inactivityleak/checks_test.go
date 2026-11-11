@@ -53,7 +53,7 @@ func expectUnpaidVotes(ctx context.Context, val rewards.Validator, epoch uint64)
 }
 
 // expectScores checks the validator's inactivity score before and after the
-// processing of epoch: score before, and the rule's next score after.
+// processing of epoch.
 func expectScores(val rewards.Validator, epoch uint64, amounts rewards.LeakAmounts, score uint64, timelyTarget bool) {
 	ginkgo.GinkgoHelper()
 	gomega.Expect(amounts.ScoreBefore).To(gomega.Equal(score),
