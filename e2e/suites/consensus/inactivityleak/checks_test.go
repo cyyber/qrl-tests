@@ -12,7 +12,8 @@ import (
 	gomega "github.com/onsi/gomega"
 )
 
-// expectMissedEpoch checks an epoch the validator missed, starting at score.
+// expectMissedEpoch checks the inactivity scores, rewards and balance change
+// of an epoch the validator missed, starting at score.
 func expectMissedEpoch(ctx context.Context, val rewards.Validator, epoch, score uint64) rewards.LeakAmounts {
 	ginkgo.GinkgoHelper()
 	amounts := testsuite.MustSucceed(val.LeakVoteAmounts(ctx, epoch))
