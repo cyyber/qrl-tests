@@ -29,7 +29,7 @@ var _ = ginkgo.Describe(
 		ginkgo.It("finalizes before the stake goes offline",
 			suite.finalizesBeforeOutage, ginkgo.SpecTimeout(finalityTimeout))
 
-		ginkgo.Context("when one stopped validator returns, taking the online stake to two thirds", func() {
+		ginkgo.Context("recovering by one validator returning", func() {
 			ginkgo.It("stops finalizing while blocks keep coming",
 				suite.stopsFinalizing, ginkgo.SpecTimeout(stallTimeout))
 			ginkgo.It("leaks an offline validator's stake once finality falls behind",
@@ -46,7 +46,7 @@ var _ = ginkgo.Describe(
 				suite.finalizesWithEveryValidatorBack, ginkgo.SpecTimeout(rejoinTimeout))
 		})
 
-		ginkgo.Context("when no validator returns, and the leak shrinks the offline stake to a third", func() {
+		ginkgo.Context("recovering by the leak alone", func() {
 			ginkgo.It("stops finalizing again once the client stops for good",
 				suite.stopsFinalizingForGood, ginkgo.SpecTimeout(stallTimeout))
 			ginkgo.It("forecasts the first epoch the online validators justify alone",
