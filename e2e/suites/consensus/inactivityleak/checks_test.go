@@ -65,9 +65,7 @@ func expectScores(val rewards.Validator, epoch uint64, amounts rewards.LeakAmoun
 }
 
 // expectBalanceChange checks that the balance changed over epoch+1 by the
-// attestation reward of epoch, which applies when epoch+2 starts, plus what
-// the blocks of epoch+1 paid or took: sync committee rewards and penalties,
-// proposer rewards and withdrawals, none of which the leak changes.
+// attestation reward of epoch plus what the blocks of epoch+1 paid or took.
 func expectBalanceChange(ctx context.Context, val rewards.Validator, epoch uint64, reward beacon.AttestationReward) {
 	ginkgo.GinkgoHelper()
 	before := testsuite.MustSucceed(val.BalanceAtEpochStart(ctx, epoch+1))
