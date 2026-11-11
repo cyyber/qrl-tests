@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cyyber/qrl-tests/e2e/internal/chaininfo"
 	"github.com/cyyber/qrl-tests/e2e/internal/live"
 	"github.com/cyyber/qrl-tests/e2e/internal/testsuite"
 	ginkgo "github.com/onsi/ginkgo/v2"
@@ -27,13 +28,6 @@ import (
 var (
 	pendingFeeCap = big.NewInt(4)
 	pendingTip    = big.NewInt(2)
-)
-
-const (
-	// finalityTimeout bounds the wait for the first finalized checkpoint,
-	// a few 40-second epochs after genesis.
-	finalityTimeout = 5 * time.Minute
-	pollInterval    = time.Second
 )
 
 // Header fields Zond has from genesis, which the API always returns.
@@ -77,6 +71,7 @@ var _ = ginkgo.Describe(
 
 		ginkgo.BeforeAll(func(ctx ginkgo.SpecContext) {
 			node = testsuite.MustSucceed(testsuite.LoadRuntime().PrimaryNode(ctx))
+			chain := testsuite.MustSucceed(chaininfo.Load(ctx, node.Beacon))
 			signer := types.NewZondSigner(node.ChainID)
 			head := testsuite.MustSucceed(node.Execution.HeaderByNumber(ctx, nil))
 			tip := testsuite.MustSucceed(node.Execution.SuggestGasTipCap(ctx))
@@ -115,11 +110,8 @@ var _ = ginkgo.Describe(
 			gomega.Expect(node.Execution.SendTransaction(ctx, pending)).To(gomega.Succeed())
 
 			ginkgo.By("waiting for a finalized block")
-			gomega.Eventually(func() error {
-				_, err := node.Execution.HeaderByNumber(ctx, big.NewInt(int64(gorpc.FinalizedBlockNumber)))
-				return err
-			}).WithContext(ctx).WithTimeout(finalityTimeout).WithPolling(pollInterval).Should(gomega.Succeed())
-		}, ginkgo.NodeTimeout(finalityTimeout+2*time.Minute))
+			testsuite.WaitForFinalizedBlock(ctx, node.Execution, chain)
+		}, ginkgo.NodeTimeout(10*time.Minute))
 
 		named := func(name string, number gorpc.BlockNumber) blockTag {
 			return blockTag{

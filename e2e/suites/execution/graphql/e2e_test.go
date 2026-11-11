@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cyyber/qrl-tests/e2e/internal/chaininfo"
 	"github.com/cyyber/qrl-tests/e2e/internal/live"
 	"github.com/cyyber/qrl-tests/e2e/internal/testsuite"
 	ginkgo "github.com/onsi/ginkgo/v2"
@@ -22,7 +23,6 @@ import (
 	"github.com/theQRL/go-qrl/core/types"
 	qrlwallet "github.com/theQRL/go-qrl/crypto/pqcrypto/wallet"
 	"github.com/theQRL/go-qrl/params"
-	gorpc "github.com/theQRL/go-qrl/rpc"
 )
 
 // Fees of a transaction that stays in the pool, in planck. The base fee never
@@ -31,10 +31,6 @@ var (
 	pendingFeeCap = big.NewInt(4)
 	pendingTip    = big.NewInt(2)
 )
-
-// finalityTimeout bounds the wait for the first finalized checkpoint, a few
-// 40-second epochs after genesis.
-const finalityTimeout = 5 * time.Minute
 
 func TestE2E(t *testing.T) {
 	testsuite.Run(t, "GraphQL E2E suite")
@@ -58,6 +54,7 @@ var _ = ginkgo.Describe(
 		ginkgo.BeforeAll(func(ctx ginkgo.SpecContext) {
 			node = testsuite.MustSucceed(testsuite.LoadRuntime().PrimaryNode(ctx))
 			gomega.Expect(node.Participant.Execution.GraphQLURL).NotTo(gomega.BeEmpty())
+			chain := testsuite.MustSucceed(chaininfo.Load(ctx, node.Beacon))
 			signer := types.NewZondSigner(node.ChainID)
 			head := testsuite.MustSucceed(node.Execution.HeaderByNumber(ctx, nil))
 			tip := testsuite.MustSucceed(node.Execution.SuggestGasTipCap(ctx))
@@ -98,11 +95,8 @@ var _ = ginkgo.Describe(
 			gomega.Expect(sent).To(gomega.HaveKeyWithValue("sendRawTransaction", pending.Hash().Hex()))
 
 			ginkgo.By("waiting for a finalized block")
-			gomega.Eventually(func() error {
-				_, err := node.Execution.HeaderByNumber(ctx, big.NewInt(int64(gorpc.FinalizedBlockNumber)))
-				return err
-			}).WithContext(ctx).WithTimeout(finalityTimeout).WithPolling(time.Second).Should(gomega.Succeed())
-		}, ginkgo.NodeTimeout(finalityTimeout+2*time.Minute))
+			testsuite.WaitForFinalizedBlock(ctx, node.Execution, chain)
+		}, ginkgo.NodeTimeout(10*time.Minute))
 
 		// GraphQL takes a block by number or hash, or the latest block with no
 		// argument. A range that starts at a negative block number resolves
