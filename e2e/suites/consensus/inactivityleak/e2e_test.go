@@ -45,7 +45,7 @@ var _ = ginkgo.Describe(
 				suite.finalizesWithEveryValidatorBack, ginkgo.SpecTimeout(rejoinTimeout))
 		})
 
-		ginkgo.Context("when no validator returns", func() {
+		ginkgo.Context("when no validator returns, until the leak leaves the online stake two thirds", func() {
 			ginkgo.It("stops finalizing again once the client stops for good",
 				suite.stopsFinalizingForGood, ginkgo.SpecTimeout(stallTimeout))
 			ginkgo.It("forecasts the first epoch the online validators justify alone",
