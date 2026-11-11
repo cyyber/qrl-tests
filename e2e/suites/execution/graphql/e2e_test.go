@@ -3,16 +3,14 @@
 package graphql
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"math/big"
-	"net/http"
 	"testing"
 	"time"
 
 	"github.com/cyyber/qrl-tests/e2e/internal/chaininfo"
+	"github.com/cyyber/qrl-tests/e2e/internal/graphql"
 	"github.com/cyyber/qrl-tests/e2e/internal/live"
 	"github.com/cyyber/qrl-tests/e2e/internal/testsuite"
 	ginkgo "github.com/onsi/ginkgo/v2"
@@ -199,18 +197,5 @@ var _ = ginkgo.Describe(
 // on any GraphQL error.
 func query(ctx context.Context, node *live.Node, query string) map[string]any {
 	ginkgo.GinkgoHelper()
-	body := testsuite.MustSucceed(json.Marshal(map[string]string{"query": query}))
-	request := testsuite.MustSucceed(http.NewRequestWithContext(ctx, http.MethodPost, node.Participant.Execution.GraphQLURL, bytes.NewReader(body)))
-	request.Header.Set("Content-Type", "application/json")
-	response := testsuite.MustSucceed(http.DefaultClient.Do(request))
-	defer response.Body.Close()
-	gomega.Expect(response.StatusCode).To(gomega.Equal(http.StatusOK))
-
-	var result struct {
-		Data   map[string]any    `json:"data"`
-		Errors []json.RawMessage `json:"errors"`
-	}
-	gomega.Expect(json.NewDecoder(response.Body).Decode(&result)).To(gomega.Succeed())
-	gomega.Expect(result.Errors).To(gomega.BeEmpty(), "query %s", query)
-	return result.Data
+	return testsuite.MustSucceed(graphql.Query(ctx, node.Participant.Execution.GraphQLURL, query))
 }
