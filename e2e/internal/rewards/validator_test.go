@@ -75,10 +75,11 @@ func TestNextInactivityScore(t *testing.T) {
 		want         uint64
 	}{
 		"missed in a leak":                               {score: 8, leak: true, want: 12},
+		"missed in a leak at zero":                       {score: 0, leak: true, want: 4},
 		"timely in a leak":                               {score: 8, timelyTarget: true, leak: true, want: 7},
 		"timely in a leak at zero":                       {score: 0, timelyTarget: true, leak: true, want: 0},
 		"missed outside a leak":                          {score: 20, want: 8},
-		"missed outside a leak at 0":                     {score: 0, want: 0},
+		"missed outside a leak at zero":                  {score: 0, want: 0},
 		"timely outside a leak":                          {score: 20, timelyTarget: true, want: 3},
 		"timely outside a leak, below the recovery rate": {score: 3, timelyTarget: true, want: 0},
 	} {
@@ -138,6 +139,16 @@ func validatorJSON(balance, effectiveBalance uint64) string {
 		validatorIndex, balance, effectiveBalance)
 }
 
+// validatorsJSON is a validator list with the given effective balances, whose
+// sum is the total active balance.
+func validatorsJSON(effectiveBalances ...uint64) string {
+	var validators []string
+	for _, balance := range effectiveBalances {
+		validators = append(validators, fmt.Sprintf(`{"validator":{"effective_balance":"%d"}}`, balance))
+	}
+	return "[" + strings.Join(validators, ",") + "]"
+}
+
 func finalizedJSON(epoch uint64) string {
 	return fmt.Sprintf(`{"finalized":{"epoch":"%d","root":"0x00"}}`, epoch)
 }
@@ -170,7 +181,7 @@ func TestVoteAmounts(t *testing.T) {
 	responses := map[string]string{
 		"beacon/states/55/finality_checkpoints": finalizedJSON(3),
 		"beacon/states/55/validators/64":        validatorJSON(39_997*shorPerQRL, 39_997*shorPerQRL),
-		"beacon/states/55/validators":           fmt.Sprintf(`[{"validator":{"effective_balance":"%d"}},{"validator":{"effective_balance":"%d"}}]`, 64*40_000*shorPerQRL, 39_997*shorPerQRL),
+		"beacon/states/55/validators":           validatorsJSON(64*40_000*shorPerQRL, 39_997*shorPerQRL),
 		"beacon/rewards/attestations/5":         idealJSON(39_997*shorPerQRL, 40_000*shorPerQRL),
 	}
 	fake, client := newStateBeacon(t, responses)
@@ -196,7 +207,7 @@ func TestVoteAmountsNeedsIdealReward(t *testing.T) {
 	_, client := newStateBeacon(t, map[string]string{
 		"beacon/states/55/finality_checkpoints": finalizedJSON(3),
 		"beacon/states/55/validators/64":        validatorJSON(39_997*shorPerQRL, 39_997*shorPerQRL),
-		"beacon/states/55/validators":           fmt.Sprintf(`[{"validator":{"effective_balance":"%d"}}]`, 65*40_000*shorPerQRL),
+		"beacon/states/55/validators":           validatorsJSON(65 * 40_000 * shorPerQRL),
 		"beacon/rewards/attestations/5":         idealJSON(40_000 * shorPerQRL),
 	})
 	_, err := testValidator(client).VoteAmounts(t.Context(), 5)
@@ -208,7 +219,7 @@ func TestVoteAmountsRefusesLeak(t *testing.T) {
 	_, client := newStateBeacon(t, map[string]string{
 		"beacon/states/55/finality_checkpoints": finalizedJSON(1),
 		"beacon/states/55/validators/64":        validatorJSON(40_000*shorPerQRL, 40_000*shorPerQRL),
-		"beacon/states/55/validators":           fmt.Sprintf(`[{"validator":{"effective_balance":"%d"}}]`, 65*40_000*shorPerQRL),
+		"beacon/states/55/validators":           validatorsJSON(65 * 40_000 * shorPerQRL),
 		"beacon/rewards/attestations/5":         idealJSON(40_000 * shorPerQRL),
 	})
 	_, err := testValidator(client).VoteAmounts(t.Context(), 5)
@@ -238,7 +249,7 @@ func TestLeakVoteAmounts(t *testing.T) {
 		"debug/beacon/states/55":                scoresJSON(8),
 		"debug/beacon/states/56":                scoresJSON(12),
 		"beacon/states/55/validators/64":        validatorJSON(39_997*shorPerQRL, 39_997*shorPerQRL),
-		"beacon/states/55/validators":           fmt.Sprintf(`[{"validator":{"effective_balance":"%d"}},{"validator":{"effective_balance":"%d"}}]`, 64*40_000*shorPerQRL, 39_997*shorPerQRL),
+		"beacon/states/55/validators":           validatorsJSON(64*40_000*shorPerQRL, 39_997*shorPerQRL),
 		"beacon/rewards/attestations/5":         idealJSON(39_997 * shorPerQRL),
 	}
 	fake, client := newStateBeacon(t, responses)
