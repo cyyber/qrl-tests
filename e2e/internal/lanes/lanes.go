@@ -95,8 +95,6 @@ var registry = []Lane{
 		Timeout: 30 * time.Minute,
 	},
 	{
-		// The suite's second outage waits about 55 40-second epochs for the
-		// leak alone to restore finality.
 		Name:    "consensus-inactivity-leak",
 		Profile: devnet.ProfileInactivityLeak,
 		Suites:  []SuiteID{suiteConsensusInactivityLeak},
