@@ -24,6 +24,8 @@ import (
 const (
 	aheadEpochs = 3
 
+	// importTimeout covers the wait for a new chain's first justified epoch.
+	importTimeout = 4 * time.Minute
 	// refusalTimeout covers the imported epochs and the two epochs until
 	// their rewards are served.
 	refusalTimeout = 6 * time.Minute
@@ -102,6 +104,18 @@ var _ = ginkgo.Describe(
 
 		ginkgo.It("imports the key through the keymanager API with a history that claims attestations a few epochs ahead",
 			func(ctx ginkgo.SpecContext) {
+				// The history gives each vote the previous epoch as its source,
+				// as on a chain that justifies every epoch. A new chain first
+				// justifies epoch 2, as epoch 3 starts.
+				gomega.Eventually(func(g gomega.Gomega) {
+					checkpoints, err := node.Beacon.FinalityCheckpoints(ctx)
+					g.Expect(err).NotTo(gomega.HaveOccurred())
+					g.Expect(checkpoints.CurrentJustified.Epoch).To(gomega.BeNumerically(">", 0))
+				}).WithContext(ctx).
+					WithTimeout(4*val.Chain.EpochDuration).
+					WithPolling(rewards.PollInterval).
+					Should(gomega.Succeed(), "the chain has justified no epoch")
+
 				// The history covers the epoch the key arrives in, so it covers
 				// every vote the client could make before last+1.
 				head := testsuite.MustSucceed(node.Beacon.HeadSlot(ctx))
@@ -117,7 +131,7 @@ var _ = ginkgo.Describe(
 				keystores := testsuite.MustSucceed(validatorClient.Keymanager.ListKeystores(ctx))
 				gomega.Expect(keymanager.ContainsPublicKey(keystores, publicKey)).To(gomega.BeTrue(),
 					"imported key is not in the validator client")
-			}, ginkgo.SpecTimeout(time.Minute))
+			}, ginkgo.SpecTimeout(importTimeout))
 
 		ginkgo.It("casts no vote for any target its imported history covers", func(ctx ginkgo.SpecContext) {
 			val.AwaitRewards(ctx, last)
