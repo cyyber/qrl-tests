@@ -23,20 +23,12 @@ func expectMissedEpoch(ctx context.Context, val rewards.Validator, epoch, score 
 		ValidatorIndex: val.Index,
 		Source:         -int64(amounts.MissedSource),
 		Target:         -int64(amounts.MissedTarget + amounts.InactivityPenalty),
-	}), "attestation rewards of epoch %d: the target's is the %d shor missed-target penalty and the %d shor inactivity penalty at score %d",
+	}), "attestation rewards of epoch %d: the target figure is the %d shor missed-target penalty plus the %d shor inactivity penalty at score %d",
 		epoch, amounts.MissedTarget, amounts.InactivityPenalty, amounts.ScoreAfter)
 
-	// The rewards of epoch apply when epoch+2 starts. The blocks of epoch+1
-	// add the missed sync committee duties; the offline validator proposes
-	// none.
-	before := testsuite.MustSucceed(val.BalanceAtEpochStart(ctx, epoch+1))
-	after := testsuite.MustSucceed(val.BalanceAtEpochStart(ctx, epoch+2))
-	blocks := testsuite.MustSucceed(val.BlockBalanceChanges(ctx, epoch+1))
-	missed := amounts.MissedSource + amounts.MissedTarget
-	want := int64(before) - int64(missed+amounts.InactivityPenalty) + blocks
-	gomega.Expect(int64(after)).To(gomega.Equal(want),
-		"balance went from %d to %d over epoch %d: the %d shor missed-vote and %d shor inactivity penalties of epoch %d, at score %d, and %d shor from blocks make %d",
-		before, after, epoch+1, missed, amounts.InactivityPenalty, epoch, amounts.ScoreAfter, blocks, want)
+	// The blocks of epoch+1 add the missed sync committee duties; the offline
+	// validator proposes none.
+	expectBalanceChange(ctx, val, epoch, -int64(amounts.MissedSource+amounts.MissedTarget+amounts.InactivityPenalty))
 	return amounts
 }
 
@@ -61,23 +53,31 @@ func expectUnpaidVotes(ctx context.Context, val rewards.Validator, epoch uint64)
 	gomega.Expect(reward).To(gomega.Equal(want), "attestation rewards of epoch %d, whose votes were %+v", epoch, timely)
 
 	// Block rewards and withdrawals are unaffected by the leak.
-	before := testsuite.MustSucceed(val.BalanceAtEpochStart(ctx, epoch+1))
-	after := testsuite.MustSucceed(val.BalanceAtEpochStart(ctx, epoch+2))
-	blocks := testsuite.MustSucceed(val.BlockBalanceChanges(ctx, epoch+1))
-	wantBalance := int64(before) + reward.Source + blocks
-	gomega.Expect(int64(after)).To(gomega.Equal(wantBalance),
-		"balance went from %d to %d over epoch %d: the %d shor source figure of epoch %d and %d shor from blocks make %d",
-		before, after, epoch+1, reward.Source, epoch, blocks, wantBalance)
+	expectBalanceChange(ctx, val, epoch, reward.Source)
 }
 
 // expectScores checks the validator's inactivity score before and after the
 // processing of epoch: score before, and the rule's next score after.
-func expectScores(val rewards.Validator, epoch uint64, amounts rewards.LeakAmounts, score uint64, timely bool) {
+func expectScores(val rewards.Validator, epoch uint64, amounts rewards.LeakAmounts, score uint64, timelyTarget bool) {
 	ginkgo.GinkgoHelper()
 	gomega.Expect(amounts.ScoreBefore).To(gomega.Equal(score),
 		"inactivity score of validator %d before the processing of epoch %d", val.Index, epoch)
-	want := val.Spec.NextInactivityScore(score, timely, amounts.Leak)
+	want := val.Spec.NextInactivityScore(score, timelyTarget, amounts.Leak)
 	gomega.Expect(amounts.ScoreAfter).To(gomega.Equal(want),
 		"inactivity score of validator %d after the processing of epoch %d: from %d, a target vote that was timely: %t, in a leak: %t",
-		val.Index, epoch, score, timely, amounts.Leak)
+		val.Index, epoch, score, timelyTarget, amounts.Leak)
+}
+
+// expectBalanceChange checks that the balance changed over epoch+1 by
+// attestation, the attestation figure of epoch, which applies when epoch+2
+// starts, plus what the blocks of epoch+1 paid.
+func expectBalanceChange(ctx context.Context, val rewards.Validator, epoch uint64, attestation int64) {
+	ginkgo.GinkgoHelper()
+	before := testsuite.MustSucceed(val.BalanceAtEpochStart(ctx, epoch+1))
+	after := testsuite.MustSucceed(val.BalanceAtEpochStart(ctx, epoch+2))
+	blocks := testsuite.MustSucceed(val.BlockBalanceChanges(ctx, epoch+1))
+	want := int64(before) + attestation + blocks
+	gomega.Expect(int64(after)).To(gomega.Equal(want),
+		"balance went from %d to %d over epoch %d: the %d shor attestation figure of epoch %d and %d shor from blocks make %d",
+		before, after, epoch+1, attestation, epoch, blocks, want)
 }
