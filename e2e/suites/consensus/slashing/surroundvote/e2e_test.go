@@ -93,7 +93,8 @@ var _ = ginkgo.Describe(
 			ginkgo.By("publishing the vote of slot " + strconv.FormatUint(innerDuty.Slot, 10) +
 				", from the justified checkpoint to epoch " + strconv.FormatUint(epoch, 10))
 			awaitVote(ctx, val.Chain, innerDuty)
-			justified := testsuite.MustSucceed(client.FinalityCheckpointsAt(ctx, strconv.FormatUint(innerDuty.Slot, 10)))
+			// The head state's justified checkpoint, as an honest vote takes it.
+			justified := testsuite.MustSucceed(client.FinalityCheckpoints(ctx))
 			inner := headVote(ctx, client, val.Chain, innerDuty, justified.CurrentJustified)
 			publish(ctx, client, signer, innerDuty, inner)
 
