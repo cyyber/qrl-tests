@@ -71,18 +71,15 @@ func (states beaconStates) forecast(ctx context.Context, spec rewards.Spec, outa
 	return spec.ForecastRecovery(start)
 }
 
-// firstJustified finds the first checkpoint justified since the outage
-// settled. The justified checkpoint moves only forward, at epoch starts.
-func (states beaconStates) firstJustified(ctx context.Context, outage lastingOutage) beacon.Checkpoint {
+// expectFirstJustified checks that the outage's justified checkpoint is the
+// first since the stop: the epoch after it still starts with the frozen one.
+// That state is after the finalized checkpoint, so the node keeps it at hand.
+func (states beaconStates) expectFirstJustified(ctx context.Context, outage lastingOutage) {
 	ginkgo.GinkgoHelper()
-	head := states.chain.Epoch(testsuite.MustSucceed(states.client.HeadSlot(ctx)))
-	for epoch := outage.settled + 1; epoch <= head; epoch++ {
-		if justified := states.checkpointsAt(ctx, epoch).CurrentJustified; justified != outage.frozen.CurrentJustified {
-			return justified
-		}
-	}
-	ginkgo.Fail("no checkpoint justified since the stop")
-	return beacon.Checkpoint{}
+	gomega.Expect(outage.justified.Epoch).To(gomega.BeNumerically(">", outage.frozen.CurrentJustified.Epoch),
+		"no checkpoint justified since the stop in epoch %d", outage.stopped)
+	gomega.Expect(states.checkpointsAt(ctx, outage.justified.Epoch+1).CurrentJustified).To(gomega.Equal(outage.frozen.CurrentJustified),
+		"justified checkpoint at the start of epoch %d, before epoch %d's votes count", outage.justified.Epoch+1, outage.justified.Epoch)
 }
 
 // expectForecastStakes checks the offline validators' effective balances at

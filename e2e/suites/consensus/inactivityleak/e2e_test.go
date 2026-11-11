@@ -378,18 +378,25 @@ var _ = ginkgo.Describe(
 
 		ginkgo.It("finalizes again within an epoch of the forecast, with no validator back", func(ctx ginkgo.SpecContext) {
 			forecast := lasting.forecast
+			// The head shows each justification as it happens, at most one an
+			// epoch, which states long behind it, by then finalized, would be
+			// slow to show.
+			var finalized beacon.Checkpoint
 			gomega.Eventually(func(g gomega.Gomega, ctx context.Context) {
 				checkpoints, err := online.Client.FinalityCheckpoints(ctx)
 				g.Expect(err).NotTo(gomega.HaveOccurred())
-				g.Expect(checkpoints.Finalized.Epoch).To(gomega.BeNumerically(">", lasting.frozen.Finalized.Epoch),
+				if lasting.justified == (beacon.Checkpoint{}) && checkpoints.CurrentJustified != lasting.frozen.CurrentJustified {
+					lasting.justified = checkpoints.CurrentJustified
+				}
+				finalized = checkpoints.Finalized
+				g.Expect(finalized.Epoch).To(gomega.BeNumerically(">", lasting.frozen.Finalized.Epoch),
 					"finalized epoch, with epoch %d justified and epoch %d forecast to be", checkpoints.CurrentJustified.Epoch, forecast.Justified)
 			}).WithContext(ctx).
 				WithTimeout(time.Until(recoveryDeadline(chain, forecast))).
 				WithPolling(chain.SlotDuration).
 				Should(gomega.Succeed())
-			finalized := testsuite.MustSucceed(online.Client.FinalityCheckpoints(ctx)).Finalized
 
-			lasting.justified = states.firstJustified(ctx, lasting)
+			states.expectFirstJustified(ctx, lasting)
 			// The forecast holds the online stake fixed, though a late source
 			// vote can take an online validator's effective balance down an
 			// increment, and spreads the offline validators' sync committee
