@@ -54,8 +54,6 @@ func TestParticipantValidators(t *testing.T) {
 	require.Equal(t, second, ProfileDoubleProposal.ParticipantValidators(1))
 	require.Empty(t, ProfileDoubleProposal.ParticipantValidators(2))
 	require.Empty(t, ProfileDoubleProposal.SpareValidators())
-	// The inactivity leak stops the second participant, just over a third of
-	// the stake.
 	require.Len(t, ProfileInactivityLeak.ParticipantValidators(0), 43)
 	stopped := ProfileInactivityLeak.ParticipantValidators(1)
 	require.Len(t, stopped, 22)
