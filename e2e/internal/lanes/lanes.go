@@ -33,6 +33,7 @@ const (
 	suiteConsensusSlashingDoubleProposal SuiteID = "consensus-slashing-double-proposal"
 	suiteConsensusSlashingSubmitted      SuiteID = "consensus-slashing-submitted"
 	suiteConsensusSlashingSurroundVote   SuiteID = "consensus-slashing-surround-vote"
+	suiteConsensusSlashingExited         SuiteID = "consensus-slashing-exited"
 	suiteResilienceNetworkRestart        SuiteID = "resilience-network-restart"
 	suiteSyncGenesis                     SuiteID = "sync-genesis"
 	suiteSyncCheckpoint                  SuiteID = "sync-checkpoint"
@@ -49,6 +50,7 @@ var suitePackages = map[SuiteID]string{
 	suiteConsensusSlashingDoubleProposal: "./e2e/suites/consensus/slashing/doubleproposal",
 	suiteConsensusSlashingSubmitted:      "./e2e/suites/consensus/slashing/submitted",
 	suiteConsensusSlashingSurroundVote:   "./e2e/suites/consensus/slashing/surroundvote",
+	suiteConsensusSlashingExited:         "./e2e/suites/consensus/slashing/exited",
 	suiteResilienceNetworkRestart:        "./e2e/suites/resilience/networkrestart",
 	suiteSyncGenesis:                     "./e2e/suites/sync/genesis",
 	suiteSyncCheckpoint:                  "./e2e/suites/sync/checkpoint",
@@ -99,8 +101,10 @@ var registry = []Lane{
 	{
 		Name:    "consensus-slashing-evidence",
 		Profile: devnet.ProfileDuplicateValidator,
-		Suites:  []SuiteID{suiteConsensusSlashingSubmitted, suiteConsensusSlashingSurroundVote},
-		Timeout: 30 * time.Minute,
+		Suites: []SuiteID{
+			suiteConsensusSlashingSubmitted, suiteConsensusSlashingSurroundVote, suiteConsensusSlashingExited,
+		},
+		Timeout: 40 * time.Minute,
 	},
 	{
 		// Finality, the outage and finality again take about a dozen
@@ -192,7 +196,8 @@ func (lane Lane) NeedsQrysmAlltoolsImage() bool {
 		slices.Contains(lane.Suites, suiteConsensusSlashingDoubleVote) ||
 		slices.Contains(lane.Suites, suiteConsensusSlashingDoubleProposal) ||
 		slices.Contains(lane.Suites, suiteConsensusSlashingSubmitted) ||
-		slices.Contains(lane.Suites, suiteConsensusSlashingSurroundVote)
+		slices.Contains(lane.Suites, suiteConsensusSlashingSurroundVote) ||
+		slices.Contains(lane.Suites, suiteConsensusSlashingExited)
 }
 
 func RegisteredSuites() []SuiteID {

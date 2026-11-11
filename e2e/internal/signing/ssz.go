@@ -102,6 +102,16 @@ func (data AttestationData) HashTreeRoot() Root {
 	})
 }
 
+// VoluntaryExit is what a validator signs to leave the active set.
+type VoluntaryExit struct {
+	Epoch          uint64
+	ValidatorIndex uint64
+}
+
+func (exit VoluntaryExit) HashTreeRoot() Root {
+	return merkleize([]Root{uint64Root(exit.Epoch), uint64Root(exit.ValidatorIndex)})
+}
+
 func uint64Root(value uint64) Root {
 	var root Root
 	binary.LittleEndian.PutUint64(root[:8], value)

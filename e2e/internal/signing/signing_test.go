@@ -71,6 +71,14 @@ func TestAttestationDataRootMatchesQrysm(t *testing.T) {
 	require.Equal(t, "010000007c84f6ac711e7d87eadc076350fd55347d33483c0005bd0867748499", hex.EncodeToString(domain[:]))
 }
 
+func TestVoluntaryExitRootMatchesQrysm(t *testing.T) {
+	root := VoluntaryExit{Epoch: 12, ValidatorIndex: 34}.HashTreeRoot()
+	require.Equal(t, "0f43b51e4c87b26f70f8ed43fe5f0419b8beabeef0f55113d6cec644071e92fe", hex.EncodeToString(root[:]))
+
+	domain := ComputeDomain(DomainVoluntaryExit, ForkVersion{0x10, 0x00, 0x00, 0x20}, repeatedRoot(0x77))
+	require.Equal(t, "040000007c84f6ac711e7d87eadc076350fd55347d33483c0005bd0867748499", hex.EncodeToString(domain[:]))
+}
+
 func TestForkDomainKeepsThePreviousVersionBeforeTheFork(t *testing.T) {
 	fork := Fork{PreviousVersion: ForkVersion{0x01}, CurrentVersion: ForkVersion{0x02}, Epoch: 10}
 	genesisValidatorsRoot := repeatedRoot(0x77)

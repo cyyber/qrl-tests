@@ -108,6 +108,22 @@ func TestClientDecodesQrysmResponses(t *testing.T) {
 				},
 				"signatures": []any{"0xcc"},
 			}}, body)
+		case "/qrl/v1/beacon/pool/attester_slashings":
+			assert.Equal(t, http.MethodPost, request.Method)
+			var body map[string]any
+			assert.NoError(t, json.NewDecoder(request.Body).Decode(&body))
+			vote := func(blockRoot, signature string) map[string]any {
+				return map[string]any{
+					"attesting_indices": []any{"64"},
+					"data": map[string]any{
+						"slot": "18", "index": "0", "beacon_block_root": blockRoot,
+						"source": map[string]any{"epoch": "1", "root": "0x0a"},
+						"target": map[string]any{"epoch": "2", "root": "0x0b"},
+					},
+					"signatures": []any{signature},
+				}
+			}
+			assert.Equal(t, map[string]any{"attestation_1": vote("0xaa", "0xcc"), "attestation_2": vote("0xbb", "0xdd")}, body)
 		case "/qrl/v1/beacon/headers/16":
 			_, _ = writer.Write([]byte(`{"data":{"root":"0x16","header":{"message":{"slot":"16"}}}}`))
 		case "/qrl/v1/beacon/states/head/fork":
@@ -254,6 +270,20 @@ func TestClientDecodesQrysmResponses(t *testing.T) {
 		},
 		Signatures: []string{"0xcc"},
 	}}))
+
+	signedVote := func(blockRoot, signature string) SignedIndexedAttestation {
+		return SignedIndexedAttestation{
+			AttestingIndices: []string{"64"},
+			Data: AttestationData{
+				Slot: 18, BeaconBlockRoot: blockRoot,
+				Source: Checkpoint{Epoch: 1, Root: "0x0a"}, Target: Checkpoint{Epoch: 2, Root: "0x0b"},
+			},
+			Signatures: []string{signature},
+		}
+	}
+	require.NoError(t, client.SubmitAttesterSlashing(t.Context(), SignedAttesterSlashing{
+		Attestation1: signedVote("0xaa", "0xcc"), Attestation2: signedVote("0xbb", "0xdd"),
+	}))
 
 	// Slots 17 to 19 have no block in this server, so the lookup steps back to 16.
 	root, err := client.RootAtOrBefore(t.Context(), 19)

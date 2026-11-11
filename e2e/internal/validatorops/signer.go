@@ -41,6 +41,17 @@ func LoadSigner(ctx context.Context, client *beacon.Client, key *Key) (Signer, e
 	return signer, nil
 }
 
+// SignVoluntaryExit signs exit, which the validator can submit from its
+// epoch on.
+func (signer Signer) SignVoluntaryExit(exit beacon.VoluntaryExit) (beacon.SignedVoluntaryExit, error) {
+	root := signing.VoluntaryExit{Epoch: exit.Epoch, ValidatorIndex: exit.ValidatorIndex}.HashTreeRoot()
+	signature, err := signer.Sign(signing.DomainVoluntaryExit, exit.Epoch, root)
+	if err != nil {
+		return beacon.SignedVoluntaryExit{}, err
+	}
+	return beacon.SignedVoluntaryExit{Message: exit, Signature: signature}, nil
+}
+
 // Sign signs objectRoot under the domain of domainType at epoch, checks the
 // signature, and returns it 0x-prefixed.
 func (signer Signer) Sign(domainType signing.DomainType, epoch uint64, objectRoot signing.Root) (string, error) {

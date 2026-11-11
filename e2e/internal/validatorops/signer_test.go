@@ -53,4 +53,13 @@ func TestSignerSignsUnderTheChainsDomain(t *testing.T) {
 	require.NoError(t, signing.Verify(signing.SigningRoot(object, previous), key.PublicKey(), decoded))
 	current := signing.ComputeDomain(signing.DomainBeaconProposer, signer.Fork.CurrentVersion, root)
 	require.Error(t, signing.Verify(signing.SigningRoot(object, current), key.PublicKey(), decoded))
+
+	exit, err := signer.SignVoluntaryExit(beacon.VoluntaryExit{Epoch: 12, ValidatorIndex: 34})
+	require.NoError(t, err)
+	require.Equal(t, beacon.VoluntaryExit{Epoch: 12, ValidatorIndex: 34}, exit.Message)
+	decoded, err = hex.DecodeString(strings.TrimPrefix(exit.Signature, "0x"))
+	require.NoError(t, err)
+	exitRoot := signing.VoluntaryExit{Epoch: 12, ValidatorIndex: 34}.HashTreeRoot()
+	exitDomain := signing.ComputeDomain(signing.DomainVoluntaryExit, signer.Fork.CurrentVersion, root)
+	require.NoError(t, signing.Verify(signing.SigningRoot(exitRoot, exitDomain), key.PublicKey(), decoded))
 }

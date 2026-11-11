@@ -3,6 +3,7 @@ package slashingops
 import (
 	"encoding/hex"
 	"fmt"
+	"strconv"
 
 	"github.com/cyyber/qrl-tests/e2e/internal/beacon"
 	"github.com/cyyber/qrl-tests/e2e/internal/signing"
@@ -57,6 +58,38 @@ func SignAttestation(
 		AggregationBits: "0x" + hex.EncodeToString(beacon.SingleMemberBits(duty.CommitteeLength, duty.ValidatorCommitteeIndex)),
 		Data:            data,
 		Signatures:      []string{signature},
+	}, nil
+}
+
+// SignAttesterSlashing signs two votes as the validator at index and returns
+// them as attester slashing evidence against it alone.
+func SignAttesterSlashing(
+	signer validatorops.Signer, index uint64, first, second beacon.AttestationData,
+) (beacon.SignedAttesterSlashing, error) {
+	signedFirst, err := signIndexed(signer, index, first)
+	if err != nil {
+		return beacon.SignedAttesterSlashing{}, err
+	}
+	signedSecond, err := signIndexed(signer, index, second)
+	if err != nil {
+		return beacon.SignedAttesterSlashing{}, err
+	}
+	return beacon.SignedAttesterSlashing{Attestation1: signedFirst, Attestation2: signedSecond}, nil
+}
+
+func signIndexed(signer validatorops.Signer, index uint64, data beacon.AttestationData) (beacon.SignedIndexedAttestation, error) {
+	root, err := attestationDataRoot(data)
+	if err != nil {
+		return beacon.SignedIndexedAttestation{}, err
+	}
+	signature, err := signer.Sign(signing.DomainBeaconAttester, data.Target.Epoch, root)
+	if err != nil {
+		return beacon.SignedIndexedAttestation{}, err
+	}
+	return beacon.SignedIndexedAttestation{
+		AttestingIndices: []string{strconv.FormatUint(index, 10)},
+		Data:             data,
+		Signatures:       []string{signature},
 	}, nil
 }
 

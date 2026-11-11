@@ -14,7 +14,7 @@ endpoints; suites do not provision infrastructure.
 | `consensus-penalties` | `spare-validator` | Penalties while a validator's client is down, and rewards once it is back |
 | `consensus-slashing-double-vote` | `duplicate-validator` | Slashing for a double vote by a key running on two nodes at once, through the validator's exit |
 | `consensus-slashing-double-proposal` | `double-proposal` | Slashing for a double proposal by a key running on two nodes at once |
-| `consensus-slashing-evidence` | `duplicate-validator` | Slashing on evidence the suite signs itself: a proposer slashing submitted through the beacon API, and a surround vote a slasher detects through gossip |
+| `consensus-slashing-evidence` | `duplicate-validator` | Slashing on evidence the suite signs itself: a proposer slashing submitted through the beacon API, a surround vote a slasher detects through gossip, and a double vote by a validator that has exited but cannot withdraw yet |
 | `resilience-network-restart` | `anchored` | Recovery from a full outage: proposing and finalizing after every node stops at once |
 | `sync` | `single` | A new full-mode node syncs from genesis or from a checkpoint, then catches up after a stop |
 

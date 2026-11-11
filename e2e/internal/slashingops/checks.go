@@ -23,12 +23,23 @@ func ExpectSlashedInBlock(
 	on := testsuite.MustSucceed(val.RecordAt(ctx, slot))
 	gomega.Expect(before.Slashed).To(gomega.BeFalse())
 	gomega.Expect(on.Slashed).To(gomega.BeTrue())
-	gomega.Expect(on.Status).To(gomega.Equal("active_slashed"))
+
+	// A validator that has already left keeps its exit epoch; the slashing
+	// only delays its withdrawal.
+	epoch := val.Chain.Epoch(slot)
+	exit := before.ExitEpoch
+	if exit == beacon.FarFutureEpoch {
+		exit = spec.ExitEpoch(epoch)
+	}
+	status := "active_slashed"
+	if epoch >= exit {
+		status = "exited_slashed"
+	}
+	gomega.Expect(on.Status).To(gomega.Equal(status))
 
 	// The block's own duties change the balance too, and a block at an
 	// epoch's first slot also follows epoch processing, which applies the
 	// attestation rewards of epoch-2.
-	epoch := val.Chain.Epoch(slot)
 	penalty := spec.InitialPenalty(before.EffectiveBalance)
 	blockChange := testsuite.MustSucceed(val.BlockBalanceChange(ctx, slot))
 	var epochChange int64
@@ -41,7 +52,6 @@ func ExpectSlashedInBlock(
 		"balance at slot %d is %d, want %d: %d before, minus the %d shor penalty, plus %d shor from the block's duties and %d from epoch processing",
 		slot, on.Balance, want, before.Balance, penalty, blockChange, epochChange)
 
-	exit := spec.ExitEpoch(epoch)
 	gomega.Expect(on.ExitEpoch).To(gomega.Equal(exit), "exit epoch of a validator slashed in epoch %d", epoch)
 	gomega.Expect(on.WithdrawableEpoch).To(gomega.Equal(spec.WithdrawableEpoch(epoch, exit)),
 		"withdrawable epoch of a validator slashed in epoch %d", epoch)

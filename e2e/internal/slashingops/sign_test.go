@@ -55,6 +55,33 @@ func TestSignAttestation(t *testing.T) {
 	require.EqualError(t, err, `attestation of slot 77: root "0x66" is 1 bytes, want 32`)
 }
 
+func TestSignAttesterSlashing(t *testing.T) {
+	signer := testSigner(t)
+	first := beacon.AttestationData{
+		Slot: 77, CommitteeIndex: 2, BeaconBlockRoot: hexRoot(0x44),
+		Source: beacon.Checkpoint{Epoch: 7, Root: hexRoot(0x55)},
+		Target: beacon.Checkpoint{Epoch: 9, Root: hexRoot(0x66)},
+	}
+	second := first
+	second.BeaconBlockRoot = hexRoot(0x45)
+
+	slashing, err := SignAttesterSlashing(signer, 64, first, second)
+	require.NoError(t, err)
+	domain := signer.Fork.Domain(signing.DomainBeaconAttester, 9, signer.GenesisValidatorsRoot)
+	for _, attestation := range []beacon.SignedIndexedAttestation{slashing.Attestation1, slashing.Attestation2} {
+		require.Equal(t, []string{"64"}, attestation.AttestingIndices)
+		require.Len(t, attestation.Signatures, 1)
+		root, err := attestationDataRoot(attestation.Data)
+		require.NoError(t, err)
+		signature, err := hex.DecodeString(strings.TrimPrefix(attestation.Signatures[0], "0x"))
+		require.NoError(t, err)
+		require.NoError(t, signing.Verify(signing.SigningRoot(root, domain), signer.Key.PublicKey(), signature))
+	}
+	require.Equal(t, first, slashing.Attestation1.Data)
+	require.Equal(t, second, slashing.Attestation2.Data)
+	require.True(t, IsDoubleVote(slashing.Attestation1.Data, slashing.Attestation2.Data))
+}
+
 func TestSignProposerSlashing(t *testing.T) {
 	signer := testSigner(t)
 	key := signer.Key

@@ -161,6 +161,21 @@ type AttesterSlashing struct {
 	Attestation2 IndexedAttestation
 }
 
+// SignedIndexedAttestation is an indexed attestation with one signature per
+// attesting index, as the beacon API carries it.
+type SignedIndexedAttestation struct {
+	AttestingIndices []string        `json:"attesting_indices"`
+	Data             AttestationData `json:"data"`
+	Signatures       []string        `json:"signatures"`
+}
+
+// SignedAttesterSlashing is an attester slashing with its signatures, as the
+// beacon API takes it.
+type SignedAttesterSlashing struct {
+	Attestation1 SignedIndexedAttestation `json:"attestation_1"`
+	Attestation2 SignedIndexedAttestation `json:"attestation_2"`
+}
+
 type BeaconBlockHeaderMessage struct {
 	Slot          uint64 `json:"slot,string"`
 	ProposerIndex uint64 `json:"proposer_index,string"`

@@ -213,7 +213,7 @@ type blockWire struct {
 		Body          struct {
 			VoluntaryExits    []SignedVoluntaryExit    `json:"voluntary_exits"`
 			ProposerSlashings []SignedProposerSlashing `json:"proposer_slashings"`
-			AttesterSlashings []attesterSlashingWire   `json:"attester_slashings"`
+			AttesterSlashings []SignedAttesterSlashing `json:"attester_slashings"`
 			Attestations      []attestationWire        `json:"attestations"`
 			Payload           struct {
 				BlockNumber uint64       `json:"block_number,string"`
@@ -228,17 +228,7 @@ type attestationWire struct {
 	Data            AttestationData `json:"data"`
 }
 
-type attesterSlashingWire struct {
-	Attestation1 indexedAttestationWire `json:"attestation_1"`
-	Attestation2 indexedAttestationWire `json:"attestation_2"`
-}
-
-type indexedAttestationWire struct {
-	AttestingIndices []string        `json:"attesting_indices"`
-	Data             AttestationData `json:"data"`
-}
-
-func (wire indexedAttestationWire) indexed() (IndexedAttestation, error) {
+func (wire SignedIndexedAttestation) indexed() (IndexedAttestation, error) {
 	attestation := IndexedAttestation{Data: wire.Data}
 	for _, raw := range wire.AttestingIndices {
 		index, err := strconv.ParseUint(raw, 10, 64)
@@ -353,6 +343,12 @@ func (client *Client) SubmitVoluntaryExit(ctx context.Context, exit SignedVolunt
 // adds them to its pool and publishes them on their subnets.
 func (client *Client) SubmitAttestations(ctx context.Context, attestations []SignedAttestation) error {
 	return client.postJSON(ctx, "/qrl/v1/beacon/pool/attestations", attestations, nil)
+}
+
+// SubmitAttesterSlashing hands attester slashing evidence to the node's pool,
+// which verifies it and broadcasts it to its peers.
+func (client *Client) SubmitAttesterSlashing(ctx context.Context, slashing SignedAttesterSlashing) error {
+	return client.postJSON(ctx, "/qrl/v1/beacon/pool/attester_slashings", slashing, nil)
 }
 
 // SubmitProposerSlashing hands proposer slashing evidence to the node's pool,
