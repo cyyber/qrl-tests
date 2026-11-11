@@ -152,7 +152,7 @@ var _ = ginkgo.Describe(
 					frozen.Epoch, stopped)
 			}, ginkgo.SpecTimeout(stallTimeout))
 
-		ginkgo.It("leaks the offline validators' stake once finality falls behind",
+		ginkgo.It("leaks an offline validator's stake once finality falls behind",
 			func(ctx ginkgo.SpecContext) {
 				first := offline.Spec.FirstLeakEpoch(frozen.Epoch)
 				last := first + leakEpochs - 1
@@ -175,7 +175,7 @@ var _ = ginkgo.Describe(
 				nextEpoch = last + 1
 			}, ginkgo.SpecTimeout(leakTimeout))
 
-		ginkgo.It("pays its online validators nothing for their votes during the leak", func(ctx ginkgo.SpecContext) {
+		ginkgo.It("pays an online validator nothing for its votes during the leak", func(ctx ginkgo.SpecContext) {
 			first := online.Spec.FirstLeakEpoch(frozen.Epoch)
 			last := first + leakEpochs - 1
 			online.AwaitRewards(ctx, last)
@@ -200,7 +200,7 @@ var _ = ginkgo.Describe(
 				Should(gomega.BeNumerically(">=", restarted), "finalized epoch since the restart in epoch %d", restarted)
 		}, ginkgo.SpecTimeout(resumeTimeout))
 
-		ginkgo.It("brings the restarted validators' inactivity scores back to zero", func(ctx ginkgo.SpecContext) {
+		ginkgo.It("brings a restarted validator's inactivity score back to zero", func(ctx ginkgo.SpecContext) {
 			for epoch := nextEpoch; epoch <= restarted+decayEpochs; epoch++ {
 				offline.AwaitRewards(ctx, epoch)
 				if epoch < restarted {
@@ -212,7 +212,8 @@ var _ = ginkgo.Describe(
 				// restart.
 				reward := testsuite.MustSucceed(offline.AttestationReward(ctx, epoch))
 				amounts := testsuite.MustSucceed(offline.LeakVoteAmounts(ctx, epoch))
-				// Only a missed target vote is penalized.
+				// A timely target vote earns zero or more, and a missed one is
+				// penalized; the score check catches a wrong figure.
 				timely := reward.Target >= 0
 				wantTarget := amounts.Timely.Target
 				if !timely {
