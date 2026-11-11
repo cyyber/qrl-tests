@@ -26,7 +26,7 @@ var _ = ginkgo.Describe(
 		ginkgo.AfterEach(suite.reportReturnedLogs)
 		ginkgo.AfterAll(suite.endOutage, ginkgo.NodeTimeout(2*time.Minute))
 
-		ginkgo.Context("until one stopped validator returns", func() {
+		ginkgo.Context("when one stopped validator returns", func() {
 			ginkgo.It("finalizes before the stake goes offline",
 				suite.finalizesBeforeOutage, ginkgo.SpecTimeout(finalityTimeout))
 			ginkgo.It("stops finalizing while blocks keep coming",
@@ -41,11 +41,11 @@ var _ = ginkgo.Describe(
 				suite.zeroesReturnedScore, ginkgo.SpecTimeout(decayTimeout))
 			ginkgo.It("slashes no validator, and every node finalizes the same checkpoint",
 				suite.agreesAfterReturn, ginkgo.SpecTimeout(checkTimeout))
-		})
-
-		ginkgo.Context("with the client stopped for good", func() {
 			ginkgo.It("finalizes with every validator back on its own client",
 				suite.finalizesWithEveryValidatorBack, ginkgo.SpecTimeout(rejoinTimeout))
+		})
+
+		ginkgo.Context("when no validator returns", func() {
 			ginkgo.It("stops finalizing again once the client stops for good",
 				suite.stopsFinalizingForGood, ginkgo.SpecTimeout(stallTimeout))
 			ginkgo.It("forecasts the first epoch the online validators justify alone",
