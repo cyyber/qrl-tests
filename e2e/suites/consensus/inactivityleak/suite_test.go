@@ -110,11 +110,6 @@ func (suite *leakSuite) endOutage(ctx context.Context) {
 	}
 }
 
-func (suite *leakSuite) finalizedEpoch(ctx context.Context) (uint64, error) {
-	checkpoints, err := suite.online.Client.FinalityCheckpoints(ctx)
-	return checkpoints.Finalized.Epoch, err
-}
-
 func (suite *leakSuite) headEpoch(ctx context.Context) (uint64, error) {
 	head, err := suite.online.Client.HeadSlot(ctx)
 	return suite.chain.Epoch(head), err

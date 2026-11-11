@@ -42,10 +42,7 @@ type returningOutage struct {
 }
 
 func (suite *leakSuite) finalizesBeforeOutage(ctx ginkgo.SpecContext) {
-	gomega.Eventually(suite.finalizedEpoch).WithContext(ctx).
-		WithTimeout(finalityTimeoutEpochs * suite.chain.EpochDuration).
-		WithPolling(suite.chain.SlotDuration).
-		Should(gomega.BeNumerically(">", 0))
+	testsuite.AwaitFinalizedEpoch(ctx, suite.online.Client, suite.chain, 1, finalityTimeoutEpochs)
 }
 
 func (suite *leakSuite) stopsFinalizing(ctx ginkgo.SpecContext) {
@@ -131,10 +128,7 @@ func (suite *leakSuite) finalizesWithOneReturned(ctx ginkgo.SpecContext) {
 		Keystores:          suite.keystores,
 	}))
 
-	gomega.Eventually(suite.finalizedEpoch).WithContext(ctx).
-		WithTimeout(resumeEpochs*suite.chain.EpochDuration).
-		WithPolling(suite.chain.SlotDuration).
-		Should(gomega.BeNumerically(">=", outage.restarted), "finalized epoch since the restart in epoch %d", outage.restarted)
+	testsuite.AwaitFinalizedEpoch(ctx, suite.online.Client, suite.chain, outage.restarted, resumeEpochs)
 }
 
 func (suite *leakSuite) zeroesReturnedScore(ctx ginkgo.SpecContext) {
@@ -176,11 +170,7 @@ func (suite *leakSuite) agreesAfterReturn(ctx ginkgo.SpecContext) {
 
 func (suite *leakSuite) finalizesWithEveryValidatorBack(ctx ginkgo.SpecContext) {
 	suite.endOutage(ctx)
-	back := suite.currentEpoch(ctx)
-	gomega.Eventually(suite.finalizedEpoch).WithContext(ctx).
-		WithTimeout(finalityTimeoutEpochs*suite.chain.EpochDuration).
-		WithPolling(suite.chain.SlotDuration).
-		Should(gomega.BeNumerically(">=", back), "finalized epoch since the client started again in epoch %d", back)
+	testsuite.AwaitFinalizedEpoch(ctx, suite.online.Client, suite.chain, suite.currentEpoch(ctx), finalityTimeoutEpochs)
 }
 
 func (suite *leakSuite) finalizedAtEpochStart(ctx context.Context, epoch uint64) beacon.Checkpoint {
