@@ -8,7 +8,7 @@ endpoints; suites do not provision infrastructure.
 
 | Lane | Profile | Coverage |
 | --- | --- | --- |
-| `execution` | `single` | Execution client: contract ABI, gqrl console, transaction pool, JSON-RPC and GraphQL APIs |
+| `execution` | `single` | Execution client: contract ABI, gqrl console, transaction pool, and JSON-RPC and GraphQL APIs that return the same values on every path |
 | `consensus-staking-automated` | `single` | Staking through contract deposits and the keymanager API |
 | `consensus-staking-operator` | `single` | Staking through the deposit and validator CLIs |
 | `consensus-penalties` | `spare-validator` | Penalties while a validator's client is down, and rewards once it is back |

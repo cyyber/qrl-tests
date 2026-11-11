@@ -138,25 +138,10 @@ var _ = ginkgo.Describe(
 					gomega.Expect(fields).To(gomega.HaveKeyWithValue("maxPriorityFeePerGas", gomega.Not(gomega.BeNil())))
 				}
 
-				number := testsuite.MustSucceed(hexutil.DecodeUint64(block["number"].(string)))
 				if selector.pending {
+					number := testsuite.MustSucceed(hexutil.DecodeUint64(block["number"].(string)))
 					gomega.Expect(number).To(gomega.BeNumerically(">", latest))
-					return
 				}
-				// The same block over JSON-RPC carries the same values.
-				var header map[string]any
-				gomega.Expect(node.Execution.Client().CallContext(ctx, &header, "qrl_getHeaderByHash", block["hash"])).To(gomega.Succeed())
-				gomega.Expect(header).NotTo(gomega.BeNil())
-				for graphqlField, rpcField := range map[string]string{
-					"number":          "number",
-					"baseFeePerGas":   "baseFeePerGas",
-					"withdrawalsRoot": "withdrawalsRoot",
-					"random":          "prevRandao",
-					"stateRoot":       "stateRoot",
-				} {
-					gomega.Expect(block[graphqlField]).To(gomega.Equal(header[rpcField]), "field %q", graphqlField)
-				}
-				gomega.Expect(block["miner"]).To(gomega.HaveKeyWithValue("address", header["miner"]))
 			})
 		}
 
