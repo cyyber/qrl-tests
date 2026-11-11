@@ -31,6 +31,7 @@ const (
 	suiteConsensusPenalties              SuiteID = "consensus-penalties"
 	suiteConsensusSlashingDoubleVote     SuiteID = "consensus-slashing-double-vote"
 	suiteConsensusSlashingDoubleProposal SuiteID = "consensus-slashing-double-proposal"
+	suiteConsensusSlashingProtection     SuiteID = "consensus-slashing-protection"
 	suiteResilienceNetworkRestart        SuiteID = "resilience-network-restart"
 	suiteSyncGenesis                     SuiteID = "sync-genesis"
 	suiteSyncCheckpoint                  SuiteID = "sync-checkpoint"
@@ -45,6 +46,7 @@ var suitePackages = map[SuiteID]string{
 	suiteConsensusPenalties:              "./e2e/suites/consensus/penalties",
 	suiteConsensusSlashingDoubleVote:     "./e2e/suites/consensus/slashing/doublevote",
 	suiteConsensusSlashingDoubleProposal: "./e2e/suites/consensus/slashing/doubleproposal",
+	suiteConsensusSlashingProtection:     "./e2e/suites/consensus/slashing/protection",
 	suiteResilienceNetworkRestart:        "./e2e/suites/resilience/networkrestart",
 	suiteSyncGenesis:                     "./e2e/suites/sync/genesis",
 	suiteSyncCheckpoint:                  "./e2e/suites/sync/checkpoint",
@@ -91,6 +93,12 @@ var registry = []Lane{
 		Profile: devnet.ProfileDoubleProposal,
 		Suites:  []SuiteID{suiteConsensusSlashingDoubleProposal},
 		Timeout: 30 * time.Minute,
+	},
+	{
+		Name:    "consensus-slashing-protection",
+		Profile: devnet.ProfileSpareValidator,
+		Suites:  []SuiteID{suiteConsensusSlashingProtection},
+		Timeout: 20 * time.Minute,
 	},
 	{
 		// Finality, the outage and finality again take about a dozen
@@ -173,14 +181,16 @@ func (lane Lane) NeedsValidatorImage() bool {
 		slices.Contains(lane.Suites, suiteConsensusStakingOperator) ||
 		slices.Contains(lane.Suites, suiteConsensusPenalties) ||
 		slices.Contains(lane.Suites, suiteConsensusSlashingDoubleVote) ||
-		slices.Contains(lane.Suites, suiteConsensusSlashingDoubleProposal)
+		slices.Contains(lane.Suites, suiteConsensusSlashingDoubleProposal) ||
+		slices.Contains(lane.Suites, suiteConsensusSlashingProtection)
 }
 
 func (lane Lane) NeedsQrysmAlltoolsImage() bool {
 	return slices.Contains(lane.Suites, suiteConsensusStakingOperator) ||
 		slices.Contains(lane.Suites, suiteConsensusPenalties) ||
 		slices.Contains(lane.Suites, suiteConsensusSlashingDoubleVote) ||
-		slices.Contains(lane.Suites, suiteConsensusSlashingDoubleProposal)
+		slices.Contains(lane.Suites, suiteConsensusSlashingDoubleProposal) ||
+		slices.Contains(lane.Suites, suiteConsensusSlashingProtection)
 }
 
 func RegisteredSuites() []SuiteID {

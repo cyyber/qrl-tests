@@ -36,13 +36,13 @@ func TestClientDecodesQrysmResponses(t *testing.T) {
 			_, _ = writer.Write([]byte(`{"data":[{"validating_pubkey":"0xab"}]}`))
 		case request.Method == http.MethodPost && request.URL.Path == "/qrl/v1/keystores":
 			assert.Equal(t, "application/json", request.Header.Get("Content-Type"))
-			var body struct {
-				Keystores []string `json:"keystores"`
-				Passwords []string `json:"passwords"`
-			}
+			var body map[string][]string
 			assert.NoError(t, json.NewDecoder(request.Body).Decode(&body))
-			assert.Equal(t, []string{`{"pubkey":"ab"}`}, body.Keystores)
-			assert.Equal(t, []string{"secret"}, body.Passwords)
+			// Without a history the request leaves slashing_protection out.
+			assert.Equal(t, map[string][]string{
+				"keystores": {`{"pubkey":"ab"}`},
+				"passwords": {"secret"},
+			}, body)
 			_, _ = writer.Write([]byte(`{"data":[{"status":"imported"}]}`))
 		case request.Method == http.MethodPost && request.URL.Path == "/qrl/v1/validator/0xab/voluntary_exit":
 			assert.Equal(t, "3", request.URL.Query().Get("epoch"))
@@ -65,6 +65,41 @@ func TestClientDecodesQrysmResponses(t *testing.T) {
 	}, exit)
 }
 
+func TestClientMovesSlashingProtectionWithKeystores(t *testing.T) {
+	client := newTestClient(t, func(writer http.ResponseWriter, request *http.Request) {
+		assert.Equal(t, "/qrl/v1/keystores", request.URL.Path)
+		assert.Equal(t, "application/json", request.Header.Get("Content-Type"))
+		switch request.Method {
+		case http.MethodPost:
+			var body struct {
+				Keystores          []string `json:"keystores"`
+				Passwords          []string `json:"passwords"`
+				SlashingProtection string   `json:"slashing_protection"`
+			}
+			assert.NoError(t, json.NewDecoder(request.Body).Decode(&body))
+			assert.Equal(t, []string{`{"pubkey":"ab"}`}, body.Keystores)
+			assert.Equal(t, []string{"secret"}, body.Passwords)
+			assert.JSONEq(t, `{"metadata":{}}`, body.SlashingProtection)
+			_, _ = writer.Write([]byte(`{"data":[{"status":"imported"}]}`))
+		case http.MethodDelete:
+			var body struct {
+				PublicKeys []string `json:"pubkeys"`
+			}
+			assert.NoError(t, json.NewDecoder(request.Body).Decode(&body))
+			assert.Equal(t, []string{"0xab"}, body.PublicKeys)
+			_, _ = writer.Write([]byte(`{"data":[{"status":"deleted"}],"slashing_protection":"{\"data\":[]}"}`))
+		default:
+			http.NotFound(writer, request)
+		}
+	})
+
+	require.NoError(t, client.ImportKeystoreWithHistory(t.Context(), `{"pubkey":"ab"}`, "secret", `{"metadata":{}}`))
+
+	history, err := client.DeleteKeystore(t.Context(), "0xab")
+	require.NoError(t, err)
+	require.JSONEq(t, `{"data":[]}`, history)
+}
+
 func TestImportKeystoreStatus(t *testing.T) {
 	for _, test := range []struct {
 		name     string
@@ -84,6 +119,35 @@ func TestImportKeystoreStatus(t *testing.T) {
 			err := client.ImportKeystore(t.Context(), `{}`, "secret")
 			if test.wantErr == "" {
 				require.NoError(t, err)
+				return
+			}
+			require.EqualError(t, err, test.wantErr)
+		})
+	}
+}
+
+func TestDeleteKeystoreStatus(t *testing.T) {
+	for _, test := range []struct {
+		name     string
+		response string
+		wantErr  string
+	}{
+		{name: "deleted", response: `{"data":[{"status":"deleted"}],"slashing_protection":"{}"}`},
+		{name: "deleted in upper case", response: `{"data":[{"status":"DELETED"}],"slashing_protection":"{}"}`},
+		{name: "history without a keystore", response: `{"data":[{"status":"not_active"}],"slashing_protection":"{}"}`,
+			wantErr: "delete keystore: not_active"},
+		{name: "error with message", response: `{"data":[{"status":"error","message":"could not export"}]}`,
+			wantErr: "delete keystore: error: could not export"},
+		{name: "no status", response: `{"data":[]}`, wantErr: "delete keystore: expected 1 status, got 0"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			client := newTestClient(t, func(writer http.ResponseWriter, _ *http.Request) {
+				_, _ = writer.Write([]byte(test.response))
+			})
+			history, err := client.DeleteKeystore(t.Context(), "0xab")
+			if test.wantErr == "" {
+				require.NoError(t, err)
+				require.Equal(t, "{}", history)
 				return
 			}
 			require.EqualError(t, err, test.wantErr)

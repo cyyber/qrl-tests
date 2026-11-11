@@ -67,7 +67,7 @@ func (client *Client) ListKeystores(ctx context.Context) ([]Keystore, error) {
 	return response.Data, nil
 }
 
-type importStatus struct {
+type keystoreStatus struct {
 	Status  string `json:"status"`
 	Message string `json:"message"`
 }
@@ -75,27 +75,64 @@ type importStatus struct {
 // ImportKeystore imports one keystore. A keystore the validator already holds
 // is reported as a duplicate, which counts as imported.
 func (client *Client) ImportKeystore(ctx context.Context, keystoreJSON, password string) error {
-	var response dataResponse[[]importStatus]
+	return client.ImportKeystoreWithHistory(ctx, keystoreJSON, password, "")
+}
+
+// ImportKeystoreWithHistory imports one keystore with slashingProtection, its
+// EIP-3076 history, which the validator client imports first. A history the
+// client rejects fails the import.
+func (client *Client) ImportKeystoreWithHistory(ctx context.Context, keystoreJSON, password, slashingProtection string) error {
+	var response dataResponse[[]keystoreStatus]
 	if err := client.do(ctx, http.MethodPost, "/qrl/v1/keystores", struct {
-		Keystores []string `json:"keystores"`
-		Passwords []string `json:"passwords"`
+		Keystores          []string `json:"keystores"`
+		Passwords          []string `json:"passwords"`
+		SlashingProtection string   `json:"slashing_protection,omitempty"`
 	}{
-		Keystores: []string{keystoreJSON},
-		Passwords: []string{password},
+		Keystores:          []string{keystoreJSON},
+		Passwords:          []string{password},
+		SlashingProtection: slashingProtection,
 	}, &response); err != nil {
 		return err
 	}
-	if len(response.Data) != 1 {
-		return fmt.Errorf("import keystore: expected 1 status, got %d", len(response.Data))
+	return checkStatus("import keystore", response.Data, "imported", "duplicate")
+}
+
+// DeleteKeystore deletes the keystore of publicKey and returns the EIP-3076
+// history the validator client exports for that key.
+func (client *Client) DeleteKeystore(ctx context.Context, publicKey string) (string, error) {
+	var response struct {
+		Data               []keystoreStatus `json:"data"`
+		SlashingProtection string           `json:"slashing_protection"`
 	}
-	result := response.Data[0]
-	if strings.EqualFold(result.Status, "imported") || strings.EqualFold(result.Status, "duplicate") {
-		return nil
+	if err := client.do(ctx, http.MethodDelete, "/qrl/v1/keystores", struct {
+		PublicKeys []string `json:"pubkeys"`
+	}{
+		PublicKeys: []string{publicKey},
+	}, &response); err != nil {
+		return "", err
+	}
+	if err := checkStatus("delete keystore", response.Data, "deleted"); err != nil {
+		return "", err
+	}
+	return response.SlashingProtection, nil
+}
+
+// checkStatus checks the one status of a single-keystore request against the
+// accepted ones, ignoring case.
+func checkStatus(action string, statuses []keystoreStatus, accepted ...string) error {
+	if len(statuses) != 1 {
+		return fmt.Errorf("%s: expected 1 status, got %d", action, len(statuses))
+	}
+	result := statuses[0]
+	for _, status := range accepted {
+		if strings.EqualFold(result.Status, status) {
+			return nil
+		}
 	}
 	if result.Message != "" {
-		return fmt.Errorf("import keystore: %s: %s", result.Status, result.Message)
+		return fmt.Errorf("%s: %s: %s", action, result.Status, result.Message)
 	}
-	return fmt.Errorf("import keystore: %s", result.Status)
+	return fmt.Errorf("%s: %s", action, result.Status)
 }
 
 func (client *Client) SignVoluntaryExit(ctx context.Context, publicKey string, epoch uint64) (beacon.SignedVoluntaryExit, error) {

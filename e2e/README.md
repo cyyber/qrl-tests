@@ -14,6 +14,7 @@ endpoints; suites do not provision infrastructure.
 | `consensus-penalties` | `spare-validator` | Penalties while a validator's client is down, and rewards once it is back |
 | `consensus-slashing-double-vote` | `duplicate-validator` | Slashing for a double vote by a key running on two nodes at once, through the validator's exit |
 | `consensus-slashing-double-proposal` | `double-proposal` | Slashing for a double proposal by a key running on two nodes at once |
+| `consensus-slashing-protection` | `spare-validator` | Slashing protection: a key imported with an EIP-3076 history casts no vote the history covers, then votes again |
 | `resilience-network-restart` | `anchored` | Recovery from a full outage: proposing and finalizing after every node stops at once |
 | `sync` | `single` | A new full-mode node syncs from genesis or from a checkpoint, then catches up after a stop |
 
