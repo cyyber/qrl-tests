@@ -15,19 +15,22 @@ import (
 	gomega "github.com/onsi/gomega"
 )
 
-// Spec holds the consensus constants of the base reward and of the
-// inactivity leak.
+// Spec holds the consensus constants of the base reward, of the inactivity
+// leak and of effective balance hysteresis.
 type Spec struct {
 	increment                    uint64
 	baseRewardFactor             uint64
 	sourceWeight                 uint64
 	targetWeight                 uint64
+	syncRewardWeight             uint64
 	weightDenominator            uint64
 	minEpochsToInactivityPenalty uint64
 	minInclusionDelay            uint64
 	inactivityScoreBias          uint64
 	inactivityScoreRecoveryRate  uint64
 	inactivityPenaltyQuotient    uint64
+	hysteresisQuotient           uint64
+	hysteresisDownwardMultiplier uint64
 }
 
 func LoadSpec(ctx context.Context, client *beacon.Client) (Spec, error) {
@@ -41,12 +44,15 @@ func LoadSpec(ctx context.Context, client *beacon.Client) (Spec, error) {
 		"BASE_REWARD_FACTOR":               &spec.baseRewardFactor,
 		"TIMELY_SOURCE_WEIGHT":             &spec.sourceWeight,
 		"TIMELY_TARGET_WEIGHT":             &spec.targetWeight,
+		"SYNC_REWARD_WEIGHT":               &spec.syncRewardWeight,
 		"WEIGHT_DENOMINATOR":               &spec.weightDenominator,
 		"MIN_EPOCHS_TO_INACTIVITY_PENALTY": &spec.minEpochsToInactivityPenalty,
 		"MIN_ATTESTATION_INCLUSION_DELAY":  &spec.minInclusionDelay,
 		"INACTIVITY_SCORE_BIAS":            &spec.inactivityScoreBias,
 		"INACTIVITY_SCORE_RECOVERY_RATE":   &spec.inactivityScoreRecoveryRate,
 		"INACTIVITY_PENALTY_QUOTIENT":      &spec.inactivityPenaltyQuotient,
+		"HYSTERESIS_QUOTIENT":              &spec.hysteresisQuotient,
+		"HYSTERESIS_DOWNWARD_MULTIPLIER":   &spec.hysteresisDownwardMultiplier,
 	}); err != nil {
 		return Spec{}, err
 	}
@@ -57,10 +63,14 @@ func LoadSpec(ctx context.Context, client *beacon.Client) (Spec, error) {
 // for missing the source and the target vote of an epoch, in a leak or not.
 // The inactivity penalty that a missed target adds is left out.
 func (spec Spec) missedVotePenalties(effectiveBalance, totalActiveBalance uint64) (source, target uint64) {
-	root := new(big.Int).Sqrt(new(big.Int).SetUint64(totalActiveBalance)).Uint64()
-	baseReward := effectiveBalance / spec.increment * (spec.increment * spec.baseRewardFactor / root)
+	baseReward := spec.baseReward(effectiveBalance, totalActiveBalance)
 	return baseReward * spec.sourceWeight / spec.weightDenominator,
 		baseReward * spec.targetWeight / spec.weightDenominator
+}
+
+func (spec Spec) baseReward(effectiveBalance, totalActiveBalance uint64) uint64 {
+	root := new(big.Int).Sqrt(new(big.Int).SetUint64(totalActiveBalance)).Uint64()
+	return effectiveBalance / spec.increment * (spec.increment * spec.baseRewardFactor / root)
 }
 
 // inactivityPenalty is the extra penalty a missed target vote costs a

@@ -397,6 +397,34 @@ func TestClientDecodesInactivityScores(t *testing.T) {
 	require.True(t, IsNotFound(err))
 }
 
+func TestClientLooksUpValidatorsAt(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.URL.Path != "/qrl/v1/beacon/states/56/validators" {
+			http.NotFound(writer, request)
+			return
+		}
+		ids := request.URL.Query()["id"]
+		assert.Contains(t, [][]string{{"64", "43"}, {"43", "7"}}, ids)
+		// Qrysm lists them by index, and leaves an unknown one out.
+		_, _ = writer.Write([]byte(`{"data":[` +
+			`{"index":"43","balance":"39111585777860","status":"active_ongoing","validator":{"effective_balance":"39111000000000","exit_epoch":"18446744073709551615"}},` +
+			`{"index":"64","balance":"40000000000000","status":"active_ongoing","validator":{"effective_balance":"40000000000000","exit_epoch":"18446744073709551615"}}]}`))
+	}))
+	defer server.Close()
+	client, err := New(server.URL)
+	require.NoError(t, err)
+
+	validators, err := client.ValidatorsAt(t.Context(), "56", []uint64{64, 43})
+	require.NoError(t, err)
+	require.Equal(t, []Validator{
+		{Index: 64, Balance: 40000000000000, Status: "active_ongoing", EffectiveBalance: 40000000000000, ExitEpoch: FarFutureEpoch},
+		{Index: 43, Balance: 39111585777860, Status: "active_ongoing", EffectiveBalance: 39111000000000, ExitEpoch: FarFutureEpoch},
+	}, validators)
+
+	_, err = client.ValidatorsAt(t.Context(), "56", []uint64{43, 7})
+	require.ErrorContains(t, err, "the state at 56 has no validator 7")
+}
+
 func TestSpecUints(t *testing.T) {
 	spec := Spec{"SLOTS_PER_EPOCH": "8", "SECONDS_PER_SLOT": "5", "DEPOSIT_CONTRACT_ADDRESS": "0x01"}
 

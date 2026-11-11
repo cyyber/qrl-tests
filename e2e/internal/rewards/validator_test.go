@@ -22,12 +22,15 @@ func testSpec() Spec {
 		baseRewardFactor:             2048,
 		sourceWeight:                 14,
 		targetWeight:                 26,
+		syncRewardWeight:             2,
 		weightDenominator:            64,
 		minEpochsToInactivityPenalty: 4,
 		minInclusionDelay:            1,
 		inactivityScoreBias:          4,
 		inactivityScoreRecoveryRate:  16,
 		inactivityPenaltyQuotient:    1 << 16,
+		hysteresisQuotient:           4,
+		hysteresisDownwardMultiplier: 1,
 	}
 }
 
@@ -157,9 +160,10 @@ func TestLoadSpec(t *testing.T) {
 	_, client := newStateBeacon(t, map[string]string{"config/spec": `{
 		"EFFECTIVE_BALANCE_INCREMENT":"1000000000",
 		"BASE_REWARD_FACTOR":"2048","TIMELY_SOURCE_WEIGHT":"14","TIMELY_TARGET_WEIGHT":"26",
-		"WEIGHT_DENOMINATOR":"64","MIN_EPOCHS_TO_INACTIVITY_PENALTY":"4",
+		"SYNC_REWARD_WEIGHT":"2","WEIGHT_DENOMINATOR":"64","MIN_EPOCHS_TO_INACTIVITY_PENALTY":"4",
 		"MIN_ATTESTATION_INCLUSION_DELAY":"1","INACTIVITY_SCORE_BIAS":"4",
-		"INACTIVITY_SCORE_RECOVERY_RATE":"16","INACTIVITY_PENALTY_QUOTIENT":"65536"}`})
+		"INACTIVITY_SCORE_RECOVERY_RATE":"16","INACTIVITY_PENALTY_QUOTIENT":"65536",
+		"HYSTERESIS_QUOTIENT":"4","HYSTERESIS_DOWNWARD_MULTIPLIER":"1"}`})
 
 	spec, err := LoadSpec(t.Context(), client)
 	require.NoError(t, err)

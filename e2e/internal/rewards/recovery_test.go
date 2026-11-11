@@ -1,0 +1,90 @@
+package rewards
+
+import (
+	"slices"
+	"testing"
+
+	"github.com/stretchr/testify/require"
+)
+
+const fullStake = 40_000 * shorPerQRL
+
+func TestNextStake(t *testing.T) {
+	spec := testSpec()
+	for name, test := range map[string]struct {
+		stake Stake
+		leak  bool
+		want  Stake
+	}{
+		// 43 of 65 validators at 40,000 QRL online: the base reward is
+		// 1,606,560,000 shor, so the missed votes cost 351,435,000 and
+		// 652,665,000 shor, and the sync committee seats 33,212,538 on
+		// average. The score stays zero, and the effective balance drops two
+		// increments.
+		"outside a leak": {
+			stake: Stake{Balance: fullStake, EffectiveBalance: fullStake},
+			want:  Stake{Balance: 39_998_962_687_462, EffectiveBalance: 39_998 * shorPerQRL},
+		},
+		// The score rises to 12, which adds 1,830,596,923 shor at 39,990 QRL.
+		"in a leak": {
+			stake: Stake{Balance: 39_990_600_000_000, EffectiveBalance: 39_990 * shorPerQRL, InactivityScore: 8},
+			leak:  true,
+			want:  Stake{Balance: 39_987_732_349_869, EffectiveBalance: 39_987 * shorPerQRL, InactivityScore: 12},
+		},
+		// A balance less than a quarter increment below the effective balance
+		// leaves it.
+		"within the hysteresis": {
+			stake: Stake{Balance: 39_990_837_053_208, EffectiveBalance: 39_990 * shorPerQRL},
+			want:  Stake{Balance: 39_989_800_000_000, EffectiveBalance: 39_990 * shorPerQRL},
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			require.Equal(t, test.want, spec.nextStake(test.stake, 43*fullStake, 65*fullStake, test.leak))
+		})
+	}
+}
+
+func TestForecastRecoveryAfterOneEpoch(t *testing.T) {
+	spec := testSpec()
+	// One validator offline against 79,998 QRL holds just over a third. Its
+	// first missed epoch takes it to 39,995 QRL, under half the online stake,
+	// so the online votes of epoch 10 count two thirds at the end of epoch 11.
+	start := Stake{Balance: fullStake, EffectiveBalance: fullStake}
+	recovery := spec.ForecastRecovery(Outage{Epoch: 10, Finalized: 8, Online: 79_998 * shorPerQRL, Offline: []Stake{start}})
+	require.Equal(t, uint64(10), recovery.Justified)
+
+	stakes, ok := recovery.At(10)
+	require.True(t, ok)
+	require.Equal(t, []Stake{start}, stakes)
+	stakes, ok = recovery.At(11)
+	require.True(t, ok)
+	require.Equal(t, []Stake{{Balance: 39_995_170_278_799, EffectiveBalance: 39_995 * shorPerQRL}}, stakes)
+	_, ok = recovery.At(12)
+	require.True(t, ok)
+	_, ok = recovery.At(13)
+	require.False(t, ok)
+	_, ok = recovery.At(9)
+	require.False(t, ok)
+}
+
+func TestForecastRecovery(t *testing.T) {
+	spec := testSpec()
+	// 22 of 65 validators offline from epoch 6 on, with epoch 4 finalized, so
+	// the leak counts their missed votes from epoch 9.
+	offline := slices.Repeat([]Stake{{Balance: fullStake, EffectiveBalance: fullStake}}, 22)
+	recovery := spec.ForecastRecovery(Outage{Epoch: 7, Finalized: 4, Online: 43 * fullStake, Offline: offline})
+	require.Equal(t, uint64(62), recovery.Justified)
+
+	// Epoch 62 starts with the offline stake at 860,442 QRL, above half the
+	// online 1,720,000, and epoch 63, after 53 epochs of leak, at 859,716.
+	stakes, ok := recovery.At(62)
+	require.True(t, ok)
+	require.Equal(t, Stake{Balance: 39_111_585_777_860, EffectiveBalance: 39_111 * shorPerQRL, InactivityScore: 208}, stakes[0])
+	stakes, ok = recovery.At(63)
+	require.True(t, ok)
+	require.Equal(t, slices.Repeat([]Stake{{Balance: 39_078_937_749_638, EffectiveBalance: 39_078 * shorPerQRL, InactivityScore: 212}}, 22), stakes)
+	_, ok = recovery.At(64)
+	require.True(t, ok)
+	_, ok = recovery.At(65)
+	require.False(t, ok)
+}

@@ -154,6 +154,31 @@ func (client *Client) ValidatorAt(ctx context.Context, stateID, validatorID stri
 	return record.validator(), nil
 }
 
+// ValidatorsAt looks validators up by index in the state at stateID, and
+// returns them in the order given.
+func (client *Client) ValidatorsAt(ctx context.Context, stateID string, indices []uint64) ([]Validator, error) {
+	query := url.Values{"id": formatIndices(indices)}
+	records, err := getData[[]validatorWire](
+		ctx, client, "/qrl/v1/beacon/states/"+url.PathEscape(stateID)+"/validators?"+query.Encode(),
+	)
+	if err != nil {
+		return nil, err
+	}
+	byIndex := make(map[uint64]Validator, len(records))
+	for _, record := range records {
+		byIndex[record.Index] = record.validator()
+	}
+	validators := make([]Validator, len(indices))
+	for position, index := range indices {
+		validator, ok := byIndex[index]
+		if !ok {
+			return nil, fmt.Errorf("the state at %s has no validator %d", stateID, index)
+		}
+		validators[position] = validator
+	}
+	return validators, nil
+}
+
 // TotalActiveBalance sums the effective balances of the validators that the
 // state at stateID holds as active in its current epoch, slashed ones
 // included: the total that state's epoch processing uses for base rewards.
