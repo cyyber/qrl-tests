@@ -42,8 +42,6 @@ func TestE2E(t *testing.T) {
 	testsuite.Run(t, "Inactivity leak E2E suite")
 }
 
-// Letting the leak alone restore finality, which takes hours with half the
-// stake offline, is future work.
 var _ = ginkgo.Describe(
 	"A chain with more than a third of its stake offline",
 	ginkgo.Serial,

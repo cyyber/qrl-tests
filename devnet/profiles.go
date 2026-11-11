@@ -45,9 +45,9 @@ const (
 	// slasher only blocks it receives from peers, so only the third, which
 	// receives both blocks through gossip, detects the double proposal.
 	ProfileDoubleProposal Profile = "double-proposal"
-	// ProfileInactivityLeak has two participants of 32 validators, each beacon
-	// node with a slasher. Stopping one participant's validator client takes
-	// half the stake offline, so finality stops.
+	// ProfileInactivityLeak has two participants, of 43 and 22 validators, each
+	// beacon node with a slasher. Stopping the second's validator client takes
+	// just over a third of the stake offline, so finality stops.
 	ProfileInactivityLeak Profile = "inactivity-leak"
 )
 
@@ -86,8 +86,8 @@ var profileSpecs = map[Profile]profileSpec{
 		{validatorCount: 0, clExtraParams: slasherCLExtraParams},
 	}},
 	ProfileInactivityLeak: {participants: []participantSpec{
-		{validatorCount: 32, clExtraParams: slasherCLExtraParams},
-		{validatorCount: 32, clExtraParams: slasherCLExtraParams},
+		{validatorCount: 43, clExtraParams: slasherCLExtraParams},
+		{validatorCount: 22, clExtraParams: slasherCLExtraParams},
 	}},
 }
 
