@@ -3,49 +3,11 @@
 package inactivityleak
 
 import (
-	"context"
-	"fmt"
-	"strconv"
 	"testing"
 	"time"
 
-	"github.com/cyyber/qrl-tests/e2e/internal/beacon"
-	"github.com/cyyber/qrl-tests/e2e/internal/chaininfo"
-	"github.com/cyyber/qrl-tests/e2e/internal/live"
-	"github.com/cyyber/qrl-tests/e2e/internal/rewards"
-	"github.com/cyyber/qrl-tests/e2e/internal/sidecar"
-	"github.com/cyyber/qrl-tests/e2e/internal/sidecar/validator"
 	"github.com/cyyber/qrl-tests/e2e/internal/testsuite"
-	"github.com/cyyber/qrl-tests/e2e/internal/validatorops"
 	ginkgo "github.com/onsi/ginkgo/v2"
-	gomega "github.com/onsi/gomega"
-)
-
-const (
-	onlineParticipant  = 0
-	offlineParticipant = 1
-
-	finalityTimeoutEpochs = 8
-	settleEpochs          = 2
-	stalledEpochs         = 4
-	leakEpochs            = 4
-	resumeEpochs          = 5
-	decayEpochs           = 5
-	finalizeEpochs        = 3
-	forecastMargin        = 1
-	forecastIncrements    = 2
-	maxLossDivisor        = 40
-
-	finalityTimeout = 7 * time.Minute
-	stallTimeout    = 6 * time.Minute
-	leakTimeout     = 6 * time.Minute
-	onlineTimeout   = 3 * time.Minute
-	resumeTimeout   = 5 * time.Minute
-	decayTimeout    = 8 * time.Minute
-	checkTimeout    = 2 * time.Minute
-	rejoinTimeout   = 9 * time.Minute
-	forecastTimeout = time.Minute
-	recoveryTimeout = 50 * time.Minute
 )
 
 func TestE2E(t *testing.T) {
@@ -58,386 +20,42 @@ var _ = ginkgo.Describe(
 	ginkgo.Ordered,
 	ginkgo.Label("e2e", "consensus", "inactivity-leak"),
 	func() {
-		var (
-			runtime *live.Runtime
-			nodes   []*live.Node
-			chain   chaininfo.Info
-			// online runs on the participant that keeps its validator client,
-			// offline on the one whose client the suite stops.
-			online, offline                     rewards.Validator
-			onlineValidators, offlineValidators []uint64
-			clientStopped                       bool
-			// returned runs the offline validator's key alone, in place of its
-			// participant's stopped client.
-			keystores []sidecar.File
-			returned  *validator.Sidecar
-			// stopped is the epoch the validator client stopped in, and
-			// restarted the one the offline validator returned in.
-			stopped, restarted uint64
-			frozen             beacon.Checkpoint
-			// score is the offline validator's inactivity score after the
-			// processing of every epoch before nextEpoch.
-			score, nextEpoch uint64
-			// lasting is the second outage, which starts once every validator
-			// is back.
-			lasting   lastingOutage
-			states    beaconStates
-			increment uint64
-		)
+		suite := new(leakSuite)
 
-		finalizedEpoch := func(ctx context.Context) (uint64, error) {
-			checkpoints, err := online.Client.FinalityCheckpoints(ctx)
-			return checkpoints.Finalized.Epoch, err
-		}
+		ginkgo.BeforeAll(suite.setUp, ginkgo.NodeTimeout(3*time.Minute))
+		ginkgo.AfterEach(suite.reportReturnedLogs)
+		ginkgo.AfterAll(suite.endOutage, ginkgo.NodeTimeout(2*time.Minute))
 
-		headEpoch := func(ctx context.Context) (uint64, error) {
-			head, err := online.Client.HeadSlot(ctx)
-			return chain.Epoch(head), err
-		}
-
-		finalizedAtEpochStart := func(ctx context.Context, epoch uint64) beacon.Checkpoint {
-			ginkgo.GinkgoHelper()
-			stateID := strconv.FormatUint(epoch*chain.SlotsPerEpoch, 10)
-			return testsuite.MustSucceed(online.Client.FinalityCheckpointsAt(ctx, stateID)).Finalized
-		}
-
-		currentEpoch := func(ctx context.Context) uint64 {
-			ginkgo.GinkgoHelper()
-			head := testsuite.MustSucceed(online.Client.HeadSlot(ctx))
-			return max(chain.EpochAt(time.Now()), chain.Epoch(head))
-		}
-
-		effectiveStake := func(ctx context.Context, indices []uint64) uint64 {
-			ginkgo.GinkgoHelper()
-			var stake uint64
-			for _, index := range indices {
-				stake += testsuite.MustSucceed(online.Client.Validator(ctx, strconv.FormatUint(index, 10))).EffectiveBalance
-			}
-			return stake
-		}
-
-		ginkgo.BeforeAll(func(ctx ginkgo.SpecContext) {
-			runtime = testsuite.LoadRuntime()
-			nodes = testsuite.MustSucceed(runtime.Nodes(ctx))
-			gomega.Expect(nodes).To(gomega.HaveLen(2), "the suite stops one of two participants' validator clients")
-			client := nodes[onlineParticipant].Beacon
-			chain = testsuite.MustSucceed(chaininfo.Load(ctx, client))
-			testsuite.ExpectShortEpochs(chain)
-			spec := testsuite.MustSucceed(rewards.LoadSpec(ctx, client))
-
-			onlineValidators = runtime.Profile.ParticipantValidators(onlineParticipant)
-			offlineValidators = runtime.Profile.ParticipantValidators(offlineParticipant)
-			gomega.Expect(onlineValidators).NotTo(gomega.BeEmpty(), "profile %q runs no validator on participant %d", runtime.Profile, onlineParticipant+1)
-			gomega.Expect(offlineValidators).NotTo(gomega.BeEmpty(), "profile %q runs no validator on participant %d", runtime.Profile, offlineParticipant+1)
-			online = rewards.Validator{Client: client, Chain: chain, Spec: spec, Index: onlineValidators[0]}
-			offline = rewards.Validator{Client: client, Chain: chain, Spec: spec, Index: offlineValidators[0]}
-			states = beaconStates{client: client, chain: chain, online: onlineValidators, offline: offlineValidators}
-			increment = testsuite.MustSucceed(client.SpecUint(ctx, "EFFECTIVE_BALANCE_INCREMENT"))
-
-			total := testsuite.MustSucceed(client.TotalActiveBalance(ctx, "head"))
-			stake := effectiveStake(ctx, offlineValidators)
-			// More than a third goes offline, so the rest can't justify.
-			gomega.Expect(3*stake > total).To(gomega.BeTrue(),
-				"participant %d runs %d of the %d shor staked, not more than a third", offlineParticipant+1, stake, total)
-
-			node := nodes[offlineParticipant]
-			gomega.Expect(node.ValidatorImage).NotTo(gomega.BeEmpty(), "validator image is not configured")
-			gomega.Expect(node.QrysmAlltoolsImage).NotTo(gomega.BeEmpty(), "Qrysm all-tools image is not configured")
-			gomega.Expect(node.BeaconGRPC).NotTo(gomega.BeEmpty(), "beacon gRPC is not published")
-			keystores = testsuite.MustSucceed(validatorops.GenesisKeystores(
-				ctx, client, node.QrysmAlltoolsImage, node.Address.Hex(), offline.Index))
-		}, ginkgo.NodeTimeout(3*time.Minute))
-
-		ginkgo.AfterEach(func() {
-			if returned != nil {
-				testsuite.ReportLogsOnFailure("returned validator's client", returned)
-			}
+		ginkgo.Context("until one stopped validator returns", func() {
+			ginkgo.It("finalizes before the stake goes offline",
+				suite.finalizesBeforeOutage, ginkgo.SpecTimeout(finalityTimeout))
+			ginkgo.It("stops finalizing while blocks keep coming",
+				suite.stopsFinalizing, ginkgo.SpecTimeout(stallTimeout))
+			ginkgo.It("leaks an offline validator's stake once finality falls behind",
+				suite.leaksOfflineStake, ginkgo.SpecTimeout(leakTimeout))
+			ginkgo.It("pays an online validator nothing for its votes during the leak",
+				suite.paysOnlineVotesNothing, ginkgo.SpecTimeout(onlineTimeout))
+			ginkgo.It("finalizes again once one stopped validator returns",
+				suite.finalizesWithOneReturned, ginkgo.SpecTimeout(resumeTimeout))
+			ginkgo.It("brings a restarted validator's inactivity score back to zero",
+				suite.zeroesReturnedScore, ginkgo.SpecTimeout(decayTimeout))
+			ginkgo.It("slashes no validator, and every node finalizes the same checkpoint",
+				suite.agreesAfterReturn, ginkgo.SpecTimeout(checkTimeout))
 		})
 
-		// endOutage closes the returned validator's sidecar, if open, and
-		// starts the stopped validator client, if stopped.
-		endOutage := func(ctx context.Context) {
-			ginkgo.GinkgoHelper()
-			if returned != nil {
-				gomega.Expect(returned.Close()).To(gomega.Succeed())
-				returned = nil
-				if clientStopped {
-					// The participant's client signs for the same key from the
-					// next epoch on, so no target gets a second vote.
-					next := currentEpoch(ctx) + 1
-					gomega.Expect(testsuite.SleepUntil(ctx, chain.SlotStartTime(next*chain.SlotsPerEpoch))).To(gomega.Succeed())
-				}
-			}
-			if clientStopped {
-				gomega.Expect(runtime.StartParticipantValidators(ctx, offlineParticipant)).To(gomega.Succeed())
-				clientStopped = false
-			}
-		}
-
-		ginkgo.AfterAll(func(ctx ginkgo.SpecContext) {
-			endOutage(ctx)
-		}, ginkgo.NodeTimeout(2*time.Minute))
-
-		ginkgo.It("finalizes before the stake goes offline", func(ctx ginkgo.SpecContext) {
-			gomega.Eventually(finalizedEpoch).WithContext(ctx).
-				WithTimeout(finalityTimeoutEpochs * chain.EpochDuration).
-				WithPolling(chain.SlotDuration).
-				Should(gomega.BeNumerically(">", 0))
-		}, ginkgo.SpecTimeout(finalityTimeout))
-
-		ginkgo.It("stops finalizing while blocks keep coming",
-			func(ctx ginkgo.SpecContext) {
-				gomega.Expect(runtime.StopParticipantValidators(ctx, offlineParticipant)).To(gomega.Succeed())
-				clientStopped = true
-				stopped = currentEpoch(ctx)
-
-				// Votes cast before the stop are processed within settleEpochs;
-				// after that, finality can't move.
-				settled := stopped + settleEpochs
-				last := settled + stalledEpochs
-				gomega.Eventually(headEpoch).WithContext(ctx).
-					WithTimeout((settleEpochs+stalledEpochs+1)*chain.EpochDuration).
-					WithPolling(chain.SlotDuration).
-					Should(gomega.BeNumerically(">=", last), "the head block has stopped advancing")
-
-				frozen = finalizedAtEpochStart(ctx, settled)
-				for epoch := settled + 1; epoch <= last; epoch++ {
-					gomega.Expect(finalizedAtEpochStart(ctx, epoch)).To(gomega.Equal(frozen),
-						"finalized checkpoint at the start of epoch %d, with the validator client stopped since epoch %d", epoch, stopped)
-				}
-				ginkgo.GinkgoWriter.Printf("finality stopped at epoch %d after the validator client stopped in epoch %d\n",
-					frozen.Epoch, stopped)
-			}, ginkgo.SpecTimeout(stallTimeout))
-
-		ginkgo.It("leaks an offline validator's stake once finality falls behind",
-			func(ctx ginkgo.SpecContext) {
-				first := offline.Spec.FirstLeakEpoch(frozen.Epoch)
-				last := first + leakEpochs - 1
-				// The epoch before the leak shows the score starts from zero,
-				// and must be one the stopped client missed.
-				gomega.Expect(first-1).To(gomega.BeNumerically(">", stopped),
-					"the leak starts at epoch %d, too soon after the validator client stopped in epoch %d", first, stopped)
-				offline.AwaitRewards(ctx, last)
-
-				amounts := expectMissedEpoch(ctx, offline, first-1, 0)
-				gomega.Expect(amounts.Leak).To(gomega.BeFalse(), "epoch %d, %d after finalized epoch %d, is processed in a leak",
-					first-1, first-1-frozen.Epoch, frozen.Epoch)
-				score = amounts.ScoreAfter
-				for epoch := first; epoch <= last; epoch++ {
-					amounts := expectMissedEpoch(ctx, offline, epoch, score)
-					gomega.Expect(amounts.Leak).To(gomega.BeTrue(), "epoch %d, %d after finalized epoch %d, is not processed in a leak",
-						epoch, epoch-frozen.Epoch, frozen.Epoch)
-					score = amounts.ScoreAfter
-				}
-				nextEpoch = last + 1
-			}, ginkgo.SpecTimeout(leakTimeout))
-
-		ginkgo.It("pays an online validator nothing for its votes during the leak", func(ctx ginkgo.SpecContext) {
-			first := online.Spec.FirstLeakEpoch(frozen.Epoch)
-			last := first + leakEpochs - 1
-			online.AwaitRewards(ctx, last)
-			for epoch := first; epoch <= last; epoch++ {
-				expectUnpaidVotes(ctx, online, epoch)
-			}
-		}, ginkgo.SpecTimeout(onlineTimeout))
-
-		ginkgo.It("finalizes again once one stopped validator returns", func(ctx ginkgo.SpecContext) {
-			// The online participant holds just under two thirds of the stake,
-			// and one more validator takes it over.
-			total := testsuite.MustSucceed(online.Client.TotalActiveBalance(ctx, "head"))
-			onlineStake := effectiveStake(ctx, onlineValidators)
-			returning := effectiveStake(ctx, []uint64{offline.Index})
-			gomega.Expect(3*onlineStake < 2*total).To(gomega.BeTrue(),
-				"participant %d alone runs %d of the %d shor staked, two thirds or more", onlineParticipant+1, onlineStake, total)
-			gomega.Expect(3*(onlineStake+returning) >= 2*total).To(gomega.BeTrue(),
-				"participant %d and validator %d run %d of the %d shor staked, less than two thirds",
-				onlineParticipant+1, offline.Index, onlineStake+returning, total)
-
-			// Read before the start, so the validator cannot have voted in an
-			// epoch before restarted.
-			restarted = currentEpoch(ctx)
-			node := nodes[offlineParticipant]
-			returned = testsuite.MustSucceed(validator.Start(ctx, validator.Config{
-				Image:              node.ValidatorImage,
-				BeaconURL:          node.BeaconURL,
-				BeaconGRPC:         node.BeaconGRPC,
-				ConsensusServiceID: node.ConsensusServiceID,
-				Keystores:          keystores,
-			}))
-
-			gomega.Eventually(finalizedEpoch).WithContext(ctx).
-				WithTimeout(resumeEpochs*chain.EpochDuration).
-				WithPolling(chain.SlotDuration).
-				Should(gomega.BeNumerically(">=", restarted), "finalized epoch since the restart in epoch %d", restarted)
-		}, ginkgo.SpecTimeout(resumeTimeout))
-
-		ginkgo.It("brings a restarted validator's inactivity score back to zero", func(ctx ginkgo.SpecContext) {
-			for epoch := nextEpoch; epoch <= restarted+decayEpochs; epoch++ {
-				offline.AwaitRewards(ctx, epoch)
-				if epoch < restarted {
-					score = expectMissedEpoch(ctx, offline, epoch, score).ScoreAfter
-					continue
-				}
-
-				// The client may have missed its first votes after the
-				// restart.
-				reward := testsuite.MustSucceed(offline.AttestationReward(ctx, epoch))
-				amounts := testsuite.MustSucceed(offline.LeakVoteAmounts(ctx, epoch))
-				// A timely target vote earns zero or more, and a missed one is
-				// penalized; the score check catches a wrong figure.
-				timely := reward.Target >= 0
-				wantTarget := amounts.Timely.Target
-				if !timely {
-					wantTarget = -int64(amounts.MissedTarget + amounts.InactivityPenalty)
-				}
-				gomega.Expect(reward.Target).To(gomega.Equal(wantTarget),
-					"target figure of epoch %d, whose target vote was timely: %t, at score %d", epoch, timely, amounts.ScoreAfter)
-				expectScores(offline, epoch, amounts, score, timely)
-				score = amounts.ScoreAfter
-				if timely && score == 0 {
-					ginkgo.GinkgoWriter.Printf("validator %d's inactivity score is back to zero after epoch %d\n", offline.Index, epoch)
-					return
-				}
-			}
-			ginkgo.Fail(fmt.Sprintf("validator %d's inactivity score is still %d, %d epochs after the restart in epoch %d",
-				offline.Index, score, decayEpochs, restarted))
-		}, ginkgo.SpecTimeout(decayTimeout))
-
-		ginkgo.It("slashes no validator, and every node finalizes the same checkpoint", func(ctx ginkgo.SpecContext) {
-			expectCleanFinality(ctx, nodes, chain, restarted)
-		}, ginkgo.SpecTimeout(checkTimeout))
-
-		ginkgo.It("finalizes with every validator back on its own client", func(ctx ginkgo.SpecContext) {
-			endOutage(ctx)
-			back := currentEpoch(ctx)
-			gomega.Eventually(finalizedEpoch).WithContext(ctx).
-				WithTimeout(finalityTimeoutEpochs*chain.EpochDuration).
-				WithPolling(chain.SlotDuration).
-				Should(gomega.BeNumerically(">=", back), "finalized epoch since the client started again in epoch %d", back)
-		}, ginkgo.SpecTimeout(rejoinTimeout))
-
-		ginkgo.It("stops finalizing again once the client stops for good", func(ctx ginkgo.SpecContext) {
-			gomega.Expect(runtime.StopParticipantValidators(ctx, offlineParticipant)).To(gomega.Succeed())
-			clientStopped = true
-			lasting.stopped = currentEpoch(ctx)
-
-			lasting.settled = lasting.stopped + settleEpochs
-			last := lasting.settled + stalledEpochs
-			gomega.Eventually(headEpoch).WithContext(ctx).
-				WithTimeout((settleEpochs+stalledEpochs+1)*chain.EpochDuration).
-				WithPolling(chain.SlotDuration).
-				Should(gomega.BeNumerically(">=", last), "the head block has stopped advancing")
-
-			lasting.frozen = states.checkpointsAt(ctx, lasting.settled)
-			for epoch := lasting.settled + 1; epoch <= last; epoch++ {
-				checkpoints := states.checkpointsAt(ctx, epoch)
-				gomega.Expect(checkpoints.Finalized).To(gomega.Equal(lasting.frozen.Finalized),
-					"finalized checkpoint at the start of epoch %d, with the validator client stopped since epoch %d", epoch, lasting.stopped)
-				gomega.Expect(checkpoints.CurrentJustified).To(gomega.Equal(lasting.frozen.CurrentJustified),
-					"justified checkpoint at the start of epoch %d, with the validator client stopped since epoch %d", epoch, lasting.stopped)
-			}
-
-			// Just over a third: more than a third offline, but not without its
-			// largest validator.
-			onlineStake, offlineRecords := states.at(ctx, lasting.settled)
-			offlineStake := totalEffectiveBalance(offlineRecords)
-			total := testsuite.MustSucceed(online.Client.TotalActiveBalance(ctx, states.stateAt(lasting.settled)))
-			gomega.Expect(onlineStake+offlineStake).To(gomega.Equal(total), "the participants' validators hold all the active stake")
-			gomega.Expect(3*offlineStake > total).To(gomega.BeTrue(),
-				"participant %d runs %d of the %d shor staked, not more than a third", offlineParticipant+1, offlineStake, total)
-			var largest uint64
-			for _, record := range offlineRecords {
-				largest = max(largest, record.EffectiveBalance)
-			}
-			gomega.Expect(3*(offlineStake-largest) <= total).To(gomega.BeTrue(),
-				"participant %d runs %d of the %d shor staked, more than a third even without its largest validator",
-				offlineParticipant+1, offlineStake, total)
-			ginkgo.GinkgoWriter.Printf("finality stopped at epoch %d after the validator client stopped again in epoch %d, with %d of the %d shor staked offline\n",
-				lasting.frozen.Finalized.Epoch, lasting.stopped, offlineStake, total)
-		}, ginkgo.SpecTimeout(stallTimeout))
-
-		ginkgo.It("forecasts the first epoch the online validators justify alone", func(ctx ginkgo.SpecContext) {
-			lasting.forecast = states.forecast(ctx, online.Spec, lasting)
-			forecast := lasting.forecast
-
-			// The votes of Justified count at the end of the next epoch, at the
-			// effective balances that epoch starts with.
-			before, ok := forecast.At(forecast.Justified)
-			gomega.Expect(ok).To(gomega.BeTrue())
-			deciding, ok := forecast.At(forecast.Justified + 1)
-			gomega.Expect(ok).To(gomega.BeTrue())
-			onlineStake, _ := states.at(ctx, lasting.settled)
-			ginkgo.GinkgoWriter.Printf("forecast: epoch %d is the first the online validators justify alone, %d epochs after the stop; "+
-				"half the online stake is %d shor, and the offline stake %d at the start of epoch %d and %d at the start of epoch %d\n",
-				forecast.Justified, forecast.Justified-lasting.stopped, onlineStake/2,
-				forecastTotal(before), forecast.Justified, forecastTotal(deciding), forecast.Justified+1)
-
-			gomega.Expect(time.Until(recoveryDeadline(chain, forecast))).To(gomega.BeNumerically("<", recoveryTimeout-checkTimeout),
-				"the wait for finality, forecast to justify epoch %d, does not fit the next spec's timeout", forecast.Justified)
-		}, ginkgo.SpecTimeout(forecastTimeout))
-
-		ginkgo.It("finalizes again within an epoch of the forecast, with no validator back", func(ctx ginkgo.SpecContext) {
-			forecast := lasting.forecast
-			// The head shows each justification as it happens, at most one an
-			// epoch, which states long behind it, by then finalized, would be
-			// slow to show.
-			var finalized beacon.Checkpoint
-			gomega.Eventually(func(g gomega.Gomega, ctx context.Context) {
-				checkpoints, err := online.Client.FinalityCheckpoints(ctx)
-				g.Expect(err).NotTo(gomega.HaveOccurred())
-				if lasting.justified == (beacon.Checkpoint{}) && checkpoints.CurrentJustified != lasting.frozen.CurrentJustified {
-					lasting.justified = checkpoints.CurrentJustified
-				}
-				finalized = checkpoints.Finalized
-				g.Expect(finalized.Epoch).To(gomega.BeNumerically(">", lasting.frozen.Finalized.Epoch),
-					"finalized epoch, with epoch %d justified and epoch %d forecast to be", checkpoints.CurrentJustified.Epoch, forecast.Justified)
-			}).WithContext(ctx).
-				WithTimeout(time.Until(recoveryDeadline(chain, forecast))).
-				WithPolling(chain.SlotDuration).
-				Should(gomega.Succeed())
-
-			states.expectFirstJustified(ctx, lasting)
-			// The forecast holds the online stake fixed, though a late source
-			// vote can take an online validator's effective balance down an
-			// increment, and spreads the offline validators' sync committee
-			// penalties evenly. Both move the stakes by tens of QRL at most,
-			// against the roughly 700 the leak takes from the offline stake in
-			// the epoch before recovery, so recovery can come an epoch either
-			// side.
-			gomega.Expect(lasting.justified.Epoch).To(gomega.BeNumerically("~", forecast.Justified, forecastMargin),
-				"first epoch justified since the stop in epoch %d, against the forecast", lasting.stopped)
-			gomega.Expect(finalized).To(gomega.Equal(lasting.justified),
-				"first checkpoint finalized since the stop: the online votes justify the two epochs after the first justified one too")
-			ginkgo.GinkgoWriter.Printf("epoch %d justified and finalized, against epoch %d forecast, %d epochs after the validator client stopped in epoch %d\n",
-				lasting.justified.Epoch, forecast.Justified, lasting.justified.Epoch-lasting.stopped, lasting.stopped)
-		}, ginkgo.SpecTimeout(recoveryTimeout))
-
-		ginkgo.It("leaves every offline validator active, at the effective balance the forecast put it", func(ctx ginkgo.SpecContext) {
-			// The processing at the end of the epoch after the justified one
-			// counted its votes, at the effective balances that epoch starts
-			// with.
-			deciding := lasting.justified.Epoch + 1
-			onlineStake, offlineRecords := states.at(ctx, deciding)
-			offlineStake := totalEffectiveBalance(offlineRecords)
-			gomega.Expect(onlineStake >= 2*offlineStake).To(gomega.BeTrue(),
-				"at the start of epoch %d, the online validators hold %d shor and the offline ones %d, more than half as much",
-				deciding, onlineStake, offlineStake)
-
-			start, ok := lasting.forecast.At(lasting.settled)
-			gomega.Expect(ok).To(gomega.BeTrue())
-			want, ok := lasting.forecast.At(deciding)
-			gomega.Expect(ok).To(gomega.BeTrue(), "no forecast for epoch %d", deciding)
-			expectForecastStakes(offlineRecords, start, want, deciding, increment)
-			ginkgo.GinkgoWriter.Printf("the offline stake went from %d to %d shor by the start of epoch %d, against %d forecast\n",
-				forecastTotal(start), offlineStake, deciding, forecastTotal(want))
-
-			for _, record := range testsuite.MustSucceed(online.Client.ValidatorsAt(ctx, "head", offlineValidators)) {
-				gomega.Expect(record.Status).To(gomega.Equal("active_ongoing"), "status of offline validator %d", record.Index)
-			}
-		}, ginkgo.SpecTimeout(checkTimeout))
-
-		ginkgo.It("slashes no validator after the leak alone, and every node finalizes the same checkpoint", func(ctx ginkgo.SpecContext) {
-			expectCleanFinality(ctx, nodes, chain, lasting.justified.Epoch)
-		}, ginkgo.SpecTimeout(checkTimeout))
+		ginkgo.Context("with the client stopped for good", func() {
+			ginkgo.It("finalizes with every validator back on its own client",
+				suite.finalizesWithEveryValidatorBack, ginkgo.SpecTimeout(rejoinTimeout))
+			ginkgo.It("stops finalizing again once the client stops for good",
+				suite.stopsFinalizingForGood, ginkgo.SpecTimeout(stallTimeout))
+			ginkgo.It("forecasts the first epoch the online validators justify alone",
+				suite.forecastsRecovery, ginkgo.SpecTimeout(forecastTimeout))
+			ginkgo.It("finalizes again within an epoch of the forecast, with no validator back",
+				suite.finalizesByLeakAlone, ginkgo.SpecTimeout(recoveryTimeout))
+			ginkgo.It("leaves every offline validator active, at the effective balance the forecast put it",
+				suite.keepsOfflineValidatorsActive, ginkgo.SpecTimeout(checkTimeout))
+			ginkgo.It("slashes no validator after the leak alone, and every node finalizes the same checkpoint",
+				suite.agreesAfterLeak, ginkgo.SpecTimeout(checkTimeout))
+		})
 	},
 )
