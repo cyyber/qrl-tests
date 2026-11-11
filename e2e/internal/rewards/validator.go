@@ -63,19 +63,20 @@ func (spec Spec) missedVotePenalties(effectiveBalance, totalActiveBalance uint64
 		baseReward * spec.targetWeight / spec.weightDenominator
 }
 
-// inactivityPenalty is what a missed target vote costs at score, on top of the
-// missed-target penalty.
+// inactivityPenalty is the extra penalty a missed target vote costs a
+// validator with the given inactivity score.
 func (spec Spec) inactivityPenalty(effectiveBalance, score uint64) uint64 {
 	return effectiveBalance * score / (spec.inactivityScoreBias * spec.inactivityPenaltyQuotient)
 }
 
-// inInactivityLeak reports whether epoch's rewards are processed in a leak,
-// with finalized the last finalized epoch.
+// inInactivityLeak reports whether the rewards of epoch are processed in a
+// leak, given the last finalized epoch.
 func (spec Spec) inInactivityLeak(epoch, finalized uint64) bool {
 	return epoch > finalized+spec.minEpochsToInactivityPenalty
 }
 
-// FirstLeakEpoch is the first epoch processed in a leak after finalized.
+// FirstLeakEpoch is the first epoch whose rewards are processed in a leak,
+// given the last finalized epoch.
 func (spec Spec) FirstLeakEpoch(finalized uint64) uint64 {
 	return finalized + spec.minEpochsToInactivityPenalty + 1
 }
