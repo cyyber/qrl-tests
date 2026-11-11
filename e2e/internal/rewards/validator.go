@@ -63,31 +63,26 @@ func (spec Spec) missedVotePenalties(effectiveBalance, totalActiveBalance uint64
 		baseReward * spec.targetWeight / spec.weightDenominator
 }
 
-// inactivityPenalty is what a validator with effectiveBalance and an
-// inactivity score loses for missing an epoch's target vote, on top of the
+// inactivityPenalty is what a missed target vote costs at score, on top of the
 // missed-target penalty.
 func (spec Spec) inactivityPenalty(effectiveBalance, score uint64) uint64 {
 	return effectiveBalance * score / (spec.inactivityScoreBias * spec.inactivityPenaltyQuotient)
 }
 
-// inInactivityLeak reports whether the rewards of epoch are processed in an
-// inactivity leak while finalized is the last finalized epoch: whether the
-// finality delay exceeds MIN_EPOCHS_TO_INACTIVITY_PENALTY.
+// inInactivityLeak reports whether epoch's rewards are processed in a leak,
+// with finalized the last finalized epoch.
 func (spec Spec) inInactivityLeak(epoch, finalized uint64) bool {
 	return epoch > finalized+spec.minEpochsToInactivityPenalty
 }
 
-// FirstLeakEpoch is the first epoch whose rewards are processed in an
-// inactivity leak once finalized is the last finalized epoch.
+// FirstLeakEpoch is the first epoch processed in a leak after finalized.
 func (spec Spec) FirstLeakEpoch(finalized uint64) uint64 {
 	return finalized + spec.minEpochsToInactivityPenalty + 1
 }
 
-// NextInactivityScore is a validator's inactivity score after the epoch
-// processing that counts its votes of an epoch, from its score before. A
-// timely target vote takes one off, a missed one adds INACTIVITY_SCORE_BIAS;
-// then, unless the epoch is processed in a leak, the score drops by up to
-// INACTIVITY_SCORE_RECOVERY_RATE.
+// NextInactivityScore is the score after an epoch's processing: one less for a
+// timely target vote, INACTIVITY_SCORE_BIAS more for a missed one, then up to
+// INACTIVITY_SCORE_RECOVERY_RATE less outside a leak.
 func (spec Spec) NextInactivityScore(score uint64, timelyTarget, leak bool) uint64 {
 	if timelyTarget {
 		score -= min(score, 1)
