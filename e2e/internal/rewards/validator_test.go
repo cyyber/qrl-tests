@@ -250,7 +250,7 @@ func TestLeakVoteAmounts(t *testing.T) {
 	require.True(t, amounts.Leak)
 	require.Equal(t, uint64(8), amounts.ScoreBefore)
 	require.Equal(t, uint64(12), amounts.ScoreAfter)
-	require.Equal(t, uint64(1_830_917_358), amounts.Inactivity)
+	require.Equal(t, uint64(1_830_917_358), amounts.InactivityPenalty)
 	for _, path := range fake.paths() {
 		require.True(t, strings.Contains(path, "/states/55") || strings.Contains(path, "/states/56") ||
 			path == "beacon/rewards/attestations/5", "read %s", path)

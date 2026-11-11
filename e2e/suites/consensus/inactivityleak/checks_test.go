@@ -22,9 +22,9 @@ func expectMissedEpoch(ctx context.Context, val rewards.Validator, epoch, score 
 	gomega.Expect(reward).To(gomega.Equal(beacon.AttestationReward{
 		ValidatorIndex: val.Index,
 		Source:         -int64(amounts.MissedSource),
-		Target:         -int64(amounts.MissedTarget + amounts.Inactivity),
+		Target:         -int64(amounts.MissedTarget + amounts.InactivityPenalty),
 	}), "attestation rewards of epoch %d: the target's is the %d shor missed-target penalty and the %d shor inactivity penalty at score %d",
-		epoch, amounts.MissedTarget, amounts.Inactivity, amounts.ScoreAfter)
+		epoch, amounts.MissedTarget, amounts.InactivityPenalty, amounts.ScoreAfter)
 
 	// The rewards of epoch apply when epoch+2 starts. The blocks of epoch+1
 	// add the missed sync committee duties; the offline validator proposes
@@ -33,10 +33,10 @@ func expectMissedEpoch(ctx context.Context, val rewards.Validator, epoch, score 
 	after := testsuite.MustSucceed(val.BalanceAtEpochStart(ctx, epoch+2))
 	blocks := testsuite.MustSucceed(val.BlockBalanceChanges(ctx, epoch+1))
 	missed := amounts.MissedSource + amounts.MissedTarget
-	want := int64(before) - int64(missed+amounts.Inactivity) + blocks
+	want := int64(before) - int64(missed+amounts.InactivityPenalty) + blocks
 	gomega.Expect(int64(after)).To(gomega.Equal(want),
 		"balance went from %d to %d over epoch %d: the %d shor missed-vote and %d shor inactivity penalties of epoch %d, at score %d, and %d shor from blocks make %d",
-		before, after, epoch+1, missed, amounts.Inactivity, epoch, amounts.ScoreAfter, blocks, want)
+		before, after, epoch+1, missed, amounts.InactivityPenalty, epoch, amounts.ScoreAfter, blocks, want)
 	return amounts
 }
 

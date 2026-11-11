@@ -169,12 +169,9 @@ func (validator Validator) VoteAmounts(ctx context.Context, epoch uint64) (VoteA
 // inactivity leak, or while the validator's inactivity score is above zero.
 type LeakAmounts struct {
 	VoteAmounts
-	// Leak is whether the epoch is processed in a leak.
-	Leak bool
-	// ScoreBefore and ScoreAfter are the inactivity score around processing.
+	Leak                    bool
 	ScoreBefore, ScoreAfter uint64
-	// Inactivity is the penalty a missed target costs, at ScoreAfter.
-	Inactivity uint64
+	InactivityPenalty       uint64
 }
 
 // LeakVoteAmounts computes the vote amounts of epoch like VoteAmounts, and the
@@ -198,7 +195,7 @@ func (validator Validator) LeakVoteAmounts(ctx context.Context, epoch uint64) (L
 	if leak.ScoreAfter, err = validator.inactivityScore(ctx, after); err != nil {
 		return LeakAmounts{}, err
 	}
-	leak.Inactivity = validator.Spec.inactivityPenalty(amounts.Timely.EffectiveBalance, leak.ScoreAfter)
+	leak.InactivityPenalty = validator.Spec.inactivityPenalty(amounts.Timely.EffectiveBalance, leak.ScoreAfter)
 	return leak, nil
 }
 

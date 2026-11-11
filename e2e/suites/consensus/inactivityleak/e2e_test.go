@@ -213,7 +213,7 @@ var _ = ginkgo.Describe(
 				timely := reward.Target >= 0
 				wantTarget := amounts.Timely.Target
 				if !timely {
-					wantTarget = -int64(amounts.MissedTarget + amounts.Inactivity)
+					wantTarget = -int64(amounts.MissedTarget + amounts.InactivityPenalty)
 				}
 				gomega.Expect(reward.Target).To(gomega.Equal(wantTarget),
 					"target figure of epoch %d, whose target vote was timely: %t, at score %d", epoch, timely, amounts.ScoreAfter)
