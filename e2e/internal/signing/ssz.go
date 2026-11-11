@@ -75,6 +75,33 @@ func (header BeaconBlockHeader) HashTreeRoot() Root {
 	})
 }
 
+// Checkpoint is an epoch and the root of its first block.
+type Checkpoint struct {
+	Epoch uint64
+	Root  Root
+}
+
+func (checkpoint Checkpoint) HashTreeRoot() Root {
+	return merkleize([]Root{uint64Root(checkpoint.Epoch), checkpoint.Root})
+}
+
+// AttestationData is what an attester signs: its head vote and its source
+// and target checkpoints.
+type AttestationData struct {
+	Slot            uint64
+	CommitteeIndex  uint64
+	BeaconBlockRoot Root
+	Source          Checkpoint
+	Target          Checkpoint
+}
+
+func (data AttestationData) HashTreeRoot() Root {
+	return merkleize([]Root{
+		uint64Root(data.Slot), uint64Root(data.CommitteeIndex), data.BeaconBlockRoot,
+		data.Source.HashTreeRoot(), data.Target.HashTreeRoot(),
+	})
+}
+
 func uint64Root(value uint64) Root {
 	var root Root
 	binary.LittleEndian.PutUint64(root[:8], value)

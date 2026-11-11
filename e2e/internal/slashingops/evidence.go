@@ -12,6 +12,7 @@ type Offense int
 const (
 	DoubleVote Offense = iota
 	DoubleProposal
+	SurroundVote
 )
 
 // Evidence is a block's evidence against one validator.
@@ -43,6 +44,16 @@ func EvidenceAgainst(operations beacon.BlockOperations, index uint64) (Evidence,
 // the same target epoch, which is slashable.
 func IsDoubleVote(first, second beacon.AttestationData) bool {
 	return first != second && first.Target.Epoch == second.Target.Epoch
+}
+
+// IsSurroundVote reports whether one attestation's source and target
+// checkpoints surround the other's, which is slashable.
+func IsSurroundVote(first, second beacon.AttestationData) bool {
+	return surrounds(first, second) || surrounds(second, first)
+}
+
+func surrounds(outer, inner beacon.AttestationData) bool {
+	return outer.Source.Epoch < inner.Source.Epoch && inner.Target.Epoch < outer.Target.Epoch
 }
 
 // IsDoubleProposal reports whether the two headers are different blocks from

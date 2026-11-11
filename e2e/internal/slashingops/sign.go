@@ -1,6 +1,7 @@
 package slashingops
 
 import (
+	"encoding/hex"
 	"fmt"
 
 	"github.com/cyyber/qrl-tests/e2e/internal/beacon"
@@ -37,6 +38,44 @@ func signHeader(
 		return beacon.SignedBeaconBlockHeader{}, err
 	}
 	return beacon.SignedBeaconBlockHeader{Message: header, Signature: signature}, nil
+}
+
+// SignAttestation signs data as the validator at the duty's committee position,
+// and returns the attestation that member alone casts.
+func SignAttestation(
+	signer validatorops.Signer, duty beacon.AttesterDuty, data beacon.AttestationData,
+) (beacon.SignedAttestation, error) {
+	root, err := attestationDataRoot(data)
+	if err != nil {
+		return beacon.SignedAttestation{}, err
+	}
+	signature, err := signer.Sign(signing.DomainBeaconAttester, data.Target.Epoch, root)
+	if err != nil {
+		return beacon.SignedAttestation{}, err
+	}
+	return beacon.SignedAttestation{
+		AggregationBits: "0x" + hex.EncodeToString(beacon.SingleMemberBits(duty.CommitteeLength, duty.ValidatorCommitteeIndex)),
+		Data:            data,
+		Signatures:      []string{signature},
+	}, nil
+}
+
+func attestationDataRoot(data beacon.AttestationData) (signing.Root, error) {
+	var roots [3]signing.Root
+	for position, value := range []string{data.BeaconBlockRoot, data.Source.Root, data.Target.Root} {
+		root, err := signing.ParseRoot(value)
+		if err != nil {
+			return signing.Root{}, fmt.Errorf("attestation of slot %d: %w", data.Slot, err)
+		}
+		roots[position] = root
+	}
+	return signing.AttestationData{
+		Slot:            data.Slot,
+		CommitteeIndex:  data.CommitteeIndex,
+		BeaconBlockRoot: roots[0],
+		Source:          signing.Checkpoint{Epoch: data.Source.Epoch, Root: roots[1]},
+		Target:          signing.Checkpoint{Epoch: data.Target.Epoch, Root: roots[2]},
+	}.HashTreeRoot(), nil
 }
 
 func headerRoot(header beacon.BeaconBlockHeaderMessage) (signing.Root, error) {

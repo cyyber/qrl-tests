@@ -113,6 +113,23 @@ func (attestation Attestation) Includes(position uint64) bool {
 	return position < bitlistLen(aggregation) && aggregation[position/8]&(1<<(position%8)) != 0
 }
 
+// SignedAttestation is an attestation with one signature per member whose
+// aggregation bit it sets, as the beacon API takes it.
+type SignedAttestation struct {
+	AggregationBits string          `json:"aggregation_bits"`
+	Data            AttestationData `json:"data"`
+	Signatures      []string        `json:"signatures"`
+}
+
+// SingleMemberBits is the SSZ bitlist of a committee of length members in
+// which only the member at position voted.
+func SingleMemberBits(length, position uint64) []byte {
+	bits := make([]byte, length/8+1)
+	bits[position/8] |= 1 << (position % 8)
+	bits[length/8] |= 1 << (length % 8)
+	return bits
+}
+
 // bitlistLen returns the length of an SSZ bitlist: the index of its highest
 // set bit, which is in the last byte.
 func bitlistLen(bitlist []byte) uint64 {
@@ -189,6 +206,11 @@ type AttesterDuty struct {
 	PublicKey      string `json:"pubkey"`
 	ValidatorIndex uint64 `json:"validator_index,string"`
 	Slot           uint64 `json:"slot,string"`
+	CommitteeIndex uint64 `json:"committee_index,string"`
+	// CommitteeLength and the validator's position in the committee give its
+	// aggregation bit.
+	CommitteeLength         uint64 `json:"committee_length,string"`
+	ValidatorCommitteeIndex uint64 `json:"validator_committee_index,string"`
 }
 
 type AttestationReward struct {

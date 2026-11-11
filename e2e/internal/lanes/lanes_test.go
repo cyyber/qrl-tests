@@ -100,7 +100,7 @@ func TestLaneWithSuites(t *testing.T) {
 	evidence, err := Named("consensus-slashing-evidence")
 	require.NoError(t, err)
 	require.Equal(t, devnet.ProfileDuplicateValidator, evidence.Profile)
-	require.Equal(t, []SuiteID{suiteConsensusSlashingSubmitted}, evidence.Suites)
+	require.Equal(t, []SuiteID{suiteConsensusSlashingSubmitted, suiteConsensusSlashingSurroundVote}, evidence.Suites)
 	require.True(t, evidence.NeedsQrysmAlltoolsImage())
 	require.False(t, evidence.NeedsValidatorImage())
 	require.False(t, evidence.NeedsExecutionImage())

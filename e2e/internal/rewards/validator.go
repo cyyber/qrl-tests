@@ -241,11 +241,11 @@ func (validator Validator) TimelyVotes(ctx context.Context, epoch uint64) (Timel
 	if !found {
 		return TimelyVotes{}, fmt.Errorf("validator %d is in no committee of epoch %d", validator.Index, epoch)
 	}
-	headRoot, err := validator.rootAtOrBefore(ctx, slot)
+	headRoot, err := validator.Client.RootAtOrBefore(ctx, slot)
 	if err != nil {
 		return TimelyVotes{}, err
 	}
-	targetRoot, err := validator.rootAtOrBefore(ctx, start)
+	targetRoot, err := validator.Client.RootAtOrBefore(ctx, start)
 	if err != nil {
 		return TimelyVotes{}, err
 	}
@@ -285,19 +285,4 @@ func (validator Validator) duty(committees []beacon.Committee) (slot, committee,
 		}
 	}
 	return 0, 0, 0, false
-}
-
-// rootAtOrBefore returns the root of the canonical block at slot, or of the
-// last one before it if the slot is empty.
-func (validator Validator) rootAtOrBefore(ctx context.Context, slot uint64) (string, error) {
-	for {
-		header, err := validator.Client.BlockHeader(ctx, strconv.FormatUint(slot, 10))
-		if err == nil {
-			return header.Root, nil
-		}
-		if !beacon.IsNotFound(err) || slot == 0 {
-			return "", err
-		}
-		slot--
-	}
 }

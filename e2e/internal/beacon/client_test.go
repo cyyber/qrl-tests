@@ -95,6 +95,21 @@ func TestClientDecodesQrysmResponses(t *testing.T) {
 					"signature": "0xbb",
 				},
 			}, body)
+		case "/qrl/v1/beacon/pool/attestations":
+			assert.Equal(t, http.MethodPost, request.Method)
+			var body []map[string]any
+			assert.NoError(t, json.NewDecoder(request.Body).Decode(&body))
+			assert.Equal(t, []map[string]any{{
+				"aggregation_bits": "0x0c",
+				"data": map[string]any{
+					"slot": "18", "index": "1", "beacon_block_root": "0xaa",
+					"source": map[string]any{"epoch": "1", "root": "0x0a"},
+					"target": map[string]any{"epoch": "2", "root": "0x0b"},
+				},
+				"signatures": []any{"0xcc"},
+			}}, body)
+		case "/qrl/v1/beacon/headers/16":
+			_, _ = writer.Write([]byte(`{"data":{"root":"0x16","header":{"message":{"slot":"16"}}}}`))
 		case "/qrl/v1/beacon/states/head/fork":
 			_, _ = writer.Write([]byte(`{"execution_optimistic":false,"finalized":false,"data":{"previous_version":"0x10000020","current_version":"0x10000021","epoch":"5"}}`))
 		case "/qrl/v1/beacon/blocks/broken":
@@ -191,7 +206,9 @@ func TestClientDecodesQrysmResponses(t *testing.T) {
 
 	duties, err := client.AttesterDuties(t.Context(), 2, []uint64{64})
 	require.NoError(t, err)
-	require.Equal(t, []AttesterDuty{{PublicKey: "0xab", ValidatorIndex: 64, Slot: 17}}, duties)
+	require.Equal(t, []AttesterDuty{{
+		PublicKey: "0xab", ValidatorIndex: 64, Slot: 17, CommitteeLength: 8, ValidatorCommitteeIndex: 3,
+	}}, duties)
 
 	rewards, err := client.AttestationRewards(t.Context(), 2, []uint64{64})
 	require.NoError(t, err)
@@ -228,6 +245,20 @@ func TestClientDecodesQrysmResponses(t *testing.T) {
 		SignedHeader1: SignedBeaconBlockHeader{Message: header, Signature: "0xaa"},
 		SignedHeader2: SignedBeaconBlockHeader{Message: other, Signature: "0xbb"},
 	}))
+
+	require.NoError(t, client.SubmitAttestations(t.Context(), []SignedAttestation{{
+		AggregationBits: "0x0c",
+		Data: AttestationData{
+			Slot: 18, CommitteeIndex: 1, BeaconBlockRoot: "0xaa",
+			Source: Checkpoint{Epoch: 1, Root: "0x0a"}, Target: Checkpoint{Epoch: 2, Root: "0x0b"},
+		},
+		Signatures: []string{"0xcc"},
+	}}))
+
+	// Slots 17 to 19 have no block in this server, so the lookup steps back to 16.
+	root, err := client.RootAtOrBefore(t.Context(), 19)
+	require.NoError(t, err)
+	require.Equal(t, "0x16", root)
 
 	fork, err := client.Fork(t.Context(), "head")
 	require.NoError(t, err)
@@ -356,6 +387,18 @@ func TestAttestationIncludes(t *testing.T) {
 	// A committee of nine: member 8 is in the second byte, before the marker.
 	require.True(t, Attestation{AggregationBits: []byte{0x00, 0b11}}.Includes(8))
 	require.False(t, Attestation{}.Includes(0))
+}
+
+func TestSingleMemberBits(t *testing.T) {
+	require.Equal(t, []byte{0b1100}, SingleMemberBits(3, 2))
+	// A committee of eight needs a second byte for the length marker.
+	require.Equal(t, []byte{0b10, 0b1}, SingleMemberBits(8, 1))
+
+	bits := SingleMemberBits(13, 9)
+	require.Equal(t, uint64(13), bitlistLen(bits))
+	for position := range uint64(13) {
+		require.Equal(t, position == 9, Attestation{AggregationBits: bits}.Includes(position), "member %d", position)
+	}
 }
 
 func TestClientDecodesAttestationsAndCommittees(t *testing.T) {

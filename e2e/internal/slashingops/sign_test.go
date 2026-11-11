@@ -15,14 +15,49 @@ func hexRoot(value byte) string {
 	return "0x" + strings.Repeat(hex.EncodeToString([]byte{value}), signing.RootLength)
 }
 
-func TestSignProposerSlashing(t *testing.T) {
+func testSigner(t *testing.T) validatorops.Signer {
+	t.Helper()
 	key, err := validatorops.DeterministicKey(0x91)
 	require.NoError(t, err)
-	signer := validatorops.Signer{
+	return validatorops.Signer{
 		Key:                   key,
 		Fork:                  signing.Fork{CurrentVersion: signing.ForkVersion{0x10, 0x00, 0x00, 0x20}},
 		GenesisValidatorsRoot: signing.Root{0x77},
 	}
+}
+
+func TestSignAttestation(t *testing.T) {
+	signer := testSigner(t)
+	data := beacon.AttestationData{
+		Slot: 77, CommitteeIndex: 2, BeaconBlockRoot: hexRoot(0x44),
+		Source: beacon.Checkpoint{Epoch: 7, Root: hexRoot(0x55)},
+		Target: beacon.Checkpoint{Epoch: 9, Root: hexRoot(0x66)},
+	}
+	duty := beacon.AttesterDuty{Slot: 77, CommitteeIndex: 2, CommitteeLength: 10, ValidatorCommitteeIndex: 9}
+
+	attestation, err := SignAttestation(signer, duty, data)
+	require.NoError(t, err)
+	require.Equal(t, data, attestation.Data)
+	require.Equal(t, "0x0006", attestation.AggregationBits)
+	require.Len(t, attestation.Signatures, 1)
+
+	// Qrysm computes this root for the data.
+	root, err := attestationDataRoot(data)
+	require.NoError(t, err)
+	require.Equal(t, "df9178b2a27c5067fb0dc9508e5a11c400884df4ebcff6a45c5b1be1a1b9df78", hex.EncodeToString(root[:]))
+	domain := signer.Fork.Domain(signing.DomainBeaconAttester, 9, signer.GenesisValidatorsRoot)
+	signature, err := hex.DecodeString(strings.TrimPrefix(attestation.Signatures[0], "0x"))
+	require.NoError(t, err)
+	require.NoError(t, signing.Verify(signing.SigningRoot(root, domain), signer.Key.PublicKey(), signature))
+
+	data.Target.Root = "0x66"
+	_, err = SignAttestation(signer, duty, data)
+	require.EqualError(t, err, `attestation of slot 77: root "0x66" is 1 bytes, want 32`)
+}
+
+func TestSignProposerSlashing(t *testing.T) {
+	signer := testSigner(t)
+	key := signer.Key
 	first := beacon.BeaconBlockHeaderMessage{
 		Slot: 123, ProposerIndex: 45, ParentRoot: hexRoot(0x11), StateRoot: hexRoot(0x22), BodyRoot: hexRoot(0x33),
 	}

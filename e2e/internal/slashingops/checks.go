@@ -63,12 +63,27 @@ func ExpectSlashedInBlock(
 // an attester slashing for a double vote, and returns its two votes.
 func ExpectDoubleVoteEvidence(slot uint64, evidence Evidence) (first, second beacon.AttestationData) {
 	ginkgo.GinkgoHelper()
-	gomega.Expect(evidence.Attester).NotTo(gomega.BeNil(),
-		"the block at slot %d slashed the validator for a double proposal", slot)
-	first, second = evidence.Attester.Attestation1.Data, evidence.Attester.Attestation2.Data
+	first, second = expectAttesterEvidence(slot, evidence)
 	gomega.Expect(IsDoubleVote(first, second)).To(gomega.BeTrue(),
 		"the attestations of slots %d and %d are not a double vote", first.Slot, second.Slot)
 	return first, second
+}
+
+// ExpectSurroundVoteEvidence checks that the evidence the block at slot holds
+// is an attester slashing for a surround vote, and returns its two votes.
+func ExpectSurroundVoteEvidence(slot uint64, evidence Evidence) (first, second beacon.AttestationData) {
+	ginkgo.GinkgoHelper()
+	first, second = expectAttesterEvidence(slot, evidence)
+	gomega.Expect(IsSurroundVote(first, second)).To(gomega.BeTrue(),
+		"the attestations of slots %d and %d are not a surround vote", first.Slot, second.Slot)
+	return first, second
+}
+
+func expectAttesterEvidence(slot uint64, evidence Evidence) (first, second beacon.AttestationData) {
+	ginkgo.GinkgoHelper()
+	gomega.Expect(evidence.Attester).NotTo(gomega.BeNil(),
+		"the block at slot %d slashed the validator for a double proposal", slot)
+	return evidence.Attester.Attestation1.Data, evidence.Attester.Attestation2.Data
 }
 
 // ExpectDoubleProposalEvidence checks that the evidence the block at slot

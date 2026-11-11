@@ -25,6 +25,18 @@ func TestDoubleVote(t *testing.T) {
 	require.False(t, IsDoubleVote(vote(18, 1, 2, "0xaa"), vote(26, 2, 3, "0xbb")))
 }
 
+func TestSurroundVote(t *testing.T) {
+	// Source 3 to target 6 surrounds source 4 to target 5, in either order.
+	require.True(t, IsSurroundVote(vote(48, 3, 6, "0xaa"), vote(40, 4, 5, "0xbb")))
+	require.True(t, IsSurroundVote(vote(40, 4, 5, "0xbb"), vote(48, 3, 6, "0xaa")))
+	// A shared source or target is no surround.
+	require.False(t, IsSurroundVote(vote(48, 4, 6, "0xaa"), vote(40, 4, 5, "0xbb")))
+	require.False(t, IsSurroundVote(vote(48, 3, 5, "0xaa"), vote(40, 4, 5, "0xbb")))
+	// Consecutive honest votes don't surround each other, nor does a double vote.
+	require.False(t, IsSurroundVote(vote(40, 4, 5, "0xaa"), vote(48, 5, 6, "0xbb")))
+	require.False(t, IsSurroundVote(vote(18, 1, 2, "0xaa"), vote(18, 1, 2, "0xbb")))
+}
+
 func TestDoubleProposal(t *testing.T) {
 	header := func(slot, proposer uint64, body string) beacon.BeaconBlockHeaderMessage {
 		return beacon.BeaconBlockHeaderMessage{Slot: slot, ProposerIndex: proposer, ParentRoot: "0x10", BodyRoot: body}

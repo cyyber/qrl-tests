@@ -89,6 +89,22 @@ func (client *Client) BlockHeader(ctx context.Context, blockID string) (BlockHea
 	return BlockHeader{Slot: header.Header.Message.Slot, Root: header.Root}, err
 }
 
+// RootAtOrBefore returns the root of the canonical block at slot, or of the
+// last one before it if the slot is empty: the block a vote at slot sees as
+// the head, or, at an epoch's first slot, the epoch's checkpoint root.
+func (client *Client) RootAtOrBefore(ctx context.Context, slot uint64) (string, error) {
+	for {
+		header, err := client.BlockHeader(ctx, strconv.FormatUint(slot, 10))
+		if err == nil {
+			return header.Root, nil
+		}
+		if !IsNotFound(err) || slot == 0 {
+			return "", err
+		}
+		slot--
+	}
+}
+
 // FinalityCheckpoints returns the justified and finalized checkpoints of the
 // head state.
 func (client *Client) FinalityCheckpoints(ctx context.Context) (FinalityCheckpoints, error) {
@@ -331,6 +347,12 @@ func (client *Client) ProposerDuties(ctx context.Context, epoch uint64) ([]Propo
 
 func (client *Client) SubmitVoluntaryExit(ctx context.Context, exit SignedVoluntaryExit) error {
 	return client.postJSON(ctx, "/qrl/v1/beacon/pool/voluntary_exits", exit, nil)
+}
+
+// SubmitAttestations hands attestations to the node, which verifies them,
+// adds them to its pool and publishes them on their subnets.
+func (client *Client) SubmitAttestations(ctx context.Context, attestations []SignedAttestation) error {
+	return client.postJSON(ctx, "/qrl/v1/beacon/pool/attestations", attestations, nil)
 }
 
 // SubmitProposerSlashing hands proposer slashing evidence to the node's pool,

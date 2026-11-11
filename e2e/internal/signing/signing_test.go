@@ -58,6 +58,19 @@ func TestBeaconBlockHeaderRootMatchesQrysm(t *testing.T) {
 	require.Equal(t, "b08ecc69319a6b725dd53b0469e8a80c4db96b9239e6c1ee5b5e3d18dcf74db7", hex.EncodeToString(signingRoot[:]))
 }
 
+func TestAttestationDataRootMatchesQrysm(t *testing.T) {
+	data := AttestationData{
+		Slot: 77, CommitteeIndex: 2, BeaconBlockRoot: repeatedRoot(0x44),
+		Source: Checkpoint{Epoch: 7, Root: repeatedRoot(0x55)},
+		Target: Checkpoint{Epoch: 9, Root: repeatedRoot(0x66)},
+	}
+	root := data.HashTreeRoot()
+	require.Equal(t, "df9178b2a27c5067fb0dc9508e5a11c400884df4ebcff6a45c5b1be1a1b9df78", hex.EncodeToString(root[:]))
+
+	domain := ComputeDomain(DomainBeaconAttester, ForkVersion{0x10, 0x00, 0x00, 0x20}, repeatedRoot(0x77))
+	require.Equal(t, "010000007c84f6ac711e7d87eadc076350fd55347d33483c0005bd0867748499", hex.EncodeToString(domain[:]))
+}
+
 func TestForkDomainKeepsThePreviousVersionBeforeTheFork(t *testing.T) {
 	fork := Fork{PreviousVersion: ForkVersion{0x01}, CurrentVersion: ForkVersion{0x02}, Epoch: 10}
 	genesisValidatorsRoot := repeatedRoot(0x77)
