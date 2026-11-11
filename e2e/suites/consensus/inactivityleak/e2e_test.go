@@ -35,6 +35,7 @@ const (
 	onlineTimeout   = 3 * time.Minute
 	resumeTimeout   = 5 * time.Minute
 	decayTimeout    = 8 * time.Minute
+	checkTimeout    = 2 * time.Minute
 )
 
 func TestE2E(t *testing.T) {
@@ -249,6 +250,6 @@ var _ = ginkgo.Describe(
 				WithTimeout(chain.EpochDuration).
 				WithPolling(chain.SlotDuration).
 				Should(gomega.Succeed())
-		}, ginkgo.SpecTimeout(2*time.Minute))
+		}, ginkgo.SpecTimeout(checkTimeout))
 	},
 )
