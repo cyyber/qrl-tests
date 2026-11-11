@@ -151,7 +151,7 @@ func attested(reward beacon.AttestationReward) bool {
 // VoteAmounts computes the vote amounts of epoch from the state its rewards
 // are processed in: the one at the last slot of the next epoch. It refuses an
 // epoch processed in an inactivity leak, whose penalty Qrysm folds into the
-// target score; LeakVoteAmounts takes one.
+// target figure; use LeakVoteAmounts for those.
 func (validator Validator) VoteAmounts(ctx context.Context, epoch uint64) (VoteAmounts, error) {
 	stateID := strconv.FormatUint(validator.rewardsSlot(epoch), 10)
 	checkpoints, err := validator.Client.FinalityCheckpointsAt(ctx, stateID)
