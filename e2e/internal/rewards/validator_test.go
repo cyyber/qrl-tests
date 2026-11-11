@@ -243,7 +243,8 @@ func scoresJSON(score uint64) string {
 func TestLeakVoteAmounts(t *testing.T) {
 	// The rewards of epoch 5 are processed between the states at slots 55
 	// and 56. Epoch 0 is still finalized after, so it is a leak, and the
-	// processing raises the score from 8 to 12.
+	// validator missed its target vote: the processing raises its score from
+	// 8 to 12.
 	responses := map[string]string{
 		"beacon/states/56/finality_checkpoints": finalizedJSON(0),
 		"debug/beacon/states/55":                scoresJSON(8),
