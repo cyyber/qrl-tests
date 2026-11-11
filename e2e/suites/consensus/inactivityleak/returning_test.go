@@ -26,6 +26,7 @@ const (
 	onlineTimeout   = 3 * time.Minute
 	resumeTimeout   = 5 * time.Minute
 	decayTimeout    = 8 * time.Minute
+	rejoinTimeout   = 9 * time.Minute
 )
 
 // returningOutage is the first outage, which one stopped validator returns
@@ -171,6 +172,15 @@ func (suite *leakSuite) zeroesReturnedScore(ctx ginkgo.SpecContext) {
 
 func (suite *leakSuite) agreesAfterReturn(ctx ginkgo.SpecContext) {
 	suite.expectCleanFinality(ctx, suite.returning.restarted)
+}
+
+func (suite *leakSuite) finalizesWithEveryValidatorBack(ctx ginkgo.SpecContext) {
+	suite.endOutage(ctx)
+	back := suite.currentEpoch(ctx)
+	gomega.Eventually(suite.finalizedEpoch).WithContext(ctx).
+		WithTimeout(finalityTimeoutEpochs*suite.chain.EpochDuration).
+		WithPolling(suite.chain.SlotDuration).
+		Should(gomega.BeNumerically(">=", back), "finalized epoch since the client started again in epoch %d", back)
 }
 
 func (suite *leakSuite) finalizedAtEpochStart(ctx context.Context, epoch uint64) beacon.Checkpoint {

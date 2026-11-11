@@ -21,7 +21,6 @@ const (
 	forecastIncrements = 2
 	maxLossDivisor     = 40
 
-	rejoinTimeout   = 9 * time.Minute
 	forecastTimeout = time.Minute
 	recoveryTimeout = 50 * time.Minute
 )
@@ -36,15 +35,6 @@ type lastingOutage struct {
 	forecast         rewards.Recovery
 	// justified is the first checkpoint justified since the stop.
 	justified beacon.Checkpoint
-}
-
-func (suite *leakSuite) finalizesWithEveryValidatorBack(ctx ginkgo.SpecContext) {
-	suite.endOutage(ctx)
-	back := suite.currentEpoch(ctx)
-	gomega.Eventually(suite.finalizedEpoch).WithContext(ctx).
-		WithTimeout(finalityTimeoutEpochs*suite.chain.EpochDuration).
-		WithPolling(suite.chain.SlotDuration).
-		Should(gomega.BeNumerically(">=", back), "finalized epoch since the client started again in epoch %d", back)
 }
 
 func (suite *leakSuite) stopsFinalizingForGood(ctx ginkgo.SpecContext) {
