@@ -228,7 +228,7 @@ var _ = ginkgo.Describe(
 			gomega.Expect(tx.AccessList()).NotTo(gomega.BeNil())
 			gomega.Expect(tx.ChainId()).To(gomega.Equal(node.ChainID))
 
-			index := uint(receipt.TransactionIndex)
+			index := receipt.TransactionIndex
 			inBlock := testsuite.MustSucceed(node.Execution.TransactionInBlock(ctx, receipt.BlockHash, index))
 			gomega.Expect(inBlock.Hash()).To(gomega.Equal(mined.Hash()))
 
