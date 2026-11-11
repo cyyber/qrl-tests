@@ -26,8 +26,9 @@ var _ = ginkgo.Describe(
 		ginkgo.AfterEach(suite.reportReturnedLogs)
 		ginkgo.AfterAll(suite.endOutage, ginkgo.NodeTimeout(2*time.Minute))
 
-		ginkgo.It("finalizes before the stake goes offline",
-			suite.finalizesBeforeOutage, ginkgo.SpecTimeout(finalityTimeout))
+		ginkgo.It("finalizes before the stake goes offline", func(ctx ginkgo.SpecContext) {
+			testsuite.AwaitFinalizedEpoch(ctx, suite.online.Client, suite.chain, 1, finalityTimeoutEpochs)
+		}, ginkgo.SpecTimeout(finalityTimeout))
 
 		ginkgo.Context("recovering by one validator returning", func() {
 			ginkgo.It("stops finalizing while blocks keep coming",

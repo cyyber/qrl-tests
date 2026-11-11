@@ -21,12 +21,11 @@ const (
 	resumeEpochs = 5
 	decayEpochs  = 5
 
-	finalityTimeout = 7 * time.Minute
-	leakTimeout     = 6 * time.Minute
-	onlineTimeout   = 3 * time.Minute
-	resumeTimeout   = 5 * time.Minute
-	decayTimeout    = 8 * time.Minute
-	rejoinTimeout   = 9 * time.Minute
+	leakTimeout   = 6 * time.Minute
+	onlineTimeout = 3 * time.Minute
+	resumeTimeout = 5 * time.Minute
+	decayTimeout  = 8 * time.Minute
+	rejoinTimeout = 9 * time.Minute
 )
 
 // returningOutage is the first outage, which one stopped validator returns
@@ -39,10 +38,6 @@ type returningOutage struct {
 	// score is the offline validator's inactivity score after the
 	// processing of every epoch before nextEpoch.
 	score, nextEpoch uint64
-}
-
-func (suite *leakSuite) finalizesBeforeOutage(ctx ginkgo.SpecContext) {
-	testsuite.AwaitFinalizedEpoch(ctx, suite.online.Client, suite.chain, 1, finalityTimeoutEpochs)
 }
 
 func (suite *leakSuite) stopsFinalizing(ctx ginkgo.SpecContext) {

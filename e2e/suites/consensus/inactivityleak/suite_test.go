@@ -26,8 +26,9 @@ const (
 	settleEpochs          = 2
 	stalledEpochs         = 4
 
-	stallTimeout = 6 * time.Minute
-	checkTimeout = 2 * time.Minute
+	finalityTimeout = 7 * time.Minute
+	stallTimeout    = 6 * time.Minute
+	checkTimeout    = 2 * time.Minute
 )
 
 // leakSuite is what the suite's specs share, in order.
