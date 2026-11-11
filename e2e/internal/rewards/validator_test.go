@@ -232,8 +232,8 @@ func TestVoteAmountsRefusesLeak(t *testing.T) {
 		"the rewards of epoch 5 are processed in an inactivity leak: the last finalized epoch is 0")
 }
 
-// scoresJSON is a debug state whose validators all have an inactivity score
-// of zero but the validator under test, whose score is score.
+// scoresJSON is a debug state in which every validator has an inactivity
+// score of zero, except the validator under test, which has score.
 func scoresJSON(score uint64) string {
 	scores := slices.Repeat([]string{`"0"`}, validatorIndex+1)
 	scores[validatorIndex] = fmt.Sprintf(`"%d"`, score)
