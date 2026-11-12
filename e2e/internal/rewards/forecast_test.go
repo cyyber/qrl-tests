@@ -50,21 +50,21 @@ func TestForecastRecoveryAfterOneEpoch(t *testing.T) {
 	// first missed epoch takes it to 39,995 QRL, under half the online stake,
 	// so the online votes of epoch 10 count two thirds at the end of epoch 11.
 	start := Stake{Balance: fullStake, EffectiveBalance: fullStake}
-	recovery, err := spec.ForecastRecovery(Outage{Epoch: 10, Finalized: 8, Online: 79_998 * shorPerQRL, Offline: []Stake{start}})
+	forecast, err := spec.ForecastRecovery(Outage{Epoch: 10, Finalized: 8, Online: 79_998 * shorPerQRL, Offline: []Stake{start}})
 	require.NoError(t, err)
-	require.Equal(t, uint64(10), recovery.FirstJustified)
+	require.Equal(t, uint64(10), forecast.FirstJustified)
 
-	stakes, ok := recovery.At(10)
+	stakes, ok := forecast.At(10)
 	require.True(t, ok)
 	require.Equal(t, []Stake{start}, stakes)
-	stakes, ok = recovery.At(11)
+	stakes, ok = forecast.At(11)
 	require.True(t, ok)
 	require.Equal(t, []Stake{{Balance: 39_995_170_278_799, EffectiveBalance: 39_995 * shorPerQRL}}, stakes)
-	_, ok = recovery.At(12)
+	_, ok = forecast.At(12)
 	require.True(t, ok)
-	_, ok = recovery.At(13)
+	_, ok = forecast.At(13)
 	require.False(t, ok)
-	_, ok = recovery.At(9)
+	_, ok = forecast.At(9)
 	require.False(t, ok)
 }
 
@@ -73,21 +73,21 @@ func TestForecastRecovery(t *testing.T) {
 	// 22 of 65 validators offline from epoch 6 on, with epoch 4 finalized, so
 	// the leak counts their missed votes from epoch 9.
 	offline := slices.Repeat([]Stake{{Balance: fullStake, EffectiveBalance: fullStake}}, 22)
-	recovery, err := spec.ForecastRecovery(Outage{Epoch: 7, Finalized: 4, Online: 43 * fullStake, Offline: offline})
+	forecast, err := spec.ForecastRecovery(Outage{Epoch: 7, Finalized: 4, Online: 43 * fullStake, Offline: offline})
 	require.NoError(t, err)
-	require.Equal(t, uint64(62), recovery.FirstJustified)
+	require.Equal(t, uint64(62), forecast.FirstJustified)
 
 	// Epoch 62 starts with the offline stake at 860,442 QRL, above half the
 	// online 1,720,000, and epoch 63, after 53 epochs of leak, at 859,716.
-	stakes, ok := recovery.At(62)
+	stakes, ok := forecast.At(62)
 	require.True(t, ok)
 	require.Equal(t, Stake{Balance: 39_111_585_777_860, EffectiveBalance: 39_111 * shorPerQRL, InactivityScore: 208}, stakes[0])
-	stakes, ok = recovery.At(63)
+	stakes, ok = forecast.At(63)
 	require.True(t, ok)
 	require.Equal(t, slices.Repeat([]Stake{{Balance: 39_078_937_749_638, EffectiveBalance: 39_078 * shorPerQRL, InactivityScore: 212}}, 22), stakes)
-	_, ok = recovery.At(64)
+	_, ok = forecast.At(64)
 	require.True(t, ok)
-	_, ok = recovery.At(65)
+	_, ok = forecast.At(65)
 	require.False(t, ok)
 }
 

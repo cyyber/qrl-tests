@@ -32,7 +32,7 @@ type lastingOutage struct {
 	// first whose start state has counted every vote cast before the stop.
 	stopped, settled uint64
 	frozen           beacon.FinalityCheckpoints
-	forecast         rewards.Recovery
+	forecast         rewards.Forecast
 	// justified is the first checkpoint justified since the stop.
 	justified beacon.Checkpoint
 }
@@ -189,7 +189,7 @@ func (states beaconStates) at(ctx context.Context, epoch uint64) (uint64, []beac
 
 // forecast forecasts the outage's recovery from the state at the start of
 // its settled epoch.
-func (states beaconStates) forecast(ctx context.Context, spec rewards.Spec, outage lastingOutage) rewards.Recovery {
+func (states beaconStates) forecast(ctx context.Context, spec rewards.Spec, outage lastingOutage) rewards.Forecast {
 	ginkgo.GinkgoHelper()
 	online, offline := states.at(ctx, outage.settled)
 	scores := testsuite.MustSucceed(states.client.InactivityScores(ctx, states.stateAt(outage.settled)))
@@ -236,7 +236,7 @@ func expectForecastStakes(records []beacon.Validator, start, want []rewards.Stak
 // votes justify the two epochs after the first justified one too, so the
 // processing at the end of the third finalizes it; the next epoch's first
 // slots may be empty, so the deadline allows that epoch whole.
-func recoveryDeadline(chain chaininfo.Info, forecast rewards.Recovery) time.Time {
+func recoveryDeadline(chain chaininfo.Info, forecast rewards.Forecast) time.Time {
 	finalizing := forecast.FirstJustified + forecastMargin + finalizeEpochs
 	return chain.SlotStartTime((finalizing + 2) * chain.SlotsPerEpoch)
 }

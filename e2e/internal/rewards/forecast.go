@@ -23,8 +23,8 @@ type Outage struct {
 	Offline   []Stake
 }
 
-// Recovery is the forecast of when the online validators first justify alone.
-type Recovery struct {
+// Forecast is when the online validators are expected to first justify alone.
+type Forecast struct {
 	FirstJustified uint64
 	start          uint64
 	stakes         [][]Stake
@@ -32,11 +32,11 @@ type Recovery struct {
 
 // At returns the offline stakes at the start of epoch, from the outage's epoch
 // through FirstJustified+2.
-func (recovery Recovery) At(epoch uint64) ([]Stake, bool) {
-	if epoch < recovery.start || epoch-recovery.start >= uint64(len(recovery.stakes)) {
+func (forecast Forecast) At(epoch uint64) ([]Stake, bool) {
+	if epoch < forecast.start || epoch-forecast.start >= uint64(len(forecast.stakes)) {
 		return nil, false
 	}
-	return slices.Clone(recovery.stakes[epoch-recovery.start]), true
+	return slices.Clone(forecast.stakes[epoch-forecast.start]), true
 }
 
 // TotalEffectiveBalance sums the stakes' effective balances.
@@ -50,26 +50,26 @@ func TotalEffectiveBalance(stakes []Stake) uint64 {
 
 // ForecastRecovery simulates the outage epoch by epoch until the online
 // validators hold two thirds of the stake.
-func (spec Spec) ForecastRecovery(outage Outage) (Recovery, error) {
+func (spec Spec) ForecastRecovery(outage Outage) (Forecast, error) {
 	if outage.Online == 0 {
-		return Recovery{}, errors.New("forecast a recovery: the online validators hold no stake")
+		return Forecast{}, errors.New("forecast a recovery: the online validators hold no stake")
 	}
 	if outage.Epoch == 0 {
-		return Recovery{}, errors.New("forecast a recovery: the outage starts at epoch 0")
+		return Forecast{}, errors.New("forecast a recovery: the outage starts at epoch 0")
 	}
-	recovery := Recovery{start: outage.Epoch}
+	forecast := Forecast{start: outage.Epoch}
 	stakes := slices.Clone(outage.Offline)
 	justified := false
 	for epoch := outage.Epoch; ; epoch++ {
-		recovery.stakes = append(recovery.stakes, slices.Clone(stakes))
+		forecast.stakes = append(forecast.stakes, slices.Clone(stakes))
 		total := outage.Online + TotalEffectiveBalance(stakes)
 		// The processing at the end of epoch counts the previous epoch's votes
 		// at these effective balances.
 		if !justified && 3*outage.Online >= 2*total {
-			recovery.FirstJustified, justified = epoch-1, true
+			forecast.FirstJustified, justified = epoch-1, true
 		}
-		if justified && epoch == recovery.FirstJustified+2 {
-			return recovery, nil
+		if justified && epoch == forecast.FirstJustified+2 {
+			return forecast, nil
 		}
 		leak := spec.inInactivityLeak(epoch-1, outage.Finalized)
 		for index := range stakes {
@@ -77,7 +77,7 @@ func (spec Spec) ForecastRecovery(outage Outage) (Recovery, error) {
 			// An ejected validator leaves the stake, which the forecast doesn't
 			// model.
 			if stakes[index].EffectiveBalance <= spec.ejectionBalance {
-				return Recovery{}, fmt.Errorf("forecast a recovery: offline validator %d reaches the ejection balance in epoch %d",
+				return Forecast{}, fmt.Errorf("forecast a recovery: offline validator %d reaches the ejection balance in epoch %d",
 					index, epoch+1)
 			}
 		}
