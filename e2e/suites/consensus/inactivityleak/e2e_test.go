@@ -43,7 +43,7 @@ var _ = ginkgo.Describe(
 			ginkgo.It("brings the returned validator's inactivity score back to zero",
 				suite.zeroesReturnedScore, ginkgo.SpecTimeout(decayTimeout))
 			ginkgo.It("slashes no validator, and every node finalizes the same checkpoint", func(ctx ginkgo.SpecContext) {
-				suite.expectCleanFinality(ctx, suite.returning.restarted)
+				suite.expectCleanFinality(ctx, suite.returning.returnedEpoch)
 			}, ginkgo.SpecTimeout(checkTimeout))
 			ginkgo.It("finalizes with every validator back on its own client",
 				suite.finalizesWithEveryValidatorBack, ginkgo.SpecTimeout(rejoinTimeout))
