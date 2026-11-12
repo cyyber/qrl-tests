@@ -82,7 +82,7 @@ func (spec Spec) ForecastRecovery(outage Outage) (RecoveryForecast, error) {
 	}
 }
 
-// nextStake is an offline validator's stake an epoch later.
+// nextStake applies one epoch's penalties to an offline validator's stake.
 func (spec Spec) nextStake(stake Stake, online, total uint64, leak bool) Stake {
 	baseReward := spec.baseReward(stake.EffectiveBalance, total)
 	// The average cost of missed sync committee duties in the online
