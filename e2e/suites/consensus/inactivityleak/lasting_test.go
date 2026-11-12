@@ -133,7 +133,7 @@ func (suite *leakSuite) finalizesByLeakAlone(ctx ginkgo.SpecContext) {
 		outage.justified.Epoch, forecast.FirstJustified, outage.justified.Epoch-outage.stopped, outage.stopped)
 }
 
-func (suite *leakSuite) keepsOfflineValidatorsActive(ctx ginkgo.SpecContext) {
+func (suite *leakSuite) leavesOfflineValidatorsAtForecast(ctx ginkgo.SpecContext) {
 	outage := &suite.lasting
 	// The processing at the end of the epoch after the justified one counted
 	// its votes, at the effective balances that epoch starts with.

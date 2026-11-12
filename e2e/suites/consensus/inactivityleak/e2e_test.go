@@ -57,7 +57,7 @@ var _ = ginkgo.Describe(
 			ginkgo.It("finalizes again within an epoch of the forecast",
 				suite.finalizesByLeakAlone, ginkgo.SpecTimeout(recoveryTimeout))
 			ginkgo.It("leaves every offline validator active, at its forecast effective balance",
-				suite.keepsOfflineValidatorsActive, ginkgo.SpecTimeout(checkTimeout))
+				suite.leavesOfflineValidatorsAtForecast, ginkgo.SpecTimeout(checkTimeout))
 			ginkgo.It("slashes no validator, and every node finalizes the same checkpoint", func(ctx ginkgo.SpecContext) {
 				suite.expectCleanFinality(ctx, suite.lasting.justified.Epoch)
 			}, ginkgo.SpecTimeout(checkTimeout))
