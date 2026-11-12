@@ -49,8 +49,7 @@ func (suite *leakSuite) stopsFinalizing(ctx ginkgo.SpecContext) {
 func (suite *leakSuite) leaksOfflineStake(ctx ginkgo.SpecContext) {
 	outage := &suite.returning
 	offline := suite.offlineValidator
-	first := offline.Spec.FirstLeakEpoch(outage.frozen.Finalized.Epoch)
-	last := first + leakEpochs - 1
+	first, last := suite.leakWindow()
 	// The epoch before the leak shows the score starts from zero, and must be
 	// one the stopped client missed.
 	gomega.Expect(first-1).To(gomega.BeNumerically(">", outage.stopped),
@@ -72,8 +71,7 @@ func (suite *leakSuite) leaksOfflineStake(ctx ginkgo.SpecContext) {
 
 func (suite *leakSuite) paysOnlineVotesNothing(ctx ginkgo.SpecContext) {
 	online := suite.onlineValidator
-	first := online.Spec.FirstLeakEpoch(suite.returning.frozen.Finalized.Epoch)
-	last := first + leakEpochs - 1
+	first, last := suite.leakWindow()
 	online.AwaitRewards(ctx, last)
 	for epoch := first; epoch <= last; epoch++ {
 		expectUnpaidVotes(ctx, online, epoch)
@@ -149,6 +147,12 @@ func (suite *leakSuite) finalizesWithEveryValidatorBack(ctx ginkgo.SpecContext) 
 	gomega.Expect(testsuite.SleepUntil(ctx, suite.chain.SlotStartTime(next*suite.chain.SlotsPerEpoch))).To(gomega.Succeed())
 	gomega.Expect(suite.runtime.StartParticipantValidators(ctx, offlineParticipant)).To(gomega.Succeed())
 	testsuite.AwaitFinalizedEpoch(ctx, suite.beacon, suite.chain, suite.currentEpoch(ctx), finalityTimeoutEpochs)
+}
+
+// leakWindow is the first leakEpochs epochs of the first outage's leak.
+func (suite *leakSuite) leakWindow() (first, last uint64) {
+	first = suite.onlineValidator.Spec.FirstLeakEpoch(suite.returning.frozen.Finalized.Epoch)
+	return first, first + leakEpochs - 1
 }
 
 // expectMissedEpoch checks the inactivity scores, rewards and balance change

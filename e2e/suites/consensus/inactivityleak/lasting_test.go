@@ -61,20 +61,20 @@ func (suite *leakSuite) stopsFinalizingForGood(ctx ginkgo.SpecContext) {
 
 func (suite *leakSuite) forecastsRecovery(ctx ginkgo.SpecContext) {
 	outage := &suite.lasting
-	outage.forecast = suite.forecast(ctx, *outage)
+	outage.forecast = suite.forecast(ctx)
 	forecast := outage.forecast
 
 	// The votes of FirstJustified count at the end of the next epoch, at the
 	// effective balances that epoch starts with.
-	before, ok := forecast.OfflineStakesAt(forecast.FirstJustified)
+	justifiedStakes, ok := forecast.OfflineStakesAt(forecast.FirstJustified)
 	gomega.Expect(ok).To(gomega.BeTrue())
-	deciding, ok := forecast.OfflineStakesAt(forecast.FirstJustified + 1)
+	decidingStakes, ok := forecast.OfflineStakesAt(forecast.FirstJustified + 1)
 	gomega.Expect(ok).To(gomega.BeTrue())
 	onlineStake, _ := suite.stakesAt(ctx, outage.settled)
 	ginkgo.GinkgoWriter.Printf("forecast: epoch %d is the first the online validators justify alone, %d epochs after the stop; "+
 		"half the online stake is %d shor, and the offline stake %d at the start of epoch %d and %d at the start of epoch %d\n",
 		forecast.FirstJustified, forecast.FirstJustified-outage.stopped, onlineStake/2,
-		rewards.TotalEffectiveBalance(before), forecast.FirstJustified, rewards.TotalEffectiveBalance(deciding), forecast.FirstJustified+1)
+		rewards.TotalEffectiveBalance(justifiedStakes), forecast.FirstJustified, rewards.TotalEffectiveBalance(decidingStakes), forecast.FirstJustified+1)
 
 	gomega.Expect(time.Until(recoveryDeadline(suite.chain, forecast))).To(gomega.BeNumerically("<", recoveryTimeout-checkTimeout),
 		"the wait for finality, forecast to justify epoch %d, does not fit the next spec's timeout", forecast.FirstJustified)
@@ -83,8 +83,8 @@ func (suite *leakSuite) forecastsRecovery(ctx ginkgo.SpecContext) {
 func (suite *leakSuite) finalizesByLeakAlone(ctx ginkgo.SpecContext) {
 	outage := &suite.lasting
 	forecast := outage.forecast
-	// The head shows each justification as it happens, at most one an epoch,
-	// which states long behind it, by then finalized, would be slow to show.
+	// Poll the head, which shows each justification as it happens; states far
+	// behind it, finalized by then, are slow to read.
 	var finalized beacon.Checkpoint
 	gomega.Eventually(func(g gomega.Gomega, ctx context.Context) {
 		checkpoints, err := suite.beacon.FinalityCheckpoints(ctx)
@@ -100,7 +100,7 @@ func (suite *leakSuite) finalizesByLeakAlone(ctx ginkgo.SpecContext) {
 		WithPolling(suite.chain.SlotDuration).
 		Should(gomega.Succeed())
 
-	suite.expectFirstJustified(ctx, *outage)
+	suite.expectFirstJustified(ctx)
 	// The forecast holds the online stake fixed, though a late source vote can
 	// take an online validator's effective balance down an increment, and
 	// spreads the offline validators' sync committee penalties evenly. Both
@@ -131,10 +131,11 @@ func (suite *leakSuite) leaksOfflineStakeAsForecast(ctx ginkgo.SpecContext) {
 		rewards.TotalEffectiveBalance(start), totalEffectiveBalance(offlineRecords), deciding, rewards.TotalEffectiveBalance(want))
 }
 
-// forecast forecasts the outage's recovery from the state at the start of
-// its settled epoch.
-func (suite *leakSuite) forecast(ctx context.Context, outage lastingOutage) rewards.RecoveryForecast {
+// forecast forecasts the second outage's recovery from the state at the start
+// of its settled epoch.
+func (suite *leakSuite) forecast(ctx context.Context) rewards.RecoveryForecast {
 	ginkgo.GinkgoHelper()
+	outage := suite.lasting
 	online, offline := suite.stakesAt(ctx, outage.settled)
 	scores := testsuite.MustSucceed(suite.beacon.InactivityScores(ctx, suite.stateAt(outage.settled)))
 	start := rewards.Outage{Epoch: outage.settled, FinalizedEpoch: outage.frozen.Finalized.Epoch, OnlineStake: online}
@@ -149,11 +150,13 @@ func (suite *leakSuite) forecast(ctx context.Context, outage lastingOutage) rewa
 	return testsuite.MustSucceed(suite.onlineValidator.Spec.ForecastRecovery(start))
 }
 
-// expectFirstJustified checks that the outage's justified checkpoint is the
-// first since the stop: the epoch after it still starts with the frozen one.
-// That state is after the finalized checkpoint, so the node keeps it at hand.
-func (suite *leakSuite) expectFirstJustified(ctx context.Context, outage lastingOutage) {
+// expectFirstJustified checks that the second outage's justified checkpoint is
+// the first since the stop: the epoch after it still starts with the frozen
+// one. That state is after the finalized checkpoint, so the node keeps it at
+// hand.
+func (suite *leakSuite) expectFirstJustified(ctx context.Context) {
 	ginkgo.GinkgoHelper()
+	outage := suite.lasting
 	gomega.Expect(outage.justified.Epoch).To(gomega.BeNumerically(">", outage.frozen.CurrentJustified.Epoch),
 		"no checkpoint justified since the stop in epoch %d", outage.stopped)
 	gomega.Expect(suite.checkpointsAt(ctx, outage.justified.Epoch+1).CurrentJustified).To(gomega.Equal(outage.frozen.CurrentJustified),
