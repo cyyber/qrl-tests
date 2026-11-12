@@ -50,7 +50,8 @@ func TestForecastRecoveryAfterOneEpoch(t *testing.T) {
 	// first missed epoch takes it to 39,995 QRL, under half the online stake,
 	// so the online votes of epoch 10 count two thirds at the end of epoch 11.
 	start := Stake{Balance: fullStake, EffectiveBalance: fullStake}
-	recovery := spec.ForecastRecovery(Outage{Epoch: 10, Finalized: 8, Online: 79_998 * shorPerQRL, Offline: []Stake{start}})
+	recovery, err := spec.ForecastRecovery(Outage{Epoch: 10, Finalized: 8, Online: 79_998 * shorPerQRL, Offline: []Stake{start}})
+	require.NoError(t, err)
 	require.Equal(t, uint64(10), recovery.Justified)
 
 	stakes, ok := recovery.At(10)
@@ -72,7 +73,8 @@ func TestForecastRecovery(t *testing.T) {
 	// 22 of 65 validators offline from epoch 6 on, with epoch 4 finalized, so
 	// the leak counts their missed votes from epoch 9.
 	offline := slices.Repeat([]Stake{{Balance: fullStake, EffectiveBalance: fullStake}}, 22)
-	recovery := spec.ForecastRecovery(Outage{Epoch: 7, Finalized: 4, Online: 43 * fullStake, Offline: offline})
+	recovery, err := spec.ForecastRecovery(Outage{Epoch: 7, Finalized: 4, Online: 43 * fullStake, Offline: offline})
+	require.NoError(t, err)
 	require.Equal(t, uint64(62), recovery.Justified)
 
 	// Epoch 62 starts with the offline stake at 860,442 QRL, above half the
@@ -87,4 +89,18 @@ func TestForecastRecovery(t *testing.T) {
 	require.True(t, ok)
 	_, ok = recovery.At(65)
 	require.False(t, ok)
+}
+
+func TestForecastRecoveryWithoutOnlineStake(t *testing.T) {
+	offline := []Stake{{Balance: fullStake, EffectiveBalance: fullStake}}
+	_, err := testSpec().ForecastRecovery(Outage{Epoch: 7, Finalized: 4, Offline: offline})
+	require.EqualError(t, err, "forecast a recovery: the online validators hold no stake")
+}
+
+func TestTotalEffectiveBalance(t *testing.T) {
+	require.Zero(t, TotalEffectiveBalance(nil))
+	require.Equal(t, uint64(79_995*shorPerQRL), TotalEffectiveBalance([]Stake{
+		{Balance: fullStake, EffectiveBalance: fullStake},
+		{Balance: 39_995_170_278_799, EffectiveBalance: 39_995 * shorPerQRL},
+	}))
 }

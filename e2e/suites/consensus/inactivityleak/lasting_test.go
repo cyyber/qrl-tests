@@ -92,7 +92,7 @@ func (suite *leakSuite) forecastsRecovery(ctx ginkgo.SpecContext) {
 	ginkgo.GinkgoWriter.Printf("forecast: epoch %d is the first the online validators justify alone, %d epochs after the stop; "+
 		"half the online stake is %d shor, and the offline stake %d at the start of epoch %d and %d at the start of epoch %d\n",
 		forecast.Justified, forecast.Justified-outage.stopped, onlineStake/2,
-		forecastTotal(before), forecast.Justified, forecastTotal(deciding), forecast.Justified+1)
+		rewards.TotalEffectiveBalance(before), forecast.Justified, rewards.TotalEffectiveBalance(deciding), forecast.Justified+1)
 
 	gomega.Expect(time.Until(recoveryDeadline(suite.chain, forecast))).To(gomega.BeNumerically("<", recoveryTimeout-checkTimeout),
 		"the wait for finality, forecast to justify epoch %d, does not fit the next spec's timeout", forecast.Justified)
@@ -150,7 +150,7 @@ func (suite *leakSuite) keepsOfflineValidatorsActive(ctx ginkgo.SpecContext) {
 	gomega.Expect(ok).To(gomega.BeTrue(), "no forecast for epoch %d", deciding)
 	expectForecastStakes(offlineRecords, start, want, deciding, suite.balanceIncrement)
 	ginkgo.GinkgoWriter.Printf("the offline stake went from %d to %d shor by the start of epoch %d, against %d forecast\n",
-		forecastTotal(start), offlineStake, deciding, forecastTotal(want))
+		rewards.TotalEffectiveBalance(start), offlineStake, deciding, rewards.TotalEffectiveBalance(want))
 
 	for _, record := range testsuite.MustSucceed(suite.onlineValidator.Client.ValidatorsAt(ctx, "head", suite.offlineIndices)) {
 		gomega.Expect(record.Status).To(gomega.Equal("active_ongoing"), "status of offline validator %d", record.Index)
@@ -202,7 +202,7 @@ func (states beaconStates) forecast(ctx context.Context, spec rewards.Spec, outa
 			InactivityScore:  scores[record.Index],
 		})
 	}
-	return spec.ForecastRecovery(start)
+	return testsuite.MustSucceed(spec.ForecastRecovery(start))
 }
 
 // expectFirstJustified checks that the outage's justified checkpoint is the
@@ -245,14 +245,6 @@ func totalEffectiveBalance(records []beacon.Validator) uint64 {
 	var stake uint64
 	for _, record := range records {
 		stake += record.EffectiveBalance
-	}
-	return stake
-}
-
-func forecastTotal(stakes []rewards.Stake) uint64 {
-	var stake uint64
-	for _, entry := range stakes {
-		stake += entry.EffectiveBalance
 	}
 	return stake
 }
