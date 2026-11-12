@@ -24,8 +24,8 @@ const (
 	recoveryTimeout = 50 * time.Minute
 )
 
-// lastingOutage is the second outage, which starts once every validator is
-// back and which no validator returns from.
+// lastingOutage is the second outage, which lasts until the leak alone brings
+// finality back.
 type lastingOutage struct {
 	// stopped is the epoch the validator client stopped in, and settled the
 	// first whose start state has counted every vote cast before the stop.
