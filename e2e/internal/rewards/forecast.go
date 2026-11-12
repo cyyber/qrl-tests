@@ -30,9 +30,9 @@ type Forecast struct {
 	stakes         [][]Stake
 }
 
-// At returns the offline stakes at the start of epoch, from the outage's epoch
+// OfflineStakesAt returns the offline stakes at the start of epoch, from the outage's epoch
 // through FirstJustified+2.
-func (forecast Forecast) At(epoch uint64) ([]Stake, bool) {
+func (forecast Forecast) OfflineStakesAt(epoch uint64) ([]Stake, bool) {
 	if epoch < forecast.start || epoch-forecast.start >= uint64(len(forecast.stakes)) {
 		return nil, false
 	}

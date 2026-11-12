@@ -84,9 +84,9 @@ func (suite *leakSuite) forecastsRecovery(ctx ginkgo.SpecContext) {
 
 	// The votes of FirstJustified count at the end of the next epoch, at the
 	// effective balances that epoch starts with.
-	before, ok := forecast.At(forecast.FirstJustified)
+	before, ok := forecast.OfflineStakesAt(forecast.FirstJustified)
 	gomega.Expect(ok).To(gomega.BeTrue())
-	deciding, ok := forecast.At(forecast.FirstJustified + 1)
+	deciding, ok := forecast.OfflineStakesAt(forecast.FirstJustified + 1)
 	gomega.Expect(ok).To(gomega.BeTrue())
 	onlineStake, _ := suite.states.at(ctx, outage.settled)
 	ginkgo.GinkgoWriter.Printf("forecast: epoch %d is the first the online validators justify alone, %d epochs after the stop; "+
@@ -144,9 +144,9 @@ func (suite *leakSuite) keepsOfflineValidatorsActive(ctx ginkgo.SpecContext) {
 		"at the start of epoch %d, the online validators hold %d shor and the offline ones %d, more than half as much",
 		deciding, onlineStake, offlineStake)
 
-	start, ok := outage.forecast.At(outage.settled)
+	start, ok := outage.forecast.OfflineStakesAt(outage.settled)
 	gomega.Expect(ok).To(gomega.BeTrue())
-	want, ok := outage.forecast.At(deciding)
+	want, ok := outage.forecast.OfflineStakesAt(deciding)
 	gomega.Expect(ok).To(gomega.BeTrue(), "no forecast for epoch %d", deciding)
 	expectForecastStakes(offlineRecords, start, want, deciding, suite.balanceIncrement)
 	ginkgo.GinkgoWriter.Printf("the offline stake went from %d to %d shor by the start of epoch %d, against %d forecast\n",

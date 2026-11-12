@@ -54,17 +54,17 @@ func TestForecastRecoveryAfterOneEpoch(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, uint64(10), forecast.FirstJustified)
 
-	stakes, ok := forecast.At(10)
+	stakes, ok := forecast.OfflineStakesAt(10)
 	require.True(t, ok)
 	require.Equal(t, []Stake{start}, stakes)
-	stakes, ok = forecast.At(11)
+	stakes, ok = forecast.OfflineStakesAt(11)
 	require.True(t, ok)
 	require.Equal(t, []Stake{{Balance: 39_995_170_278_799, EffectiveBalance: 39_995 * shorPerQRL}}, stakes)
-	_, ok = forecast.At(12)
+	_, ok = forecast.OfflineStakesAt(12)
 	require.True(t, ok)
-	_, ok = forecast.At(13)
+	_, ok = forecast.OfflineStakesAt(13)
 	require.False(t, ok)
-	_, ok = forecast.At(9)
+	_, ok = forecast.OfflineStakesAt(9)
 	require.False(t, ok)
 }
 
@@ -79,15 +79,15 @@ func TestForecastRecovery(t *testing.T) {
 
 	// Epoch 62 starts with the offline stake at 860,442 QRL, above half the
 	// online 1,720,000, and epoch 63, after 53 epochs of leak, at 859,716.
-	stakes, ok := forecast.At(62)
+	stakes, ok := forecast.OfflineStakesAt(62)
 	require.True(t, ok)
 	require.Equal(t, Stake{Balance: 39_111_585_777_860, EffectiveBalance: 39_111 * shorPerQRL, InactivityScore: 208}, stakes[0])
-	stakes, ok = forecast.At(63)
+	stakes, ok = forecast.OfflineStakesAt(63)
 	require.True(t, ok)
 	require.Equal(t, slices.Repeat([]Stake{{Balance: 39_078_937_749_638, EffectiveBalance: 39_078 * shorPerQRL, InactivityScore: 212}}, 22), stakes)
-	_, ok = forecast.At(64)
+	_, ok = forecast.OfflineStakesAt(64)
 	require.True(t, ok)
-	_, ok = forecast.At(65)
+	_, ok = forecast.OfflineStakesAt(65)
 	require.False(t, ok)
 }
 
