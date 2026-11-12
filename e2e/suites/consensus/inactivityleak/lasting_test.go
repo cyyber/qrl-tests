@@ -193,10 +193,10 @@ func (states beaconStates) forecast(ctx context.Context, spec rewards.Spec, outa
 	ginkgo.GinkgoHelper()
 	online, offline := states.at(ctx, outage.settled)
 	scores := testsuite.MustSucceed(states.client.InactivityScores(ctx, states.stateAt(outage.settled)))
-	start := rewards.Outage{Epoch: outage.settled, Finalized: outage.frozen.Finalized.Epoch, Online: online}
+	start := rewards.Outage{Epoch: outage.settled, FinalizedEpoch: outage.frozen.Finalized.Epoch, OnlineStake: online}
 	for _, record := range offline {
 		gomega.Expect(record.Index).To(gomega.BeNumerically("<", len(scores)), "inactivity scores at the start of epoch %d", outage.settled)
-		start.Offline = append(start.Offline, rewards.Stake{
+		start.OfflineStakes = append(start.OfflineStakes, rewards.Stake{
 			Balance:          record.Balance,
 			EffectiveBalance: record.EffectiveBalance,
 			InactivityScore:  scores[record.Index],

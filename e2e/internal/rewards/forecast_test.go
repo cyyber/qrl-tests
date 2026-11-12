@@ -50,7 +50,7 @@ func TestForecastRecoveryAfterOneEpoch(t *testing.T) {
 	// first missed epoch takes it to 39,995 QRL, under half the online stake,
 	// so the online votes of epoch 10 count two thirds at the end of epoch 11.
 	start := Stake{Balance: fullStake, EffectiveBalance: fullStake}
-	forecast, err := spec.ForecastRecovery(Outage{Epoch: 10, Finalized: 8, Online: 79_998 * shorPerQRL, Offline: []Stake{start}})
+	forecast, err := spec.ForecastRecovery(Outage{Epoch: 10, FinalizedEpoch: 8, OnlineStake: 79_998 * shorPerQRL, OfflineStakes: []Stake{start}})
 	require.NoError(t, err)
 	require.Equal(t, uint64(10), forecast.FirstJustified)
 
@@ -73,7 +73,7 @@ func TestForecastRecovery(t *testing.T) {
 	// 22 of 65 validators offline from epoch 6 on, with epoch 4 finalized, so
 	// the leak counts their missed votes from epoch 9.
 	offline := slices.Repeat([]Stake{{Balance: fullStake, EffectiveBalance: fullStake}}, 22)
-	forecast, err := spec.ForecastRecovery(Outage{Epoch: 7, Finalized: 4, Online: 43 * fullStake, Offline: offline})
+	forecast, err := spec.ForecastRecovery(Outage{Epoch: 7, FinalizedEpoch: 4, OnlineStake: 43 * fullStake, OfflineStakes: offline})
 	require.NoError(t, err)
 	require.Equal(t, uint64(62), forecast.FirstJustified)
 
@@ -101,15 +101,15 @@ func TestForecastRecoveryRefuses(t *testing.T) {
 		want   string
 	}{
 		"no online stake": {
-			outage: Outage{Epoch: 7, Finalized: 4, Offline: full},
+			outage: Outage{Epoch: 7, FinalizedEpoch: 4, OfflineStakes: full},
 			want:   "forecast a recovery: the online validators hold no stake",
 		},
 		"an outage at epoch 0": {
-			outage: Outage{Online: fullStake, Offline: full},
+			outage: Outage{OnlineStake: fullStake, OfflineStakes: full},
 			want:   "forecast a recovery: the outage starts at epoch 0",
 		},
 		"an ejection before the recovery": {
-			outage: Outage{Epoch: 7, Finalized: 4, Online: shorPerQRL, Offline: nearEjection},
+			outage: Outage{Epoch: 7, FinalizedEpoch: 4, OnlineStake: shorPerQRL, OfflineStakes: nearEjection},
 			want:   "forecast a recovery: offline validator 0 reaches the ejection balance in epoch 8",
 		},
 	} {

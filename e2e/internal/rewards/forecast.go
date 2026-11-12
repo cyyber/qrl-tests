@@ -17,10 +17,10 @@ type Stake struct {
 // Outage is the chain at the start of Epoch, while the offline validators miss
 // every vote.
 type Outage struct {
-	Epoch     uint64
-	Finalized uint64
-	Online    uint64
-	Offline   []Stake
+	Epoch          uint64
+	FinalizedEpoch uint64
+	OnlineStake    uint64
+	OfflineStakes  []Stake
 }
 
 // RecoveryForecast is when the online validators are expected to first justify
@@ -52,29 +52,29 @@ func TotalEffectiveBalance(stakes []Stake) uint64 {
 // ForecastRecovery simulates the outage epoch by epoch until the online
 // validators hold two thirds of the stake.
 func (spec Spec) ForecastRecovery(outage Outage) (RecoveryForecast, error) {
-	if outage.Online == 0 {
+	if outage.OnlineStake == 0 {
 		return RecoveryForecast{}, errors.New("forecast a recovery: the online validators hold no stake")
 	}
 	if outage.Epoch == 0 {
 		return RecoveryForecast{}, errors.New("forecast a recovery: the outage starts at epoch 0")
 	}
 	forecast := RecoveryForecast{start: outage.Epoch}
-	stakes := slices.Clone(outage.Offline)
+	stakes := slices.Clone(outage.OfflineStakes)
 	justified := false
 	for epoch := outage.Epoch; ; epoch++ {
 		forecast.stakes = append(forecast.stakes, slices.Clone(stakes))
-		total := outage.Online + TotalEffectiveBalance(stakes)
+		total := outage.OnlineStake + TotalEffectiveBalance(stakes)
 		// The processing at the end of epoch counts the previous epoch's votes
 		// at these effective balances.
-		if !justified && 3*outage.Online >= 2*total {
+		if !justified && 3*outage.OnlineStake >= 2*total {
 			forecast.FirstJustified, justified = epoch-1, true
 		}
 		if justified && epoch == forecast.FirstJustified+2 {
 			return forecast, nil
 		}
-		leak := spec.inInactivityLeak(epoch-1, outage.Finalized)
+		leak := spec.inInactivityLeak(epoch-1, outage.FinalizedEpoch)
 		for index := range stakes {
-			stakes[index] = spec.nextStake(stakes[index], outage.Online, total, leak)
+			stakes[index] = spec.nextStake(stakes[index], outage.OnlineStake, total, leak)
 			// An ejected validator leaves the stake, which the forecast doesn't
 			// model.
 			if stakes[index].EffectiveBalance <= spec.ejectionBalance {
