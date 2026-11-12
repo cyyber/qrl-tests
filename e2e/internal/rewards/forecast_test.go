@@ -9,10 +9,9 @@ import (
 
 const fullStake = 40_000 * shorPerQRL
 
-func TestNextStake(t *testing.T) {
+func TestNextOfflineStake(t *testing.T) {
 	spec := testSpec()
-	// An offline validator, missing every duty while 43 of 65 validators are
-	// online.
+	// Missing every duty while 43 of 65 validators are online.
 	for name, test := range map[string]struct {
 		stake Stake
 		leak  bool
@@ -40,7 +39,7 @@ func TestNextStake(t *testing.T) {
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
-			require.Equal(t, test.want, spec.nextStake(test.stake, 43*fullStake, 65*fullStake, test.leak))
+			require.Equal(t, test.want, spec.nextOfflineStake(test.stake, 43*fullStake, 65*fullStake, test.leak))
 		})
 	}
 }

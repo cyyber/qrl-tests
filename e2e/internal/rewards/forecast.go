@@ -73,7 +73,7 @@ func (spec Spec) ForecastRecovery(outage Outage) (RecoveryForecast, error) {
 		}
 		leak := spec.inInactivityLeak(epoch-1, outage.FinalizedEpoch)
 		for index := range stakes {
-			stakes[index] = spec.nextStake(stakes[index], outage.OnlineStake, total, leak)
+			stakes[index] = spec.nextOfflineStake(stakes[index], outage.OnlineStake, total, leak)
 			if stakes[index].EffectiveBalance <= spec.ejectionBalance {
 				return RecoveryForecast{}, fmt.Errorf("forecast a recovery: offline validator %d reaches the ejection balance in epoch %d",
 					index, epoch+1)
@@ -82,8 +82,8 @@ func (spec Spec) ForecastRecovery(outage Outage) (RecoveryForecast, error) {
 	}
 }
 
-// nextStake applies one epoch's penalties to an offline validator's stake.
-func (spec Spec) nextStake(stake Stake, online, total uint64, leak bool) Stake {
+// nextOfflineStake applies one epoch's penalties to an offline validator's stake.
+func (spec Spec) nextOfflineStake(stake Stake, online, total uint64, leak bool) Stake {
 	stake.InactivityScore = spec.NextInactivityScore(stake.InactivityScore, false, leak)
 	source, target := spec.missedVotePenalties(stake.EffectiveBalance, total)
 	penalty := source + target +
