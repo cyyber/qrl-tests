@@ -102,8 +102,9 @@ func (spec Spec) missedSyncPenalty(effectiveBalance, online, total uint64) uint6
 		(online / spec.increment) / (total / spec.increment)
 }
 
-// nextEffectiveBalance drops the effective balance to the balance's whole
-// increments once the balance falls a hysteresis step below it.
+// nextEffectiveBalance is the effective balance after the balance changes: it
+// drops to the balance rounded down to whole increments, but only once the
+// balance is more than a hysteresis step (a quarter QRL) below it.
 func (spec Spec) nextEffectiveBalance(balance, effectiveBalance uint64) uint64 {
 	step := spec.increment / spec.hysteresisQuotient * spec.hysteresisDownwardMultiplier
 	if balance+step < effectiveBalance {
