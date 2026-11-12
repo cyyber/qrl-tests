@@ -31,6 +31,7 @@ func testSpec() Spec {
 		inactivityPenaltyQuotient:    1 << 16,
 		hysteresisQuotient:           4,
 		hysteresisDownwardMultiplier: 1,
+		ejectionBalance:              20_000 * shorPerQRL,
 	}
 }
 
@@ -163,7 +164,8 @@ func TestLoadSpec(t *testing.T) {
 		"SYNC_REWARD_WEIGHT":"2","WEIGHT_DENOMINATOR":"64","MIN_EPOCHS_TO_INACTIVITY_PENALTY":"4",
 		"MIN_ATTESTATION_INCLUSION_DELAY":"1","INACTIVITY_SCORE_BIAS":"4",
 		"INACTIVITY_SCORE_RECOVERY_RATE":"16","INACTIVITY_PENALTY_QUOTIENT":"65536",
-		"HYSTERESIS_QUOTIENT":"4","HYSTERESIS_DOWNWARD_MULTIPLIER":"1"}`})
+		"HYSTERESIS_QUOTIENT":"4","HYSTERESIS_DOWNWARD_MULTIPLIER":"1",
+		"EJECTION_BALANCE":"20000000000000"}`})
 
 	spec, err := LoadSpec(t.Context(), client)
 	require.NoError(t, err)

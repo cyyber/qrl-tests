@@ -16,7 +16,7 @@ import (
 )
 
 // Spec holds the consensus constants of the base reward, of the inactivity
-// leak and of effective balance hysteresis.
+// leak, of effective balance hysteresis and of ejection.
 type Spec struct {
 	increment                    uint64
 	baseRewardFactor             uint64
@@ -31,6 +31,7 @@ type Spec struct {
 	inactivityPenaltyQuotient    uint64
 	hysteresisQuotient           uint64
 	hysteresisDownwardMultiplier uint64
+	ejectionBalance              uint64
 }
 
 func LoadSpec(ctx context.Context, client *beacon.Client) (Spec, error) {
@@ -53,6 +54,7 @@ func LoadSpec(ctx context.Context, client *beacon.Client) (Spec, error) {
 		"INACTIVITY_PENALTY_QUOTIENT":      &spec.inactivityPenaltyQuotient,
 		"HYSTERESIS_QUOTIENT":              &spec.hysteresisQuotient,
 		"HYSTERESIS_DOWNWARD_MULTIPLIER":   &spec.hysteresisDownwardMultiplier,
+		"EJECTION_BALANCE":                 &spec.ejectionBalance,
 	}); err != nil {
 		return Spec{}, err
 	}

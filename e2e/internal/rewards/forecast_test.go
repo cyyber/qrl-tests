@@ -91,10 +91,33 @@ func TestForecastRecovery(t *testing.T) {
 	require.False(t, ok)
 }
 
-func TestForecastRecoveryWithoutOnlineStake(t *testing.T) {
-	offline := []Stake{{Balance: fullStake, EffectiveBalance: fullStake}}
-	_, err := testSpec().ForecastRecovery(Outage{Epoch: 7, Finalized: 4, Offline: offline})
-	require.EqualError(t, err, "forecast a recovery: the online validators hold no stake")
+func TestForecastRecoveryRefuses(t *testing.T) {
+	full := []Stake{{Balance: fullStake, EffectiveBalance: fullStake}}
+	// A balance a little over the ejection balance drops it to the ejection
+	// balance after one epoch, long before a tiny online stake holds two thirds.
+	nearEjection := []Stake{{Balance: 20_000_500_000_000, EffectiveBalance: 20_001 * shorPerQRL}}
+	for name, test := range map[string]struct {
+		outage Outage
+		want   string
+	}{
+		"no online stake": {
+			outage: Outage{Epoch: 7, Finalized: 4, Offline: full},
+			want:   "forecast a recovery: the online validators hold no stake",
+		},
+		"an outage at epoch 0": {
+			outage: Outage{Online: fullStake, Offline: full},
+			want:   "forecast a recovery: an outage starts after epoch 0",
+		},
+		"an ejection before the recovery": {
+			outage: Outage{Epoch: 7, Finalized: 4, Online: shorPerQRL, Offline: nearEjection},
+			want:   "forecast a recovery: offline validator 0 reaches the ejection balance in epoch 8",
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := testSpec().ForecastRecovery(test.outage)
+			require.EqualError(t, err, test.want)
+		})
+	}
 }
 
 func TestTotalEffectiveBalance(t *testing.T) {

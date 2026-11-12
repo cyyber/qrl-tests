@@ -2,6 +2,7 @@ package rewards
 
 import (
 	"errors"
+	"fmt"
 	"slices"
 )
 
@@ -13,9 +14,8 @@ type Stake struct {
 	InactivityScore  uint64
 }
 
-// Outage is the chain at the start of Epoch, with the offline validators
-// missing every vote since the epoch before. Online, the other validators'
-// effective balance, stays fixed: they vote on time, so the leak takes nothing.
+// Outage is the chain at the start of Epoch, while the offline validators miss
+// every vote.
 type Outage struct {
 	Epoch     uint64
 	Finalized uint64
@@ -53,9 +53,11 @@ func TotalEffectiveBalance(stakes []Stake) uint64 {
 // ForecastRecovery simulates the outage epoch by epoch until the online
 // validators hold two thirds of the stake.
 func (spec Spec) ForecastRecovery(outage Outage) (Recovery, error) {
-	// With no online stake, two thirds is never reached.
 	if outage.Online == 0 {
 		return Recovery{}, errors.New("forecast a recovery: the online validators hold no stake")
+	}
+	if outage.Epoch == 0 {
+		return Recovery{}, errors.New("forecast a recovery: an outage starts after epoch 0")
 	}
 	recovery := Recovery{start: outage.Epoch}
 	stakes := slices.Clone(outage.Offline)
@@ -74,6 +76,12 @@ func (spec Spec) ForecastRecovery(outage Outage) (Recovery, error) {
 		leak := spec.inInactivityLeak(epoch-1, outage.Finalized)
 		for index := range stakes {
 			stakes[index] = spec.nextStake(stakes[index], outage.Online, total, leak)
+			// An ejected validator leaves the stake, which the forecast doesn't
+			// model.
+			if stakes[index].EffectiveBalance <= spec.ejectionBalance {
+				return Recovery{}, fmt.Errorf("forecast a recovery: offline validator %d reaches the ejection balance in epoch %d",
+					index, epoch+1)
+			}
 		}
 	}
 }
