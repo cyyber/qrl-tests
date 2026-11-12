@@ -64,8 +64,7 @@ func (spec Spec) ForecastRecovery(outage Outage) (RecoveryForecast, error) {
 	for epoch := outage.Epoch; ; epoch++ {
 		forecast.stakes = append(forecast.stakes, slices.Clone(stakes))
 		total := outage.OnlineStake + TotalEffectiveBalance(stakes)
-		// The processing at the end of epoch counts the previous epoch's votes
-		// at these effective balances.
+		// This epoch's processing justifies the one before.
 		if !justified && 3*outage.OnlineStake >= 2*total {
 			forecast.FirstJustified, justified = epoch-1, true
 		}
