@@ -74,8 +74,6 @@ func (spec Spec) ForecastRecovery(outage Outage) (RecoveryForecast, error) {
 		leak := spec.inInactivityLeak(epoch-1, outage.FinalizedEpoch)
 		for index := range stakes {
 			stakes[index] = spec.nextStake(stakes[index], outage.OnlineStake, total, leak)
-			// An ejected validator leaves the stake, which the forecast doesn't
-			// model.
 			if stakes[index].EffectiveBalance <= spec.ejectionBalance {
 				return RecoveryForecast{}, fmt.Errorf("forecast a recovery: offline validator %d reaches the ejection balance in epoch %d",
 					index, epoch+1)
