@@ -4,7 +4,6 @@ package inactivityleak
 
 import (
 	"context"
-	"strconv"
 	"time"
 
 	"github.com/cyyber/qrl-tests/e2e/internal/beacon"
@@ -132,32 +131,6 @@ func (suite *leakSuite) leaksOfflineStakeAsForecast(ctx ginkgo.SpecContext) {
 		rewards.TotalEffectiveBalance(start), totalEffectiveBalance(offlineRecords), deciding, rewards.TotalEffectiveBalance(want))
 }
 
-// beaconStates reads the online and the offline validators, and finality,
-// from one node's beacon states.
-type beaconStates struct {
-	client          *beacon.Client
-	chain           chaininfo.Info
-	online, offline []uint64
-}
-
-func (states beaconStates) stateAt(epoch uint64) string {
-	return strconv.FormatUint(epoch*states.chain.SlotsPerEpoch, 10)
-}
-
-// checkpointsAt reads the finality checkpoints at the start of epoch.
-func (states beaconStates) checkpointsAt(ctx context.Context, epoch uint64) beacon.FinalityCheckpoints {
-	ginkgo.GinkgoHelper()
-	return testsuite.MustSucceed(states.client.FinalityCheckpointsAt(ctx, states.stateAt(epoch)))
-}
-
-// at reads the online validators' effective balance, and the offline
-// validators, at the start of epoch.
-func (states beaconStates) at(ctx context.Context, epoch uint64) (uint64, []beacon.Validator) {
-	ginkgo.GinkgoHelper()
-	online := totalEffectiveBalance(testsuite.MustSucceed(states.client.ValidatorsAt(ctx, states.stateAt(epoch), states.online)))
-	return online, testsuite.MustSucceed(states.client.ValidatorsAt(ctx, states.stateAt(epoch), states.offline))
-}
-
 // forecast forecasts the outage's recovery from the state at the start of
 // its settled epoch.
 func (states beaconStates) forecast(ctx context.Context, spec rewards.Spec, outage lastingOutage) rewards.RecoveryForecast {
@@ -210,12 +183,4 @@ func expectForecastStakes(records []beacon.Validator, start, want []rewards.Stak
 func recoveryDeadline(chain chaininfo.Info, forecast rewards.RecoveryForecast) time.Time {
 	finalizing := forecast.FirstJustified + forecastMargin + finalizeEpochs
 	return chain.SlotStartTime((finalizing + 2) * chain.SlotsPerEpoch)
-}
-
-func totalEffectiveBalance(records []beacon.Validator) uint64 {
-	var stake uint64
-	for _, record := range records {
-		stake += record.EffectiveBalance
-	}
-	return stake
 }
