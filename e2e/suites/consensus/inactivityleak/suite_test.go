@@ -107,9 +107,7 @@ func (suite *leakSuite) currentEpoch(ctx context.Context) uint64 {
 	return max(suite.chain.EpochAt(time.Now()), suite.chain.Epoch(head))
 }
 
-// stopValidatorClient stops the second participant's validator client and
-// returns the epoch it stopped in.
-func (suite *leakSuite) stopValidatorClient(ctx context.Context) uint64 {
+func (suite *leakSuite) stopValidatorClient(ctx context.Context) (stopped uint64) {
 	ginkgo.GinkgoHelper()
 	gomega.Expect(suite.runtime.StopParticipantValidators(ctx, offlineParticipant)).To(gomega.Succeed())
 	return suite.currentEpoch(ctx)
