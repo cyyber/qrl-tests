@@ -27,8 +27,8 @@ const (
 	rejoinTimeout = 9 * time.Minute
 )
 
-// returningOutage is the first outage, which one stopped validator returns
-// from.
+// returningOutage is the first outage, which ends when one offline validator
+// returns.
 type returningOutage struct {
 	// stopped is the epoch the validator client stopped in, and restarted
 	// the one the offline validator returned in.
