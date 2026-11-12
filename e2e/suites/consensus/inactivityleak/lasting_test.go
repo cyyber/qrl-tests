@@ -38,7 +38,7 @@ type lastingOutage struct {
 
 func (suite *leakSuite) stopsFinalizingForGood(ctx ginkgo.SpecContext) {
 	outage := &suite.lasting
-	outage.stopped, outage.settled, outage.frozen = suite.stopOfflineClient(ctx)
+	outage.stopped, outage.settled, outage.frozen = suite.stopValidatorClient(ctx)
 
 	// Just over a third: more than a third offline, but not without its
 	// largest validator.

@@ -41,7 +41,7 @@ type returningOutage struct {
 
 func (suite *leakSuite) stopsFinalizing(ctx ginkgo.SpecContext) {
 	outage := &suite.returning
-	outage.stopped, _, outage.frozen = suite.stopOfflineClient(ctx)
+	outage.stopped, _, outage.frozen = suite.stopValidatorClient(ctx)
 	ginkgo.GinkgoWriter.Printf("finality stopped at epoch %d after the validator client stopped in epoch %d\n",
 		outage.frozen.Finalized.Epoch, outage.stopped)
 }
