@@ -84,19 +84,30 @@ func (spec Spec) ForecastRecovery(outage Outage) (RecoveryForecast, error) {
 
 // nextStake applies one epoch's penalties to an offline validator's stake.
 func (spec Spec) nextStake(stake Stake, online, total uint64, leak bool) Stake {
-	baseReward := spec.baseReward(stake.EffectiveBalance, total)
-	// The average cost of missed sync committee duties in the online
-	// validators' blocks.
-	syncPenalty := baseReward * spec.syncRewardWeight / spec.weightDenominator *
-		(online / spec.increment) / (total / spec.increment)
-	source, target := spec.missedVotePenalties(stake.EffectiveBalance, total)
 	stake.InactivityScore = spec.NextInactivityScore(stake.InactivityScore, false, leak)
-	penalty := syncPenalty + source + target + spec.inactivityPenalty(stake.EffectiveBalance, stake.InactivityScore)
+	source, target := spec.missedVotePenalties(stake.EffectiveBalance, total)
+	penalty := source + target +
+		spec.missedSyncPenalty(stake.EffectiveBalance, online, total) +
+		spec.inactivityPenalty(stake.EffectiveBalance, stake.InactivityScore)
 	stake.Balance -= min(stake.Balance, penalty)
-	// The effective balance drops only once the balance falls a hysteresis step
-	// below it.
-	if stake.Balance+spec.increment/spec.hysteresisQuotient*spec.hysteresisDownwardMultiplier < stake.EffectiveBalance {
-		stake.EffectiveBalance = stake.Balance - stake.Balance%spec.increment
-	}
+	stake.EffectiveBalance = spec.nextEffectiveBalance(stake.Balance, stake.EffectiveBalance)
 	return stake
+}
+
+// missedSyncPenalty is the average epoch's cost of missed sync committee
+// duties, in the online validators' blocks.
+func (spec Spec) missedSyncPenalty(effectiveBalance, online, total uint64) uint64 {
+	baseReward := spec.baseReward(effectiveBalance, total)
+	return baseReward * spec.syncRewardWeight / spec.weightDenominator *
+		(online / spec.increment) / (total / spec.increment)
+}
+
+// nextEffectiveBalance drops the effective balance to the balance's whole
+// increments once the balance falls a hysteresis step below it.
+func (spec Spec) nextEffectiveBalance(balance, effectiveBalance uint64) uint64 {
+	step := spec.increment / spec.hysteresisQuotient * spec.hysteresisDownwardMultiplier
+	if balance+step < effectiveBalance {
+		return balance - balance%spec.increment
+	}
+	return effectiveBalance
 }
