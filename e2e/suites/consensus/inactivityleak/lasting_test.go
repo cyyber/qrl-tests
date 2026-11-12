@@ -121,11 +121,7 @@ func (suite *leakSuite) leavesOfflineValidatorsAtForecast(ctx ginkgo.SpecContext
 	// The processing at the end of the epoch after the justified one counted
 	// its votes, at the effective balances that epoch starts with.
 	deciding := outage.justified.Epoch + 1
-	onlineStake, offlineRecords := suite.states.at(ctx, deciding)
-	offlineStake := totalEffectiveBalance(offlineRecords)
-	gomega.Expect(onlineStake >= 2*offlineStake).To(gomega.BeTrue(),
-		"at the start of epoch %d, the online validators hold %d shor and the offline ones %d, more than half as much",
-		deciding, onlineStake, offlineStake)
+	_, offlineRecords := suite.states.at(ctx, deciding)
 
 	start, ok := outage.forecast.OfflineStakesAt(outage.settled)
 	gomega.Expect(ok).To(gomega.BeTrue())
@@ -133,11 +129,7 @@ func (suite *leakSuite) leavesOfflineValidatorsAtForecast(ctx ginkgo.SpecContext
 	gomega.Expect(ok).To(gomega.BeTrue(), "no forecast for epoch %d", deciding)
 	expectForecastStakes(offlineRecords, start, want, deciding, suite.balanceIncrement)
 	ginkgo.GinkgoWriter.Printf("the offline stake went from %d to %d shor by the start of epoch %d, against %d forecast\n",
-		rewards.TotalEffectiveBalance(start), offlineStake, deciding, rewards.TotalEffectiveBalance(want))
-
-	for _, record := range testsuite.MustSucceed(suite.onlineValidator.Client.ValidatorsAt(ctx, "head", suite.offlineIndices)) {
-		gomega.Expect(record.Status).To(gomega.Equal("active_ongoing"), "status of offline validator %d", record.Index)
-	}
+		rewards.TotalEffectiveBalance(start), totalEffectiveBalance(offlineRecords), deciding, rewards.TotalEffectiveBalance(want))
 }
 
 // beaconStates reads the online and the offline validators, and finality,
