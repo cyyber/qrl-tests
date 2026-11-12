@@ -44,13 +44,37 @@ func TestNextStake(t *testing.T) {
 	}
 }
 
+func TestMissedSyncPenalty(t *testing.T) {
+	// The 1,606,560,000 shor base reward of 40,000 QRL among 65 validators,
+	// times 2/64, scaled to the 43 online of 65.
+	require.Equal(t, uint64(33_212_538), testSpec().missedSyncPenalty(fullStake, 43*fullStake, 65*fullStake))
+}
+
+func TestNextEffectiveBalance(t *testing.T) {
+	spec := testSpec()
+	effective := uint64(39_990 * shorPerQRL)
+	for name, test := range map[string]struct {
+		balance, want uint64
+	}{
+		"a quarter increment below keeps it":     {balance: effective - shorPerQRL/4, want: effective},
+		"just past a quarter increment drops it": {balance: effective - shorPerQRL/4 - 1, want: 39_989 * shorPerQRL},
+		"a larger fall drops several increments": {balance: 39_987_500_000_000, want: 39_987 * shorPerQRL},
+	} {
+		t.Run(name, func(t *testing.T) {
+			require.Equal(t, test.want, spec.nextEffectiveBalance(test.balance, effective))
+		})
+	}
+}
+
 func TestForecastRecoveryAfterOneEpoch(t *testing.T) {
 	spec := testSpec()
 	// One validator offline against 79,998 QRL holds just over a third. Its
 	// first missed epoch takes it to 39,995 QRL, under half the online stake,
 	// so the online votes of epoch 10 count two thirds at the end of epoch 11.
 	start := Stake{Balance: fullStake, EffectiveBalance: fullStake}
-	forecast, err := spec.ForecastRecovery(Outage{Epoch: 10, FinalizedEpoch: 8, OnlineStake: 79_998 * shorPerQRL, OfflineStakes: []Stake{start}})
+	forecast, err := spec.ForecastRecovery(Outage{
+		Epoch: 10, FinalizedEpoch: 8, OnlineStake: 79_998 * shorPerQRL, OfflineStakes: []Stake{start},
+	})
 	require.NoError(t, err)
 	require.Equal(t, uint64(10), forecast.FirstJustified)
 
@@ -73,7 +97,9 @@ func TestForecastRecovery(t *testing.T) {
 	// 22 of 65 validators offline from epoch 6 on, with epoch 4 finalized, so
 	// the leak counts their missed votes from epoch 9.
 	offline := slices.Repeat([]Stake{{Balance: fullStake, EffectiveBalance: fullStake}}, 22)
-	forecast, err := spec.ForecastRecovery(Outage{Epoch: 7, FinalizedEpoch: 4, OnlineStake: 43 * fullStake, OfflineStakes: offline})
+	forecast, err := spec.ForecastRecovery(Outage{
+		Epoch: 7, FinalizedEpoch: 4, OnlineStake: 43 * fullStake, OfflineStakes: offline,
+	})
 	require.NoError(t, err)
 	require.Equal(t, uint64(62), forecast.FirstJustified)
 
@@ -81,10 +107,14 @@ func TestForecastRecovery(t *testing.T) {
 	// online 1,720,000, and epoch 63, after 53 epochs of leak, at 859,716.
 	stakes, ok := forecast.OfflineStakesAt(62)
 	require.True(t, ok)
-	require.Equal(t, Stake{Balance: 39_111_585_777_860, EffectiveBalance: 39_111 * shorPerQRL, InactivityScore: 208}, stakes[0])
+	require.Equal(t, slices.Repeat([]Stake{{
+		Balance: 39_111_585_777_860, EffectiveBalance: 39_111 * shorPerQRL, InactivityScore: 208,
+	}}, 22), stakes)
 	stakes, ok = forecast.OfflineStakesAt(63)
 	require.True(t, ok)
-	require.Equal(t, slices.Repeat([]Stake{{Balance: 39_078_937_749_638, EffectiveBalance: 39_078 * shorPerQRL, InactivityScore: 212}}, 22), stakes)
+	require.Equal(t, slices.Repeat([]Stake{{
+		Balance: 39_078_937_749_638, EffectiveBalance: 39_078 * shorPerQRL, InactivityScore: 212,
+	}}, 22), stakes)
 	_, ok = forecast.OfflineStakesAt(64)
 	require.True(t, ok)
 	_, ok = forecast.OfflineStakesAt(65)
@@ -93,8 +123,8 @@ func TestForecastRecovery(t *testing.T) {
 
 func TestForecastRecoveryRefuses(t *testing.T) {
 	full := []Stake{{Balance: fullStake, EffectiveBalance: fullStake}}
-	// A balance a little over the ejection balance drops it to the ejection
-	// balance after one epoch, long before a tiny online stake holds two thirds.
+	// An effective balance one increment over the ejection balance falls to it
+	// after one epoch, long before a tiny online stake holds two thirds.
 	nearEjection := []Stake{{Balance: 20_000_500_000_000, EffectiveBalance: 20_001 * shorPerQRL}}
 	for name, test := range map[string]struct {
 		outage Outage
