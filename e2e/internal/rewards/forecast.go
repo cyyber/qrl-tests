@@ -23,8 +23,9 @@ type Outage struct {
 	Offline   []Stake
 }
 
-// Forecast is when the online validators are expected to first justify alone.
-type Forecast struct {
+// RecoveryForecast is when the online validators are expected to first justify
+// alone.
+type RecoveryForecast struct {
 	FirstJustified uint64
 	start          uint64
 	stakes         [][]Stake
@@ -32,7 +33,7 @@ type Forecast struct {
 
 // OfflineStakesAt returns the offline stakes at the start of epoch, from the
 // outage's epoch through FirstJustified+2.
-func (forecast Forecast) OfflineStakesAt(epoch uint64) ([]Stake, bool) {
+func (forecast RecoveryForecast) OfflineStakesAt(epoch uint64) ([]Stake, bool) {
 	if epoch < forecast.start || epoch-forecast.start >= uint64(len(forecast.stakes)) {
 		return nil, false
 	}
@@ -50,14 +51,14 @@ func TotalEffectiveBalance(stakes []Stake) uint64 {
 
 // ForecastRecovery simulates the outage epoch by epoch until the online
 // validators hold two thirds of the stake.
-func (spec Spec) ForecastRecovery(outage Outage) (Forecast, error) {
+func (spec Spec) ForecastRecovery(outage Outage) (RecoveryForecast, error) {
 	if outage.Online == 0 {
-		return Forecast{}, errors.New("forecast a recovery: the online validators hold no stake")
+		return RecoveryForecast{}, errors.New("forecast a recovery: the online validators hold no stake")
 	}
 	if outage.Epoch == 0 {
-		return Forecast{}, errors.New("forecast a recovery: the outage starts at epoch 0")
+		return RecoveryForecast{}, errors.New("forecast a recovery: the outage starts at epoch 0")
 	}
-	forecast := Forecast{start: outage.Epoch}
+	forecast := RecoveryForecast{start: outage.Epoch}
 	stakes := slices.Clone(outage.Offline)
 	justified := false
 	for epoch := outage.Epoch; ; epoch++ {
@@ -77,7 +78,7 @@ func (spec Spec) ForecastRecovery(outage Outage) (Forecast, error) {
 			// An ejected validator leaves the stake, which the forecast doesn't
 			// model.
 			if stakes[index].EffectiveBalance <= spec.ejectionBalance {
-				return Forecast{}, fmt.Errorf("forecast a recovery: offline validator %d reaches the ejection balance in epoch %d",
+				return RecoveryForecast{}, fmt.Errorf("forecast a recovery: offline validator %d reaches the ejection balance in epoch %d",
 					index, epoch+1)
 			}
 		}
