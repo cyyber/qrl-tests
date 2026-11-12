@@ -75,12 +75,12 @@ func TestForecastRecoveryAfterOneEpoch(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, uint64(10), forecast.FirstJustified)
 
-	stakes, ok := forecast.OfflineStakesAt(10)
+	offline, ok := forecast.OfflineStakesAt(10)
 	require.True(t, ok)
-	require.Equal(t, []Stake{start}, stakes)
-	stakes, ok = forecast.OfflineStakesAt(11)
+	require.Equal(t, []Stake{start}, offline)
+	offline, ok = forecast.OfflineStakesAt(11)
 	require.True(t, ok)
-	require.Equal(t, []Stake{{Balance: 39_995_170_278_799, EffectiveBalance: 39_995 * shorPerQRL}}, stakes)
+	require.Equal(t, []Stake{{Balance: 39_995_170_278_799, EffectiveBalance: 39_995 * shorPerQRL}}, offline)
 	_, ok = forecast.OfflineStakesAt(12)
 	require.True(t, ok)
 	_, ok = forecast.OfflineStakesAt(13)
@@ -93,25 +93,25 @@ func TestForecastRecovery(t *testing.T) {
 	spec := testSpec()
 	// 22 of 65 validators offline from epoch 6 on, with epoch 4 finalized, so
 	// the leak counts their missed votes from epoch 9.
-	offline := slices.Repeat([]Stake{{Balance: fullStake, EffectiveBalance: fullStake}}, 22)
+	start := slices.Repeat([]Stake{{Balance: fullStake, EffectiveBalance: fullStake}}, 22)
 	forecast, err := spec.ForecastRecovery(Outage{
-		Epoch: 7, FinalizedEpoch: 4, OnlineStake: 43 * fullStake, OfflineStakes: offline,
+		Epoch: 7, FinalizedEpoch: 4, OnlineStake: 43 * fullStake, OfflineStakes: start,
 	})
 	require.NoError(t, err)
 	require.Equal(t, uint64(62), forecast.FirstJustified)
 
 	// Epoch 62 starts with the offline stake at 860,442 QRL, above half the
 	// online 1,720,000, and epoch 63, after 53 epochs of leak, at 859,716.
-	stakes, ok := forecast.OfflineStakesAt(62)
+	offline, ok := forecast.OfflineStakesAt(62)
 	require.True(t, ok)
 	require.Equal(t, slices.Repeat([]Stake{{
 		Balance: 39_111_585_777_860, EffectiveBalance: 39_111 * shorPerQRL, InactivityScore: 208,
-	}}, 22), stakes)
-	stakes, ok = forecast.OfflineStakesAt(63)
+	}}, 22), offline)
+	offline, ok = forecast.OfflineStakesAt(63)
 	require.True(t, ok)
 	require.Equal(t, slices.Repeat([]Stake{{
 		Balance: 39_078_937_749_638, EffectiveBalance: 39_078 * shorPerQRL, InactivityScore: 212,
-	}}, 22), stakes)
+	}}, 22), offline)
 	_, ok = forecast.OfflineStakesAt(64)
 	require.True(t, ok)
 	_, ok = forecast.OfflineStakesAt(65)
