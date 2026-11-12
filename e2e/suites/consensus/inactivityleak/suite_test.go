@@ -171,13 +171,12 @@ func (suite *leakSuite) checkpointsAtEpochStart(ctx context.Context, epoch uint6
 	return testsuite.MustSucceed(suite.onlineBeacon.FinalityCheckpointsAt(ctx, suite.stateAtEpochStart(epoch)))
 }
 
-// stakesAtEpochStart reads the online validators' total effective balance,
-// and the offline validators.
-func (suite *leakSuite) stakesAtEpochStart(ctx context.Context, epoch uint64) (uint64, []beacon.Validator) {
+func (suite *leakSuite) stakesAtEpochStart(ctx context.Context, epoch uint64) (onlineStake uint64, offline []beacon.Validator) {
 	ginkgo.GinkgoHelper()
 	state := suite.stateAtEpochStart(epoch)
-	online := totalEffectiveBalance(testsuite.MustSucceed(suite.onlineBeacon.ValidatorsAt(ctx, state, suite.onlineIndices)))
-	return online, testsuite.MustSucceed(suite.onlineBeacon.ValidatorsAt(ctx, state, suite.offlineIndices))
+	onlineStake = totalEffectiveBalance(testsuite.MustSucceed(suite.onlineBeacon.ValidatorsAt(ctx, state, suite.onlineIndices)))
+	offline = testsuite.MustSucceed(suite.onlineBeacon.ValidatorsAt(ctx, state, suite.offlineIndices))
+	return onlineStake, offline
 }
 
 func totalEffectiveBalance(records []beacon.Validator) uint64 {
