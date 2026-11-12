@@ -115,9 +115,9 @@ func (suite *leakSuite) stopValidatorClient(ctx context.Context) uint64 {
 	return suite.currentEpoch(ctx)
 }
 
-// awaitFrozenFinality checks that finality and justification freeze from
+// expectFrozenFinality checks that finality and justification freeze from
 // epoch settled on, after the validator client stopped in epoch stopped.
-func (suite *leakSuite) awaitFrozenFinality(ctx context.Context, stopped uint64) (settled uint64, frozen beacon.FinalityCheckpoints) {
+func (suite *leakSuite) expectFrozenFinality(ctx context.Context, stopped uint64) (settled uint64, frozen beacon.FinalityCheckpoints) {
 	ginkgo.GinkgoHelper()
 	settled = stopped + settleEpochs
 	last := settled + stalledEpochs
