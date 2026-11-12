@@ -55,23 +55,22 @@ func (suite *leakSuite) setUp(ctx ginkgo.SpecContext) {
 	suite.runtime = testsuite.LoadRuntime()
 	suite.nodes = testsuite.MustSucceed(suite.runtime.Nodes(ctx))
 	gomega.Expect(suite.nodes).To(gomega.HaveLen(2), "the suite stops one of two participants' validator clients")
-	client := suite.nodes[onlineParticipant].Beacon
-	suite.beacon = client
-	suite.chain = testsuite.MustSucceed(chaininfo.Load(ctx, client))
+	suite.beacon = suite.nodes[onlineParticipant].Beacon
+	suite.chain = testsuite.MustSucceed(chaininfo.Load(ctx, suite.beacon))
 	testsuite.ExpectShortEpochs(suite.chain)
-	spec := testsuite.MustSucceed(rewards.LoadSpec(ctx, client))
+	spec := testsuite.MustSucceed(rewards.LoadSpec(ctx, suite.beacon))
 
 	profile := suite.runtime.Profile
 	suite.onlineIndices = profile.ParticipantValidators(onlineParticipant)
 	suite.offlineIndices = profile.ParticipantValidators(offlineParticipant)
 	gomega.Expect(suite.onlineIndices).NotTo(gomega.BeEmpty(), "profile %q runs no validator on participant %d", profile, onlineParticipant+1)
 	gomega.Expect(suite.offlineIndices).NotTo(gomega.BeEmpty(), "profile %q runs no validator on participant %d", profile, offlineParticipant+1)
-	suite.onlineValidator = rewards.Validator{Client: client, Chain: suite.chain, Spec: spec, Index: suite.onlineIndices[0]}
-	suite.offlineValidator = rewards.Validator{Client: client, Chain: suite.chain, Spec: spec, Index: suite.offlineIndices[0]}
-	suite.states = beaconStates{client: client, chain: suite.chain, online: suite.onlineIndices, offline: suite.offlineIndices}
-	suite.balanceIncrement = testsuite.MustSucceed(client.SpecUint(ctx, "EFFECTIVE_BALANCE_INCREMENT"))
+	suite.onlineValidator = rewards.Validator{Client: suite.beacon, Chain: suite.chain, Spec: spec, Index: suite.onlineIndices[0]}
+	suite.offlineValidator = rewards.Validator{Client: suite.beacon, Chain: suite.chain, Spec: spec, Index: suite.offlineIndices[0]}
+	suite.states = beaconStates{client: suite.beacon, chain: suite.chain, online: suite.onlineIndices, offline: suite.offlineIndices}
+	suite.balanceIncrement = testsuite.MustSucceed(suite.beacon.SpecUint(ctx, "EFFECTIVE_BALANCE_INCREMENT"))
 
-	total := testsuite.MustSucceed(client.TotalActiveBalance(ctx, "head"))
+	total := testsuite.MustSucceed(suite.beacon.TotalActiveBalance(ctx, "head"))
 	stake := suite.effectiveStake(ctx, suite.offlineIndices)
 	// More than a third goes offline, so the rest can't justify.
 	gomega.Expect(3*stake > total).To(gomega.BeTrue(),
@@ -82,7 +81,7 @@ func (suite *leakSuite) setUp(ctx ginkgo.SpecContext) {
 	gomega.Expect(node.QrysmAlltoolsImage).NotTo(gomega.BeEmpty(), "Qrysm all-tools image is not configured")
 	gomega.Expect(node.BeaconGRPC).NotTo(gomega.BeEmpty(), "beacon gRPC is not published")
 	suite.returningKeystores = testsuite.MustSucceed(validatorops.GenesisKeystores(
-		ctx, client, node.QrysmAlltoolsImage, node.Address.Hex(), suite.offlineValidator.Index))
+		ctx, suite.beacon, node.QrysmAlltoolsImage, node.Address.Hex(), suite.offlineValidator.Index))
 }
 
 func (suite *leakSuite) reportReturnedLogs() {
@@ -153,13 +152,13 @@ func (suite *leakSuite) expectCleanFinality(ctx context.Context, since uint64) {
 	}
 	// Nodes can cross an epoch boundary a moment apart.
 	gomega.Eventually(func(g gomega.Gomega, ctx context.Context) {
-		want, err := suite.nodes[0].Beacon.FinalityCheckpoints(ctx)
+		want, err := suite.beacon.FinalityCheckpoints(ctx)
 		g.Expect(err).NotTo(gomega.HaveOccurred())
 		g.Expect(want.Finalized.Epoch).To(gomega.BeNumerically(">=", since))
-		for index, node := range suite.nodes[1:] {
+		for index, node := range suite.nodes {
 			got, err := node.Beacon.FinalityCheckpoints(ctx)
 			g.Expect(err).NotTo(gomega.HaveOccurred())
-			g.Expect(got.Finalized).To(gomega.Equal(want.Finalized), "finalized checkpoint of participant %d", index+2)
+			g.Expect(got.Finalized).To(gomega.Equal(want.Finalized), "finalized checkpoint of participant %d", index+1)
 		}
 	}).WithContext(ctx).
 		WithTimeout(suite.chain.EpochDuration).
