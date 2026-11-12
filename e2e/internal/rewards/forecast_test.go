@@ -44,8 +44,6 @@ func TestNextOfflineStake(t *testing.T) {
 }
 
 func TestMissedSyncPenalty(t *testing.T) {
-	// The 1,606,560,000 shor base reward of 40,000 QRL among 65 validators,
-	// times 2/64, scaled to the 43 online of 65.
 	require.Equal(t, uint64(33_212_538), testSpec().missedSyncPenalty(fullStake, 43*fullStake, 65*fullStake))
 }
 
