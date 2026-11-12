@@ -38,7 +38,7 @@ var _ = ginkgo.Describe(
 				suite.leaksOfflineStake, ginkgo.SpecTimeout(leakTimeout))
 			ginkgo.It("pays an online validator nothing for its votes during the leak",
 				suite.paysOnlineVotesNothing, ginkgo.SpecTimeout(onlineTimeout))
-			ginkgo.It("finalizes again",
+			ginkgo.It("finalizes again once one offline validator returns on a separate validator client",
 				suite.finalizesWithOneReturned, ginkgo.SpecTimeout(resumeTimeout))
 			ginkgo.It("brings the returned validator's inactivity score back to zero",
 				suite.zeroesReturnedScore, ginkgo.SpecTimeout(decayTimeout))
