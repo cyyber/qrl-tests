@@ -68,7 +68,7 @@ func (suite *leakSuite) setUp(ctx ginkgo.SpecContext) {
 	suite.balanceIncrement = testsuite.MustSucceed(suite.onlineBeacon.SpecUint(ctx, "EFFECTIVE_BALANCE_INCREMENT"))
 
 	total := testsuite.MustSucceed(suite.onlineBeacon.TotalActiveBalance(ctx, "head"))
-	stake := suite.effectiveStake(ctx, suite.offlineIndices)
+	stake := totalEffectiveBalance(testsuite.MustSucceed(suite.onlineBeacon.ValidatorsAt(ctx, "head", suite.offlineIndices)))
 	gomega.Expect(3*stake > total).To(gomega.BeTrue(),
 		"participant %d runs %d of the %d shor staked, not more than a third", offlineParticipant+1, stake, total)
 
@@ -135,11 +135,6 @@ func (suite *leakSuite) expectFrozenFinality(ctx context.Context, stopped uint64
 			"justified checkpoint at the start of epoch %d, with the validator client stopped since epoch %d", epoch, stopped)
 	}
 	return settled, frozen
-}
-
-func (suite *leakSuite) effectiveStake(ctx context.Context, indices []uint64) uint64 {
-	ginkgo.GinkgoHelper()
-	return totalEffectiveBalance(testsuite.MustSucceed(suite.onlineBeacon.ValidatorsAt(ctx, "head", indices)))
 }
 
 // expectCleanFinality checks that no validator is slashed, and that every

@@ -84,8 +84,8 @@ func (suite *leakSuite) finalizesWithOneReturned(ctx ginkgo.SpecContext) {
 	// The online participant holds just under two thirds of the stake, and
 	// one more validator takes it over.
 	total := testsuite.MustSucceed(suite.onlineBeacon.TotalActiveBalance(ctx, "head"))
-	onlineStake := suite.effectiveStake(ctx, suite.onlineIndices)
-	returning := suite.effectiveStake(ctx, []uint64{suite.offlineValidator.Index})
+	onlineStake := totalEffectiveBalance(testsuite.MustSucceed(suite.onlineBeacon.ValidatorsAt(ctx, "head", suite.onlineIndices)))
+	returning := totalEffectiveBalance(testsuite.MustSucceed(suite.onlineBeacon.ValidatorsAt(ctx, "head", []uint64{suite.offlineValidator.Index})))
 	gomega.Expect(3*onlineStake < 2*total).To(gomega.BeTrue(),
 		"participant %d alone runs %d of the %d shor staked, two thirds or more", onlineParticipant+1, onlineStake, total)
 	gomega.Expect(3*(onlineStake+returning) >= 2*total).To(gomega.BeTrue(),
