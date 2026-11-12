@@ -39,24 +39,7 @@ type lastingOutage struct {
 
 func (suite *leakSuite) stopsFinalizingForGood(ctx ginkgo.SpecContext) {
 	outage, states := &suite.lasting, suite.states
-	gomega.Expect(suite.runtime.StopParticipantValidators(ctx, offlineParticipant)).To(gomega.Succeed())
-	outage.stopped = suite.currentEpoch(ctx)
-
-	outage.settled = outage.stopped + settleEpochs
-	last := outage.settled + stalledEpochs
-	gomega.Eventually(suite.headEpoch).WithContext(ctx).
-		WithTimeout((settleEpochs+stalledEpochs+1)*suite.chain.EpochDuration).
-		WithPolling(suite.chain.SlotDuration).
-		Should(gomega.BeNumerically(">=", last), "the head block has stopped advancing")
-
-	outage.frozen = states.checkpointsAt(ctx, outage.settled)
-	for epoch := outage.settled + 1; epoch <= last; epoch++ {
-		checkpoints := states.checkpointsAt(ctx, epoch)
-		gomega.Expect(checkpoints.Finalized).To(gomega.Equal(outage.frozen.Finalized),
-			"finalized checkpoint at the start of epoch %d, with the validator client stopped since epoch %d", epoch, outage.stopped)
-		gomega.Expect(checkpoints.CurrentJustified).To(gomega.Equal(outage.frozen.CurrentJustified),
-			"justified checkpoint at the start of epoch %d, with the validator client stopped since epoch %d", epoch, outage.stopped)
-	}
+	outage.stopped, outage.settled, outage.frozen = suite.stopOfflineClient(ctx)
 
 	// Just over a third: more than a third offline, but not without its
 	// largest validator.

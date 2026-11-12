@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/cyyber/qrl-tests/e2e/internal/beacon"
 	"github.com/cyyber/qrl-tests/e2e/internal/chaininfo"
 	"github.com/cyyber/qrl-tests/e2e/internal/live"
 	"github.com/cyyber/qrl-tests/e2e/internal/rewards"
@@ -107,6 +108,32 @@ func (suite *leakSuite) currentEpoch(ctx context.Context) uint64 {
 	ginkgo.GinkgoHelper()
 	head := testsuite.MustSucceed(suite.onlineValidator.Client.HeadSlot(ctx))
 	return max(suite.chain.EpochAt(time.Now()), suite.chain.Epoch(head))
+}
+
+// stopOfflineClient stops the offline participant's validator client, and
+// checks that neither the finalized nor the justified checkpoint moves from
+// epoch settled on, once the votes cast before the stop are processed.
+func (suite *leakSuite) stopOfflineClient(ctx context.Context) (stopped, settled uint64, frozen beacon.FinalityCheckpoints) {
+	ginkgo.GinkgoHelper()
+	gomega.Expect(suite.runtime.StopParticipantValidators(ctx, offlineParticipant)).To(gomega.Succeed())
+	stopped = suite.currentEpoch(ctx)
+
+	settled = stopped + settleEpochs
+	last := settled + stalledEpochs
+	gomega.Eventually(suite.headEpoch).WithContext(ctx).
+		WithTimeout((settleEpochs+stalledEpochs+1)*suite.chain.EpochDuration).
+		WithPolling(suite.chain.SlotDuration).
+		Should(gomega.BeNumerically(">=", last), "the head block has stopped advancing")
+
+	frozen = suite.states.checkpointsAt(ctx, settled)
+	for epoch := settled + 1; epoch <= last; epoch++ {
+		checkpoints := suite.states.checkpointsAt(ctx, epoch)
+		gomega.Expect(checkpoints.Finalized).To(gomega.Equal(frozen.Finalized),
+			"finalized checkpoint at the start of epoch %d, with the validator client stopped since epoch %d", epoch, stopped)
+		gomega.Expect(checkpoints.CurrentJustified).To(gomega.Equal(frozen.CurrentJustified),
+			"justified checkpoint at the start of epoch %d, with the validator client stopped since epoch %d", epoch, stopped)
+	}
+	return stopped, settled, frozen
 }
 
 func (suite *leakSuite) effectiveStake(ctx context.Context, indices []uint64) uint64 {

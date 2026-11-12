@@ -5,7 +5,6 @@ package inactivityleak
 import (
 	"context"
 	"fmt"
-	"strconv"
 	"time"
 
 	"github.com/cyyber/qrl-tests/e2e/internal/beacon"
@@ -34,7 +33,7 @@ type returningOutage struct {
 	// stopped is the epoch the validator client stopped in, and restarted
 	// the one the offline validator returned in.
 	stopped, restarted uint64
-	frozen             beacon.Checkpoint
+	frozen             beacon.FinalityCheckpoints
 	// score is the offline validator's inactivity score after the
 	// processing of every epoch before nextEpoch.
 	score, nextEpoch uint64
@@ -42,31 +41,15 @@ type returningOutage struct {
 
 func (suite *leakSuite) stopsFinalizing(ctx ginkgo.SpecContext) {
 	outage := &suite.returning
-	gomega.Expect(suite.runtime.StopParticipantValidators(ctx, offlineParticipant)).To(gomega.Succeed())
-	outage.stopped = suite.currentEpoch(ctx)
-
-	// Votes cast before the stop are processed within settleEpochs; after
-	// that, finality can't move.
-	settled := outage.stopped + settleEpochs
-	last := settled + stalledEpochs
-	gomega.Eventually(suite.headEpoch).WithContext(ctx).
-		WithTimeout((settleEpochs+stalledEpochs+1)*suite.chain.EpochDuration).
-		WithPolling(suite.chain.SlotDuration).
-		Should(gomega.BeNumerically(">=", last), "the head block has stopped advancing")
-
-	outage.frozen = suite.finalizedAtEpochStart(ctx, settled)
-	for epoch := settled + 1; epoch <= last; epoch++ {
-		gomega.Expect(suite.finalizedAtEpochStart(ctx, epoch)).To(gomega.Equal(outage.frozen),
-			"finalized checkpoint at the start of epoch %d, with the validator client stopped since epoch %d", epoch, outage.stopped)
-	}
+	outage.stopped, _, outage.frozen = suite.stopOfflineClient(ctx)
 	ginkgo.GinkgoWriter.Printf("finality stopped at epoch %d after the validator client stopped in epoch %d\n",
-		outage.frozen.Epoch, outage.stopped)
+		outage.frozen.Finalized.Epoch, outage.stopped)
 }
 
 func (suite *leakSuite) leaksOfflineStake(ctx ginkgo.SpecContext) {
 	outage := &suite.returning
 	offline := suite.offlineValidator
-	first := offline.Spec.FirstLeakEpoch(outage.frozen.Epoch)
+	first := offline.Spec.FirstLeakEpoch(outage.frozen.Finalized.Epoch)
 	last := first + leakEpochs - 1
 	// The epoch before the leak shows the score starts from zero, and must be
 	// one the stopped client missed.
@@ -76,12 +59,12 @@ func (suite *leakSuite) leaksOfflineStake(ctx ginkgo.SpecContext) {
 
 	amounts := expectMissedEpoch(ctx, offline, first-1, 0)
 	gomega.Expect(amounts.Leak).To(gomega.BeFalse(), "epoch %d, %d after finalized epoch %d, is processed in a leak",
-		first-1, first-1-outage.frozen.Epoch, outage.frozen.Epoch)
+		first-1, first-1-outage.frozen.Finalized.Epoch, outage.frozen.Finalized.Epoch)
 	outage.score = amounts.ScoreAfter
 	for epoch := first; epoch <= last; epoch++ {
 		amounts := expectMissedEpoch(ctx, offline, epoch, outage.score)
 		gomega.Expect(amounts.Leak).To(gomega.BeTrue(), "epoch %d, %d after finalized epoch %d, is not processed in a leak",
-			epoch, epoch-outage.frozen.Epoch, outage.frozen.Epoch)
+			epoch, epoch-outage.frozen.Finalized.Epoch, outage.frozen.Finalized.Epoch)
 		outage.score = amounts.ScoreAfter
 	}
 	outage.nextEpoch = last + 1
@@ -89,7 +72,7 @@ func (suite *leakSuite) leaksOfflineStake(ctx ginkgo.SpecContext) {
 
 func (suite *leakSuite) paysOnlineVotesNothing(ctx ginkgo.SpecContext) {
 	online := suite.onlineValidator
-	first := online.Spec.FirstLeakEpoch(suite.returning.frozen.Epoch)
+	first := online.Spec.FirstLeakEpoch(suite.returning.frozen.Finalized.Epoch)
 	last := first + leakEpochs - 1
 	online.AwaitRewards(ctx, last)
 	for epoch := first; epoch <= last; epoch++ {
@@ -166,12 +149,6 @@ func (suite *leakSuite) finalizesWithEveryValidatorBack(ctx ginkgo.SpecContext) 
 	gomega.Expect(testsuite.SleepUntil(ctx, suite.chain.SlotStartTime(next*suite.chain.SlotsPerEpoch))).To(gomega.Succeed())
 	gomega.Expect(suite.runtime.StartParticipantValidators(ctx, offlineParticipant)).To(gomega.Succeed())
 	testsuite.AwaitFinalizedEpoch(ctx, suite.onlineValidator.Client, suite.chain, suite.currentEpoch(ctx), finalityTimeoutEpochs)
-}
-
-func (suite *leakSuite) finalizedAtEpochStart(ctx context.Context, epoch uint64) beacon.Checkpoint {
-	ginkgo.GinkgoHelper()
-	stateID := strconv.FormatUint(epoch*suite.chain.SlotsPerEpoch, 10)
-	return testsuite.MustSucceed(suite.onlineValidator.Client.FinalityCheckpointsAt(ctx, stateID)).Finalized
 }
 
 // expectMissedEpoch checks the inactivity scores, rewards and balance change
