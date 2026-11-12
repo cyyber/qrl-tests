@@ -11,16 +11,17 @@ const fullStake = 40_000 * shorPerQRL
 
 func TestNextStake(t *testing.T) {
 	spec := testSpec()
+	// An offline validator, missing every duty while 43 of 65 validators are
+	// online.
 	for name, test := range map[string]struct {
 		stake Stake
 		leak  bool
 		want  Stake
 	}{
-		// 43 of 65 validators at 40,000 QRL online: the base reward is
-		// 1,606,560,000 shor, so the missed votes cost 351,435,000 and
-		// 652,665,000 shor, and the sync committee seats 33,212,538 on
-		// average. The score stays zero, and the effective balance drops two
-		// increments.
+		// At 40,000 QRL the base reward is 1,606,560,000 shor, so the missed
+		// votes cost 351,435,000 and 652,665,000 shor, and the sync committee
+		// seats 33,212,538 on average. The score stays zero, and the effective
+		// balance drops two increments.
 		"outside a leak": {
 			stake: Stake{Balance: fullStake, EffectiveBalance: fullStake},
 			want:  Stake{Balance: 39_998_962_687_462, EffectiveBalance: 39_998 * shorPerQRL},
