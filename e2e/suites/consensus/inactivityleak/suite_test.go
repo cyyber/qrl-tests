@@ -107,9 +107,8 @@ func (suite *leakSuite) currentEpoch(ctx context.Context) uint64 {
 	return max(suite.chain.EpochAt(time.Now()), suite.chain.Epoch(head))
 }
 
-// stopValidatorClient stops the second participant's validator client, and
-// checks that neither the finalized nor the justified checkpoint moves from
-// epoch settled on, once the votes cast before the stop are processed.
+// stopValidatorClient stops the second participant's validator client and
+// checks that finality and justification freeze from epoch settled on.
 func (suite *leakSuite) stopValidatorClient(ctx context.Context) (stopped, settled uint64, frozen beacon.FinalityCheckpoints) {
 	ginkgo.GinkgoHelper()
 	gomega.Expect(suite.runtime.StopParticipantValidators(ctx, offlineParticipant)).To(gomega.Succeed())
