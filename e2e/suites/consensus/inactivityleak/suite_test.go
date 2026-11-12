@@ -161,7 +161,6 @@ func (suite *leakSuite) expectCleanFinality(ctx context.Context, epoch uint64) {
 		Should(gomega.Succeed())
 }
 
-// stateAtEpochStart is the state ID of epoch's first slot.
 func (suite *leakSuite) stateAtEpochStart(epoch uint64) string {
 	return strconv.FormatUint(epoch*suite.chain.SlotsPerEpoch, 10)
 }
