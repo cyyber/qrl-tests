@@ -2,18 +2,17 @@ package rewards
 
 import "slices"
 
-// Stake is an offline validator's balance, effective balance and inactivity
-// score at the start of an epoch.
+// Stake is an offline validator's balances and inactivity score at the start
+// of an epoch.
 type Stake struct {
 	Balance          uint64
 	EffectiveBalance uint64
 	InactivityScore  uint64
 }
 
-// Outage is the chain at the start of Epoch, from the epoch before which the
-// offline validators miss every vote. Online is the effective balance of the
-// other validators, which the forecast holds fixed: they vote every timely
-// target, so the leak takes nothing from them.
+// Outage is the chain at the start of Epoch, with the offline validators
+// missing every vote since the epoch before. Online, the other validators'
+// effective balance, stays fixed: they vote on time, so the leak takes nothing.
 type Outage struct {
 	Epoch     uint64
 	Finalized uint64
@@ -21,19 +20,17 @@ type Outage struct {
 	Offline   []Stake
 }
 
-// Recovery is the first epoch the online validators justify alone, and what
-// the inactivity leak leaves the offline ones until then.
+// Recovery is the first epoch the online validators justify alone, and the
+// offline stakes until then.
 type Recovery struct {
-	// Justified is the first epoch whose votes count at least two thirds of
-	// the stake once the epoch after it ends: the one before the first epoch
-	// that starts with the online stake at least twice the offline stake.
+	// Justified is the first epoch whose votes reach two thirds of the stake.
 	Justified uint64
 	start     uint64
 	stakes    [][]Stake
 }
 
-// At returns the offline validators' stakes at the start of epoch, for the
-// epochs from the outage's through Justified+2.
+// At returns the offline stakes at the start of epoch, from the outage's epoch
+// through Justified+2.
 func (recovery Recovery) At(epoch uint64) ([]Stake, bool) {
 	if epoch < recovery.start || epoch-recovery.start >= uint64(len(recovery.stakes)) {
 		return nil, false
@@ -42,7 +39,7 @@ func (recovery Recovery) At(epoch uint64) ([]Stake, bool) {
 }
 
 // ForecastRecovery simulates the outage epoch by epoch until the online
-// validators hold two thirds of the effective balance.
+// validators hold two thirds of the stake.
 func (spec Spec) ForecastRecovery(outage Outage) Recovery {
 	recovery := Recovery{start: outage.Epoch}
 	stakes := slices.Clone(outage.Offline)
@@ -54,8 +51,8 @@ func (spec Spec) ForecastRecovery(outage Outage) Recovery {
 			offline += stake.EffectiveBalance
 		}
 		total := outage.Online + offline
-		// The processing at the end of epoch counts the votes of the one
-		// before, at the effective balances it starts with.
+		// The processing at the end of epoch counts the previous epoch's votes
+		// at these effective balances.
 		if !justified && 3*outage.Online >= 2*total {
 			recovery.Justified, justified = epoch-1, true
 		}
@@ -69,22 +66,19 @@ func (spec Spec) ForecastRecovery(outage Outage) Recovery {
 	}
 }
 
-// nextStake is an offline validator's stake one epoch on: after the epoch's
-// blocks, and the processing at its end, which penalizes the missed votes of
-// the epoch before and updates the effective balance.
+// nextStake is an offline validator's stake an epoch later.
 func (spec Spec) nextStake(stake Stake, online, total uint64, leak bool) Stake {
 	baseReward := spec.baseReward(stake.EffectiveBalance, total)
-	// Sync committee seats and proposers are both drawn by effective balance,
-	// so the seats a validator misses cost it, on average, this share of its
-	// base reward per epoch of blocks, scaled to the online proposers' part.
+	// The average cost of missed sync committee duties in the online
+	// validators' blocks.
 	sync := baseReward * spec.syncRewardWeight / spec.weightDenominator *
 		(online / spec.increment) / (total / spec.increment)
 	source, target := spec.missedVotePenalties(stake.EffectiveBalance, total)
 	stake.InactivityScore = spec.NextInactivityScore(stake.InactivityScore, false, leak)
 	penalty := sync + source + target + spec.inactivityPenalty(stake.EffectiveBalance, stake.InactivityScore)
 	stake.Balance -= min(stake.Balance, penalty)
-	// The effective balance drops to the balance's whole increments once the
-	// balance falls a hysteresis step below it.
+	// The effective balance drops only once the balance falls a hysteresis step
+	// below it.
 	if stake.Balance+spec.increment/spec.hysteresisQuotient*spec.hysteresisDownwardMultiplier < stake.EffectiveBalance {
 		stake.EffectiveBalance = stake.Balance - stake.Balance%spec.increment
 	}
