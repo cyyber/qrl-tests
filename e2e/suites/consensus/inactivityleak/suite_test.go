@@ -126,9 +126,9 @@ func (suite *leakSuite) expectFrozenFinality(ctx context.Context, stopped uint64
 		WithPolling(suite.chain.SlotDuration).
 		Should(gomega.BeNumerically(">=", last), "the head block has stopped advancing")
 
-	frozen = suite.checkpointsAt(ctx, settled)
+	frozen = suite.checkpointsAtEpochStart(ctx, settled)
 	for epoch := settled + 1; epoch <= last; epoch++ {
-		checkpoints := suite.checkpointsAt(ctx, epoch)
+		checkpoints := suite.checkpointsAtEpochStart(ctx, epoch)
 		gomega.Expect(checkpoints.Finalized).To(gomega.Equal(frozen.Finalized),
 			"finalized checkpoint at the start of epoch %d, with the validator client stopped since epoch %d", epoch, stopped)
 		gomega.Expect(checkpoints.CurrentJustified).To(gomega.Equal(frozen.CurrentJustified),
@@ -161,23 +161,23 @@ func (suite *leakSuite) expectCleanFinality(ctx context.Context, epoch uint64) {
 		Should(gomega.Succeed())
 }
 
-// stateAt is the state ID of the start of epoch.
-func (suite *leakSuite) stateAt(epoch uint64) string {
+// stateAtEpochStart is the state ID of epoch's first slot.
+func (suite *leakSuite) stateAtEpochStart(epoch uint64) string {
 	return strconv.FormatUint(epoch*suite.chain.SlotsPerEpoch, 10)
 }
 
-// checkpointsAt reads the finality checkpoints at the start of epoch.
-func (suite *leakSuite) checkpointsAt(ctx context.Context, epoch uint64) beacon.FinalityCheckpoints {
+func (suite *leakSuite) checkpointsAtEpochStart(ctx context.Context, epoch uint64) beacon.FinalityCheckpoints {
 	ginkgo.GinkgoHelper()
-	return testsuite.MustSucceed(suite.onlineBeacon.FinalityCheckpointsAt(ctx, suite.stateAt(epoch)))
+	return testsuite.MustSucceed(suite.onlineBeacon.FinalityCheckpointsAt(ctx, suite.stateAtEpochStart(epoch)))
 }
 
-// stakesAt reads the online validators' effective balance, and the offline
-// validators, at the start of epoch.
-func (suite *leakSuite) stakesAt(ctx context.Context, epoch uint64) (uint64, []beacon.Validator) {
+// stakesAtEpochStart reads the online validators' total effective balance,
+// and the offline validators.
+func (suite *leakSuite) stakesAtEpochStart(ctx context.Context, epoch uint64) (uint64, []beacon.Validator) {
 	ginkgo.GinkgoHelper()
-	online := totalEffectiveBalance(testsuite.MustSucceed(suite.onlineBeacon.ValidatorsAt(ctx, suite.stateAt(epoch), suite.onlineIndices)))
-	return online, testsuite.MustSucceed(suite.onlineBeacon.ValidatorsAt(ctx, suite.stateAt(epoch), suite.offlineIndices))
+	state := suite.stateAtEpochStart(epoch)
+	online := totalEffectiveBalance(testsuite.MustSucceed(suite.onlineBeacon.ValidatorsAt(ctx, state, suite.onlineIndices)))
+	return online, testsuite.MustSucceed(suite.onlineBeacon.ValidatorsAt(ctx, state, suite.offlineIndices))
 }
 
 func totalEffectiveBalance(records []beacon.Validator) uint64 {
