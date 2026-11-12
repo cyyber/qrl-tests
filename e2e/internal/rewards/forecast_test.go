@@ -11,7 +11,6 @@ const fullStake = 40_000 * shorPerQRL
 
 func TestNextOfflineStake(t *testing.T) {
 	spec := testSpec()
-	// Missing every duty while 43 of 65 validators are online.
 	for name, test := range map[string]struct {
 		stake Stake
 		leak  bool
