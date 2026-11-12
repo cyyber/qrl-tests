@@ -45,7 +45,7 @@ func (suite *leakSuite) stopsFinalizingForGood(ctx ginkgo.SpecContext) {
 	// largest validator.
 	onlineStake, offlineRecords := states.at(ctx, outage.settled)
 	offlineStake := totalEffectiveBalance(offlineRecords)
-	total := testsuite.MustSucceed(suite.onlineValidator.Client.TotalActiveBalance(ctx, states.stateAt(outage.settled)))
+	total := testsuite.MustSucceed(suite.beacon.TotalActiveBalance(ctx, states.stateAt(outage.settled)))
 	gomega.Expect(onlineStake+offlineStake).To(gomega.Equal(total), "the participants' validators hold all the active stake")
 	gomega.Expect(3*offlineStake > total).To(gomega.BeTrue(),
 		"participant %d runs %d of the %d shor staked, not more than a third", offlineParticipant+1, offlineStake, total)
@@ -88,7 +88,7 @@ func (suite *leakSuite) finalizesByLeakAlone(ctx ginkgo.SpecContext) {
 	// which states long behind it, by then finalized, would be slow to show.
 	var finalized beacon.Checkpoint
 	gomega.Eventually(func(g gomega.Gomega, ctx context.Context) {
-		checkpoints, err := suite.onlineValidator.Client.FinalityCheckpoints(ctx)
+		checkpoints, err := suite.beacon.FinalityCheckpoints(ctx)
 		g.Expect(err).NotTo(gomega.HaveOccurred())
 		if outage.justified == (beacon.Checkpoint{}) && checkpoints.CurrentJustified != outage.frozen.CurrentJustified {
 			outage.justified = checkpoints.CurrentJustified

@@ -26,7 +26,7 @@ var _ = ginkgo.Describe(
 		ginkgo.AfterAll(suite.closeReturned)
 
 		ginkgo.It("finalizes before the stake goes offline", func(ctx ginkgo.SpecContext) {
-			testsuite.AwaitFinalizedEpoch(ctx, suite.onlineValidator.Client, suite.chain, 1, finalityTimeoutEpochs)
+			testsuite.AwaitFinalizedEpoch(ctx, suite.beacon, suite.chain, 1, finalityTimeoutEpochs)
 		}, ginkgo.SpecTimeout(finalityTimeout))
 
 		ginkgo.Context("recovering by one validator returning", func() {

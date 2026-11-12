@@ -4,7 +4,6 @@ package inactivityleak
 
 import (
 	"context"
-	"strconv"
 	"time"
 
 	"github.com/cyyber/qrl-tests/e2e/internal/beacon"
@@ -36,7 +35,9 @@ const (
 type leakSuite struct {
 	runtime *live.Runtime
 	nodes   []*live.Node
-	chain   chaininfo.Info
+	// beacon is the online participant's beacon node.
+	beacon *beacon.Client
+	chain  chaininfo.Info
 
 	onlineValidator, offlineValidator rewards.Validator
 	onlineIndices, offlineIndices     []uint64
@@ -55,6 +56,7 @@ func (suite *leakSuite) setUp(ctx ginkgo.SpecContext) {
 	suite.nodes = testsuite.MustSucceed(suite.runtime.Nodes(ctx))
 	gomega.Expect(suite.nodes).To(gomega.HaveLen(2), "the suite stops one of two participants' validator clients")
 	client := suite.nodes[onlineParticipant].Beacon
+	suite.beacon = client
 	suite.chain = testsuite.MustSucceed(chaininfo.Load(ctx, client))
 	testsuite.ExpectShortEpochs(suite.chain)
 	spec := testsuite.MustSucceed(rewards.LoadSpec(ctx, client))
@@ -100,13 +102,13 @@ func (suite *leakSuite) closeReturned() {
 }
 
 func (suite *leakSuite) headEpoch(ctx context.Context) (uint64, error) {
-	head, err := suite.onlineValidator.Client.HeadSlot(ctx)
+	head, err := suite.beacon.HeadSlot(ctx)
 	return suite.chain.Epoch(head), err
 }
 
 func (suite *leakSuite) currentEpoch(ctx context.Context) uint64 {
 	ginkgo.GinkgoHelper()
-	head := testsuite.MustSucceed(suite.onlineValidator.Client.HeadSlot(ctx))
+	head := testsuite.MustSucceed(suite.beacon.HeadSlot(ctx))
 	return max(suite.chain.EpochAt(time.Now()), suite.chain.Epoch(head))
 }
 
@@ -138,11 +140,7 @@ func (suite *leakSuite) stopOfflineClient(ctx context.Context) (stopped, settled
 
 func (suite *leakSuite) effectiveStake(ctx context.Context, indices []uint64) uint64 {
 	ginkgo.GinkgoHelper()
-	var stake uint64
-	for _, index := range indices {
-		stake += testsuite.MustSucceed(suite.onlineValidator.Client.Validator(ctx, strconv.FormatUint(index, 10))).EffectiveBalance
-	}
-	return stake
+	return totalEffectiveBalance(testsuite.MustSucceed(suite.beacon.ValidatorsAt(ctx, "head", indices)))
 }
 
 // expectCleanFinality checks that no validator is slashed, and that every
