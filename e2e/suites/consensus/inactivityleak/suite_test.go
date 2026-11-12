@@ -138,8 +138,8 @@ func (suite *leakSuite) expectFrozenFinality(ctx context.Context, stopped uint64
 }
 
 // expectCleanFinality checks that no validator is slashed, and that every
-// node finalizes the same checkpoint, at epoch since or later.
-func (suite *leakSuite) expectCleanFinality(ctx context.Context, since uint64) {
+// node finalizes the same checkpoint, no earlier than the given epoch.
+func (suite *leakSuite) expectCleanFinality(ctx context.Context, epoch uint64) {
 	ginkgo.GinkgoHelper()
 	for index, node := range suite.nodes {
 		gomega.Expect(testsuite.MustSucceed(node.Beacon.SlashedValidators(ctx))).To(gomega.BeEmpty(),
@@ -149,7 +149,7 @@ func (suite *leakSuite) expectCleanFinality(ctx context.Context, since uint64) {
 	gomega.Eventually(func(g gomega.Gomega, ctx context.Context) {
 		want, err := suite.onlineBeacon.FinalityCheckpoints(ctx)
 		g.Expect(err).NotTo(gomega.HaveOccurred())
-		g.Expect(want.Finalized.Epoch).To(gomega.BeNumerically(">=", since))
+		g.Expect(want.Finalized.Epoch).To(gomega.BeNumerically(">=", epoch))
 		for index, node := range suite.nodes {
 			got, err := node.Beacon.FinalityCheckpoints(ctx)
 			g.Expect(err).NotTo(gomega.HaveOccurred())
