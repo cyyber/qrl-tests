@@ -23,8 +23,7 @@ type Outage struct {
 	Offline   []Stake
 }
 
-// Recovery is the first epoch the online validators justify alone, and the
-// offline stakes until then.
+// Recovery is the forecast of when the online validators first justify alone.
 type Recovery struct {
 	FirstJustified uint64
 	start          uint64
