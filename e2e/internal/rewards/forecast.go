@@ -56,7 +56,7 @@ func (spec Spec) ForecastRecovery(outage Outage) (Recovery, error) {
 		return Recovery{}, errors.New("forecast a recovery: the online validators hold no stake")
 	}
 	if outage.Epoch == 0 {
-		return Recovery{}, errors.New("forecast a recovery: an outage starts after epoch 0")
+		return Recovery{}, errors.New("forecast a recovery: the outage starts at epoch 0")
 	}
 	recovery := Recovery{start: outage.Epoch}
 	stakes := slices.Clone(outage.Offline)

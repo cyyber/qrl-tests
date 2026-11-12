@@ -106,7 +106,7 @@ func TestForecastRecoveryRefuses(t *testing.T) {
 		},
 		"an outage at epoch 0": {
 			outage: Outage{Online: fullStake, Offline: full},
-			want:   "forecast a recovery: an outage starts after epoch 0",
+			want:   "forecast a recovery: the outage starts at epoch 0",
 		},
 		"an ejection before the recovery": {
 			outage: Outage{Epoch: 7, Finalized: 4, Online: shorPerQRL, Offline: nearEjection},
