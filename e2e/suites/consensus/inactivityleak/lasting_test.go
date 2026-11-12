@@ -82,20 +82,20 @@ func (suite *leakSuite) forecastsRecovery(ctx ginkgo.SpecContext) {
 	outage.forecast = suite.states.forecast(ctx, suite.onlineValidator.Spec, *outage)
 	forecast := outage.forecast
 
-	// The votes of Justified count at the end of the next epoch, at the
+	// The votes of FirstJustified count at the end of the next epoch, at the
 	// effective balances that epoch starts with.
-	before, ok := forecast.At(forecast.Justified)
+	before, ok := forecast.At(forecast.FirstJustified)
 	gomega.Expect(ok).To(gomega.BeTrue())
-	deciding, ok := forecast.At(forecast.Justified + 1)
+	deciding, ok := forecast.At(forecast.FirstJustified + 1)
 	gomega.Expect(ok).To(gomega.BeTrue())
 	onlineStake, _ := suite.states.at(ctx, outage.settled)
 	ginkgo.GinkgoWriter.Printf("forecast: epoch %d is the first the online validators justify alone, %d epochs after the stop; "+
 		"half the online stake is %d shor, and the offline stake %d at the start of epoch %d and %d at the start of epoch %d\n",
-		forecast.Justified, forecast.Justified-outage.stopped, onlineStake/2,
-		rewards.TotalEffectiveBalance(before), forecast.Justified, rewards.TotalEffectiveBalance(deciding), forecast.Justified+1)
+		forecast.FirstJustified, forecast.FirstJustified-outage.stopped, onlineStake/2,
+		rewards.TotalEffectiveBalance(before), forecast.FirstJustified, rewards.TotalEffectiveBalance(deciding), forecast.FirstJustified+1)
 
 	gomega.Expect(time.Until(recoveryDeadline(suite.chain, forecast))).To(gomega.BeNumerically("<", recoveryTimeout-checkTimeout),
-		"the wait for finality, forecast to justify epoch %d, does not fit the next spec's timeout", forecast.Justified)
+		"the wait for finality, forecast to justify epoch %d, does not fit the next spec's timeout", forecast.FirstJustified)
 }
 
 func (suite *leakSuite) finalizesByLeakAlone(ctx ginkgo.SpecContext) {
@@ -112,7 +112,7 @@ func (suite *leakSuite) finalizesByLeakAlone(ctx ginkgo.SpecContext) {
 		}
 		finalized = checkpoints.Finalized
 		g.Expect(finalized.Epoch).To(gomega.BeNumerically(">", outage.frozen.Finalized.Epoch),
-			"finalized epoch, with epoch %d justified and epoch %d forecast to be", checkpoints.CurrentJustified.Epoch, forecast.Justified)
+			"finalized epoch, with epoch %d justified and epoch %d forecast to be", checkpoints.CurrentJustified.Epoch, forecast.FirstJustified)
 	}).WithContext(ctx).
 		WithTimeout(time.Until(recoveryDeadline(suite.chain, forecast))).
 		WithPolling(suite.chain.SlotDuration).
@@ -125,12 +125,12 @@ func (suite *leakSuite) finalizesByLeakAlone(ctx ginkgo.SpecContext) {
 	// move the stakes by tens of QRL at most, against the roughly 700 the leak
 	// takes from the offline stake in the epoch before recovery, so recovery
 	// can come an epoch either side.
-	gomega.Expect(outage.justified.Epoch).To(gomega.BeNumerically("~", forecast.Justified, forecastMargin),
+	gomega.Expect(outage.justified.Epoch).To(gomega.BeNumerically("~", forecast.FirstJustified, forecastMargin),
 		"first epoch justified since the stop in epoch %d, against the forecast", outage.stopped)
 	gomega.Expect(finalized).To(gomega.Equal(outage.justified),
 		"first checkpoint finalized since the stop: the online votes justify the two epochs after the first justified one too")
 	ginkgo.GinkgoWriter.Printf("epoch %d justified and finalized, against epoch %d forecast, %d epochs after the validator client stopped in epoch %d\n",
-		outage.justified.Epoch, forecast.Justified, outage.justified.Epoch-outage.stopped, outage.stopped)
+		outage.justified.Epoch, forecast.FirstJustified, outage.justified.Epoch-outage.stopped, outage.stopped)
 }
 
 func (suite *leakSuite) keepsOfflineValidatorsActive(ctx ginkgo.SpecContext) {
@@ -237,7 +237,7 @@ func expectForecastStakes(records []beacon.Validator, start, want []rewards.Stak
 // processing at the end of the third finalizes it; the next epoch's first
 // slots may be empty, so the deadline allows that epoch whole.
 func recoveryDeadline(chain chaininfo.Info, forecast rewards.Recovery) time.Time {
-	finalizing := forecast.Justified + forecastMargin + finalizeEpochs
+	finalizing := forecast.FirstJustified + forecastMargin + finalizeEpochs
 	return chain.SlotStartTime((finalizing + 2) * chain.SlotsPerEpoch)
 }
 

@@ -52,7 +52,7 @@ func TestForecastRecoveryAfterOneEpoch(t *testing.T) {
 	start := Stake{Balance: fullStake, EffectiveBalance: fullStake}
 	recovery, err := spec.ForecastRecovery(Outage{Epoch: 10, Finalized: 8, Online: 79_998 * shorPerQRL, Offline: []Stake{start}})
 	require.NoError(t, err)
-	require.Equal(t, uint64(10), recovery.Justified)
+	require.Equal(t, uint64(10), recovery.FirstJustified)
 
 	stakes, ok := recovery.At(10)
 	require.True(t, ok)
@@ -75,7 +75,7 @@ func TestForecastRecovery(t *testing.T) {
 	offline := slices.Repeat([]Stake{{Balance: fullStake, EffectiveBalance: fullStake}}, 22)
 	recovery, err := spec.ForecastRecovery(Outage{Epoch: 7, Finalized: 4, Online: 43 * fullStake, Offline: offline})
 	require.NoError(t, err)
-	require.Equal(t, uint64(62), recovery.Justified)
+	require.Equal(t, uint64(62), recovery.FirstJustified)
 
 	// Epoch 62 starts with the offline stake at 860,442 QRL, above half the
 	// online 1,720,000, and epoch 63, after 53 epochs of leak, at 859,716.

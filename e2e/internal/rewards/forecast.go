@@ -26,14 +26,13 @@ type Outage struct {
 // Recovery is the first epoch the online validators justify alone, and the
 // offline stakes until then.
 type Recovery struct {
-	// Justified is the first epoch whose votes reach two thirds of the stake.
-	Justified uint64
-	start     uint64
-	stakes    [][]Stake
+	FirstJustified uint64
+	start          uint64
+	stakes         [][]Stake
 }
 
 // At returns the offline stakes at the start of epoch, from the outage's epoch
-// through Justified+2.
+// through FirstJustified+2.
 func (recovery Recovery) At(epoch uint64) ([]Stake, bool) {
 	if epoch < recovery.start || epoch-recovery.start >= uint64(len(recovery.stakes)) {
 		return nil, false
@@ -68,9 +67,9 @@ func (spec Spec) ForecastRecovery(outage Outage) (Recovery, error) {
 		// The processing at the end of epoch counts the previous epoch's votes
 		// at these effective balances.
 		if !justified && 3*outage.Online >= 2*total {
-			recovery.Justified, justified = epoch-1, true
+			recovery.FirstJustified, justified = epoch-1, true
 		}
-		if justified && epoch == recovery.Justified+2 {
+		if justified && epoch == recovery.FirstJustified+2 {
 			return recovery, nil
 		}
 		leak := spec.inInactivityLeak(epoch-1, outage.Finalized)
