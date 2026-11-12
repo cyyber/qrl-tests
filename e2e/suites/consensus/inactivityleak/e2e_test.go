@@ -59,7 +59,7 @@ var _ = ginkgo.Describe(
 			ginkgo.It("leaks each offline validator's stake as forecast",
 				suite.leaksOfflineStakeAsForecast, ginkgo.SpecTimeout(checkTimeout))
 			ginkgo.It("slashes no validator, and every node finalizes the same checkpoint", func(ctx ginkgo.SpecContext) {
-				suite.expectCleanFinality(ctx, suite.lasting.justified.Epoch)
+				suite.expectCleanFinality(ctx, suite.lasting.firstJustified.Epoch)
 			}, ginkgo.SpecTimeout(checkTimeout))
 		})
 	},
