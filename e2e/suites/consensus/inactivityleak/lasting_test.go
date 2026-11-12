@@ -44,7 +44,7 @@ func (suite *leakSuite) stopsFinalizingForGood(ctx ginkgo.SpecContext) {
 	// largest validator.
 	onlineStake, offlineRecords := suite.stakesAt(ctx, outage.settled)
 	offlineStake := totalEffectiveBalance(offlineRecords)
-	total := testsuite.MustSucceed(suite.beacon.TotalActiveBalance(ctx, suite.stateAt(outage.settled)))
+	total := testsuite.MustSucceed(suite.onlineBeacon.TotalActiveBalance(ctx, suite.stateAt(outage.settled)))
 	gomega.Expect(onlineStake+offlineStake).To(gomega.Equal(total), "the participants' validators hold all the active stake")
 	gomega.Expect(3*offlineStake > total).To(gomega.BeTrue(),
 		"participant %d runs %d of the %d shor staked, not more than a third", offlineParticipant+1, offlineStake, total)
@@ -87,7 +87,7 @@ func (suite *leakSuite) finalizesByLeakAlone(ctx ginkgo.SpecContext) {
 	// behind it, finalized by then, are slow to read.
 	var finalized beacon.Checkpoint
 	gomega.Eventually(func(g gomega.Gomega, ctx context.Context) {
-		checkpoints, err := suite.beacon.FinalityCheckpoints(ctx)
+		checkpoints, err := suite.onlineBeacon.FinalityCheckpoints(ctx)
 		g.Expect(err).NotTo(gomega.HaveOccurred())
 		if outage.justified == (beacon.Checkpoint{}) && checkpoints.CurrentJustified != outage.frozen.CurrentJustified {
 			outage.justified = checkpoints.CurrentJustified
@@ -137,7 +137,7 @@ func (suite *leakSuite) forecast(ctx context.Context) rewards.RecoveryForecast {
 	ginkgo.GinkgoHelper()
 	outage := suite.lasting
 	online, offline := suite.stakesAt(ctx, outage.settled)
-	scores := testsuite.MustSucceed(suite.beacon.InactivityScores(ctx, suite.stateAt(outage.settled)))
+	scores := testsuite.MustSucceed(suite.onlineBeacon.InactivityScores(ctx, suite.stateAt(outage.settled)))
 	start := rewards.Outage{Epoch: outage.settled, FinalizedEpoch: outage.frozen.Finalized.Epoch, OnlineStake: online}
 	for _, record := range offline {
 		gomega.Expect(record.Index).To(gomega.BeNumerically("<", len(scores)), "inactivity scores at the start of epoch %d", outage.settled)

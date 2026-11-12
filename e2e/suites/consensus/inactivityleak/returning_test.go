@@ -82,7 +82,7 @@ func (suite *leakSuite) finalizesWithOneReturned(ctx ginkgo.SpecContext) {
 	outage := &suite.returning
 	// The online participant holds just under two thirds of the stake, and
 	// one more validator takes it over.
-	total := testsuite.MustSucceed(suite.beacon.TotalActiveBalance(ctx, "head"))
+	total := testsuite.MustSucceed(suite.onlineBeacon.TotalActiveBalance(ctx, "head"))
 	onlineStake := suite.effectiveStake(ctx, suite.onlineIndices)
 	returning := suite.effectiveStake(ctx, []uint64{suite.offlineValidator.Index})
 	gomega.Expect(3*onlineStake < 2*total).To(gomega.BeTrue(),
@@ -103,7 +103,7 @@ func (suite *leakSuite) finalizesWithOneReturned(ctx ginkgo.SpecContext) {
 		Keystores:          suite.returningKeystores,
 	}))
 
-	testsuite.AwaitFinalizedEpoch(ctx, suite.beacon, suite.chain, outage.restarted, resumeEpochs)
+	testsuite.AwaitFinalizedEpoch(ctx, suite.onlineBeacon, suite.chain, outage.restarted, resumeEpochs)
 }
 
 func (suite *leakSuite) zeroesReturnedScore(ctx ginkgo.SpecContext) {
@@ -146,7 +146,7 @@ func (suite *leakSuite) finalizesWithEveryValidatorBack(ctx ginkgo.SpecContext) 
 	next := suite.currentEpoch(ctx) + 1
 	gomega.Expect(testsuite.SleepUntil(ctx, suite.chain.SlotStartTime(next*suite.chain.SlotsPerEpoch))).To(gomega.Succeed())
 	gomega.Expect(suite.runtime.StartParticipantValidators(ctx, offlineParticipant)).To(gomega.Succeed())
-	testsuite.AwaitFinalizedEpoch(ctx, suite.beacon, suite.chain, suite.currentEpoch(ctx), finalityTimeoutEpochs)
+	testsuite.AwaitFinalizedEpoch(ctx, suite.onlineBeacon, suite.chain, suite.currentEpoch(ctx), finalityTimeoutEpochs)
 }
 
 // leakWindow is the first leakEpochs epochs of the first outage's leak.
