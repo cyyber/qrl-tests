@@ -157,10 +157,6 @@ func (suite *leakSuite) keepsOfflineValidatorsActive(ctx ginkgo.SpecContext) {
 	}
 }
 
-func (suite *leakSuite) agreesAfterLeak(ctx ginkgo.SpecContext) {
-	suite.expectCleanFinality(ctx, suite.lasting.justified.Epoch)
-}
-
 // beaconStates reads the online and the offline validators, and finality,
 // from one node's beacon states.
 type beaconStates struct {

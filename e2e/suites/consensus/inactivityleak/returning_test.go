@@ -158,10 +158,6 @@ func (suite *leakSuite) zeroesReturnedScore(ctx ginkgo.SpecContext) {
 		offline.Index, outage.score, decayEpochs, outage.restarted))
 }
 
-func (suite *leakSuite) agreesAfterReturn(ctx ginkgo.SpecContext) {
-	suite.expectCleanFinality(ctx, suite.returning.restarted)
-}
-
 func (suite *leakSuite) finalizesWithEveryValidatorBack(ctx ginkgo.SpecContext) {
 	suite.closeReturned()
 	// The participant's client signs for the returned validator's key from the

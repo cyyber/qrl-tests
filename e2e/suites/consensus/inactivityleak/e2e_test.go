@@ -42,8 +42,9 @@ var _ = ginkgo.Describe(
 				suite.finalizesWithOneReturned, ginkgo.SpecTimeout(resumeTimeout))
 			ginkgo.It("brings the returned validator's inactivity score back to zero",
 				suite.zeroesReturnedScore, ginkgo.SpecTimeout(decayTimeout))
-			ginkgo.It("slashes no validator, and every node finalizes the same checkpoint",
-				suite.agreesAfterReturn, ginkgo.SpecTimeout(checkTimeout))
+			ginkgo.It("slashes no validator, and every node finalizes the same checkpoint", func(ctx ginkgo.SpecContext) {
+				suite.expectCleanFinality(ctx, suite.returning.restarted)
+			}, ginkgo.SpecTimeout(checkTimeout))
 			ginkgo.It("finalizes with every validator back on its own client",
 				suite.finalizesWithEveryValidatorBack, ginkgo.SpecTimeout(rejoinTimeout))
 		})
@@ -57,8 +58,9 @@ var _ = ginkgo.Describe(
 				suite.finalizesByLeakAlone, ginkgo.SpecTimeout(recoveryTimeout))
 			ginkgo.It("leaves every offline validator active, at its forecast effective balance",
 				suite.keepsOfflineValidatorsActive, ginkgo.SpecTimeout(checkTimeout))
-			ginkgo.It("slashes no validator, and every node finalizes the same checkpoint",
-				suite.agreesAfterLeak, ginkgo.SpecTimeout(checkTimeout))
+			ginkgo.It("slashes no validator, and every node finalizes the same checkpoint", func(ctx ginkgo.SpecContext) {
+				suite.expectCleanFinality(ctx, suite.lasting.justified.Epoch)
+			}, ginkgo.SpecTimeout(checkTimeout))
 		})
 	},
 )
