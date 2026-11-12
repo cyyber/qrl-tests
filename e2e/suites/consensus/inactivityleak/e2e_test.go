@@ -23,7 +23,6 @@ var _ = ginkgo.Describe(
 		suite := new(leakSuite)
 
 		ginkgo.BeforeAll(suite.setUp, ginkgo.NodeTimeout(3*time.Minute))
-		ginkgo.AfterEach(suite.reportReturnedLogs)
 		ginkgo.AfterAll(suite.closeReturned)
 
 		ginkgo.It("finalizes before the stake goes offline", func(ctx ginkgo.SpecContext) {
@@ -31,7 +30,9 @@ var _ = ginkgo.Describe(
 		}, ginkgo.SpecTimeout(finalityTimeout))
 
 		ginkgo.Context("recovering by one validator returning", func() {
-			ginkgo.It("stops finalizing while blocks keep coming",
+			ginkgo.AfterEach(suite.reportReturnedLogs)
+
+			ginkgo.It("stops finalizing once the validator client stops, while blocks keep coming",
 				suite.stopsFinalizing, ginkgo.SpecTimeout(stallTimeout))
 			ginkgo.It("leaks an offline validator's stake once finality falls behind",
 				suite.leaksOfflineStake, ginkgo.SpecTimeout(leakTimeout))
@@ -54,7 +55,7 @@ var _ = ginkgo.Describe(
 				suite.forecastsRecovery, ginkgo.SpecTimeout(forecastTimeout))
 			ginkgo.It("finalizes again within an epoch of the forecast",
 				suite.finalizesByLeakAlone, ginkgo.SpecTimeout(recoveryTimeout))
-			ginkgo.It("leaves every offline validator active, at the effective balance the forecast put it",
+			ginkgo.It("leaves every offline validator active, at its forecast effective balance",
 				suite.keepsOfflineValidatorsActive, ginkgo.SpecTimeout(checkTimeout))
 			ginkgo.It("slashes no validator, and every node finalizes the same checkpoint",
 				suite.agreesAfterLeak, ginkgo.SpecTimeout(checkTimeout))
