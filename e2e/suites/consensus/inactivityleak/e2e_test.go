@@ -48,7 +48,7 @@ var _ = ginkgo.Describe(
 		})
 
 		ginkgo.Context("recovering by the leak alone", func() {
-			ginkgo.It("stops finalizing again once the client stops for good",
+			ginkgo.It("stops finalizing again once the validator client stops for good",
 				suite.stopsFinalizingForGood, ginkgo.SpecTimeout(stallTimeout))
 			ginkgo.It("forecasts the first epoch the online validators justify alone",
 				suite.forecastsRecovery, ginkgo.SpecTimeout(forecastTimeout))
