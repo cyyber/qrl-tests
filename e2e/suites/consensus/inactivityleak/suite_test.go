@@ -69,7 +69,6 @@ func (suite *leakSuite) setUp(ctx ginkgo.SpecContext) {
 
 	total := testsuite.MustSucceed(suite.onlineBeacon.TotalActiveBalance(ctx, "head"))
 	stake := suite.effectiveStake(ctx, suite.offlineIndices)
-	// More than a third goes offline, so the rest can't justify.
 	gomega.Expect(3*stake > total).To(gomega.BeTrue(),
 		"participant %d runs %d of the %d shor staked, not more than a third", offlineParticipant+1, stake, total)
 
