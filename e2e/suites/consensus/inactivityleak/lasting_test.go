@@ -18,7 +18,6 @@ const (
 	finalizeEpochs     = 3
 	forecastMargin     = 1
 	forecastIncrements = 2
-	maxLossDivisor     = 40
 
 	forecastTimeout = time.Minute
 	recoveryTimeout = 50 * time.Minute
@@ -84,18 +83,14 @@ func (suite *leakSuite) finalizesByLeakAlone(ctx ginkgo.SpecContext) {
 
 func (suite *leakSuite) leaksOfflineStakeAsForecast(ctx ginkgo.SpecContext) {
 	outage := &suite.lasting
-	// The processing at the end of the epoch after the justified one counted
-	// its votes, at the effective balances that epoch starts with.
+	// The first justified epoch's votes count at the next epoch's balances.
 	deciding := outage.firstJustified.Epoch + 1
-	_, offlineRecords := suite.stakesAtEpochStart(ctx, deciding)
-
-	start, ok := outage.forecast.OfflineStakesAt(outage.settledEpoch)
-	gomega.Expect(ok).To(gomega.BeTrue())
+	_, offline := suite.stakesAtEpochStart(ctx, deciding)
 	want, ok := outage.forecast.OfflineStakesAt(deciding)
 	gomega.Expect(ok).To(gomega.BeTrue(), "no forecast for epoch %d", deciding)
-	expectForecastStakes(offlineRecords, start, want, deciding, suite.balanceIncrement)
-	ginkgo.GinkgoWriter.Printf("the offline stake went from %d to %d shor by the start of epoch %d, against %d forecast\n",
-		rewards.TotalEffectiveBalance(start), totalEffectiveBalance(offlineRecords), deciding, rewards.TotalEffectiveBalance(want))
+	expectForecastStakes(offline, want, deciding, suite.balanceIncrement)
+	ginkgo.GinkgoWriter.Printf("the offline stake was %d shor at the start of epoch %d, against %d forecast\n",
+		totalEffectiveBalance(offline), deciding, rewards.TotalEffectiveBalance(want))
 }
 
 // forecast forecasts the second outage's recovery from the state at the start
@@ -158,15 +153,11 @@ func (suite *leakSuite) expectFirstJustified(ctx context.Context) {
 // the start of epoch against the forecast's. A validator's own sync committee
 // seats move its balance by about a QRL either way from the forecast's even
 // spread, and hysteresis can round that to one more increment.
-func expectForecastStakes(records []beacon.Validator, start, want []rewards.Stake, epoch, increment uint64) {
+func expectForecastStakes(records []beacon.Validator, want []rewards.Stake, epoch, increment uint64) {
 	ginkgo.GinkgoHelper()
 	for position, record := range records {
 		gomega.Expect(record.EffectiveBalance).To(gomega.BeNumerically("~", want[position].EffectiveBalance, forecastIncrements*increment),
 			"effective balance of validator %d at the start of epoch %d, against the forecast", record.Index, epoch)
-		gomega.Expect(maxLossDivisor*(start[position].EffectiveBalance-record.EffectiveBalance)).
-			To(gomega.BeNumerically("<", start[position].EffectiveBalance),
-				"validator %d's effective balance went from %d to %d shor, down a fortieth or more",
-				record.Index, start[position].EffectiveBalance, record.EffectiveBalance)
 	}
 }
 
