@@ -113,8 +113,6 @@ func (suite *leakSuite) bringsReturnedScoreToZero(ctx ginkgo.SpecContext) {
 		// The client may have missed its first votes after the restart.
 		reward := testsuite.MustSucceed(offline.AttestationReward(ctx, epoch))
 		amounts := testsuite.MustSucceed(offline.LeakVoteAmounts(ctx, epoch))
-		// A timely target vote earns zero or more, and a missed one is
-		// penalized; the score check catches a wrong figure.
 		timely := reward.Target >= 0
 		wantTarget := amounts.Timely.Target
 		if !timely {
