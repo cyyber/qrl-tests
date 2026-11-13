@@ -64,7 +64,7 @@ func TestE2E(t *testing.T) {
 }
 
 var _ = ginkgo.Describe(
-	"JSON-RPC blocks, transactions and receipts against a live qrl-package network",
+	"JSON-RPC blocks, transactions, receipts, filters, subscriptions, pool and signing against a live qrl-package network",
 	ginkgo.Serial,
 	ginkgo.Ordered,
 	ginkgo.Label("e2e", "rpc"),

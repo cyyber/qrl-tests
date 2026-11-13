@@ -83,6 +83,15 @@ func call[T any](ctx context.Context, node *live.Node, method string, args ...an
 	return result
 }
 
+// callWebSocket calls a JSON-RPC method over WebSocket and decodes its
+// result.
+func callWebSocket[T any](ctx context.Context, node *live.Node, method string, args ...any) T {
+	ginkgo.GinkgoHelper()
+	var result T
+	gomega.Expect(node.ExecutionWebSocket.Client().CallContext(ctx, &result, method, args...)).To(gomega.Succeed(), "%s%v over WebSocket", method, args)
+	return result
+}
+
 // readBlocks reads every block from genesis to last, and its receipts, by
 // number.
 func readBlocks(ctx context.Context, node *live.Node, last uint64) []rpcBlock {

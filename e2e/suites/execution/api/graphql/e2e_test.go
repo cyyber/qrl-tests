@@ -35,7 +35,7 @@ func TestE2E(t *testing.T) {
 }
 
 var _ = ginkgo.Describe(
-	"GraphQL blocks and transactions against a live qrl-package network",
+	"GraphQL blocks, transactions, accounts and calls against a live qrl-package network",
 	ginkgo.Serial,
 	ginkgo.Ordered,
 	ginkgo.Label("e2e", "graphql"),

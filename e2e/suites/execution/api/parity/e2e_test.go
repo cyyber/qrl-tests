@@ -25,7 +25,7 @@ func TestE2E(t *testing.T) {
 }
 
 var _ = ginkgo.Describe(
-	"Blocks, transactions, receipts and logs through every JSON-RPC and GraphQL path against a live qrl-package network",
+	"Blocks, transactions, receipts, logs and state through every JSON-RPC and GraphQL path against a live qrl-package network",
 	ginkgo.Serial,
 	ginkgo.Ordered,
 	ginkgo.ContinueOnFailure,
@@ -40,7 +40,7 @@ var _ = ginkgo.Describe(
 		)
 
 		ginkgo.BeforeAll(func(ctx ginkgo.SpecContext) {
-			node = testsuite.MustSucceed(testsuite.LoadRuntime().PrimaryNode(ctx))
+			node = testsuite.MustSucceed(testsuite.LoadRuntime().PrimaryWithWebSocket(ctx))
 			gomega.Expect(node.Participant.Execution.GraphQLURL).NotTo(gomega.BeEmpty())
 			chain := testsuite.MustSucceed(chaininfo.Load(ctx, node.Beacon))
 
@@ -64,7 +64,7 @@ var _ = ginkgo.Describe(
 				len(blocks), withWithdrawals, transactions, logs))
 		}, ginkgo.NodeTimeout(10*time.Minute))
 
-		ginkgo.It("returns every block alike by number and by hash, as a header or a block with or without full transactions, and as qrlclient decodes it", func(ctx ginkgo.SpecContext) {
+		ginkgo.It("returns every block alike by number and by hash, as a header or a block with or without full transactions, over HTTP and WebSocket, and as qrlclient decodes it", func(ctx ginkgo.SpecContext) {
 			for _, block := range blocks {
 				number, hash := block.number(), block.hash()
 				header, hashes := block.header(), block.withTransactionHashes()
@@ -73,6 +73,8 @@ var _ = ginkgo.Describe(
 				gomega.Expect(call[object](ctx, node, "qrl_getBlockByNumber", number, false)).To(gomega.Equal(hashes), "qrl_getBlockByNumber(%s, false)", number)
 				gomega.Expect(call[object](ctx, node, "qrl_getBlockByHash", hash, false)).To(gomega.Equal(hashes), "qrl_getBlockByHash(%s, false)", hash)
 				gomega.Expect(call[object](ctx, node, "qrl_getBlockByHash", hash, true)).To(gomega.Equal(block.full), "qrl_getBlockByHash(%s, true)", hash)
+				gomega.Expect(callWebSocket[object](ctx, node, "qrl_getBlockByNumber", number, true)).To(gomega.Equal(block.full), "qrl_getBlockByNumber(%s, true) over WebSocket", number)
+				gomega.Expect(callWebSocket[[]object](ctx, node, "qrl_getBlockReceipts", number)).To(gomega.Equal(block.receipts), "qrl_getBlockReceipts(%s) over WebSocket", number)
 				count := hexutil.EncodeUint64(uint64(len(block.transactions())))
 				gomega.Expect(call[string](ctx, node, "qrl_getBlockTransactionCountByNumber", number)).To(gomega.Equal(count), "qrl_getBlockTransactionCountByNumber(%s)", number)
 				gomega.Expect(call[string](ctx, node, "qrl_getBlockTransactionCountByHash", hash)).To(gomega.Equal(count), "qrl_getBlockTransactionCountByHash(%s)", hash)
@@ -124,6 +126,13 @@ var _ = ginkgo.Describe(
 					next = &blocks[index+1]
 				}
 				expectGraphQLBlock(ranged[index].(object), block, next)
+
+				// The debug API returns the encodings GraphQL does.
+				graphQLBlock := ranged[index].(object)
+				for _, id := range []string{block.number(), hash} {
+					gomega.Expect(call[string](ctx, node, "debug_getRawHeader", id)).To(gomega.Equal(graphQLBlock["rawHeader"]), "debug_getRawHeader(%s)", id)
+					gomega.Expect(call[string](ctx, node, "debug_getRawBlock", id)).To(gomega.Equal(graphQLBlock["raw"]), "debug_getRawBlock(%s)", id)
+				}
 			}
 		}, ginkgo.SpecTimeout(specTimeout))
 
@@ -143,6 +152,7 @@ var _ = ginkgo.Describe(
 					raw := call[string](ctx, node, "qrl_getRawTransactionByHash", txHash)
 					gomega.Expect(call[string](ctx, node, "qrl_getRawTransactionByBlockHashAndIndex", hash, position)).To(gomega.Equal(raw), "qrl_getRawTransactionByBlockHashAndIndex(%s, %s)", hash, position)
 					gomega.Expect(call[string](ctx, node, "qrl_getRawTransactionByBlockNumberAndIndex", number, position)).To(gomega.Equal(raw), "qrl_getRawTransactionByBlockNumberAndIndex(%s, %s)", number, position)
+					gomega.Expect(call[string](ctx, node, "debug_getRawTransaction", txHash)).To(gomega.Equal(raw), "debug_getRawTransaction(%s)", txHash)
 					var decoded types.Transaction
 					gomega.Expect(decoded.UnmarshalBinary(testsuite.MustSucceed(hexutil.Decode(raw)))).To(gomega.Succeed(), "decode raw transaction %s", txHash)
 					gomega.Expect(decoded.Hash().Hex()).To(gomega.Equal(txHash), "raw transaction %s", txHash)
@@ -174,8 +184,10 @@ var _ = ginkgo.Describe(
 				gomega.Expect(call[[]object](ctx, node, "qrl_getBlockReceipts", hash)).To(gomega.Equal(block.receipts), "qrl_getBlockReceipts(%s)", hash)
 				transactions := block.transactions()
 				gomega.Expect(block.receipts).To(gomega.HaveLen(len(transactions)), "receipts of block %s", hash)
-				graphQLReceipts := query(ctx, node, `{ block(hash: "%s") { transactions { %s } } }`, hash, graphQLReceiptFields)["block"].(object)["transactions"].([]any)
+				graphQLReceipts := query(ctx, node, `{ block(hash: "%s") { transactions { rawReceipt %s } } }`, hash, graphQLReceiptFields)["block"].(object)["transactions"].([]any)
 				gomega.Expect(graphQLReceipts).To(gomega.HaveLen(len(transactions)), "GraphQL transactions of block %s", hash)
+				rawReceipts := call[[]string](ctx, node, "debug_getRawReceipts", hash)
+				gomega.Expect(rawReceipts).To(gomega.HaveLen(len(transactions)), "debug_getRawReceipts(%s)", hash)
 				for index, receipt := range block.receipts {
 					transaction := transactions[index]
 					txHash := transaction["hash"].(string)
@@ -195,8 +207,23 @@ var _ = ginkgo.Describe(
 						gomega.Expect(receipt[receiptField]).To(equal(transaction[transactionField]), "receipt %s of transaction %s", receiptField, txHash)
 					}
 					gomega.Expect(fromGraphQLReceipt(graphQLReceipts[index].(object))).To(gomega.Equal(receiptFields(receipt)), "GraphQL receipt of transaction %s", txHash)
+					gomega.Expect(graphQLReceipts[index].(object)["rawReceipt"]).To(gomega.Equal(rawReceipts[index]), "GraphQL raw receipt of transaction %s", txHash)
+					var decoded types.Receipt
+					gomega.Expect(decoded.UnmarshalBinary(testsuite.MustSucceed(hexutil.Decode(rawReceipts[index])))).To(gomega.Succeed(), "decode raw receipt of transaction %s", txHash)
+					gomega.Expect(hexutil.EncodeUint64(decoded.Status)).To(gomega.Equal(receipt["status"]), "raw receipt status of transaction %s", txHash)
+					gomega.Expect(hexutil.EncodeUint64(decoded.CumulativeGasUsed)).To(gomega.Equal(receipt["cumulativeGasUsed"]), "raw receipt gas of transaction %s", txHash)
+					gomega.Expect(decoded.Logs).To(gomega.HaveLen(len(receipt["logs"].([]any))), "raw receipt logs of transaction %s", txHash)
 				}
 			}
+		}, ginkgo.SpecTimeout(specTimeout))
+
+		ginkgo.It("returns an account's state, a call's result and its gas estimate alike through JSON-RPC, qrlclient and GraphQL", func(ctx ginkgo.SpecContext) {
+			// The head moves on, so every path reads the state at one block.
+			last := blocks[len(blocks)-1]
+			for _, account := range []common.Address{node.Address, emitted.emitter} {
+				expectAccountState(ctx, node, account, last)
+			}
+			expectCall(ctx, node, emitted.emitter, last)
 		}, ginkgo.SpecTimeout(specTimeout))
 
 		ginkgo.It("returns every log alike by block range, by block hash, inside receipts and through GraphQL", func(ctx ginkgo.SpecContext) {
