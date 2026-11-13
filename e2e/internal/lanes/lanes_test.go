@@ -97,6 +97,16 @@ func TestLaneWithSuites(t *testing.T) {
 	require.False(t, proposal.NeedsExecutionImage())
 	require.False(t, proposal.RestartsServices)
 
+	leak, err := Named("consensus-inactivity-leak")
+	require.NoError(t, err)
+	require.Equal(t, devnet.ProfileInactivityLeak, leak.Profile)
+	require.Equal(t, []string{"./e2e/suites/consensus/inactivityleak"}, leak.Packages())
+	require.True(t, leak.NeedsValidatorImage())
+	require.True(t, leak.NeedsQrysmAlltoolsImage())
+	require.False(t, leak.NeedsExecutionImage())
+	require.False(t, leak.NeedsConsensusImage())
+	require.False(t, leak.RestartsServices)
+
 	restart, err := Named("resilience-network-restart")
 	require.NoError(t, err)
 	require.Equal(t, devnet.ProfileAnchored, restart.Profile)

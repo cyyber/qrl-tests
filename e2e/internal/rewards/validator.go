@@ -15,15 +15,23 @@ import (
 	gomega "github.com/onsi/gomega"
 )
 
-// Spec holds the consensus constants of the base reward.
+// Spec holds the consensus constants of the base reward, of the inactivity
+// leak, of effective balance hysteresis and of ejection.
 type Spec struct {
 	increment                    uint64
 	baseRewardFactor             uint64
 	sourceWeight                 uint64
 	targetWeight                 uint64
+	syncRewardWeight             uint64
 	weightDenominator            uint64
 	minEpochsToInactivityPenalty uint64
 	minInclusionDelay            uint64
+	inactivityScoreBias          uint64
+	inactivityScoreRecoveryRate  uint64
+	inactivityPenaltyQuotient    uint64
+	hysteresisQuotient           uint64
+	hysteresisDownwardMultiplier uint64
+	ejectionBalance              uint64
 }
 
 func LoadSpec(ctx context.Context, client *beacon.Client) (Spec, error) {
@@ -37,9 +45,16 @@ func LoadSpec(ctx context.Context, client *beacon.Client) (Spec, error) {
 		"BASE_REWARD_FACTOR":               &spec.baseRewardFactor,
 		"TIMELY_SOURCE_WEIGHT":             &spec.sourceWeight,
 		"TIMELY_TARGET_WEIGHT":             &spec.targetWeight,
+		"SYNC_REWARD_WEIGHT":               &spec.syncRewardWeight,
 		"WEIGHT_DENOMINATOR":               &spec.weightDenominator,
 		"MIN_EPOCHS_TO_INACTIVITY_PENALTY": &spec.minEpochsToInactivityPenalty,
 		"MIN_ATTESTATION_INCLUSION_DELAY":  &spec.minInclusionDelay,
+		"INACTIVITY_SCORE_BIAS":            &spec.inactivityScoreBias,
+		"INACTIVITY_SCORE_RECOVERY_RATE":   &spec.inactivityScoreRecoveryRate,
+		"INACTIVITY_PENALTY_QUOTIENT":      &spec.inactivityPenaltyQuotient,
+		"HYSTERESIS_QUOTIENT":              &spec.hysteresisQuotient,
+		"HYSTERESIS_DOWNWARD_MULTIPLIER":   &spec.hysteresisDownwardMultiplier,
+		"EJECTION_BALANCE":                 &spec.ejectionBalance,
 	}); err != nil {
 		return Spec{}, err
 	}
@@ -47,13 +62,50 @@ func LoadSpec(ctx context.Context, client *beacon.Client) (Spec, error) {
 }
 
 // missedVotePenalties returns what a validator with effectiveBalance loses
-// for missing the source and the target vote of an epoch outside an
-// inactivity leak. Its inactivity score then stays zero and adds nothing.
+// for missing the source and the target vote of an epoch, in a leak or not.
+// The inactivity penalty that a missed target adds is left out.
 func (spec Spec) missedVotePenalties(effectiveBalance, totalActiveBalance uint64) (source, target uint64) {
-	root := new(big.Int).Sqrt(new(big.Int).SetUint64(totalActiveBalance)).Uint64()
-	baseReward := effectiveBalance / spec.increment * (spec.increment * spec.baseRewardFactor / root)
+	baseReward := spec.baseReward(effectiveBalance, totalActiveBalance)
 	return baseReward * spec.sourceWeight / spec.weightDenominator,
 		baseReward * spec.targetWeight / spec.weightDenominator
+}
+
+func (spec Spec) baseReward(effectiveBalance, totalActiveBalance uint64) uint64 {
+	root := new(big.Int).Sqrt(new(big.Int).SetUint64(totalActiveBalance)).Uint64()
+	return effectiveBalance / spec.increment * (spec.increment * spec.baseRewardFactor / root)
+}
+
+// inactivityPenalty is the extra penalty a missed target vote costs a
+// validator with the given inactivity score.
+func (spec Spec) inactivityPenalty(effectiveBalance, score uint64) uint64 {
+	return effectiveBalance * score / (spec.inactivityScoreBias * spec.inactivityPenaltyQuotient)
+}
+
+// inInactivityLeak reports whether the rewards of epoch are processed in a
+// leak, given the last finalized epoch.
+func (spec Spec) inInactivityLeak(epoch, finalized uint64) bool {
+	return epoch > finalized+spec.minEpochsToInactivityPenalty
+}
+
+// FirstLeakEpoch is the first epoch whose rewards are processed in a leak,
+// given the last finalized epoch.
+func (spec Spec) FirstLeakEpoch(finalized uint64) uint64 {
+	return finalized + spec.minEpochsToInactivityPenalty + 1
+}
+
+// NextInactivityScore is the score after an epoch's processing: one less for a
+// timely target vote, INACTIVITY_SCORE_BIAS more for a missed one, then up to
+// INACTIVITY_SCORE_RECOVERY_RATE less outside a leak.
+func (spec Spec) NextInactivityScore(score uint64, timelyTarget, leak bool) uint64 {
+	if timelyTarget {
+		score -= min(score, 1)
+	} else {
+		score += spec.inactivityScoreBias
+	}
+	if !leak {
+		score -= min(score, spec.inactivityScoreRecoveryRate)
+	}
+	return score
 }
 
 // Validator reads one validator's balance and rewards from a beacon node.
@@ -66,8 +118,9 @@ type Validator struct {
 
 // VoteAmounts is what a validator's votes in an epoch earn or cost. Timely is
 // what each vote earns when it is timely: Qrysm's ideal reward at the
-// validator's effective balance. MissedSource and MissedTarget are what
-// missing those votes costs; missing the head vote costs nothing.
+// validator's effective balance, zero in an inactivity leak. MissedSource and
+// MissedTarget are what missing those votes costs, before any inactivity
+// penalty; missing the head vote costs nothing.
 type VoteAmounts struct {
 	Timely       beacon.IdealAttestationReward
 	MissedSource uint64
@@ -97,7 +150,8 @@ func (validator Validator) AttestationReward(ctx context.Context, epoch uint64) 
 }
 
 // FirstAttestedEpoch waits for the first epoch, starting at epoch from, whose
-// source and target votes were both timely, and returns it.
+// source and target votes were both timely, and returns it. It reads timely
+// votes from positive rewards, so it finds no epoch processed in a leak.
 func (validator Validator) FirstAttestedEpoch(ctx context.Context, from uint64, timeout time.Duration) uint64 {
 	ginkgo.GinkgoHelper()
 	return AwaitAttestationReward(ctx, validator.Client, validator.Chain, validator.Index, from, timeout, attested)
@@ -110,17 +164,74 @@ func attested(reward beacon.AttestationReward) bool {
 // VoteAmounts computes the vote amounts of epoch from the state its rewards
 // are processed in: the one at the last slot of the next epoch. It refuses an
 // epoch processed in an inactivity leak, whose penalty Qrysm folds into the
-// target score.
+// target figure; use LeakVoteAmounts for those.
 func (validator Validator) VoteAmounts(ctx context.Context, epoch uint64) (VoteAmounts, error) {
-	stateID := strconv.FormatUint((epoch+2)*validator.Chain.SlotsPerEpoch-1, 10)
+	stateID := strconv.FormatUint(validator.rewardsSlot(epoch), 10)
 	checkpoints, err := validator.Client.FinalityCheckpointsAt(ctx, stateID)
 	if err != nil {
 		return VoteAmounts{}, err
 	}
-	if finalized := checkpoints.Finalized.Epoch; epoch > finalized+validator.Spec.minEpochsToInactivityPenalty {
+	if finalized := checkpoints.Finalized.Epoch; validator.Spec.inInactivityLeak(epoch, finalized) {
 		return VoteAmounts{}, fmt.Errorf(
 			"the rewards of epoch %d are processed in an inactivity leak: the last finalized epoch is %d", epoch, finalized)
 	}
+	return validator.voteAmountsAt(ctx, epoch, stateID)
+}
+
+// LeakAmounts are the vote amounts of an epoch that may be processed in an
+// inactivity leak, or while the validator's inactivity score is above zero.
+type LeakAmounts struct {
+	VoteAmounts
+	Leak                    bool
+	ScoreBefore, ScoreAfter uint64
+	InactivityPenalty       uint64
+}
+
+// LeakVoteAmounts computes the vote amounts of epoch like VoteAmounts, and the
+// inactivity penalty of a missed target vote, from the states just before and
+// just after the epoch processing that counts the epoch's votes.
+func (validator Validator) LeakVoteAmounts(ctx context.Context, epoch uint64) (LeakAmounts, error) {
+	before := validator.rewardsSlot(epoch)
+	after := before + 1
+	amounts, err := validator.voteAmountsAt(ctx, epoch, strconv.FormatUint(before, 10))
+	if err != nil {
+		return LeakAmounts{}, err
+	}
+	checkpoints, err := validator.Client.FinalityCheckpointsAt(ctx, strconv.FormatUint(after, 10))
+	if err != nil {
+		return LeakAmounts{}, err
+	}
+	leak := LeakAmounts{VoteAmounts: amounts, Leak: validator.Spec.inInactivityLeak(epoch, checkpoints.Finalized.Epoch)}
+	if leak.ScoreBefore, err = validator.inactivityScore(ctx, before); err != nil {
+		return LeakAmounts{}, err
+	}
+	if leak.ScoreAfter, err = validator.inactivityScore(ctx, after); err != nil {
+		return LeakAmounts{}, err
+	}
+	leak.InactivityPenalty = validator.Spec.inactivityPenalty(amounts.Timely.EffectiveBalance, leak.ScoreAfter)
+	return leak, nil
+}
+
+// inactivityScore reads the validator's inactivity score from the state at
+// slot.
+func (validator Validator) inactivityScore(ctx context.Context, slot uint64) (uint64, error) {
+	scores, err := validator.Client.InactivityScores(ctx, strconv.FormatUint(slot, 10))
+	if err != nil {
+		return 0, err
+	}
+	if validator.Index >= uint64(len(scores)) {
+		return 0, fmt.Errorf("the state at slot %d has no inactivity score for validator %d", slot, validator.Index)
+	}
+	return scores[validator.Index], nil
+}
+
+// rewardsSlot is the slot of the state the rewards of epoch are processed in:
+// the last of the next epoch.
+func (validator Validator) rewardsSlot(epoch uint64) uint64 {
+	return (epoch+2)*validator.Chain.SlotsPerEpoch - 1
+}
+
+func (validator Validator) voteAmountsAt(ctx context.Context, epoch uint64, stateID string) (VoteAmounts, error) {
 	record, err := validator.Client.ValidatorAt(ctx, stateID, strconv.FormatUint(validator.Index, 10))
 	if err != nil {
 		return VoteAmounts{}, err

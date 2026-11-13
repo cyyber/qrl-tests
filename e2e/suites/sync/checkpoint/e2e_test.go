@@ -119,13 +119,8 @@ var _ = ginkgo.Describe(
 			finalizedBefore := testsuite.MustSucceed(source.Beacon.FinalityCheckpoints(ctx)).Finalized.Epoch
 			gomega.Expect(fullNode.Stop(ctx)).To(gomega.Succeed())
 
-			gomega.Eventually(func() (uint64, error) {
-				checkpoints, err := source.Beacon.FinalityCheckpoints(ctx)
-				return checkpoints.Finalized.Epoch, err
-			}).WithContext(ctx).
-				WithTimeout((epochsFinalizedWhileStopped + 6) * chain.EpochDuration).
-				WithPolling(chain.SlotDuration).
-				Should(gomega.BeNumerically(">=", finalizedBefore+epochsFinalizedWhileStopped))
+			testsuite.AwaitFinalizedEpoch(ctx, source.Beacon, chain,
+				finalizedBefore+epochsFinalizedWhileStopped, epochsFinalizedWhileStopped+6)
 
 			gomega.Expect(fullNode.Resume(ctx)).To(gomega.Succeed())
 			gomega.Expect(fullNode.Execution.BlockNumber(ctx)).To(gomega.BeNumerically(">=", stoppedBlock),

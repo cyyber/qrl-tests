@@ -80,7 +80,7 @@ var _ = ginkgo.Describe(
 				Spec:   testsuite.MustSucceed(rewards.LoadSpec(ctx, beaconClient)),
 				Index:  spares[0],
 			}
-			slashingops.ExpectShortEpochs(val.Chain)
+			testsuite.ExpectShortEpochs(val.Chain)
 			spec = testsuite.MustSucceed(slashingops.LoadSpec(ctx, beaconClient))
 
 			keystores = testsuite.MustSucceed(validatorops.GenesisKeystores(

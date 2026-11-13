@@ -13,19 +13,7 @@ import (
 	gomega "github.com/onsi/gomega"
 )
 
-const (
-	maxEpochDuration = 40 * time.Second
-
-	detectionEpochs = 4
-)
-
-// ExpectShortEpochs fails fast on epochs longer than the suites' timeouts
-// assume.
-func ExpectShortEpochs(chain chaininfo.Info) {
-	ginkgo.GinkgoHelper()
-	gomega.Expect(chain.EpochDuration).To(gomega.BeNumerically("<=", maxEpochDuration),
-		"the suite's timeouts assume epochs of at most %s", maxEpochDuration)
-}
+const detectionEpochs = 4
 
 // PlanNextEpoch asks pick, during the first half of each epoch, for a duty in
 // the next epoch, and returns the first one it accepts. Asking only in the

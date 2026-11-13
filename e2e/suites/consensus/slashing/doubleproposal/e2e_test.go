@@ -73,7 +73,7 @@ var _ = ginkgo.Describe(
 
 			client = nodes[primaryParticipant].Beacon
 			chain = testsuite.MustSucceed(chaininfo.Load(ctx, client))
-			slashingops.ExpectShortEpochs(chain)
+			testsuite.ExpectShortEpochs(chain)
 			rewardsSpec = testsuite.MustSucceed(rewards.LoadSpec(ctx, client))
 			spec = testsuite.MustSucceed(slashingops.LoadSpec(ctx, client))
 			gomega.Expect(devnet.PrepareIsolation(ctx)).To(gomega.Succeed())

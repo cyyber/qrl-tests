@@ -575,18 +575,19 @@ func TestRunAllProvisionsPerLane(t *testing.T) {
 	require.Equal(t, []string{
 		"qrl-tests-execution", "qrl-tests-consensus-staking-automated", "qrl-tests-consensus-staking-operator",
 		"qrl-tests-consensus-penalties", "qrl-tests-consensus-slashing-double-vote", "qrl-tests-consensus-slashing-double-proposal",
-		"qrl-tests-resilience-network-restart", "qrl-tests-sync",
+		"qrl-tests-consensus-inactivity-leak", "qrl-tests-resilience-network-restart", "qrl-tests-sync",
 	}, networks.stopped)
-	require.Len(t, commands, 8)
+	require.Len(t, commands, 9)
 	require.Contains(t, commands[0].Args, "./e2e/suites/execution/abi")
 	require.Contains(t, commands[1].Args, "./e2e/suites/consensus/staking/automated")
 	require.Contains(t, commands[2].Args, "./e2e/suites/consensus/staking/operator")
 	require.Contains(t, commands[3].Args, "./e2e/suites/consensus/penalties")
 	require.Contains(t, commands[4].Args, "./e2e/suites/consensus/slashing/doublevote")
 	require.Contains(t, commands[5].Args, "./e2e/suites/consensus/slashing/doubleproposal")
-	require.Contains(t, commands[6].Args, "./e2e/suites/resilience/networkrestart")
-	require.Contains(t, commands[7].Args, "./e2e/suites/sync/genesis")
-	require.Contains(t, commands[7].Args, "./e2e/suites/sync/checkpoint")
+	require.Contains(t, commands[6].Args, "./e2e/suites/consensus/inactivityleak")
+	require.Contains(t, commands[7].Args, "./e2e/suites/resilience/networkrestart")
+	require.Contains(t, commands[8].Args, "./e2e/suites/sync/genesis")
+	require.Contains(t, commands[8].Args, "./e2e/suites/sync/checkpoint")
 	record := testutil.ReadJSON[runmanifest.Manifest](t, filepath.Join(reports, runmanifest.FileName))
 	require.Equal(t, "qrl-tests-execution", record.Lanes[0].Enclave)
 	require.Equal(t, "qrl-tests-consensus-staking-automated", record.Lanes[1].Enclave)
@@ -594,8 +595,9 @@ func TestRunAllProvisionsPerLane(t *testing.T) {
 	require.Equal(t, "qrl-tests-consensus-penalties", record.Lanes[3].Enclave)
 	require.Equal(t, "qrl-tests-consensus-slashing-double-vote", record.Lanes[4].Enclave)
 	require.Equal(t, "qrl-tests-consensus-slashing-double-proposal", record.Lanes[5].Enclave)
-	require.Equal(t, "qrl-tests-resilience-network-restart", record.Lanes[6].Enclave)
-	require.Equal(t, "qrl-tests-sync", record.Lanes[7].Enclave)
+	require.Equal(t, "qrl-tests-consensus-inactivity-leak", record.Lanes[6].Enclave)
+	require.Equal(t, "qrl-tests-resilience-network-restart", record.Lanes[7].Enclave)
+	require.Equal(t, "qrl-tests-sync", record.Lanes[8].Enclave)
 }
 
 func TestRunReturnsCleanupFailure(t *testing.T) {
