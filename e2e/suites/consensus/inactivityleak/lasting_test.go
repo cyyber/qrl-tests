@@ -93,8 +93,8 @@ func (suite *leakSuite) leaksOfflineStakeAsForecast(ctx ginkgo.SpecContext) {
 		totalEffectiveBalance(offline), deciding, rewards.TotalEffectiveBalance(want))
 }
 
-// forecast predicts the recovery from the chain at the start of the settled
-// epoch.
+// forecast reads the chain at the start of the settled epoch and predicts the
+// recovery from there.
 func (suite *leakSuite) forecast(ctx context.Context) rewards.RecoveryForecast {
 	ginkgo.GinkgoHelper()
 	outage := suite.lasting
