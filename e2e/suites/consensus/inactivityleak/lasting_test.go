@@ -74,9 +74,6 @@ func (suite *leakSuite) finalizesByLeakAlone(ctx ginkgo.SpecContext) {
 	outage.firstJustified, finalized = suite.awaitRecovery(ctx)
 
 	suite.expectFirstJustified(ctx)
-	// The forecast holds the online stake fixed and spreads the sync committee
-	// penalties evenly. Both shift the stakes by tens of QRL, against about 700
-	// a leak epoch takes, so recovery can land an epoch either side.
 	gomega.Expect(outage.firstJustified.Epoch).To(gomega.BeNumerically("~", forecast.FirstJustified, forecastMargin),
 		"first epoch justified since the stop in epoch %d, against the forecast", outage.stoppedEpoch)
 	gomega.Expect(finalized).To(gomega.Equal(outage.firstJustified),
