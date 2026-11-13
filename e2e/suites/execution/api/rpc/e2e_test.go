@@ -5,6 +5,7 @@ package rpc
 import (
 	"context"
 	"math/big"
+	"slices"
 	"testing"
 	"time"
 
@@ -28,6 +29,14 @@ import (
 var (
 	pendingFeeCap = big.NewInt(4)
 	pendingTip    = big.NewInt(2)
+)
+
+// A transaction is in the pending block from when the pool has it until a
+// block includes it, which is less than a slot, so the suite looks for it
+// often and for several slots.
+const (
+	pendingBlockSlots   = 8
+	pendingBlockPolling = 250 * time.Millisecond
 )
 
 // Header fields Zond has from genesis, which the API always returns.
@@ -62,6 +71,7 @@ var _ = ginkgo.Describe(
 	func() {
 		var (
 			node    *live.Node
+			chain   chaininfo.Info
 			mined   *types.Transaction
 			receipt *types.Receipt
 			pending *types.Transaction
@@ -71,7 +81,7 @@ var _ = ginkgo.Describe(
 
 		ginkgo.BeforeAll(func(ctx ginkgo.SpecContext) {
 			node = testsuite.MustSucceed(testsuite.LoadRuntime().PrimaryNode(ctx))
-			chain := testsuite.MustSucceed(chaininfo.Load(ctx, node.Beacon))
+			chain = testsuite.MustSucceed(chaininfo.Load(ctx, node.Beacon))
 			signer := types.NewZondSigner(node.ChainID)
 			head := testsuite.MustSucceed(node.Execution.HeaderByNumber(ctx, nil))
 			tip := testsuite.MustSucceed(node.Execution.SuggestGasTipCap(ctx))
@@ -261,6 +271,91 @@ var _ = ginkgo.Describe(
 			for _, field := range []string{"blockHash", "blockNumber", "transactionIndex"} {
 				gomega.Expect(raw).To(gomega.HaveKeyWithValue(field, gomega.BeNil()), "field %q", field)
 			}
+		})
+
+		ginkgo.It("decodes a pending block that has a transaction, and keeps the sender the API returned", func(ctx ginkgo.SpecContext) {
+			signer := types.NewZondSigner(node.ChainID)
+			pendingNumber := big.NewInt(int64(gorpc.PendingBlockNumber))
+			var (
+				sent  *types.Transaction
+				block *types.Block
+				index int
+				raw   map[string]any
+				rawTx map[string]any
+			)
+			gomega.Eventually(func(g gomega.Gomega) {
+				// A block included the last transaction before the pending
+				// block was read with it, so another one is sent.
+				if sent != nil {
+					if _, err := node.Execution.TransactionReceipt(ctx, sent.Hash()); err == nil {
+						sent = nil
+					}
+				}
+				if sent == nil {
+					head, err := node.Execution.HeaderByNumber(ctx, nil)
+					g.Expect(err).NotTo(gomega.HaveOccurred())
+					tip, err := node.Execution.SuggestGasTipCap(ctx)
+					g.Expect(err).NotTo(gomega.HaveOccurred())
+					nonce, err := node.Execution.PendingNonceAt(ctx, node.Address)
+					g.Expect(err).NotTo(gomega.HaveOccurred())
+					tx, err := types.SignNewTx(node.Wallet, signer, &types.DynamicFeeTx{
+						ChainID:   node.ChainID,
+						Nonce:     nonce,
+						GasTipCap: tip,
+						// Room for the base fee to double.
+						GasFeeCap: new(big.Int).Add(new(big.Int).Mul(head.BaseFee, big.NewInt(2)), tip),
+						Gas:       params.TxGas,
+						To:        &recipient,
+						Value:     big.NewInt(1),
+					})
+					g.Expect(err).NotTo(gomega.HaveOccurred())
+					g.Expect(node.Execution.SendTransaction(ctx, tx)).To(gomega.Succeed())
+					sent = tx
+				}
+
+				var err error
+				block, err = node.Execution.BlockByNumber(ctx, pendingNumber)
+				g.Expect(err).NotTo(gomega.HaveOccurred())
+				index = slices.IndexFunc(block.Transactions(), func(tx *types.Transaction) bool { return tx.Hash() == sent.Hash() })
+				g.Expect(index).To(gomega.BeNumerically(">=", 0), "the pending block does not have transaction %s", sent.Hash())
+
+				raw, rawTx = nil, nil
+				g.Expect(node.Execution.Client().CallContext(ctx, &raw, "qrl_getBlockByNumber", gorpc.PendingBlockNumber.String(), true)).To(gomega.Succeed())
+				for _, tx := range raw["transactions"].([]any) {
+					if fields := tx.(map[string]any); fields["hash"] == sent.Hash().Hex() {
+						rawTx = fields
+					}
+				}
+				g.Expect(rawTx).NotTo(gomega.BeNil(), "the raw pending block does not have transaction %s", sent.Hash())
+			}).WithContext(ctx).
+				WithTimeout(pendingBlockSlots * chain.SlotDuration).
+				WithPolling(pendingBlockPolling).
+				Should(gomega.Succeed())
+
+			// The pending block is not in the database, so the node cannot
+			// answer for its hash: the sender is the one qrlclient kept from
+			// the block, under the hash it computed for it.
+			sender, err := node.Execution.TransactionSender(ctx, block.Transactions()[index], block.Hash(), uint(index))
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+			gomega.Expect(sender).To(gomega.Equal(node.Address))
+
+			expectHeaderFields(raw, true)
+			expectFields(rawTx, transactionFields...)
+			gomega.Expect(rawTx).To(gomega.HaveKeyWithValue("from", node.Address.Hex()))
+		})
+
+		ginkgo.It("counts the transactions of a block by hash, and finds no header, block or count for an unknown hash", func(ctx ginkgo.SpecContext) {
+			block := testsuite.MustSucceed(node.Execution.BlockByHash(ctx, receipt.BlockHash))
+			gomega.Expect(block.Transactions()).NotTo(gomega.BeEmpty())
+			gomega.Expect(node.Execution.TransactionCount(ctx, receipt.BlockHash)).To(gomega.Equal(uint(len(block.Transactions()))))
+
+			unknown := common.BytesToHash([]byte("rpc e2e unknown block"))
+			_, err := node.Execution.TransactionCount(ctx, unknown)
+			gomega.Expect(err).To(gomega.MatchError(qrl.NotFound))
+			_, err = node.Execution.HeaderByHash(ctx, unknown)
+			gomega.Expect(err).To(gomega.MatchError(qrl.NotFound))
+			_, err = node.Execution.BlockByHash(ctx, unknown)
+			gomega.Expect(err).To(gomega.MatchError(qrl.NotFound))
 		})
 
 		for _, last := range []struct {
