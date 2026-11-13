@@ -132,9 +132,10 @@ func (suite *leakSuite) bringsReturnedScoreToZero(ctx ginkgo.SpecContext) {
 }
 
 func (suite *leakSuite) finalizesWithEveryValidatorBack(ctx ginkgo.SpecContext) {
+	// Hand the returned validator's key back to the participant's client.
 	suite.closeReturned()
-	// The participant's client signs for the returned validator's key from the
-	// next epoch on, so no target gets a second vote.
+	// The two clients keep separate slashing protection, so start the
+	// participant's at the next epoch, or the key could vote twice in this one.
 	next := suite.currentEpoch(ctx) + 1
 	gomega.Expect(testsuite.SleepUntil(ctx, suite.chain.SlotStartTime(next*suite.chain.SlotsPerEpoch))).To(gomega.Succeed())
 	gomega.Expect(suite.runtime.StartParticipantValidators(ctx, offlineParticipant)).To(gomega.Succeed())
