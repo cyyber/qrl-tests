@@ -70,30 +70,13 @@ func (suite *leakSuite) forecastsRecovery(ctx ginkgo.SpecContext) {
 func (suite *leakSuite) finalizesByLeakAlone(ctx ginkgo.SpecContext) {
 	outage := &suite.lasting
 	forecast := outage.forecast
-	// Poll the head, which shows each justification as it happens; states far
-	// behind it, finalized by then, are slow to read.
 	var finalized beacon.Checkpoint
-	gomega.Eventually(func(g gomega.Gomega, ctx context.Context) {
-		checkpoints, err := suite.onlineBeacon.FinalityCheckpoints(ctx)
-		g.Expect(err).NotTo(gomega.HaveOccurred())
-		if outage.firstJustified == (beacon.Checkpoint{}) && checkpoints.CurrentJustified != outage.frozen.CurrentJustified {
-			outage.firstJustified = checkpoints.CurrentJustified
-		}
-		finalized = checkpoints.Finalized
-		g.Expect(finalized.Epoch).To(gomega.BeNumerically(">", outage.frozen.Finalized.Epoch),
-			"finalized epoch, with epoch %d justified and epoch %d forecast to be", checkpoints.CurrentJustified.Epoch, forecast.FirstJustified)
-	}).WithContext(ctx).
-		WithTimeout(time.Until(recoveryDeadline(suite.chain, forecast))).
-		WithPolling(suite.chain.SlotDuration).
-		Should(gomega.Succeed())
+	outage.firstJustified, finalized = suite.awaitRecovery(ctx)
 
 	suite.expectFirstJustified(ctx)
-	// The forecast holds the online stake fixed, though a late source vote can
-	// take an online validator's effective balance down an increment, and
-	// spreads the offline validators' sync committee penalties evenly. Both
-	// move the stakes by tens of QRL at most, against the roughly 700 the leak
-	// takes from the offline stake in the epoch before recovery, so recovery
-	// can come an epoch either side.
+	// The forecast holds the online stake fixed and spreads the sync committee
+	// penalties evenly. Both shift the stakes by tens of QRL, against about 700
+	// a leak epoch takes, so recovery can land an epoch either side.
 	gomega.Expect(outage.firstJustified.Epoch).To(gomega.BeNumerically("~", forecast.FirstJustified, forecastMargin),
 		"first epoch justified since the stop in epoch %d, against the forecast", outage.stoppedEpoch)
 	gomega.Expect(finalized).To(gomega.Equal(outage.firstJustified),
@@ -135,6 +118,30 @@ func (suite *leakSuite) forecast(ctx context.Context) rewards.RecoveryForecast {
 		})
 	}
 	return testsuite.MustSucceed(suite.onlineValidator.Spec.ForecastRecovery(start))
+}
+
+// awaitRecovery polls the head until finality moves past the frozen
+// checkpoint, and returns the first checkpoint justified since the stop and
+// the first finalized. The head shows each justification as it happens;
+// states far behind it, finalized by then, are slow to read.
+func (suite *leakSuite) awaitRecovery(ctx context.Context) (firstJustified, finalized beacon.Checkpoint) {
+	ginkgo.GinkgoHelper()
+	outage := suite.lasting
+	gomega.Eventually(func(g gomega.Gomega, ctx context.Context) {
+		checkpoints, err := suite.onlineBeacon.FinalityCheckpoints(ctx)
+		g.Expect(err).NotTo(gomega.HaveOccurred())
+		if firstJustified == (beacon.Checkpoint{}) && checkpoints.CurrentJustified != outage.frozen.CurrentJustified {
+			firstJustified = checkpoints.CurrentJustified
+		}
+		finalized = checkpoints.Finalized
+		g.Expect(finalized.Epoch).To(gomega.BeNumerically(">", outage.frozen.Finalized.Epoch),
+			"finalized epoch, with epoch %d justified and epoch %d forecast to justify first",
+			checkpoints.CurrentJustified.Epoch, outage.forecast.FirstJustified)
+	}).WithContext(ctx).
+		WithTimeout(time.Until(recoveryDeadline(suite.chain, outage.forecast))).
+		WithPolling(suite.chain.SlotDuration).
+		Should(gomega.Succeed())
+	return firstJustified, finalized
 }
 
 // expectFirstJustified checks that the second outage's justified checkpoint is
