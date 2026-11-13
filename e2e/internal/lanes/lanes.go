@@ -26,9 +26,9 @@ const (
 	suiteExecutionABI                    SuiteID = "execution-abi"
 	suiteExecutionConsole                SuiteID = "execution-console"
 	suiteExecutionTxpool                 SuiteID = "execution-txpool"
-	suiteExecutionRPC                    SuiteID = "execution-rpc"
-	suiteExecutionGraphQL                SuiteID = "execution-graphql"
-	suiteExecutionParity                 SuiteID = "execution-parity"
+	suiteExecutionAPIRPC                 SuiteID = "execution-api-rpc"
+	suiteExecutionAPIGraphQL             SuiteID = "execution-api-graphql"
+	suiteExecutionAPIParity              SuiteID = "execution-api-parity"
 	suiteConsensusStakingAutomated       SuiteID = "consensus-staking-automated"
 	suiteConsensusStakingOperator        SuiteID = "consensus-staking-operator"
 	suiteConsensusPenalties              SuiteID = "consensus-penalties"
@@ -44,9 +44,9 @@ var suitePackages = map[SuiteID]string{
 	suiteExecutionABI:                    "./e2e/suites/execution/abi",
 	suiteExecutionConsole:                "./e2e/suites/execution/console",
 	suiteExecutionTxpool:                 "./e2e/suites/execution/txpool",
-	suiteExecutionRPC:                    "./e2e/suites/execution/rpc",
-	suiteExecutionGraphQL:                "./e2e/suites/execution/graphql",
-	suiteExecutionParity:                 "./e2e/suites/execution/parity",
+	suiteExecutionAPIRPC:                 "./e2e/suites/execution/api/rpc",
+	suiteExecutionAPIGraphQL:             "./e2e/suites/execution/api/graphql",
+	suiteExecutionAPIParity:              "./e2e/suites/execution/api/parity",
 	suiteConsensusStakingAutomated:       "./e2e/suites/consensus/staking/automated",
 	suiteConsensusStakingOperator:        "./e2e/suites/consensus/staking/operator",
 	suiteConsensusPenalties:              "./e2e/suites/consensus/penalties",
@@ -62,7 +62,7 @@ var registry = []Lane{
 	{
 		Name:    "execution",
 		Profile: devnet.ProfileSingle,
-		Suites:  []SuiteID{suiteExecutionABI, suiteExecutionConsole, suiteExecutionTxpool, suiteExecutionRPC, suiteExecutionGraphQL, suiteExecutionParity},
+		Suites:  []SuiteID{suiteExecutionABI, suiteExecutionConsole, suiteExecutionTxpool, suiteExecutionAPIRPC, suiteExecutionAPIGraphQL, suiteExecutionAPIParity},
 		Timeout: 20 * time.Minute,
 	},
 	{
