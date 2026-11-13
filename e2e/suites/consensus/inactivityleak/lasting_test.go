@@ -134,8 +134,8 @@ func (suite *leakSuite) awaitRecovery(ctx context.Context) (firstJustified, fina
 	return firstJustified, finalized
 }
 
-// expectFirstJustified checks that no justification slipped by between polls:
-// the epoch after firstJustified still starts with the frozen checkpoint.
+// expectFirstJustified checks that nothing was justified before firstJustified:
+// the state just before its votes are counted still holds the frozen checkpoint.
 func (suite *leakSuite) expectFirstJustified(ctx context.Context) {
 	ginkgo.GinkgoHelper()
 	outage := suite.lasting
