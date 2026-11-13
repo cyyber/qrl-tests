@@ -45,6 +45,8 @@ var _ = ginkgo.Describe(
 			mined   *types.Transaction
 			receipt *types.Receipt
 			pending *types.Transaction
+			// sender is the account of the pending transaction.
+			sender common.Address
 
 			recipient = common.BytesToAddress([]byte("graphql e2e recipient"))
 		)
@@ -63,8 +65,8 @@ var _ = ginkgo.Describe(
 			ginkgo.By("funding a new account, which mines a transaction")
 			// The pending transaction blocks its sender's later nonces, so the
 			// shared wallet does not send it.
-			sender := testsuite.MustSucceed(qrlwallet.Generate(qrlwallet.ML_DSA_87))
-			senderAddress := common.Address(sender.GetAddress())
+			senderWallet := testsuite.MustSucceed(qrlwallet.Generate(qrlwallet.ML_DSA_87))
+			sender = common.Address(senderWallet.GetAddress())
 			nonce := testsuite.MustSucceed(node.Execution.PendingNonceAt(ctx, node.Address))
 			mined = testsuite.MustSucceed(types.SignNewTx(node.Wallet, signer, &types.DynamicFeeTx{
 				ChainID:   node.ChainID,
@@ -72,14 +74,14 @@ var _ = ginkgo.Describe(
 				GasTipCap: tip,
 				GasFeeCap: feeCap,
 				Gas:       params.TxGas,
-				To:        &senderAddress,
+				To:        &sender,
 				Value:     big.NewInt(params.Quanta),
 			}))
 			gomega.Expect(node.Execution.SendTransaction(ctx, mined)).To(gomega.Succeed())
 			receipt = testsuite.MustSucceed(bind.WaitMined(ctx, node.Execution, mined))
 
 			ginkgo.By("sending a transaction through GraphQL that stays in the pool")
-			pending = testsuite.MustSucceed(types.SignNewTx(sender, signer, &types.DynamicFeeTx{
+			pending = testsuite.MustSucceed(types.SignNewTx(senderWallet, signer, &types.DynamicFeeTx{
 				ChainID:   node.ChainID,
 				Nonce:     0,
 				GasTipCap: pendingTip,
@@ -174,6 +176,57 @@ var _ = ginkgo.Describe(
 			for _, field := range []string{"status", "gasUsed", "effectiveGasPrice", "block"} {
 				gomega.Expect(tx).To(gomega.HaveKeyWithValue(field, gomega.BeNil()), "field %q", field)
 			}
+		})
+
+		ginkgo.It("resolves an account's balance, transaction count, code and storage at a block and in the pending state", func(ctx ginkgo.SpecContext) {
+			// The sender has what the mined transaction sent it. No block
+			// includes the transaction it sent, which only the pending
+			// transaction count has.
+			funded := hexutil.EncodeBig(big.NewInt(params.Quanta))
+			data := query(ctx, node, fmt.Sprintf(`{
+				block(number: %d) { account(address: "%s") { address balance transactionCount code storage(slot: "%s") } }
+				pending { transactionCount account(address: "%s") { address balance transactionCount } }
+			}`, receipt.BlockNumber, sender.Hex(), common.Hash{}.Hex(), sender.Hex()))
+			gomega.Expect(data["block"]).To(gomega.Equal(map[string]any{"account": map[string]any{
+				"address":          sender.Hex(),
+				"balance":          funded,
+				"transactionCount": "0x0",
+				"code":             "0x",
+				"storage":          hexutil.Encode(make([]byte, 2*common.HashLength)),
+			}}))
+			pendingState := data["pending"].(map[string]any)
+			gomega.Expect(pendingState["account"]).To(gomega.Equal(map[string]any{
+				"address":          sender.Hex(),
+				"balance":          funded,
+				"transactionCount": "0x1",
+			}))
+			// The pending state counts the pool's transactions.
+			count := testsuite.MustSucceed(hexutil.DecodeUint64(pendingState["transactionCount"].(string)))
+			gomega.Expect(count).To(gomega.BeNumerically(">=", 1))
+		})
+
+		ginkgo.It("runs a call and estimates its gas at a block and in the pending state", func(ctx ginkgo.SpecContext) {
+			transfer := fmt.Sprintf(`{from: "%s", to: "%s", value: "0x1"}`, node.Address.Hex(), recipient.Hex())
+			selection := fmt.Sprintf(`call(data: %[1]s) { data gasUsed status } estimateGas(data: %[1]s)`, transfer)
+			data := query(ctx, node, fmt.Sprintf(`{ block(number: %d) { %s } pending { %s } }`, receipt.BlockNumber, selection, selection))
+			gas := hexutil.EncodeUint64(params.TxGas)
+			for _, state := range []string{"block", "pending"} {
+				gomega.Expect(data[state]).To(gomega.Equal(map[string]any{
+					"call":        map[string]any{"data": "0x", "gasUsed": gas, "status": "0x1"},
+					"estimateGas": gas,
+				}), "state %q", state)
+			}
+		})
+
+		ginkgo.It("resolves the gas price, the priority fee and the chain ID, and no synchronisation in progress", func(ctx ginkgo.SpecContext) {
+			data := query(ctx, node, `{ gasPrice maxPriorityFeePerGas chainID syncing { startingBlock currentBlock highestBlock } }`)
+			tip := testsuite.MustSucceed(hexutil.DecodeBig(data["maxPriorityFeePerGas"].(string)))
+			gomega.Expect(tip.Sign()).To(gomega.Equal(1))
+			// The gas price is the priority fee above the base fee.
+			price := testsuite.MustSucceed(hexutil.DecodeBig(data["gasPrice"].(string)))
+			gomega.Expect(price.Cmp(tip)).To(gomega.Equal(1))
+			gomega.Expect(data).To(gomega.HaveKeyWithValue("chainID", hexutil.EncodeBig(node.ChainID)))
+			gomega.Expect(data).To(gomega.HaveKeyWithValue("syncing", gomega.BeNil()))
 		})
 	},
 )
