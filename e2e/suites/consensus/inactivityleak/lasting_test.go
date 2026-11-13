@@ -155,8 +155,8 @@ func expectForecastStakes(records []beacon.Validator, want []rewards.Stake, epoc
 	}
 }
 
-// recoveryDeadline allows the first justification to come forecastMargin late,
-// finalizeEpochs to finalize it, and one spare epoch.
+// recoveryDeadline is when to stop waiting for finality: the forecast's first
+// justified epoch, plus a margin, the epochs to finalize it, and one to spare.
 func recoveryDeadline(chain chaininfo.Info, forecast rewards.RecoveryForecast) time.Time {
 	finalizing := forecast.FirstJustified + forecastMargin + finalizeEpochs
 	return chain.SlotStartTime((finalizing + 2) * chain.SlotsPerEpoch)
