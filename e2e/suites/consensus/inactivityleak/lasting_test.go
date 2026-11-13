@@ -112,10 +112,8 @@ func (suite *leakSuite) forecast(ctx context.Context) rewards.RecoveryForecast {
 	return testsuite.MustSucceed(suite.onlineValidator.Spec.ForecastRecovery(start))
 }
 
-// awaitRecovery polls the head until finality moves past the frozen
-// checkpoint, and returns the first checkpoint justified since the stop and
-// the first finalized. The head shows each justification as it happens;
-// states far behind it, finalized by then, are slow to read.
+// awaitRecovery polls the head until finality moves, and returns the first
+// checkpoints justified and finalized since the stop.
 func (suite *leakSuite) awaitRecovery(ctx context.Context) (firstJustified, finalized beacon.Checkpoint) {
 	ginkgo.GinkgoHelper()
 	outage := suite.lasting
