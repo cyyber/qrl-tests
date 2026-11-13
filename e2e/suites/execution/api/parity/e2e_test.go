@@ -161,6 +161,11 @@ var _ = ginkgo.Describe(
 					expectGraphQLTransaction(byHash.(object), transaction, chainID, raw, block.full["baseFeePerGas"].(string))
 				}
 			}
+
+			// Every path returned the transaction qrl_getTransactionByHash
+			// does, so its access list is the one every path returns.
+			listed := call[object](ctx, node, "qrl_getTransactionByHash", emitted.accessList.Hash().Hex())
+			gomega.Expect(listed["accessList"]).To(gomega.Equal(accessListValues(emitted.accessList.AccessList())), "access list of transaction %s", emitted.accessList.Hash())
 		}, ginkgo.SpecTimeout(specTimeout))
 
 		ginkgo.It("returns every receipt alike by block, by transaction and through GraphQL", func(ctx ginkgo.SpecContext) {

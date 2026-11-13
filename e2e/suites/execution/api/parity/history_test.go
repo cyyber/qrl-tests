@@ -23,16 +23,19 @@ const (
 	withdrawalEpochs = 4
 )
 
-// history is what the suite put on chain: the EventEmitter it deployed and
-// how many logs its transactions emitted.
+// history is what the suite put on chain: the EventEmitter it deployed, how
+// many logs its transactions emitted, and the transfer it sent with an access
+// list.
 type history struct {
-	emitter common.Address
-	logs    int
+	emitter    common.Address
+	logs       int
+	accessList *types.Transaction
 }
 
-// sendTransactions sends a transfer, deploys EventEmitter and the library it
-// links, calls it to emit several logs, one of them anonymous, and sends a
-// call that reverts. It waits until every transaction is in a block.
+// sendTransactions sends a transfer, another with an access list, deploys
+// EventEmitter and the library it links, calls it to emit several logs, one of
+// them anonymous, and sends a call that reverts. It waits until every
+// transaction is in a block.
 func sendTransactions(ctx context.Context, node *live.Node) history {
 	ginkgo.GinkgoHelper()
 	auth := testsuite.MustSucceed(bind.NewKeyedTransactorWithChainID(node.Wallet, node.ChainID))
@@ -43,17 +46,38 @@ func sendTransactions(ctx context.Context, node *live.Node) history {
 	tip := testsuite.MustSucceed(node.Execution.SuggestGasTipCap(ctx))
 	nonce := testsuite.MustSucceed(node.Execution.PendingNonceAt(ctx, node.Address))
 	recipient := common.BytesToAddress([]byte("parity e2e recipient"))
-	transfer := testsuite.MustSucceed(types.SignNewTx(node.Wallet, types.NewZondSigner(node.ChainID), &types.DynamicFeeTx{
+	signer := types.NewZondSigner(node.ChainID)
+	// Room for the base fee to double.
+	feeCap := new(big.Int).Add(new(big.Int).Mul(head.BaseFee, big.NewInt(2)), tip)
+	transfer := testsuite.MustSucceed(types.SignNewTx(node.Wallet, signer, &types.DynamicFeeTx{
 		ChainID:   node.ChainID,
 		Nonce:     nonce,
 		GasTipCap: tip,
-		// Room for the base fee to double.
-		GasFeeCap: new(big.Int).Add(new(big.Int).Mul(head.BaseFee, big.NewInt(2)), tip),
+		GasFeeCap: feeCap,
 		Gas:       params.TxGas,
 		To:        &recipient,
 		Value:     big.NewInt(params.Quanta),
 	}))
 	gomega.Expect(node.Execution.SendTransaction(ctx, transfer)).To(gomega.Succeed())
+
+	ginkgo.By("sending a transfer with an access list")
+	// An access list can name what its transaction does not touch. One entry
+	// has storage keys and the other has none.
+	accessList := types.AccessList{
+		{Address: recipient, StorageKeys: []common.Hash{common.BytesToHash([]byte("parity e2e first key")), common.BytesToHash([]byte("parity e2e second key"))}},
+		{Address: node.Address, StorageKeys: []common.Hash{}},
+	}
+	listed := testsuite.MustSucceed(types.SignNewTx(node.Wallet, signer, &types.DynamicFeeTx{
+		ChainID:    node.ChainID,
+		Nonce:      nonce + 1,
+		GasTipCap:  tip,
+		GasFeeCap:  feeCap,
+		Gas:        params.TxGas + uint64(len(accessList))*params.TxAccessListAddressGas + uint64(accessList.StorageKeys())*params.TxAccessListStorageKeyGas,
+		To:         &recipient,
+		Value:      big.NewInt(1),
+		AccessList: accessList,
+	}))
+	gomega.Expect(node.Execution.SendTransaction(ctx, listed)).To(gomega.Succeed())
 
 	ginkgo.By("deploying EventEmitter, whose constructor logs")
 	emitter, deployment, binding, err := contracts.DeployEventEmitter(auth, node.Execution,
@@ -67,6 +91,7 @@ func sendTransactions(ctx context.Context, node *live.Node) history {
 	ginkgo.By("calling EventEmitter to log, and with a call that reverts")
 	sent := []*types.Transaction{
 		transfer,
+		listed,
 		deployment,
 		// Two logs each.
 		testsuite.MustSucceed(binding.Store(auth, big.NewInt(6), big.NewInt(-7), [64]byte{8}, recipient, []byte("stored"), "first", true)),
@@ -79,7 +104,7 @@ func sendTransactions(ctx context.Context, node *live.Node) history {
 	reverting.GasLimit = revertingCallGas
 	sent = append(sent, testsuite.MustSucceed((&contracts.EventEmitterRaw{Contract: binding}).Transact(&reverting, "failReason")))
 
-	emitted := history{emitter: emitter}
+	emitted := history{emitter: emitter, accessList: listed}
 	for index, tx := range sent {
 		receipt := testsuite.MustSucceed(bind.WaitMined(ctx, node.Execution, tx))
 		wantStatus := types.ReceiptStatusSuccessful

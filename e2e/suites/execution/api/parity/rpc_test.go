@@ -193,6 +193,19 @@ func blockValues(block *types.Block) object {
 	return values
 }
 
+// accessListValues encodes an access list as the API does.
+func accessListValues(accessList types.AccessList) []any {
+	values := make([]any, 0)
+	for _, tuple := range accessList {
+		keys := make([]any, 0)
+		for _, key := range tuple.StorageKeys {
+			keys = append(keys, key.Hex())
+		}
+		values = append(values, object{"address": tuple.Address.Hex(), "storageKeys": keys})
+	}
+	return values
+}
+
 // receiptFields are the receipt fields GraphQL has too.
 func receiptFields(receipt object) object {
 	return object{
