@@ -60,22 +60,11 @@ func (suite *leakSuite) stopsFinalizingForGood(ctx ginkgo.SpecContext) {
 func (suite *leakSuite) forecastsRecovery(ctx ginkgo.SpecContext) {
 	outage := &suite.lasting
 	outage.forecast = suite.forecast(ctx)
-	forecast := outage.forecast
-
-	// The votes of FirstJustified count at the end of the next epoch, at the
-	// effective balances that epoch starts with.
-	justifiedStakes, ok := forecast.OfflineStakesAt(forecast.FirstJustified)
-	gomega.Expect(ok).To(gomega.BeTrue())
-	decidingStakes, ok := forecast.OfflineStakesAt(forecast.FirstJustified + 1)
-	gomega.Expect(ok).To(gomega.BeTrue())
-	onlineStake, _ := suite.stakesAtEpochStart(ctx, outage.settledEpoch)
-	ginkgo.GinkgoWriter.Printf("forecast: epoch %d is the first the online validators justify alone, %d epochs after the stop; "+
-		"half the online stake is %d shor, and the offline stake %d at the start of epoch %d and %d at the start of epoch %d\n",
-		forecast.FirstJustified, forecast.FirstJustified-outage.stoppedEpoch, onlineStake/2,
-		rewards.TotalEffectiveBalance(justifiedStakes), forecast.FirstJustified, rewards.TotalEffectiveBalance(decidingStakes), forecast.FirstJustified+1)
-
-	gomega.Expect(time.Until(recoveryDeadline(suite.chain, forecast))).To(gomega.BeNumerically("<", recoveryTimeout-checkTimeout),
-		"the wait for finality, forecast to justify epoch %d, does not fit the next spec's timeout", forecast.FirstJustified)
+	firstJustified := outage.forecast.FirstJustified
+	ginkgo.GinkgoWriter.Printf("forecast: epoch %d is the first the online validators justify alone, %d epochs after the stop\n",
+		firstJustified, firstJustified-outage.stoppedEpoch)
+	gomega.Expect(time.Until(recoveryDeadline(suite.chain, outage.forecast))).To(gomega.BeNumerically("<", recoveryTimeout-checkTimeout),
+		"the wait for finality, forecast to justify epoch %d, does not fit the next spec's timeout", firstJustified)
 }
 
 func (suite *leakSuite) finalizesByLeakAlone(ctx ginkgo.SpecContext) {
