@@ -142,7 +142,7 @@ func (suite *leakSuite) finalizesWithEveryValidatorBack(ctx ginkgo.SpecContext) 
 	testsuite.AwaitFinalizedEpoch(ctx, suite.onlineBeacon, suite.chain, suite.currentEpoch(ctx), finalityTimeoutEpochs)
 }
 
-// leakWindow spans the leak's first leakEpochs epochs.
+// leakWindow returns the leak's first epoch and the last one the checks cover.
 func (suite *leakSuite) leakWindow() (first, last uint64) {
 	first = suite.onlineValidator.Spec.FirstLeakEpoch(suite.returning.frozen.Finalized.Epoch)
 	return first, first + leakEpochs - 1
