@@ -129,7 +129,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        lane: ${{ fromJSON(vars.E2E_NIGHTLY_LANES || '["execution", "consensus-staking-automated", "consensus-staking-operator", "consensus-penalties", "consensus-slashing-double-vote", "consensus-slashing-double-proposal", "consensus-inactivity-leak", "resilience-network-restart", "sync"]') }}
+        # consensus-inactivity-leak joins once cyyber/qrysm#114 merges.
+        lane: ${{ fromJSON(vars.E2E_NIGHTLY_LANES || '["execution", "consensus-staking-automated", "consensus-staking-operator", "consensus-penalties", "consensus-slashing-double-vote", "consensus-slashing-double-proposal", "resilience-network-restart", "sync"]') }}
     uses: ./.github/workflows/e2e-reusable.yml
     with:
       # Immutable digest references from the images job.
