@@ -38,8 +38,8 @@ func (suite *leakSuite) stopsFinalizingForGood(ctx ginkgo.SpecContext) {
 	outage.stoppedEpoch = suite.stopValidatorClient(ctx)
 	outage.settledEpoch, outage.frozen = suite.expectFrozenFinality(ctx, outage.stoppedEpoch)
 
-	// Just over a third: more than a third offline, but not without its
-	// largest validator.
+	// Just over a third offline: enough to stop finality, but within one
+	// validator of a third, so the leak can restore it soon.
 	onlineStake, offlineRecords := suite.stakesAtEpochStart(ctx, outage.settledEpoch)
 	offlineStake := totalEffectiveBalance(offlineRecords)
 	total := testsuite.MustSucceed(suite.onlineBeacon.TotalActiveBalance(ctx, suite.stateAtEpochStart(outage.settledEpoch)))
