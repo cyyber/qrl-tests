@@ -17,12 +17,12 @@ import (
 
 const (
 	leakEpochs   = 4
-	resumeEpochs = 5
+	resumeEpochs = 7
 	decayEpochs  = 5
 
 	leakTimeout   = 6 * time.Minute
 	onlineTimeout = 3 * time.Minute
-	resumeTimeout = 5 * time.Minute
+	resumeTimeout = 6 * time.Minute
 	decayTimeout  = 8 * time.Minute
 	rejoinTimeout = 9 * time.Minute
 )
