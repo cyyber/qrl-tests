@@ -155,8 +155,8 @@ func expectForecastStakes(records []beacon.Validator, want []rewards.Stake, epoc
 	}
 }
 
-// recoveryDeadline is the latest finality can return: finalizeEpochs after the
-// latest first justification, plus a spare epoch for empty slots.
+// recoveryDeadline allows the first justification to come forecastMargin late,
+// finalizeEpochs to finalize it, and one spare epoch.
 func recoveryDeadline(chain chaininfo.Info, forecast rewards.RecoveryForecast) time.Time {
 	finalizing := forecast.FirstJustified + forecastMargin + finalizeEpochs
 	return chain.SlotStartTime((finalizing + 2) * chain.SlotsPerEpoch)
