@@ -134,10 +134,8 @@ func (suite *leakSuite) awaitRecovery(ctx context.Context) (firstJustified, fina
 	return firstJustified, finalized
 }
 
-// expectFirstJustified checks that the second outage's justified checkpoint is
-// the first since the stop: the epoch after it still starts with the frozen
-// one. That state is after the finalized checkpoint, so the node keeps it at
-// hand.
+// expectFirstJustified checks that firstJustified is the first checkpoint
+// justified since the stop: the epoch after it still starts with the frozen one.
 func (suite *leakSuite) expectFirstJustified(ctx context.Context) {
 	ginkgo.GinkgoHelper()
 	outage := suite.lasting
@@ -147,10 +145,8 @@ func (suite *leakSuite) expectFirstJustified(ctx context.Context) {
 		"justified checkpoint at the start of epoch %d, before epoch %d's votes count", outage.firstJustified.Epoch+1, outage.firstJustified.Epoch)
 }
 
-// expectForecastStakes checks the offline validators' effective balances at
-// the start of epoch against the forecast's. A validator's own sync committee
-// seats move its balance by about a QRL either way from the forecast's even
-// spread, and hysteresis can round that to one more increment.
+// expectForecastStakes checks each offline validator's effective balance against
+// the forecast's, allowing for its own sync committee seats.
 func expectForecastStakes(records []beacon.Validator, want []rewards.Stake, epoch, increment uint64) {
 	ginkgo.GinkgoHelper()
 	for position, record := range records {
@@ -159,10 +155,8 @@ func expectForecastStakes(records []beacon.Validator, want []rewards.Stake, epoc
 	}
 }
 
-// recoveryDeadline is when finality has returned at the latest. The online
-// votes justify the two epochs after the first justified one too, so the
-// processing at the end of the third finalizes it; the next epoch's first
-// slots may be empty, so the deadline allows that epoch whole.
+// recoveryDeadline is the latest finality can return: finalizeEpochs after the
+// latest first justification, plus a spare epoch for empty slots.
 func recoveryDeadline(chain chaininfo.Info, forecast rewards.RecoveryForecast) time.Time {
 	finalizing := forecast.FirstJustified + forecastMargin + finalizeEpochs
 	return chain.SlotStartTime((finalizing + 2) * chain.SlotsPerEpoch)
