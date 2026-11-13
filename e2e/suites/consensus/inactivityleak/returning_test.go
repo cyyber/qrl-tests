@@ -86,8 +86,7 @@ func (suite *leakSuite) finalizesWithOneReturned(ctx ginkgo.SpecContext) {
 		"participant %d and validator %d run %d of the %d shor staked, less than two thirds",
 		onlineParticipant+1, suite.offlineValidator.Index, onlineStake+returning, total)
 
-	// Read before the start, so the validator cannot have voted in an epoch
-	// before returnedEpoch.
+	// Read before the start: every earlier epoch counts as missed.
 	outage.returnedEpoch = suite.currentEpoch(ctx)
 	node := suite.nodes[offlineParticipant]
 	suite.returnedClient = testsuite.MustSucceed(validator.Start(ctx, validator.Config{
