@@ -47,8 +47,6 @@ func (suite *leakSuite) leaksOfflineStake(ctx ginkgo.SpecContext) {
 	outage := &suite.returning
 	offline := suite.offlineValidator
 	first, last := suite.leakWindow()
-	// The epoch before the leak shows the score starts from zero, and must be
-	// one the stopped client missed.
 	gomega.Expect(first-1).To(gomega.BeNumerically(">", outage.stoppedEpoch),
 		"the leak starts at epoch %d, too soon after the validator client stopped in epoch %d", first, outage.stoppedEpoch)
 	offline.AwaitRewards(ctx, last)
