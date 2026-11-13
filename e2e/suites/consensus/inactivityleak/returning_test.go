@@ -100,7 +100,7 @@ func (suite *leakSuite) finalizesWithOneReturned(ctx ginkgo.SpecContext) {
 	testsuite.AwaitFinalizedEpoch(ctx, suite.onlineBeacon, suite.chain, outage.returnedEpoch, resumeEpochs)
 }
 
-func (suite *leakSuite) zeroesReturnedScore(ctx ginkgo.SpecContext) {
+func (suite *leakSuite) bringsReturnedScoreToZero(ctx ginkgo.SpecContext) {
 	outage := &suite.returning
 	offline := suite.offlineValidator
 	for epoch := outage.uncheckedEpoch; epoch <= outage.returnedEpoch+decayEpochs; epoch++ {
