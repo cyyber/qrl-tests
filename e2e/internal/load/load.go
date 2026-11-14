@@ -22,21 +22,13 @@ import (
 )
 
 const (
-	// FullPercent is the share of its gas limit a block uses to count as
-	// full. A block is rarely at 100%: the last transfer does not always fit.
+	// FullPercent is the share of its gas limit a full block uses.
 	FullPercent = 95
 
-	// The pool is kept this many blocks ahead, so that a block built while
-	// more transfers are on their way is still full.
-	blocksAhead = 3
-	// The blocks that can pass before the first full one: the transfers
-	// reach the pool while a block is being built.
-	leadInBlocks = 6
-	// Transfers sent in one request, which stays well under the 5 MB body
-	// limit of the HTTP API: a raw transfer is about 15 KB as hex.
-	batchSize = 128
-	// The fee cap leaves room for this many full blocks more than the plan.
-	feeCapSlackBlocks = 8
+	poolBlocksAhead     = 3
+	warmUpBlocks        = 6
+	transfersPerRequest = 128
+	feeCapExtraBlocks   = 8
 )
 
 // rpcFeeCap is the most a transaction may pay in fees for the node to accept
@@ -83,8 +75,9 @@ type Dense struct {
 // The chain is read and the pool topped up every poll.
 //
 // Every transfer is from the one wallet, in nonce order, so the pool holds at
-// most blocksAhead blocks of them: under the 5120 pending transactions gqrl
-// keeps by default, above which it drops those of the accounts with the most.
+// most poolBlocksAhead blocks of them: under the 5120 pending transactions
+// gqrl keeps by default, above which it drops those of the accounts with the
+// most.
 func Fill(ctx context.Context, client *qrlclient.Client, wallet qrlwallet.Wallet, chainID *big.Int, poll time.Duration, plan Plan) (Dense, error) {
 	if plan.Blocks <= 0 {
 		return Dense{}, fmt.Errorf("plan has %d blocks", plan.Blocks)
@@ -158,7 +151,7 @@ func newFiller(ctx context.Context, client *qrlclient.Client, wallet qrlwallet.W
 	if err != nil {
 		return nil, fmt.Errorf("suggest tip: %w", err)
 	}
-	blocks := plan.Blocks + leadInBlocks + blocksAhead
+	blocks := plan.Blocks + warmUpBlocks + poolBlocksAhead
 	feeCap, err := feeCapFor(head.BaseFee, tip, blocks)
 	if err != nil {
 		return nil, err
@@ -221,14 +214,14 @@ func (filler *filler) pooled(ctx context.Context) (uint64, error) {
 	return filler.next - mined, nil
 }
 
-// topUp sends the transfers the pool is short of blocksAhead blocks. It fails
-// once the plan's budget is spent: the blocks are not filling.
+// topUp sends the transfers the pool is short of poolBlocksAhead blocks. It
+// fails once the plan's budget is spent: the blocks are not filling.
 func (filler *filler) topUp(ctx context.Context) error {
 	pooled, err := filler.pooled(ctx)
 	if err != nil {
 		return err
 	}
-	want := blocksAhead * filler.perBlock
+	want := poolBlocksAhead * filler.perBlock
 	if pooled >= want {
 		return nil
 	}
@@ -262,7 +255,7 @@ func extend(run []Block, block Block) []Block {
 // ErrFeeCap if a transfer would then pay more than the node accepts.
 func feeCapFor(baseFee, tip *big.Int, blocks int) (*big.Int, error) {
 	feeCap := new(big.Int).Set(baseFee)
-	for range blocks + feeCapSlackBlocks {
+	for range blocks + feeCapExtraBlocks {
 		// The base fee rises by an eighth, and by at least one.
 		rise := new(big.Int).Div(feeCap, big.NewInt(params.DefaultBaseFeeChangeDenominator))
 		if rise.Sign() == 0 {
@@ -311,10 +304,10 @@ func sign(wallet qrlwallet.Wallet, signer types.Signer, chainID *big.Int, nonce,
 	return transfers, errors.Join(failures...)
 }
 
-// send submits the transfers in nonce order, batchSize to a request.
+// send submits the transfers in nonce order, transfersPerRequest to a request.
 func send(ctx context.Context, client *qrlclient.Client, transfers []*types.Transaction) error {
 	for len(transfers) > 0 {
-		batch := transfers[:min(batchSize, len(transfers))]
+		batch := transfers[:min(transfersPerRequest, len(transfers))]
 		transfers = transfers[len(batch):]
 		elems := make([]rpc.BatchElem, len(batch))
 		for index, tx := range batch {

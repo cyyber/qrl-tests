@@ -232,7 +232,7 @@ func TestFillGivesUpWhenBlocksDoNotFill(t *testing.T) {
 	_, err := fill(t, node, 3)
 	require.ErrorContains(t, err, "no run of 3 full blocks")
 	// The plan's budget bounds what was sent.
-	require.LessOrEqual(t, node.mined+node.pooled, uint64((3+leadInBlocks+blocksAhead)*fakeBlockTransfers))
+	require.LessOrEqual(t, node.mined+node.pooled, uint64((3+warmUpBlocks+poolBlocksAhead)*fakeBlockTransfers))
 }
 
 func TestFillRefusesAPlanAboveTheFeeCap(t *testing.T) {
