@@ -65,7 +65,7 @@ func Fill(ctx context.Context, client *qrlclient.Client, wallet qrlwallet.Wallet
 		if err := filler.readNewBlocks(ctx); err != nil {
 			return nil, err
 		}
-		if filler.met() {
+		if filler.runComplete() {
 			pooled, err := filler.pooled(ctx)
 			if err != nil {
 				return nil, err
@@ -152,7 +152,7 @@ func newFiller(ctx context.Context, client *qrlclient.Client, wallet qrlwallet.W
 	}, nil
 }
 
-func (filler *filler) met() bool {
+func (filler *filler) runComplete() bool {
 	return len(filler.run) >= filler.blocks
 }
 
@@ -166,7 +166,7 @@ func (filler *filler) readNewBlocks(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
-		if filler.met() && !block.Full() {
+		if filler.runComplete() && !block.Full() {
 			filler.runEnded = true
 			break
 		}
