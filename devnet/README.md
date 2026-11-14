@@ -28,7 +28,7 @@ and waits for readiness. It does not build images or run the test suites.
 | `DEVNET_GENESIS_IMAGE` | `local/qrl-genesis-generator:devnet` | Genesis generator image reference |
 | `DEVNET_QRYSM_ALLTOOLS_IMAGE` | `local/qrysm-alltools:devnet` | Qrysm all-tools image reference, for E2E lanes that run its command-line tools; it is not pulled |
 | `DEVNET_PROFILE` | `single` | Built-in profile used by `network-start` |
-| `DEVNET_START_TIMEOUT` | `5m` | Network startup budget |
+| `DEVNET_START_TIMEOUT` | `5m` | Network startup budget; the `mainnet-slots` profile gets at least `10m` |
 | `DEVNET_PARAMS_FILE` | unset | Complete qrl-package YAML parameters |
 
 `e2e-run` derives its network profile from `E2E_LANE` and does not use

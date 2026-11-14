@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"time"
 )
 
 type Profile string
@@ -49,11 +50,21 @@ const (
 	// beacon node with a slasher. Stopping the second's validator client takes
 	// just over a third of the stake offline, so finality stops.
 	ProfileInactivityLeak Profile = "inactivity-leak"
+	// ProfileMainnetSlots is the single profile with mainnet's 60-second
+	// slots and 256 validators: a full committee of 32 in each of an epoch's
+	// 8 slots. The first epoch is finalized about 32 minutes after genesis.
+	ProfileMainnetSlots Profile = "mainnet-slots"
 )
+
+const defaultSecondsPerSlot = 5
 
 type profileSpec struct {
 	participants            []participantSpec
 	preregisteredValidators int
+	// secondsPerSlot is defaultSecondsPerSlot when zero.
+	secondsPerSlot int
+	// startTimeout is the least a start is given: see Profile.StartTimeout.
+	startTimeout time.Duration
 }
 
 type participantSpec struct {
@@ -89,6 +100,11 @@ var profileSpecs = map[Profile]profileSpec{
 		{validatorCount: 43, clExtraParams: slasherCLExtraParams},
 		{validatorCount: 22, clExtraParams: slasherCLExtraParams},
 	}},
+	ProfileMainnetSlots: {
+		participants:   []participantSpec{{validatorCount: 256}},
+		secondsPerSlot: 60,
+		startTimeout:   10 * time.Minute,
+	},
 }
 
 // ParseProfile validates the raw value, resolving the empty value to the
@@ -104,6 +120,13 @@ func ParseProfile(value string) (Profile, error) {
 		return "", fmt.Errorf("unknown development-network profile %q", value)
 	}
 	return profile, nil
+}
+
+// StartTimeout returns the budget for starting a network of the profile: the
+// configured one, or the profile's own if that is longer. A network with
+// longer slots takes longer to produce the blocks that show it is ready.
+func (profile Profile) StartTimeout(configured time.Duration) time.Duration {
+	return max(configured, profileSpecs[profile].startTimeout)
 }
 
 // ParticipantValidators returns the genesis indices of the validators run by

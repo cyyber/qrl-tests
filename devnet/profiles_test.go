@@ -2,6 +2,7 @@ package devnet
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -35,6 +36,10 @@ func TestParseProfile(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, ProfileDuplicateValidator, profile)
 
+	profile, err = ParseProfile("mainnet-slots")
+	require.NoError(t, err)
+	require.Equal(t, ProfileMainnetSlots, profile)
+
 	_, err = ParseProfile("unknown")
 	require.ErrorContains(t, err, "unknown development-network profile")
 }
@@ -61,7 +66,19 @@ func TestParticipantValidators(t *testing.T) {
 	require.Equal(t, uint64(64), stopped[21])
 	require.Empty(t, ProfileInactivityLeak.ParticipantValidators(2))
 	require.Empty(t, ProfileInactivityLeak.SpareValidators())
+	require.Len(t, ProfileMainnetSlots.ParticipantValidators(0), 256)
+	require.Empty(t, ProfileMainnetSlots.SpareValidators())
 	require.Len(t, ProfileSingle.ParticipantValidators(0), 64)
 	require.Empty(t, ProfileSingle.ParticipantValidators(1))
 	require.Empty(t, ProfileSingle.ParticipantValidators(-1))
+}
+
+func TestStartTimeout(t *testing.T) {
+	// A profile without a start timeout of its own takes the configured one.
+	require.Equal(t, time.Minute, ProfileSingle.StartTimeout(time.Minute))
+	require.Equal(t, DefaultStartTimeout, ProfileSingle.StartTimeout(DefaultStartTimeout))
+
+	// Longer slots need more than the default, and a longer budget stands.
+	require.Equal(t, 10*time.Minute, ProfileMainnetSlots.StartTimeout(DefaultStartTimeout))
+	require.Equal(t, 15*time.Minute, ProfileMainnetSlots.StartTimeout(15*time.Minute))
 }
