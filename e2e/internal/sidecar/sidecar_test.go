@@ -30,7 +30,7 @@ func testSpec() Spec {
 			{Name: "/start.sh", Body: []byte("#!/bin/sh\n"), Mode: 0o755},
 			{Name: "/config/network/config.yaml", Body: []byte("PRESET_BASE: minimal\n")},
 		},
-		Port: 7500,
+		Ports: []uint16{7500},
 	}
 }
 
@@ -56,12 +56,33 @@ func TestStartCreatesPublishedContainer(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, []string{"start.sh", "config/network/config.yaml"}, names)
 
-	hostPort, err := container.PublishedPort(t.Context())
+	hostPort, err := container.PublishedPort(t.Context(), 7500)
 	require.NoError(t, err)
 	require.Equal(t, bindings[0].HostPort, hostPort)
 
 	require.NoError(t, container.Close())
 	require.Equal(t, []string{sidecartest.ContainerID}, docker.Removed)
+}
+
+func TestStartPublishesEachPort(t *testing.T) {
+	docker := sidecartest.NewDocker()
+	spec := testSpec()
+	spec.Ports = []uint16{7500, 7501, 7502}
+
+	container, err := Start(t.Context(), docker, spec)
+	require.NoError(t, err)
+	require.Len(t, docker.LastCreated().Config.ExposedPorts, len(spec.Ports))
+
+	hostPorts := map[string]bool{}
+	for _, port := range spec.Ports {
+		hostPort, err := container.PublishedPort(t.Context(), port)
+		require.NoError(t, err)
+		hostPorts[hostPort] = true
+	}
+	require.Len(t, hostPorts, len(spec.Ports), "each port has a host port of its own")
+
+	_, err = container.PublishedPort(t.Context(), 7503)
+	require.EqualError(t, err, "test sidecar does not publish port 7503")
 }
 
 func TestStartNetwork(t *testing.T) {
@@ -362,14 +383,14 @@ func TestPublishedPortErrors(t *testing.T) {
 		{
 			name:    "no port in the spec",
 			noPort:  true,
-			wantErr: "test sidecar publishes no port",
+			wantErr: "test sidecar does not publish port 7500",
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			docker := sidecartest.NewDocker()
 			spec := testSpec()
 			if test.noPort {
-				spec.Port = 0
+				spec.Ports = nil
 			}
 			container, err := Start(t.Context(), docker, spec)
 			require.NoError(t, err)
@@ -379,7 +400,7 @@ func TestPublishedPortErrors(t *testing.T) {
 			docker.Logs = test.logs
 			maps.Copy(docker.Fail, test.fail)
 
-			_, err = container.PublishedPort(t.Context())
+			_, err = container.PublishedPort(t.Context(), 7500)
 			require.EqualError(t, err, test.wantErr)
 			if test.wantExit {
 				var exitErr *ExitError

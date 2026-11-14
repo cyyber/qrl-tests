@@ -11,10 +11,12 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/cyyber/qrl-tests/devnet"
 	"github.com/cyyber/qrl-tests/e2e/internal/beacon"
 	"github.com/cyyber/qrl-tests/e2e/internal/sidecar/sidecartest"
+	"github.com/golang-jwt/jwt/v4"
 	containertypes "github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/api/types/network"
 	"github.com/stretchr/testify/assert"
@@ -117,6 +119,7 @@ func TestStartLaunchesBothClients(t *testing.T) {
 	require.Equal(t, containertypes.NetworkMode("kt-devnet"), execution.HostConfig.NetworkMode)
 	require.Equal(t, []string{"qrl-tests-sync-node-execution"},
 		execution.NetworkingConfig.EndpointsConfig["kt-devnet"].Aliases)
+	require.Len(t, execution.Config.ExposedPorts, 4, "the RPC, WebSocket, engine and metrics ports")
 
 	consensus := docker.Created[1]
 	require.Equal(t, "beacon:test", consensus.Config.Image)
@@ -129,6 +132,10 @@ func TestStartLaunchesBothClients(t *testing.T) {
 	require.Equal(t, []string{sourceQnode}, *addedPeers)
 	require.NotNil(t, node.Execution)
 	require.NotNil(t, node.Beacon)
+	published := "127.0.0.1:" + docker.HostPort
+	require.Equal(t, "ws://"+published, node.ExecutionWS)
+	require.Equal(t, "http://"+published+"/debug/metrics/prometheus", node.ExecutionMetrics)
+	require.NotNil(t, node.Engine)
 
 	require.NoError(t, node.Stop(t.Context()))
 	require.Len(t, docker.Stopped, 2)
@@ -238,8 +245,19 @@ func TestPrivateBeaconPeer(t *testing.T) {
 	require.ErrorContains(t, err, `source beacon private IP "not-an-ip" is invalid`)
 }
 
-func TestJWTSecret(t *testing.T) {
-	secret, err := newJWTSecret()
+func TestEngineAuth(t *testing.T) {
+	secret := []byte("0123456789abcdef0123456789abcdef")
+	header := http.Header{}
+	require.NoError(t, engineAuth(secret)(header))
+
+	signed, found := strings.CutPrefix(header.Get("Authorization"), "Bearer ")
+	require.True(t, found)
+	var claims jwt.RegisteredClaims
+	_, err := jwt.ParseWithClaims(signed, &claims, func(*jwt.Token) (any, error) { return secret, nil },
+		jwt.WithValidMethods([]string{"HS256"}))
 	require.NoError(t, err)
-	require.Regexp(t, `^0x[0-9a-f]{64}$`, string(secret))
+	require.WithinDuration(t, time.Now(), claims.IssuedAt.Time, time.Minute)
+
+	_, err = jwt.Parse(signed, func(*jwt.Token) (any, error) { return []byte("another secret"), nil })
+	require.ErrorIs(t, err, jwt.ErrSignatureInvalid)
 }

@@ -146,7 +146,7 @@ func start(ctx context.Context, config Config, client dockerClient) (*Sidecar, e
 		Entrypoint: []string{"/bin/sh", startScriptPath},
 		Env:        containerEnv(beaconGRPC, beaconREST, config.Graffiti),
 		Files:      files,
-		Port:       gatewayPort,
+		Ports:      []uint16{gatewayPort},
 	})
 	if err != nil {
 		return nil, err
@@ -243,7 +243,7 @@ func waitForKeymanager(ctx context.Context, container *sidecar.Container) (*keym
 }
 
 func connectKeymanager(ctx context.Context, container *sidecar.Container) (*keymanager.Client, error) {
-	hostPort, err := container.PublishedPort(ctx)
+	hostPort, err := container.PublishedPort(ctx, gatewayPort)
 	if err != nil {
 		return nil, err
 	}
