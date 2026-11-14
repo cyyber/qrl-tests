@@ -43,8 +43,7 @@ type Block struct {
 	EncodedBytes uint64
 }
 
-// Full reports whether the block used at least 95% of its gas limit: the last
-// transfer does not always fit.
+// Full reports whether the block used at least 95% of its gas limit.
 func (block Block) Full() bool {
 	return block.GasUsed*100 >= block.GasLimit*fullPercent
 }
