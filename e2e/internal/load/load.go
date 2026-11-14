@@ -62,7 +62,7 @@ func Fill(ctx context.Context, client *qrlclient.Client, wallet qrlwallet.Wallet
 	ticker := time.NewTicker(poll)
 	defer ticker.Stop()
 	for {
-		if err := filler.scan(ctx); err != nil {
+		if err := filler.readNewBlocks(ctx); err != nil {
 			return nil, err
 		}
 		if filler.met() {
@@ -82,8 +82,8 @@ func Fill(ctx context.Context, client *qrlclient.Client, wallet qrlwallet.Wallet
 		case <-ticker.C:
 		}
 	}
-	// The block that emptied the pool can be newer than the last scan.
-	if err := filler.scan(ctx); err != nil {
+	// The block that emptied the pool can be newer than the last block read.
+	if err := filler.readNewBlocks(ctx); err != nil {
 		return nil, err
 	}
 	return filler.run, nil
@@ -105,7 +105,7 @@ type filler struct {
 	transfersSent     uint64
 	nextNonce         uint64
 	firstBlock        uint64
-	scannedBlock      uint64
+	lastBlockRead     uint64
 	run               []Block
 	runEnded          bool
 }
@@ -148,7 +148,7 @@ func newFiller(ctx context.Context, client *qrlclient.Client, wallet qrlwallet.W
 		transferBudget:    uint64(budgetBlocks) * perBlock,
 		nextNonce:         next,
 		firstBlock:        head.Number.Uint64() + 1,
-		scannedBlock:      head.Number.Uint64(),
+		lastBlockRead:     head.Number.Uint64(),
 	}, nil
 }
 
@@ -156,13 +156,13 @@ func (filler *filler) met() bool {
 	return len(filler.run) >= filler.blocks
 }
 
-func (filler *filler) scan(ctx context.Context) error {
+func (filler *filler) readNewBlocks(ctx context.Context) error {
 	latest, err := filler.client.BlockNumber(ctx)
 	if err != nil {
 		return fmt.Errorf("read block number: %w", err)
 	}
-	for ; filler.scannedBlock < latest && !filler.runEnded; filler.scannedBlock++ {
-		block, err := readBlock(ctx, filler.client, filler.scannedBlock+1)
+	for ; filler.lastBlockRead < latest && !filler.runEnded; filler.lastBlockRead++ {
+		block, err := readBlock(ctx, filler.client, filler.lastBlockRead+1)
 		if err != nil {
 			return err
 		}
@@ -194,7 +194,7 @@ func (filler *filler) topUp(ctx context.Context) error {
 	}
 	count := want - pooled
 	if filler.transfersSent+count > filler.transferBudget {
-		return fmt.Errorf("no run of %d full blocks after %d transfers, from block %d to %d", filler.blocks, filler.transfersSent, filler.firstBlock, filler.scannedBlock)
+		return fmt.Errorf("no run of %d full blocks after %d transfers, from block %d to %d", filler.blocks, filler.transfersSent, filler.firstBlock, filler.lastBlockRead)
 	}
 	transfers, err := filler.sign(count)
 	if err != nil {
