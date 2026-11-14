@@ -40,8 +40,7 @@ type Block struct {
 	Transactions int
 	GasUsed      uint64
 	GasLimit     uint64
-	// Size is the length of the block's encoding.
-	Size uint64
+	EncodedBytes uint64
 }
 
 // Full reports whether the block used at least 95% of its gas limit: the last
@@ -318,6 +317,6 @@ func readBlock(ctx context.Context, client *qrlclient.Client, number uint64) (Bl
 		Transactions: len(raw.Transactions),
 		GasUsed:      uint64(raw.GasUsed),
 		GasLimit:     uint64(raw.GasLimit),
-		Size:         uint64(raw.Size),
+		EncodedBytes: uint64(raw.Size),
 	}, nil
 }

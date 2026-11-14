@@ -271,7 +271,7 @@ func TestFill(t *testing.T) {
 	for index, block := range run {
 		require.True(t, block.Full(), "block %d", block.Number)
 		require.Equal(t, fakeBlockTransfers, block.Transactions)
-		require.Equal(t, uint64(1000*fakeBlockTransfers), block.Size)
+		require.Equal(t, uint64(1000*fakeBlockTransfers), block.EncodedBytes)
 		if index > 0 {
 			require.Equal(t, run[index-1].Number+1, block.Number)
 		}
