@@ -236,7 +236,7 @@ func TestFillGivesUpWhenBlocksDoNotFill(t *testing.T) {
 }
 
 func TestFillRefusesAPlanAboveTheFeeCap(t *testing.T) {
-	node := &fakeNode{baseFee: new(big.Int).Div(rpcFeeCap, new(big.Int).SetUint64(params.TxGas))}
+	node := &fakeNode{baseFee: new(big.Int).Div(defaultRPCTxFeeCap, new(big.Int).SetUint64(params.TxGas))}
 	_, err := fill(t, node, 3)
 	require.ErrorIs(t, err, ErrFeeCap)
 	require.Zero(t, node.pooled, "nothing is sent")

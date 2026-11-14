@@ -31,13 +31,8 @@ const (
 	feeCapMarginBlocks  = 8
 )
 
-// rpcFeeCap is the most a transaction may pay in fees for the node to accept
-// it over the API: gqrl's default --rpc.txfeecap of one quanta. A node started
-// with another cap accepts more, or less, than Fill expects.
-var rpcFeeCap = big.NewInt(params.Quanta)
+var defaultRPCTxFeeCap = big.NewInt(params.Quanta)
 
-// ErrFeeCap is returned for a plan that would outgrow the fee the node
-// accepts: each full block raises the base fee by an eighth.
 var ErrFeeCap = errors.New("the plan needs a fee above the node's transaction fee cap")
 
 // Plan sizes the load.
@@ -264,7 +259,7 @@ func feeCapFor(baseFee, tip *big.Int, blocks int) (*big.Int, error) {
 		feeCap.Add(feeCap, rise)
 	}
 	feeCap.Add(feeCap, tip)
-	if fee := new(big.Int).Mul(feeCap, new(big.Int).SetUint64(params.TxGas)); fee.Cmp(rpcFeeCap) > 0 {
+	if fee := new(big.Int).Mul(feeCap, new(big.Int).SetUint64(params.TxGas)); fee.Cmp(defaultRPCTxFeeCap) > 0 {
 		return nil, fmt.Errorf("%w: %d full blocks from a base fee of %s take a transfer's fee to %s planck", ErrFeeCap, blocks, baseFee, fee)
 	}
 	return feeCap, nil
