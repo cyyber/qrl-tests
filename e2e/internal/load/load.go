@@ -61,32 +61,42 @@ func Fill(ctx context.Context, client *qrlclient.Client, wallet qrlwallet.Wallet
 	}
 	ticker := time.NewTicker(poll)
 	defer ticker.Stop()
-	for {
+	wait := func() error {
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("waiting for %d full blocks and an empty pool, %d full blocks so far: %w", blocks, len(filler.run), ctx.Err())
+		case <-ticker.C:
+			return nil
+		}
+	}
+
+	for !filler.runComplete() {
+		if err := filler.topUp(ctx); err != nil {
+			return nil, err
+		}
+		if err := wait(); err != nil {
+			return nil, err
+		}
 		if err := filler.readNewBlocks(ctx); err != nil {
 			return nil, err
 		}
-		if filler.runComplete() {
-			pooled, err := filler.pooled(ctx)
-			if err != nil {
-				return nil, err
-			}
-			if pooled == 0 {
-				break
-			}
-		} else if err := filler.topUp(ctx); err != nil {
+	}
+	for {
+		pooled, err := filler.pooled(ctx)
+		if err != nil {
 			return nil, err
 		}
-		select {
-		case <-ctx.Done():
-			return nil, fmt.Errorf("waiting for %d full blocks and an empty pool, %d full blocks so far: %w", blocks, len(filler.run), ctx.Err())
-		case <-ticker.C:
+		// Read after the pool, so that the block that emptied it is in the run.
+		if err := filler.readNewBlocks(ctx); err != nil {
+			return nil, err
+		}
+		if pooled == 0 {
+			return filler.run, nil
+		}
+		if err := wait(); err != nil {
+			return nil, err
 		}
 	}
-	// The block that emptied the pool can be newer than the last block read.
-	if err := filler.readNewBlocks(ctx); err != nil {
-		return nil, err
-	}
-	return filler.run, nil
 }
 
 type filler struct {

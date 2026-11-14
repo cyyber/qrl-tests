@@ -280,7 +280,7 @@ func TestFill(t *testing.T) {
 }
 
 func TestFillStartsOverAfterABlockThatIsNotFull(t *testing.T) {
-	const blocks, partial = 3, 4
+	const blocks, partial = 3, 2
 	node := &fakeNode{capacity: func(number uint64) uint64 {
 		if number == partial {
 			return 1
