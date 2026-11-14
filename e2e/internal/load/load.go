@@ -48,9 +48,9 @@ func (block Block) Full() bool {
 	return block.GasUsed*100 >= block.GasLimit*fullPercent
 }
 
-// Fill sends transfers from wallet until blocks consecutive blocks are full
-// and the pool is empty again. It returns the run of full blocks, which can
-// be longer than asked.
+// Fill sends transfers from wallet until the chain has the requested number
+// of consecutive full blocks, then waits for the pool to empty. It returns
+// those blocks and any full ones that follow them.
 func Fill(ctx context.Context, client *qrlclient.Client, wallet qrlwallet.Wallet, poll time.Duration, blocks int) ([]Block, error) {
 	if blocks <= 0 {
 		return nil, fmt.Errorf("cannot fill %d blocks", blocks)
