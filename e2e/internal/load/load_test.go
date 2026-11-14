@@ -340,18 +340,22 @@ func TestFillStopsWithItsContext(t *testing.T) {
 func TestSign(t *testing.T) {
 	wallet, err := qrlwallet.Generate(qrlwallet.ML_DSA_87)
 	require.NoError(t, err)
-	var (
-		chainID = big.NewInt(1337)
-		signer  = types.NewZondSigner(chainID)
-		to      = common.Address{1}
-	)
 	const nonce, count = 7, 40
-	transfers, err := sign(wallet, signer, chainID, nonce, count, big.NewInt(1), big.NewInt(100), to)
+	filler := &filler{
+		wallet:    wallet,
+		signer:    types.NewZondSigner(fakeChainID),
+		chainID:   fakeChainID,
+		recipient: common.Address{1},
+		tip:       big.NewInt(1),
+		feeCap:    big.NewInt(100),
+		nextNonce: nonce,
+	}
+	transfers, err := filler.sign(count)
 	require.NoError(t, err)
 	require.Len(t, transfers, count)
 	for index, tx := range transfers {
 		require.Equal(t, uint64(nonce+index), tx.Nonce())
-		sender, err := types.Sender(signer, tx)
+		sender, err := types.Sender(filler.signer, tx)
 		require.NoError(t, err)
 		require.Equal(t, common.Address(wallet.GetAddress()), sender)
 	}

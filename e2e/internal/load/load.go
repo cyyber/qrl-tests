@@ -22,9 +22,7 @@ import (
 )
 
 const (
-	// FullPercent is the share of its gas limit a full block uses.
-	FullPercent = 95
-
+	fullPercent         = 95
 	poolBlocksAhead     = 3
 	warmUpBlocks        = 6
 	transfersPerRequest = 128
@@ -46,9 +44,10 @@ type Block struct {
 	Size uint64
 }
 
-// Full reports whether the block used at least FullPercent of its gas limit.
+// Full reports whether the block used at least 95% of its gas limit: the last
+// transfer does not always fit.
 func (block Block) Full() bool {
-	return block.GasUsed*100 >= block.GasLimit*FullPercent
+	return block.GasUsed*100 >= block.GasLimit*fullPercent
 }
 
 // Fill sends transfers from wallet until the chain has a run of consecutive
@@ -201,7 +200,7 @@ func (filler *filler) topUp(ctx context.Context) error {
 	if filler.transfersSent+count > filler.transferBudget {
 		return fmt.Errorf("no run of %d full blocks after %d transfers, from block %d to %d", filler.blocks, filler.transfersSent, filler.firstBlock, filler.scannedBlock)
 	}
-	transfers, err := sign(filler.wallet, filler.signer, filler.chainID, filler.nextNonce, count, filler.tip, filler.feeCap, filler.recipient)
+	transfers, err := filler.sign(count)
 	if err != nil {
 		return err
 	}
@@ -237,7 +236,7 @@ func feeCapFor(baseFee, tip *big.Int, blocks int) (*big.Int, error) {
 	return feeCap, nil
 }
 
-func sign(wallet qrlwallet.Wallet, signer types.Signer, chainID *big.Int, nonce, count uint64, tip, feeCap *big.Int, to common.Address) ([]*types.Transaction, error) {
+func (filler *filler) sign(count uint64) ([]*types.Transaction, error) {
 	var (
 		transfers = make([]*types.Transaction, count)
 		failures  = make([]error, runtime.NumCPU())
@@ -248,17 +247,18 @@ func sign(wallet qrlwallet.Wallet, signer types.Signer, chainID *big.Int, nonce,
 		go func() {
 			defer group.Done()
 			for index := uint64(worker); index < count; index += uint64(len(failures)) {
-				tx, err := types.SignNewTx(wallet, signer, &types.DynamicFeeTx{
-					ChainID:   chainID,
-					Nonce:     nonce + index,
-					GasTipCap: tip,
-					GasFeeCap: feeCap,
+				nonce := filler.nextNonce + index
+				tx, err := types.SignNewTx(filler.wallet, filler.signer, &types.DynamicFeeTx{
+					ChainID:   filler.chainID,
+					Nonce:     nonce,
+					GasTipCap: filler.tip,
+					GasFeeCap: filler.feeCap,
 					Gas:       params.TxGas,
-					To:        &to,
+					To:        &filler.recipient,
 					Value:     big.NewInt(1),
 				})
 				if err != nil {
-					failures[worker] = fmt.Errorf("sign transfer %d: %w", nonce+index, err)
+					failures[worker] = fmt.Errorf("sign transfer %d: %w", nonce, err)
 					return
 				}
 				transfers[index] = tx
