@@ -33,7 +33,7 @@ var defaultRPCTxFeeCap = big.NewInt(params.Quanta)
 
 var ErrFeeCap = errors.New("the fill needs a fee above the node's transaction fee cap")
 
-// Block is a block of a run of full blocks.
+// Block is the summary of a block that Fill reads from the chain.
 type Block struct {
 	Number       uint64
 	Hash         common.Hash
