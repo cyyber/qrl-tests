@@ -62,7 +62,8 @@ func (runner *Runner) acquireLane(ctx context.Context, plan runPlan, lane laneRu
 		FailureDiagnosticsDir: filepath.Join(lane.reportDir, diagnosticsDirectory),
 	}
 
-	startCtx, cancelStart := context.WithTimeout(ctx, runner.configuration.StartTimeout)
+	startTimeout := lane.definition.Profile.StartTimeout(runner.configuration.StartTimeout)
+	startCtx, cancelStart := context.WithTimeout(ctx, startTimeout)
 	environment, err := runner.networks.Start(startCtx, options)
 	cancelStart()
 	if err != nil {

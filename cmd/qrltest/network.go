@@ -59,7 +59,7 @@ func networkCommand(network networkController) *cli.Command {
 						return err
 					}
 
-					ctx, cancel := context.WithTimeout(command.Context, command.Duration("timeout"))
+					ctx, cancel := context.WithTimeout(command.Context, profile.StartTimeout(command.Duration("timeout")))
 					defer cancel()
 
 					if _, err := network.Start(ctx, devnet.StartOptions{

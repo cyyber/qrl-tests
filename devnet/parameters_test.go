@@ -41,6 +41,8 @@ func TestDefaultParameters(t *testing.T) {
 	require.Equal(t, []any{}, participant["vc_extra_params"])
 	require.Equal(t, DefaultGenesisImage, parameters["qrl_genesis_generator_params"].(map[string]any)["image"])
 	require.Equal(t, "1337", network["network_id"])
+	require.Equal(t, float64(5), network["seconds_per_slot"])
+	require.Equal(t, float64(8), network["slots_per_epoch"])
 	require.Equal(t, address, network["withdrawal_address"])
 	require.Equal(t, "2000000QRL", prefund["balance"])
 }
@@ -115,6 +117,21 @@ func TestDoubleProposalProfileParameters(t *testing.T) {
 	watcher := parameters["participants"].([]any)[2].(map[string]any)
 	require.Contains(t, watcher, "validator_count")
 	require.Equal(t, float64(0), watcher["validator_count"])
+}
+
+func TestMainnetSlotsProfileParameters(t *testing.T) {
+	payload, err := resolveParameters("Q"+strings.Repeat("a", 128), StartOptions{Profile: ProfileMainnetSlots})
+	require.NoError(t, err)
+
+	var parameters map[string]any
+	require.NoError(t, json.Unmarshal([]byte(payload), &parameters))
+	participants := parameters["participants"].([]any)
+	require.Len(t, participants, 1)
+	require.Equal(t, float64(256), participants[0].(map[string]any)["validator_count"])
+	network := parameters["network_params"].(map[string]any)
+	require.Equal(t, float64(60), network["seconds_per_slot"])
+	// Epochs are as short as on the other profiles.
+	require.Equal(t, float64(8), network["slots_per_epoch"])
 }
 
 func TestFileParametersPassThroughUnchanged(t *testing.T) {

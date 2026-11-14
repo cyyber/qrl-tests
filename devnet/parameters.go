@@ -1,6 +1,7 @@
 package devnet
 
 import (
+	"cmp"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -108,7 +109,7 @@ func profileParameters(address string, options StartOptions) (string, error) {
 		NetworkParams: networkParams{
 			NetworkID:               "1337",
 			PreregisteredValidators: spec.preregisteredValidators,
-			SecondsPerSlot:          5,
+			SecondsPerSlot:          cmp.Or(spec.secondsPerSlot, defaultSecondsPerSlot),
 			SlotsPerEpoch:           8,
 			ExecutionFollowDistance: 8,
 			WithdrawabilityDelay:    2,
