@@ -28,7 +28,7 @@ const (
 	poolBlocksAhead     = 3
 	warmUpBlocks        = 6
 	transfersPerRequest = 128
-	feeCapExtraBlocks   = 8
+	feeCapMarginBlocks  = 8
 )
 
 // rpcFeeCap is the most a transaction may pay in fees for the node to accept
@@ -255,7 +255,7 @@ func extend(run []Block, block Block) []Block {
 // ErrFeeCap if a transfer would then pay more than the node accepts.
 func feeCapFor(baseFee, tip *big.Int, blocks int) (*big.Int, error) {
 	feeCap := new(big.Int).Set(baseFee)
-	for range blocks + feeCapExtraBlocks {
+	for range blocks + feeCapMarginBlocks {
 		// The base fee rises by an eighth, and by at least one.
 		rise := new(big.Int).Div(feeCap, big.NewInt(params.DefaultBaseFeeChangeDenominator))
 		if rise.Sign() == 0 {
