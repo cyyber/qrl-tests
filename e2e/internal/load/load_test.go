@@ -3,6 +3,7 @@ package load
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math/big"
 	"net/http"
@@ -79,15 +80,18 @@ func TestFeeCapFor(t *testing.T) {
 // The fake node's blocks hold a few transfers, so that a test signs few.
 const fakeBlockTransfers = 4
 
+var fakeChainID = big.NewInt(1337)
+
 // fakeNode is the JSON-RPC API of a node as Fill uses it. It builds a block
 // each time its block number is read: the block takes the transfers the pool
 // has, up to its capacity.
 type fakeNode struct {
-	t       *testing.T
 	baseFee *big.Int
 	// capacity is how many transfers the block with the given number takes;
 	// nil is as many as a block holds.
 	capacity func(number uint64) uint64
+	// reject, when set, is the pool's answer to a transfer.
+	reject func(tx *types.Transaction) error
 
 	mu     sync.Mutex
 	blocks []uint64 // transfers in each block, from block 1
@@ -97,7 +101,6 @@ type fakeNode struct {
 
 func startFakeNode(t *testing.T, node *fakeNode) *qrlclient.Client {
 	t.Helper()
-	node.t = t
 	if node.baseFee == nil {
 		node.baseFee = big.NewInt(1000)
 	}
@@ -149,6 +152,8 @@ func (node *fakeNode) call(method string, args []json.RawMessage) (any, error) {
 	node.mu.Lock()
 	defer node.mu.Unlock()
 	switch method {
+	case "qrl_chainId":
+		return (*hexutil.Big)(fakeChainID), nil
 	case "qrl_blockNumber":
 		node.build()
 		return hexutil.Uint64(len(node.blocks)), nil
@@ -189,6 +194,11 @@ func (node *fakeNode) call(method string, args []json.RawMessage) (any, error) {
 		// The pool only takes the next nonce: Fill sends in nonce order.
 		if want := node.mined + node.pooled; tx.Nonce() != want {
 			return nil, fmt.Errorf("transfer has nonce %d, want %d", tx.Nonce(), want)
+		}
+		if node.reject != nil {
+			if err := node.reject(&tx); err != nil {
+				return nil, err
+			}
 		}
 		node.pooled++
 		return tx.Hash(), nil
@@ -238,35 +248,35 @@ func (node *fakeNode) block(number uint64) map[string]any {
 	}
 }
 
-func fill(t *testing.T, node *fakeNode, blocks int) (Dense, error) {
+func fill(t *testing.T, node *fakeNode, blocks int) ([]Block, error) {
 	t.Helper()
 	client := startFakeNode(t, node)
 	wallet, err := qrlwallet.Generate(qrlwallet.ML_DSA_87)
 	require.NoError(t, err)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	return Fill(ctx, client, wallet, big.NewInt(1337), time.Millisecond, Plan{Blocks: blocks})
+	return Fill(ctx, client, wallet, time.Millisecond, blocks)
 }
 
 func TestFill(t *testing.T) {
 	const blocks = 3
 	node := &fakeNode{}
-	dense, err := fill(t, node, blocks)
+	run, err := fill(t, node, blocks)
 	require.NoError(t, err)
 
-	// The pool is empty, and the run is every full block: the plan's, then
-	// the ones the transfers left in the pool filled.
+	// The pool is empty, and the run is every full block: the ones asked for,
+	// then the ones the transfers left in the pool filled.
 	require.Zero(t, node.pooled)
-	require.GreaterOrEqual(t, len(dense.Blocks), blocks)
-	for index, block := range dense.Blocks {
+	require.GreaterOrEqual(t, len(run), blocks)
+	for index, block := range run {
 		require.True(t, block.Full(), "block %d", block.Number)
 		require.Equal(t, fakeBlockTransfers, block.Transactions)
 		require.Equal(t, uint64(1000*fakeBlockTransfers), block.Size)
 		if index > 0 {
-			require.Equal(t, dense.Blocks[index-1].Number+1, block.Number)
+			require.Equal(t, run[index-1].Number+1, block.Number)
 		}
 	}
-	require.Equal(t, node.mined, uint64(len(dense.Blocks))*fakeBlockTransfers, "every transfer sent is in a block of the run")
+	require.Equal(t, node.mined, uint64(len(run))*fakeBlockTransfers, "every transfer sent is in a block of the run")
 }
 
 func TestFillStartsOverAfterABlockThatIsNotFull(t *testing.T) {
@@ -277,30 +287,54 @@ func TestFillStartsOverAfterABlockThatIsNotFull(t *testing.T) {
 		}
 		return fakeBlockTransfers
 	}}
-	dense, err := fill(t, node, blocks)
+	run, err := fill(t, node, blocks)
 	require.NoError(t, err)
-	require.GreaterOrEqual(t, len(dense.Blocks), blocks)
-	require.Greater(t, dense.Blocks[0].Number, uint64(partial), "the run starts after the block that is not full")
+	require.GreaterOrEqual(t, len(run), blocks)
+	require.Greater(t, run[0].Number, uint64(partial), "the run starts after the block that is not full")
 }
 
 func TestFillGivesUpWhenBlocksDoNotFill(t *testing.T) {
 	node := &fakeNode{capacity: func(uint64) uint64 { return fakeBlockTransfers / 2 }}
 	_, err := fill(t, node, 3)
 	require.ErrorContains(t, err, "no run of 3 full blocks")
-	// The plan's budget bounds what was sent.
+	// The budget bounds what was sent.
 	require.LessOrEqual(t, node.mined+node.pooled, uint64((3+warmUpBlocks+poolBlocksAhead)*fakeBlockTransfers))
 }
 
-func TestFillRefusesAPlanAboveTheFeeCap(t *testing.T) {
+func TestFillRefusesAFeeAboveTheNodesCap(t *testing.T) {
 	node := &fakeNode{baseFee: new(big.Int).Div(defaultRPCTxFeeCap, new(big.Int).SetUint64(params.TxGas))}
 	_, err := fill(t, node, 3)
 	require.ErrorIs(t, err, ErrFeeCap)
 	require.Zero(t, node.pooled, "nothing is sent")
 }
 
-func TestFillRejectsAnEmptyPlan(t *testing.T) {
-	_, err := Fill(context.Background(), nil, nil, nil, time.Millisecond, Plan{})
-	require.ErrorContains(t, err, "plan has 0 blocks")
+func TestFillRejectsNoBlocks(t *testing.T) {
+	_, err := Fill(context.Background(), nil, nil, time.Millisecond, 0)
+	require.ErrorContains(t, err, "cannot fill 0 blocks")
+}
+
+func TestFillFailsOnARejectedTransfer(t *testing.T) {
+	node := &fakeNode{reject: func(tx *types.Transaction) error {
+		if tx.Nonce() == 5 {
+			return errors.New("txpool is full")
+		}
+		return nil
+	}}
+	_, err := fill(t, node, 3)
+	require.ErrorContains(t, err, "send transfer 5: txpool is full")
+}
+
+func TestFillStopsWithItsContext(t *testing.T) {
+	client := startFakeNode(t, new(fakeNode))
+	wallet, err := qrlwallet.Generate(qrlwallet.ML_DSA_87)
+	require.NoError(t, err)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	// The context ends during the wait for the next poll.
+	_, err = Fill(ctx, client, wallet, time.Hour, 3)
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+	require.ErrorContains(t, err, "waiting for 3 full blocks and an empty pool, 0 full blocks so far")
 }
 
 func TestSign(t *testing.T) {

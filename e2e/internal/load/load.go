@@ -33,15 +33,9 @@ const (
 
 var defaultRPCTxFeeCap = big.NewInt(params.Quanta)
 
-var ErrFeeCap = errors.New("the plan needs a fee above the node's transaction fee cap")
+var ErrFeeCap = errors.New("the fill needs a fee above the node's transaction fee cap")
 
-// Plan sizes the load.
-type Plan struct {
-	// Blocks is how many consecutive full blocks to produce.
-	Blocks int
-}
-
-// Block is a block of the dense run.
+// Block is a block of a run of full blocks.
 type Block struct {
 	Number       uint64
 	Hash         common.Hash
@@ -57,49 +51,47 @@ func (block Block) Full() bool {
 	return block.GasUsed*100 >= block.GasLimit*FullPercent
 }
 
-// Dense is a run of consecutive full blocks, oldest first.
-type Dense struct {
-	Blocks []Block
-}
-
-// Fill sends transfers from wallet until the chain has plan.Blocks consecutive
-// full blocks, then waits until every transfer it sent is in a block. The run
-// it returns can be longer than the plan: the transfers still in the pool fill
-// the blocks after it. The chain is read and the pool topped up every poll.
-func Fill(ctx context.Context, client *qrlclient.Client, wallet qrlwallet.Wallet, chainID *big.Int, poll time.Duration, plan Plan) (Dense, error) {
-	if plan.Blocks <= 0 {
-		return Dense{}, fmt.Errorf("plan has %d blocks", plan.Blocks)
+// Fill sends transfers from wallet until the chain has a run of consecutive
+// full blocks, blocks long, then waits until every transfer it sent is in a
+// block. The run it returns, oldest first, can be longer: the transfers still
+// in the pool fill the blocks after it. The chain is read and the pool topped
+// up every poll.
+func Fill(ctx context.Context, client *qrlclient.Client, wallet qrlwallet.Wallet, poll time.Duration, blocks int) ([]Block, error) {
+	if blocks <= 0 {
+		return nil, fmt.Errorf("cannot fill %d blocks", blocks)
 	}
-	filler, err := newFiller(ctx, client, wallet, chainID, plan)
+	filler, err := newFiller(ctx, client, wallet, blocks)
 	if err != nil {
-		return Dense{}, err
+		return nil, err
 	}
 	ticker := time.NewTicker(poll)
 	defer ticker.Stop()
 	for {
 		if err := filler.scan(ctx); err != nil {
-			return Dense{}, err
+			return nil, err
 		}
-		if !filler.met() {
-			if err := filler.topUp(ctx); err != nil {
-				return Dense{}, err
+		if filler.met() {
+			pooled, err := filler.pooled(ctx)
+			if err != nil {
+				return nil, err
 			}
-		} else if left, err := filler.pooled(ctx); err != nil {
-			return Dense{}, err
-		} else if left == 0 {
-			break
+			if pooled == 0 {
+				break
+			}
+		} else if err := filler.topUp(ctx); err != nil {
+			return nil, err
 		}
 		select {
 		case <-ctx.Done():
-			return Dense{}, fmt.Errorf("waiting for %d full blocks and an empty pool, %d full blocks so far: %w", plan.Blocks, len(filler.run), ctx.Err())
+			return nil, fmt.Errorf("waiting for %d full blocks and an empty pool, %d full blocks so far: %w", blocks, len(filler.run), ctx.Err())
 		case <-ticker.C:
 		}
 	}
 	// The block that emptied the pool can be newer than the last scan.
 	if err := filler.scan(ctx); err != nil {
-		return Dense{}, err
+		return nil, err
 	}
-	return Dense{Blocks: filler.run}, nil
+	return filler.run, nil
 }
 
 type filler struct {
@@ -111,7 +103,7 @@ type filler struct {
 	recipient common.Address
 	tip       *big.Int
 	feeCap    *big.Int
-	plan      Plan
+	blocks    int
 
 	transfersPerBlock uint64
 	transferBudget    uint64
@@ -123,8 +115,12 @@ type filler struct {
 	runEnded          bool
 }
 
-func newFiller(ctx context.Context, client *qrlclient.Client, wallet qrlwallet.Wallet, chainID *big.Int, plan Plan) (*filler, error) {
+func newFiller(ctx context.Context, client *qrlclient.Client, wallet qrlwallet.Wallet, blocks int) (*filler, error) {
 	sender := common.Address(wallet.GetAddress())
+	chainID, err := client.ChainID(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("read chain ID: %w", err)
+	}
 	head, err := client.HeaderByNumber(ctx, nil)
 	if err != nil {
 		return nil, fmt.Errorf("read head: %w", err)
@@ -133,8 +129,8 @@ func newFiller(ctx context.Context, client *qrlclient.Client, wallet qrlwallet.W
 	if err != nil {
 		return nil, fmt.Errorf("suggest tip: %w", err)
 	}
-	blocks := plan.Blocks + warmUpBlocks + poolBlocksAhead
-	feeCap, err := feeCapFor(head.BaseFee, tip, blocks)
+	budgetBlocks := blocks + warmUpBlocks + poolBlocksAhead
+	feeCap, err := feeCapFor(head.BaseFee, tip, budgetBlocks)
 	if err != nil {
 		return nil, err
 	}
@@ -152,9 +148,9 @@ func newFiller(ctx context.Context, client *qrlclient.Client, wallet qrlwallet.W
 		recipient:         common.BytesToAddress(crypto.Keccak256([]byte("qrl-tests load recipient"))),
 		tip:               tip,
 		feeCap:            feeCap,
-		plan:              plan,
+		blocks:            blocks,
 		transfersPerBlock: perBlock,
-		transferBudget:    uint64(blocks) * perBlock,
+		transferBudget:    uint64(budgetBlocks) * perBlock,
 		nextNonce:         next,
 		firstBlock:        head.Number.Uint64() + 1,
 		scannedBlock:      head.Number.Uint64(),
@@ -162,7 +158,7 @@ func newFiller(ctx context.Context, client *qrlclient.Client, wallet qrlwallet.W
 }
 
 func (filler *filler) met() bool {
-	return len(filler.run) >= filler.plan.Blocks
+	return len(filler.run) >= filler.blocks
 }
 
 func (filler *filler) scan(ctx context.Context) error {
@@ -203,7 +199,7 @@ func (filler *filler) topUp(ctx context.Context) error {
 	}
 	count := want - pooled
 	if filler.transfersSent+count > filler.transferBudget {
-		return fmt.Errorf("no run of %d full blocks after %d transfers, from block %d to %d", filler.plan.Blocks, filler.transfersSent, filler.firstBlock, filler.scannedBlock)
+		return fmt.Errorf("no run of %d full blocks after %d transfers, from block %d to %d", filler.blocks, filler.transfersSent, filler.firstBlock, filler.scannedBlock)
 	}
 	transfers, err := sign(filler.wallet, filler.signer, filler.chainID, filler.nextNonce, count, filler.tip, filler.feeCap, filler.recipient)
 	if err != nil {
