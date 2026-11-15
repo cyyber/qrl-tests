@@ -65,30 +65,24 @@ const fakeBlockTransfers = 4
 
 var fakeChainID = big.NewInt(1337)
 
-// fakeNode is the qrl API of a node as Fill uses it. It builds a block each
-// time its block number is read: the block takes the transfers the pool has,
-// up to its capacity.
+var fakeBaseFee = big.NewInt(1000)
+
+// fakeNode is the qrl API of a node as Fill uses it. Each read of its block
+// number builds a block from the pooled transfers.
 type fakeNode struct {
-	baseFee *big.Int
-	// capacity is how many transfers the block with the given number takes;
-	// nil is as many as a block holds.
-	capacity func(number uint64) uint64
-	// reject, when set, is the pool's answer to a transfer.
-	reject func(tx *types.Transaction) error
+	blockCapacity  func(number uint64) uint64
+	rejectTransfer func(tx *types.Transaction) error
 
 	requests atomic.Int64
 
-	mutex  sync.Mutex
-	blocks []uint64 // transfers in each block, from block 1
-	pooled uint64
-	mined  uint64
+	mutex          sync.Mutex
+	blockTransfers []uint64
+	pooled         uint64
+	mined          uint64
 }
 
 func startFakeNode(t *testing.T, node *fakeNode) *qrlclient.Client {
 	t.Helper()
-	if node.baseFee == nil {
-		node.baseFee = big.NewInt(1000)
-	}
 	api := rpc.NewServer()
 	t.Cleanup(api.Stop)
 	require.NoError(t, api.RegisterName("qrl", node))
@@ -117,28 +111,28 @@ func (node *fakeNode) BlockNumber() hexutil.Uint64 {
 	node.mutex.Lock()
 	defer node.mutex.Unlock()
 	taken := uint64(fakeBlockTransfers)
-	if node.capacity != nil {
-		taken = node.capacity(uint64(len(node.blocks)) + 1)
+	if node.blockCapacity != nil {
+		taken = node.blockCapacity(uint64(len(node.blockTransfers)) + 1)
 	}
 	taken = min(taken, node.pooled)
 	node.pooled -= taken
 	node.mined += taken
-	node.blocks = append(node.blocks, taken)
-	return hexutil.Uint64(len(node.blocks))
+	node.blockTransfers = append(node.blockTransfers, taken)
+	return hexutil.Uint64(len(node.blockTransfers))
 }
 
 func (node *fakeNode) GetBlockByNumber(number rpc.BlockNumber, _ bool) map[string]any {
 	node.mutex.Lock()
 	defer node.mutex.Unlock()
 	if number == rpc.LatestBlockNumber {
-		number = rpc.BlockNumber(len(node.blocks))
+		number = rpc.BlockNumber(len(node.blockTransfers))
 	}
-	if number < 0 || int(number) > len(node.blocks) {
+	if number < 0 || int(number) > len(node.blockTransfers) {
 		return nil
 	}
 	var transfers uint64
 	if number > 0 {
-		transfers = node.blocks[number-1]
+		transfers = node.blockTransfers[number-1]
 	}
 	return map[string]any{
 		"number":           hexutil.Uint64(number),
@@ -154,7 +148,7 @@ func (node *fakeNode) GetBlockByNumber(number rpc.BlockNumber, _ bool) map[strin
 		"timestamp":        hexutil.Uint64(number),
 		"extraData":        hexutil.Bytes{},
 		"prevRandao":       common.Hash{},
-		"baseFeePerGas":    (*hexutil.Big)(node.baseFee),
+		"baseFeePerGas":    (*hexutil.Big)(fakeBaseFee),
 		"withdrawalsRoot":  types.EmptyWithdrawalsHash,
 		"size":             hexutil.Uint64(1000 * transfers),
 		"transactions":     make([]common.Hash, transfers),
@@ -182,8 +176,8 @@ func (node *fakeNode) SendRawTransaction(raw hexutil.Bytes) (common.Hash, error)
 	if want := node.mined + node.pooled; tx.Nonce() != want {
 		return common.Hash{}, fmt.Errorf("transfer has nonce %d, want %d", tx.Nonce(), want)
 	}
-	if node.reject != nil {
-		if err := node.reject(tx); err != nil {
+	if node.rejectTransfer != nil {
+		if err := node.rejectTransfer(tx); err != nil {
 			return common.Hash{}, err
 		}
 	}
@@ -241,7 +235,7 @@ func TestFill(t *testing.T) {
 
 func TestFillStartsOverAfterABlockThatIsNotFull(t *testing.T) {
 	const blocks, partial = 3, 2
-	node := &fakeNode{capacity: func(number uint64) uint64 {
+	node := &fakeNode{blockCapacity: func(number uint64) uint64 {
 		if number == partial {
 			return 1
 		}
@@ -254,7 +248,7 @@ func TestFillStartsOverAfterABlockThatIsNotFull(t *testing.T) {
 }
 
 func TestFillGivesUpWhenBlocksDoNotFill(t *testing.T) {
-	node := &fakeNode{capacity: func(uint64) uint64 { return fakeBlockTransfers / 2 }}
+	node := &fakeNode{blockCapacity: func(uint64) uint64 { return fakeBlockTransfers / 2 }}
 	_, err := fill(t, node, 3)
 	require.ErrorContains(t, err, "transfer budget spent without 3 consecutive full blocks")
 	// The budget bounds what was sent.
@@ -262,7 +256,7 @@ func TestFillGivesUpWhenBlocksDoNotFill(t *testing.T) {
 }
 
 func TestFillFailsOnARejectedTransfer(t *testing.T) {
-	node := &fakeNode{reject: func(tx *types.Transaction) error {
+	node := &fakeNode{rejectTransfer: func(tx *types.Transaction) error {
 		if tx.Nonce() == 5 {
 			return errors.New("txpool is full")
 		}
