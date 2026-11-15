@@ -147,7 +147,7 @@ func (filler *filler) fillBlocks(ctx context.Context) error {
 		if err := filler.waitForNextPoll(ctx); err != nil {
 			return err
 		}
-		if err := filler.readNewBlocks(ctx); err != nil {
+		if err := filler.trackFullBlocks(ctx); err != nil {
 			return err
 		}
 	}
@@ -164,7 +164,7 @@ func (filler *filler) drainPool(ctx context.Context) error {
 		}
 		// Update after counting, so that the block that emptied the pool is in
 		// the run.
-		if err := filler.readNewBlocks(ctx); err != nil {
+		if err := filler.trackFullBlocks(ctx); err != nil {
 			return err
 		}
 		if pending == 0 {
@@ -189,10 +189,10 @@ func (filler *filler) runComplete() bool {
 	return len(filler.fullBlocks) >= filler.requestedBlocks
 }
 
-// readNewBlocks reads the blocks built since the last call. A full block
+// trackFullBlocks reads the blocks built since the last call. A full block
 // joins fullBlocks. One that is not full empties fullBlocks, or, once enough
 // are collected, ends the collection.
-func (filler *filler) readNewBlocks(ctx context.Context) error {
+func (filler *filler) trackFullBlocks(ctx context.Context) error {
 	latest, err := filler.client.BlockNumber(ctx)
 	if err != nil {
 		return fmt.Errorf("read block number: %w", err)
