@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"math/big"
 	"runtime"
-	"sync"
 	"time"
 
 	"github.com/theQRL/go-qrl/common"
@@ -19,6 +18,7 @@ import (
 	"github.com/theQRL/go-qrl/params"
 	"github.com/theQRL/go-qrl/qrlclient"
 	"github.com/theQRL/go-qrl/rpc"
+	"golang.org/x/sync/errgroup"
 )
 
 const (
@@ -249,36 +249,32 @@ func (filler *filler) refillPool(ctx context.Context) error {
 }
 
 func (filler *filler) sign(count uint64) ([]*types.Transaction, error) {
-	var (
-		transfers = make([]*types.Transaction, count)
-		failures  = make([]error, runtime.NumCPU())
-		group     sync.WaitGroup
-	)
-	for worker := range failures {
-		group.Add(1)
-		go func() {
-			defer group.Done()
-			for index := uint64(worker); index < count; index += uint64(len(failures)) {
-				nonce := filler.nextNonce + index
-				tx, err := types.SignNewTx(filler.wallet, filler.signer, &types.DynamicFeeTx{
-					ChainID:   filler.signer.ChainID(),
-					Nonce:     nonce,
-					GasTipCap: filler.tip,
-					GasFeeCap: filler.feeCap,
-					Gas:       params.TxGas,
-					To:        &recipient,
-					Value:     big.NewInt(1),
-				})
-				if err != nil {
-					failures[worker] = fmt.Errorf("sign transfer %d: %w", nonce, err)
-					return
-				}
-				transfers[index] = tx
+	transfers := make([]*types.Transaction, count)
+	var group errgroup.Group
+	group.SetLimit(runtime.NumCPU())
+	for index := range count {
+		group.Go(func() error {
+			nonce := filler.nextNonce + index
+			tx, err := types.SignNewTx(filler.wallet, filler.signer, &types.DynamicFeeTx{
+				ChainID:   filler.signer.ChainID(),
+				Nonce:     nonce,
+				GasTipCap: filler.tip,
+				GasFeeCap: filler.feeCap,
+				Gas:       params.TxGas,
+				To:        &recipient,
+				Value:     big.NewInt(1),
+			})
+			if err != nil {
+				return fmt.Errorf("sign transfer %d: %w", nonce, err)
 			}
-		}()
+			transfers[index] = tx
+			return nil
+		})
 	}
-	group.Wait()
-	return transfers, errors.Join(failures...)
+	if err := group.Wait(); err != nil {
+		return nil, err
+	}
+	return transfers, nil
 }
 
 func feeCapFor(baseFee, tip *big.Int, blocks int) (*big.Int, error) {
