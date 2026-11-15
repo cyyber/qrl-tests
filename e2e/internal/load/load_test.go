@@ -139,16 +139,19 @@ func (node *fakeNode) capacity(number uint64) uint64 {
 func (node *fakeNode) GetBlockByNumber(number rpc.BlockNumber, _ bool) map[string]any {
 	node.mutex.Lock()
 	defer node.mutex.Unlock()
+
 	if number == rpc.LatestBlockNumber {
 		number = rpc.BlockNumber(len(node.blockTransfers))
 	}
 	if number < 0 || int(number) > len(node.blockTransfers) {
 		return nil
 	}
+
 	var transfers uint64
 	if number > 0 {
 		transfers = node.blockTransfers[number-1]
 	}
+
 	return map[string]any{
 		"number":           hexutil.Uint64(number),
 		"hash":             common.BigToHash(big.NewInt(int64(number) + 1)),
