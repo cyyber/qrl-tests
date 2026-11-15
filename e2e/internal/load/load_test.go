@@ -222,78 +222,100 @@ func signingFiller(t *testing.T, nonce uint64) *filler {
 	}
 }
 
-func fill(t *testing.T, node *fakeNode, blocks int) ([]Block, error) {
+func fill(t *testing.T, node *fakeNode, poll, timeout time.Duration) ([]Block, error) {
 	t.Helper()
 	client := startFakeNode(t, node)
-	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), timeout)
 	defer cancel()
-	return Fill(ctx, client, newWallet(t), time.Millisecond, blocks)
+	return Fill(ctx, client, newWallet(t), poll, fillBlocks)
 }
+
+const fillBlocks = 3
 
 func TestFill(t *testing.T) {
-	const blocks = 3
-	node := &fakeNode{}
-	run, err := fill(t, node, blocks)
-	require.NoError(t, err)
+	for _, test := range []struct {
+		name         string
+		partialBlock uint64
+	}{
+		{name: "every block full"},
+		{name: "a block that is not full", partialBlock: 2},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			node := &fakeNode{blockCapacity: func(number uint64) uint64 {
+				if number == test.partialBlock {
+					return 1
+				}
+				return fakeBlockTransfers
+			}}
+			run, err := fill(t, node, time.Millisecond, 30*time.Second)
+			require.NoError(t, err)
 
-	// Fill returns with the pool empty. The run can be longer than asked: the
-	// transfers still in the pool fill more blocks after it.
-	require.Zero(t, node.pooled)
-	require.GreaterOrEqual(t, len(run), blocks)
-	for index, block := range run {
-		require.True(t, block.Full(), "block %d", block.Number)
-		require.Equal(t, fakeBlockTransfers, block.Transactions)
-		require.Equal(t, uint64(fakeTransferBytes*fakeBlockTransfers), block.EncodedBytes)
-		if index > 0 {
-			require.Equal(t, run[index-1].Number+1, block.Number)
-		}
+			// Fill returns with the pool empty. The run can be longer than asked:
+			// the transfers still in the pool fill more blocks after it.
+			require.Zero(t, node.pooled)
+			require.GreaterOrEqual(t, len(run), fillBlocks)
+			require.Greater(t, run[0].Number, test.partialBlock, "the run starts after the block that is not full")
+			for index, block := range run {
+				require.True(t, block.Full(), "block %d", block.Number)
+				require.Equal(t, fakeBlockTransfers, block.Transactions)
+				require.Equal(t, uint64(fakeTransferBytes*fakeBlockTransfers), block.EncodedBytes)
+				if index > 0 {
+					require.Equal(t, run[index-1].Number+1, block.Number)
+				}
+			}
+
+			var beforeRun uint64
+			for _, transfers := range node.blockTransfers[:run[0].Number-1] {
+				beforeRun += transfers
+			}
+			require.Equal(t, beforeRun+uint64(len(run))*fakeBlockTransfers, node.mined,
+				"every transfer sent after the run started is in a block of the run")
+		})
 	}
-	require.Equal(t, uint64(len(run))*fakeBlockTransfers, node.mined, "every transfer sent is in a block of the run")
 }
 
-func TestFillStartsOverAfterABlockThatIsNotFull(t *testing.T) {
-	const blocks, partial = 3, 2
-	node := &fakeNode{blockCapacity: func(number uint64) uint64 {
-		if number == partial {
-			return 1
-		}
-		return fakeBlockTransfers
-	}}
-	run, err := fill(t, node, blocks)
-	require.NoError(t, err)
-	require.GreaterOrEqual(t, len(run), blocks)
-	require.Greater(t, run[0].Number, uint64(partial), "the run starts after the block that is not full")
-}
-
-func TestFillGivesUpWhenBlocksDoNotFill(t *testing.T) {
-	const blocks = 3
-	node := &fakeNode{blockCapacity: func(uint64) uint64 { return fakeBlockTransfers / 2 }}
-	_, err := fill(t, node, blocks)
-	require.ErrorContains(t, err, fmt.Sprintf("transfer budget spent without %d consecutive full blocks", blocks))
-	// The budget bounds what was sent.
-	require.LessOrEqual(t, node.mined+node.pooled, uint64((blocks+warmUpBlocks+poolBlocksAhead)*fakeBlockTransfers))
-}
-
-func TestFillFailsOnARejectedTransfer(t *testing.T) {
-	node := &fakeNode{rejectTransfer: func(tx *types.Transaction) error {
-		if tx.Nonce() == 5 {
-			return errors.New("txpool is full")
-		}
-		return nil
-	}}
-	_, err := fill(t, node, 3)
-	require.ErrorContains(t, err, "send transfer 5: txpool is full")
-}
-
-func TestFillStopsWithItsContext(t *testing.T) {
-	client := startFakeNode(t, new(fakeNode))
-	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
-	defer cancel()
-
-	// The context ends during the wait for the next poll.
-	_, err := Fill(ctx, client, newWallet(t), time.Hour, 3)
-	require.ErrorIs(t, err, context.DeadlineExceeded)
-	require.ErrorContains(t, err, "waiting for 3 full blocks and an empty pool, 0 full blocks so far")
+func TestFillFails(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		node    *fakeNode
+		poll    time.Duration
+		timeout time.Duration
+		err     string
+	}{
+		{
+			name: "blocks that do not fill",
+			node: &fakeNode{blockCapacity: func(uint64) uint64 { return fakeBlockTransfers / 2 }},
+			poll: time.Millisecond, timeout: 30 * time.Second,
+			err: fmt.Sprintf("transfer budget spent without %d consecutive full blocks", fillBlocks),
+		},
+		{
+			name: "a rejected transfer",
+			node: &fakeNode{rejectTransfer: func(tx *types.Transaction) error {
+				if tx.Nonce() == 5 {
+					return errors.New("txpool is full")
+				}
+				return nil
+			}},
+			poll: time.Millisecond, timeout: 30 * time.Second,
+			err: "send transfer 5: txpool is full",
+		},
+		{
+			// The context ends during the wait for the next poll.
+			name: "a context that ends",
+			node: new(fakeNode),
+			poll: time.Hour, timeout: time.Second,
+			err: fmt.Sprintf("waiting for %d full blocks and an empty pool, 0 full blocks so far: %s",
+				fillBlocks, context.DeadlineExceeded),
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := fill(t, test.node, test.poll, test.timeout)
+			require.ErrorContains(t, err, test.err)
+			// The budget bounds what was sent.
+			require.LessOrEqual(t, test.node.mined+test.node.pooled,
+				uint64((fillBlocks+warmUpBlocks+poolBlocksAhead)*fakeBlockTransfers))
+		})
+	}
 }
 
 func TestSign(t *testing.T) {
