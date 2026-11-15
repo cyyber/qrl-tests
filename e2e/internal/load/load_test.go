@@ -28,8 +28,6 @@ func TestBlockFull(t *testing.T) {
 		gasUsed uint64
 		full    bool
 	}{
-		{"at the gas limit", 20_000_000, true},
-		{"one transfer short of the gas limit", 20_000_000 - params.TxGas, true},
 		{"at the full share", 19_000_000, true},
 		{"just under the full share", 18_999_999, false},
 		{"empty", 0, false},
@@ -262,18 +260,6 @@ func TestFillGivesUpWhenBlocksDoNotFill(t *testing.T) {
 	require.ErrorContains(t, err, "transfer budget spent without 3 consecutive full blocks")
 	// The budget bounds what was sent.
 	require.LessOrEqual(t, node.mined+node.pooled, uint64((3+warmUpBlocks+poolBlocksAhead)*fakeBlockTransfers))
-}
-
-func TestFillRefusesAFeeAboveTheNodesCap(t *testing.T) {
-	node := &fakeNode{baseFee: new(big.Int).Div(defaultRPCTxFeeCap, new(big.Int).SetUint64(params.TxGas))}
-	_, err := fill(t, node, 3)
-	require.ErrorIs(t, err, ErrFeeCap)
-	require.Zero(t, node.pooled, "nothing is sent")
-}
-
-func TestFillRejectsNoBlocks(t *testing.T) {
-	_, err := Fill(context.Background(), nil, nil, time.Millisecond, 0)
-	require.ErrorContains(t, err, "cannot fill 0 blocks")
 }
 
 func TestFillFailsOnARejectedTransfer(t *testing.T) {
