@@ -39,13 +39,13 @@ func TestBlockFull(t *testing.T) {
 	}
 }
 
-func TestFeeCapAfter(t *testing.T) {
+func TestTransferFeeCap(t *testing.T) {
 	tip := big.NewInt(1)
 
 	// The fee cap is above the base fee that many full blocks lead to.
 	baseFee := big.NewInt(1_000_000_000)
 	const blocks = 10
-	feeCap, err := feeCapAfter(baseFee, tip, blocks)
+	feeCap, err := transferFeeCap(baseFee, tip, blocks)
 	require.NoError(t, err)
 	reached := new(big.Int).Set(baseFee)
 	for range blocks {
@@ -54,12 +54,12 @@ func TestFeeCapAfter(t *testing.T) {
 	require.Equal(t, 1, feeCap.Cmp(reached), "fee cap %s, base fee after %d full blocks %s", feeCap, blocks, reached)
 
 	// A base fee too low for an eighth of it to count still rises by one.
-	feeCap, err = feeCapAfter(big.NewInt(7), tip, blocks)
+	feeCap, err = transferFeeCap(big.NewInt(7), tip, blocks)
 	require.NoError(t, err)
 	require.Equal(t, 1, feeCap.Cmp(big.NewInt(7+blocks)))
 
 	// A transfer cannot pay more than the node accepts over the API.
-	_, err = feeCapAfter(baseFee, tip, 200)
+	_, err = transferFeeCap(baseFee, tip, 200)
 	require.ErrorIs(t, err, ErrFeeCap)
 }
 
@@ -343,4 +343,13 @@ func TestSign(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, common.Address(wallet.GetAddress()), sender)
 	}
+}
+
+func TestBaseFeeAfter(t *testing.T) {
+	baseFee := big.NewInt(800)
+	require.Equal(t, big.NewInt(1012), baseFeeAfter(baseFee, 2), "800, then 900, then 1012")
+	require.Equal(t, big.NewInt(800), baseFeeAfter(baseFee, 0))
+	require.Equal(t, big.NewInt(800), baseFee, "the base fee passed in is not changed")
+	// A base fee too low for an eighth of it to count still rises by one.
+	require.Equal(t, big.NewInt(10), baseFeeAfter(big.NewInt(7), 3))
 }

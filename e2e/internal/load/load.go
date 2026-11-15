@@ -109,7 +109,7 @@ func newFiller(ctx context.Context, client *qrlclient.Client, wallet qrlwallet.W
 	}
 
 	maxFullBlocks := blocks + warmUpBlocks + poolBlocksAhead
-	feeCap, err := feeCapAfter(head.BaseFee, tip, maxFullBlocks)
+	feeCap, err := transferFeeCap(head.BaseFee, tip, maxFullBlocks)
 	if err != nil {
 		return nil, fmt.Errorf("cannot fill %d blocks: %w", blocks, err)
 	}
@@ -277,21 +277,29 @@ func (filler *filler) sign(count uint64) ([]*types.Transaction, error) {
 	return transfers, nil
 }
 
-func feeCapAfter(baseFee, tip *big.Int, fullBlocks int) (*big.Int, error) {
-	feeCap := new(big.Int).Set(baseFee)
-	for range fullBlocks + feeCapMarginBlocks {
-		// The base fee rises by an eighth, and by at least one.
-		rise := new(big.Int).Div(feeCap, big.NewInt(params.DefaultBaseFeeChangeDenominator))
-		if rise.Sign() == 0 {
-			rise.SetUint64(1)
-		}
-		feeCap.Add(feeCap, rise)
-	}
+// transferFeeCap returns the fee cap to sign the transfers with: above the
+// base fee for as long as fullBlocks full blocks, and a few more, raise it.
+func transferFeeCap(baseFee, tip *big.Int, fullBlocks int) (*big.Int, error) {
+	feeCap := baseFeeAfter(baseFee, fullBlocks+feeCapMarginBlocks)
 	feeCap.Add(feeCap, tip)
 	if fee := new(big.Int).Mul(feeCap, new(big.Int).SetUint64(params.TxGas)); fee.Cmp(defaultRPCTxFeeCap) > 0 {
 		return nil, fmt.Errorf("%w: from a base fee of %s, a transfer's fee would reach %s planck", ErrFeeCap, baseFee, fee)
 	}
 	return feeCap, nil
+}
+
+// baseFeeAfter returns the base fee once fullBlocks full blocks have each
+// raised it by an eighth, and by at least one.
+func baseFeeAfter(baseFee *big.Int, fullBlocks int) *big.Int {
+	raised := new(big.Int).Set(baseFee)
+	for range fullBlocks {
+		rise := new(big.Int).Div(raised, big.NewInt(params.DefaultBaseFeeChangeDenominator))
+		if rise.Sign() == 0 {
+			rise.SetUint64(1)
+		}
+		raised.Add(raised, rise)
+	}
+	return raised
 }
 
 func send(ctx context.Context, client *qrlclient.Client, transfers []*types.Transaction) error {
