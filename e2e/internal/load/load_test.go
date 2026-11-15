@@ -39,20 +39,6 @@ func TestBlockFull(t *testing.T) {
 	}
 }
 
-func TestExtend(t *testing.T) {
-	full := Block{GasUsed: 20_000_000, GasLimit: 20_000_000}
-	partial := Block{GasUsed: 10_000_000, GasLimit: 20_000_000}
-
-	var run []Block
-	for number, block := range []Block{full, full, partial, full} {
-		block.Number = uint64(number)
-		run = extend(run, block)
-	}
-	// The block that is not full starts the run over.
-	require.Len(t, run, 1)
-	require.Equal(t, uint64(3), run[0].Number)
-}
-
 func TestFeeCapFor(t *testing.T) {
 	tip := big.NewInt(1)
 

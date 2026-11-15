@@ -57,11 +57,10 @@ func Fill(ctx context.Context, client *qrlclient.Client, wallet qrlwallet.Wallet
 	if blocks <= 0 {
 		return nil, fmt.Errorf("cannot fill %d blocks", blocks)
 	}
-	filler, err := newFiller(ctx, client, wallet, blocks)
+	filler, err := newFiller(ctx, client, wallet, poll, blocks)
 	if err != nil {
 		return nil, err
 	}
-	filler.ticker = time.NewTicker(poll)
 	defer filler.ticker.Stop()
 
 	if err := filler.fillBlocks(ctx); err != nil {
@@ -90,7 +89,7 @@ type filler struct {
 	runEnded          bool
 }
 
-func newFiller(ctx context.Context, client *qrlclient.Client, wallet qrlwallet.Wallet, blocks int) (*filler, error) {
+func newFiller(ctx context.Context, client *qrlclient.Client, wallet qrlwallet.Wallet, poll time.Duration, blocks int) (*filler, error) {
 	chainID, err := client.ChainID(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("read chain ID: %w", err)
@@ -122,6 +121,7 @@ func newFiller(ctx context.Context, client *qrlclient.Client, wallet qrlwallet.W
 		tip:               tip,
 		feeCap:            feeCap,
 		blocks:            blocks,
+		ticker:            time.NewTicker(poll),
 		transfersPerBlock: transfersPerBlock,
 		transfersLeft:     uint64(maxFullBlocks) * transfersPerBlock,
 		nextNonce:         nextNonce,
@@ -188,16 +188,20 @@ func (filler *filler) updateRun(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("read block number: %w", err)
 	}
-	for ; filler.lastBlockRead < latest && !filler.runEnded; filler.lastBlockRead++ {
+	for filler.lastBlockRead < latest && !filler.runEnded {
 		block, err := readBlock(ctx, filler.client, filler.lastBlockRead+1)
 		if err != nil {
 			return err
 		}
-		if filler.runComplete() && !block.Full() {
+		filler.lastBlockRead++
+		switch {
+		case block.Full():
+			filler.run = append(filler.run, block)
+		case filler.runComplete():
 			filler.runEnded = true
-			break
+		default:
+			filler.run = nil
 		}
-		filler.run = extend(filler.run, block)
 	}
 	return nil
 }
@@ -235,30 +239,6 @@ func (filler *filler) refillPool(ctx context.Context) error {
 	return nil
 }
 
-func extend(run []Block, block Block) []Block {
-	if !block.Full() {
-		return nil
-	}
-	return append(run, block)
-}
-
-func feeCapFor(baseFee, tip *big.Int, blocks int) (*big.Int, error) {
-	feeCap := new(big.Int).Set(baseFee)
-	for range blocks + feeCapMarginBlocks {
-		// The base fee rises by an eighth, and by at least one.
-		rise := new(big.Int).Div(feeCap, big.NewInt(params.DefaultBaseFeeChangeDenominator))
-		if rise.Sign() == 0 {
-			rise.SetUint64(1)
-		}
-		feeCap.Add(feeCap, rise)
-	}
-	feeCap.Add(feeCap, tip)
-	if fee := new(big.Int).Mul(feeCap, new(big.Int).SetUint64(params.TxGas)); fee.Cmp(defaultRPCTxFeeCap) > 0 {
-		return nil, fmt.Errorf("%w: %d full blocks from a base fee of %s take a transfer's fee to %s planck", ErrFeeCap, blocks, baseFee, fee)
-	}
-	return feeCap, nil
-}
-
 func (filler *filler) sign(count uint64) ([]*types.Transaction, error) {
 	var (
 		transfers = make([]*types.Transaction, count)
@@ -290,6 +270,23 @@ func (filler *filler) sign(count uint64) ([]*types.Transaction, error) {
 	}
 	group.Wait()
 	return transfers, errors.Join(failures...)
+}
+
+func feeCapFor(baseFee, tip *big.Int, blocks int) (*big.Int, error) {
+	feeCap := new(big.Int).Set(baseFee)
+	for range blocks + feeCapMarginBlocks {
+		// The base fee rises by an eighth, and by at least one.
+		rise := new(big.Int).Div(feeCap, big.NewInt(params.DefaultBaseFeeChangeDenominator))
+		if rise.Sign() == 0 {
+			rise.SetUint64(1)
+		}
+		feeCap.Add(feeCap, rise)
+	}
+	feeCap.Add(feeCap, tip)
+	if fee := new(big.Int).Mul(feeCap, new(big.Int).SetUint64(params.TxGas)); fee.Cmp(defaultRPCTxFeeCap) > 0 {
+		return nil, fmt.Errorf("%w: %d full blocks from a base fee of %s take a transfer's fee to %s planck", ErrFeeCap, blocks, baseFee, fee)
+	}
+	return feeCap, nil
 }
 
 func send(ctx context.Context, client *qrlclient.Client, transfers []*types.Transaction) error {
