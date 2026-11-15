@@ -89,17 +89,21 @@ type fakeNode struct {
 
 func startFakeNode(t *testing.T, node *fakeNode) *qrlclient.Client {
 	t.Helper()
+
 	api := rpc.NewServer()
 	t.Cleanup(api.Stop)
 	require.NoError(t, api.RegisterName("qrl", node))
+
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		node.requests.Add(1)
 		api.ServeHTTP(writer, request)
 	}))
 	t.Cleanup(server.Close)
+
 	client, err := qrlclient.Dial(server.URL)
 	require.NoError(t, err)
 	t.Cleanup(client.Close)
+
 	return client
 }
 
