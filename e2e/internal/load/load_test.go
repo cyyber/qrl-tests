@@ -264,12 +264,10 @@ func TestFill(t *testing.T) {
 				}
 			}
 
-			var beforeRun uint64
-			for _, transfers := range node.blockTransfers[:run[0].Number-1] {
-				beforeRun += transfers
+			lastBlock := run[len(run)-1].Number
+			for index, transfers := range node.blockTransfers[lastBlock:] {
+				require.Zero(t, transfers, "block %d, after the run, has transfers", lastBlock+uint64(index)+1)
 			}
-			require.Equal(t, beforeRun+uint64(len(run))*fakeBlockTransfers, node.mined,
-				"every transfer sent after the run started is in a block of the run")
 		})
 	}
 }
