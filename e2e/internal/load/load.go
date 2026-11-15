@@ -277,8 +277,8 @@ func (filler *filler) sign(count uint64) ([]*types.Transaction, error) {
 	return transfers, nil
 }
 
-// transferFeeCap returns the fee cap to sign the transfers with: above the
-// base fee for as long as fullBlocks full blocks, and a few more, raise it.
+// transferFeeCap returns a fee cap high enough for the transfers to stay
+// payable while fullBlocks full blocks raise the base fee.
 func transferFeeCap(baseFee, tip *big.Int, fullBlocks int) (*big.Int, error) {
 	feeCap := baseFeeAfter(baseFee, fullBlocks+feeCapMarginBlocks)
 	feeCap.Add(feeCap, tip)
