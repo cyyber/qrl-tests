@@ -119,17 +119,21 @@ func (node *fakeNode) BlockNumber() hexutil.Uint64 {
 	node.mutex.Lock()
 	defer node.mutex.Unlock()
 
-	taken := uint64(fakeBlockTransfers)
-	if node.blockCapacity != nil {
-		taken = node.blockCapacity(uint64(len(node.blockTransfers)) + 1)
+	number := uint64(len(node.blockTransfers)) + 1
+	transfers := min(node.capacity(number), node.pooled)
+
+	node.pooled -= transfers
+	node.mined += transfers
+	node.blockTransfers = append(node.blockTransfers, transfers)
+
+	return hexutil.Uint64(number)
+}
+
+func (node *fakeNode) capacity(number uint64) uint64 {
+	if node.blockCapacity == nil {
+		return fakeBlockTransfers
 	}
-	taken = min(taken, node.pooled)
-
-	node.pooled -= taken
-	node.mined += taken
-	node.blockTransfers = append(node.blockTransfers, taken)
-
-	return hexutil.Uint64(len(node.blockTransfers))
+	return node.blockCapacity(number)
 }
 
 func (node *fakeNode) GetBlockByNumber(number rpc.BlockNumber, _ bool) map[string]any {
