@@ -236,8 +236,8 @@ func TestFill(t *testing.T) {
 	run, err := fill(t, node, blocks)
 	require.NoError(t, err)
 
-	// The pool is empty, and the run is every full block: the ones asked for,
-	// then the ones the transfers left in the pool filled.
+	// Fill returns with the pool empty. The run can be longer than asked: the
+	// transfers still in the pool fill more blocks after it.
 	require.Zero(t, node.pooled)
 	require.GreaterOrEqual(t, len(run), blocks)
 	for index, block := range run {
