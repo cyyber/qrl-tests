@@ -278,7 +278,7 @@ func (filler *filler) sign(count uint64) ([]*types.Transaction, error) {
 }
 
 // transferFeeCap returns a fee cap high enough for the transfers to stay
-// payable while fullBlocks full blocks raise the base fee.
+// payable after the given number of full blocks has raised the base fee.
 func transferFeeCap(baseFee, tip *big.Int, fullBlocks int) (*big.Int, error) {
 	feeCap := baseFeeAfter(baseFee, fullBlocks+feeCapMarginBlocks)
 	feeCap.Add(feeCap, tip)
@@ -288,8 +288,8 @@ func transferFeeCap(baseFee, tip *big.Int, fullBlocks int) (*big.Int, error) {
 	return feeCap, nil
 }
 
-// baseFeeAfter returns the base fee once fullBlocks full blocks have each
-// raised it by an eighth, and by at least one.
+// baseFeeAfter returns the base fee after the given number of full blocks.
+// Each one raises it by an eighth, and by at least one.
 func baseFeeAfter(baseFee *big.Int, fullBlocks int) *big.Int {
 	raised := new(big.Int).Set(baseFee)
 	for range fullBlocks {
