@@ -62,7 +62,7 @@ func Fill(ctx context.Context, client *qrlclient.Client, wallet qrlwallet.Wallet
 	if err != nil {
 		return nil, err
 	}
-	defer filler.ticker.Stop()
+	defer filler.stop()
 
 	if err := filler.fillBlocks(ctx); err != nil {
 		return nil, err
@@ -128,6 +128,10 @@ func newFiller(ctx context.Context, client *qrlclient.Client, wallet qrlwallet.W
 		nextNonce:         nextNonce,
 		lastBlockRead:     head.Number.Uint64(),
 	}, nil
+}
+
+func (filler *filler) stop() {
+	filler.ticker.Stop()
 }
 
 // fillBlocks repeats until enough consecutive blocks are full. The transfers
