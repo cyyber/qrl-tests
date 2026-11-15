@@ -27,6 +27,15 @@ var (
 	// BeaconChunk is the largest response chunk a qrysm peer accepts,
 	// uncompressed: MaxChunkSize.
 	BeaconChunk = Cap{Name: "beacon response chunk", Limit: 10 << 20}
+	// RPCBatchResponse is the largest reply go-qrl sends to a batch of JSON-RPC
+	// calls: BatchResponseMaxSize in node.
+	RPCBatchResponse = Cap{Name: "JSON-RPC batch response", Limit: 25_000_000}
+	// RPCWebSocketMessage is the largest WebSocket message a go-qrl RPC client
+	// or server reads: wsDefaultReadLimit in rpc.
+	RPCWebSocketMessage = Cap{Name: "JSON-RPC WebSocket message", Limit: 32 << 20}
+	// EngineRequestBody is the largest request body go-qrl's engine API
+	// accepts: engineAPIBodyLimit in node.
+	EngineRequestBody = Cap{Name: "engine API request body", Limit: 128 << 20}
 	// EnginePayload is how long qrysm waits for the execution client to
 	// answer newPayload or forkchoiceUpdated: ExecutionEngineTimeoutValue.
 	EnginePayload = Cap{Name: "engine API payload call", Limit: uint64(8 * time.Second)}
