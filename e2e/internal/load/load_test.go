@@ -39,13 +39,13 @@ func TestBlockFull(t *testing.T) {
 	}
 }
 
-func TestFeeCapFor(t *testing.T) {
+func TestFeeCapCovering(t *testing.T) {
 	tip := big.NewInt(1)
 
 	// The fee cap is above the base fee that many full blocks lead to.
 	baseFee := big.NewInt(1_000_000_000)
 	const blocks = 10
-	feeCap, err := feeCapFor(baseFee, tip, blocks)
+	feeCap, err := feeCapCovering(baseFee, tip, blocks)
 	require.NoError(t, err)
 	reached := new(big.Int).Set(baseFee)
 	for range blocks {
@@ -54,12 +54,12 @@ func TestFeeCapFor(t *testing.T) {
 	require.Equal(t, 1, feeCap.Cmp(reached), "fee cap %s, base fee after %d full blocks %s", feeCap, blocks, reached)
 
 	// A base fee too low for an eighth of it to count still rises by one.
-	feeCap, err = feeCapFor(big.NewInt(7), tip, blocks)
+	feeCap, err = feeCapCovering(big.NewInt(7), tip, blocks)
 	require.NoError(t, err)
 	require.Equal(t, 1, feeCap.Cmp(big.NewInt(7+blocks)))
 
 	// A transfer cannot pay more than the node accepts over the API.
-	_, err = feeCapFor(baseFee, tip, 200)
+	_, err = feeCapCovering(baseFee, tip, 200)
 	require.ErrorIs(t, err, ErrFeeCap)
 }
 
