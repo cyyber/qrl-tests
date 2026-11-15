@@ -119,14 +119,14 @@ func (node *fakeNode) BlockNumber() hexutil.Uint64 {
 	node.mutex.Lock()
 	defer node.mutex.Unlock()
 
-	number := uint64(len(node.blockTransfers)) + 1
-	transfers := min(node.capacity(number), node.pooled)
+	newBlock := uint64(len(node.blockTransfers)) + 1
+	transfers := min(node.capacity(newBlock), node.pooled)
 
 	node.pooled -= transfers
 	node.mined += transfers
 	node.blockTransfers = append(node.blockTransfers, transfers)
 
-	return hexutil.Uint64(number)
+	return hexutil.Uint64(newBlock)
 }
 
 func (node *fakeNode) capacity(number uint64) uint64 {
