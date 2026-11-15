@@ -67,8 +67,8 @@ var fakeChainID = big.NewInt(1337)
 
 var fakeBaseFee = big.NewInt(1000)
 
-// fakeNode is the qrl API of a node as Fill uses it. Each read of its block
-// number builds a block from the pooled transfers.
+// fakeNode serves the qrl API methods that Fill calls. Reading the block
+// number mines the pooled transfers into a new block.
 type fakeNode struct {
 	blockCapacity  func(number uint64) uint64
 	rejectTransfer func(tx *types.Transaction) error
