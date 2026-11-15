@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"math/big"
 	"runtime"
+	"slices"
 	"time"
 
 	"github.com/theQRL/go-qrl/common"
@@ -305,9 +306,7 @@ func baseFeeAfter(baseFee *big.Int, fullBlocks int) *big.Int {
 }
 
 func send(ctx context.Context, client *qrlclient.Client, transfers []*types.Transaction) error {
-	for len(transfers) > 0 {
-		batch := transfers[:min(transfersPerRequest, len(transfers))]
-		transfers = transfers[len(batch):]
+	for batch := range slices.Chunk(transfers, transfersPerRequest) {
 		elems := make([]rpc.BatchElem, len(batch))
 		for index, tx := range batch {
 			raw, err := tx.MarshalBinary()
