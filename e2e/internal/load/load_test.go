@@ -309,9 +309,9 @@ func TestFillFails(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			_, err := fill(t, test.node, test.poll, test.timeout)
 			require.ErrorContains(t, err, test.err)
-			// The budget bounds what was sent.
-			require.LessOrEqual(t, test.node.mined+test.node.pooled,
-				uint64((fillBlocks+warmUpBlocks+poolBlocksAhead)*fakeBlockTransfers))
+			sent := test.node.mined + test.node.pooled
+			maxFullBlocks := fillBlocks + warmUpBlocks + poolBlocksAhead
+			require.LessOrEqual(t, sent, uint64(maxFullBlocks*fakeBlockTransfers), "Fill sent more than its budget")
 		})
 	}
 }
