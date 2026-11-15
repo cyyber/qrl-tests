@@ -109,7 +109,7 @@ func newFiller(ctx context.Context, client *qrlclient.Client, wallet qrlwallet.W
 	}
 
 	maxFullBlocks := blocks + warmUpBlocks + poolBlocksAhead
-	feeCap, err := feeCapCovering(head.BaseFee, tip, maxFullBlocks)
+	feeCap, err := feeCapAfter(head.BaseFee, tip, maxFullBlocks)
 	if err != nil {
 		return nil, fmt.Errorf("cannot fill %d blocks: %w", blocks, err)
 	}
@@ -277,7 +277,7 @@ func (filler *filler) sign(count uint64) ([]*types.Transaction, error) {
 	return transfers, nil
 }
 
-func feeCapCovering(baseFee, tip *big.Int, fullBlocks int) (*big.Int, error) {
+func feeCapAfter(baseFee, tip *big.Int, fullBlocks int) (*big.Int, error) {
 	feeCap := new(big.Int).Set(baseFee)
 	for range fullBlocks + feeCapMarginBlocks {
 		// The base fee rises by an eighth, and by at least one.
