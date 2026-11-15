@@ -189,9 +189,8 @@ func (filler *filler) runComplete() bool {
 	return len(filler.fullBlocks) >= filler.requestedBlocks
 }
 
-// trackFullBlocks reads the blocks built since the last call. A full block
-// joins fullBlocks. One that is not full empties fullBlocks, or, once enough
-// are collected, ends the collection.
+// trackFullBlocks reads the blocks built since the last call and updates
+// fullBlocks.
 func (filler *filler) trackFullBlocks(ctx context.Context) error {
 	latest, err := filler.client.BlockNumber(ctx)
 	if err != nil {
