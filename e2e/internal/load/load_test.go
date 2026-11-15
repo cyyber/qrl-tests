@@ -211,7 +211,6 @@ func newWallet(t *testing.T) qrlwallet.Wallet {
 	return wallet
 }
 
-// signingFiller is a filler with what sign needs.
 func signingFiller(t *testing.T, nonce uint64) *filler {
 	t.Helper()
 	return &filler{
