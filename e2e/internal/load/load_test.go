@@ -186,6 +186,7 @@ func (node *fakeNode) GetTransactionCount(_ common.Address, block rpc.BlockNumbe
 func (node *fakeNode) SendRawTransaction(raw hexutil.Bytes) (common.Hash, error) {
 	node.mutex.Lock()
 	defer node.mutex.Unlock()
+
 	tx := new(types.Transaction)
 	if err := tx.UnmarshalBinary(raw); err != nil {
 		return common.Hash{}, err
