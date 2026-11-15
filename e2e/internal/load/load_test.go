@@ -61,7 +61,6 @@ func TestBaseFeeAfter(t *testing.T) {
 	require.Equal(t, big.NewInt(10), baseFeeAfter(big.NewInt(7), 3))
 }
 
-// The fake node's blocks hold a few transfers, so that a test signs few.
 const fakeBlockTransfers = 4
 
 var fakeChainID = big.NewInt(1337)
