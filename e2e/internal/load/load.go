@@ -154,8 +154,8 @@ func (filler *filler) fillBlocks(ctx context.Context) error {
 	return nil
 }
 
-// drainPool repeats until every transfer sent is in a block, reading the
-// blocks that the transfers left in the pool go on to fill.
+// drainPool waits until every transfer sent is in a block, and keeps
+// tracking full blocks while it waits.
 func (filler *filler) drainPool(ctx context.Context) error {
 	for {
 		pending, err := filler.pendingTransfers(ctx)
