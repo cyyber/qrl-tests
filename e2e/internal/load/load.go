@@ -111,7 +111,7 @@ func newFiller(ctx context.Context, client *qrlclient.Client, wallet qrlwallet.W
 	maxFullBlocks := blocks + warmUpBlocks + poolBlocksAhead
 	feeCap, err := feeCapFor(head.BaseFee, tip, maxFullBlocks)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("cannot fill %d blocks: %w", blocks, err)
 	}
 	transfersPerBlock := head.GasLimit / params.TxGas
 
@@ -158,7 +158,8 @@ func (filler *filler) drainPool(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
-		// Update after counting, so that the block that emptied the pool is in the run.
+		// Update after counting, so that the block that emptied the pool is in
+		// the run.
 		if err := filler.updateRun(ctx); err != nil {
 			return err
 		}
@@ -285,7 +286,7 @@ func feeCapFor(baseFee, tip *big.Int, blocks int) (*big.Int, error) {
 	}
 	feeCap.Add(feeCap, tip)
 	if fee := new(big.Int).Mul(feeCap, new(big.Int).SetUint64(params.TxGas)); fee.Cmp(defaultRPCTxFeeCap) > 0 {
-		return nil, fmt.Errorf("%w: %d full blocks from a base fee of %s take a transfer's fee to %s planck", ErrFeeCap, blocks, baseFee, fee)
+		return nil, fmt.Errorf("%w: from a base fee of %s, a transfer's fee would reach %s planck", ErrFeeCap, baseFee, fee)
 	}
 	return feeCap, nil
 }
