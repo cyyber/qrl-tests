@@ -61,11 +61,16 @@ func TestBaseFeeAfter(t *testing.T) {
 	require.Equal(t, big.NewInt(10), baseFeeAfter(big.NewInt(7), 3))
 }
 
-const fakeBlockTransfers = 4
+const (
+	fakeBlockTransfers = 4
+	fakeTransferBytes  = 1000
+)
 
-var fakeChainID = big.NewInt(1337)
-
-var fakeBaseFee = big.NewInt(1000)
+var (
+	fakeChainID = big.NewInt(1337)
+	fakeBaseFee = big.NewInt(1000)
+	fakeTip     = big.NewInt(1)
+)
 
 // fakeNode serves the qrl API methods that Fill calls. Its chain grows by one
 // block each time Fill asks for the block number, and the new block takes the
@@ -103,11 +108,9 @@ func (node *fakeNode) ChainId() *hexutil.Big {
 }
 
 func (node *fakeNode) MaxPriorityFeePerGas() *hexutil.Big {
-	return (*hexutil.Big)(big.NewInt(1))
+	return (*hexutil.Big)(fakeTip)
 }
 
-// BlockNumber adds a block with the pool's transfers, up to the block's
-// capacity, and returns its number.
 func (node *fakeNode) BlockNumber() hexutil.Uint64 {
 	node.mutex.Lock()
 	defer node.mutex.Unlock()
@@ -151,7 +154,7 @@ func (node *fakeNode) GetBlockByNumber(number rpc.BlockNumber, _ bool) map[strin
 		"prevRandao":       common.Hash{},
 		"baseFeePerGas":    (*hexutil.Big)(fakeBaseFee),
 		"withdrawalsRoot":  types.EmptyWithdrawalsHash,
-		"size":             hexutil.Uint64(1000 * transfers),
+		"size":             hexutil.Uint64(fakeTransferBytes * transfers),
 		"transactions":     make([]common.Hash, transfers),
 		"withdrawals":      []any{},
 	}
@@ -199,7 +202,7 @@ func signingFiller(t *testing.T, nonce uint64) *filler {
 	return &filler{
 		wallet:    newWallet(t),
 		signer:    types.NewZondSigner(fakeChainID),
-		tip:       big.NewInt(1),
+		tip:       fakeTip,
 		feeCap:    big.NewInt(100),
 		nextNonce: nonce,
 	}
@@ -208,7 +211,7 @@ func signingFiller(t *testing.T, nonce uint64) *filler {
 func fill(t *testing.T, node *fakeNode, blocks int) ([]Block, error) {
 	t.Helper()
 	client := startFakeNode(t, node)
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	defer cancel()
 	return Fill(ctx, client, newWallet(t), time.Millisecond, blocks)
 }
@@ -226,12 +229,12 @@ func TestFill(t *testing.T) {
 	for index, block := range run {
 		require.True(t, block.Full(), "block %d", block.Number)
 		require.Equal(t, fakeBlockTransfers, block.Transactions)
-		require.Equal(t, uint64(1000*fakeBlockTransfers), block.EncodedBytes)
+		require.Equal(t, uint64(fakeTransferBytes*fakeBlockTransfers), block.EncodedBytes)
 		if index > 0 {
 			require.Equal(t, run[index-1].Number+1, block.Number)
 		}
 	}
-	require.Equal(t, node.mined, uint64(len(run))*fakeBlockTransfers, "every transfer sent is in a block of the run")
+	require.Equal(t, uint64(len(run))*fakeBlockTransfers, node.mined, "every transfer sent is in a block of the run")
 }
 
 func TestFillStartsOverAfterABlockThatIsNotFull(t *testing.T) {
@@ -249,11 +252,12 @@ func TestFillStartsOverAfterABlockThatIsNotFull(t *testing.T) {
 }
 
 func TestFillGivesUpWhenBlocksDoNotFill(t *testing.T) {
+	const blocks = 3
 	node := &fakeNode{blockCapacity: func(uint64) uint64 { return fakeBlockTransfers / 2 }}
-	_, err := fill(t, node, 3)
-	require.ErrorContains(t, err, "transfer budget spent without 3 consecutive full blocks")
+	_, err := fill(t, node, blocks)
+	require.ErrorContains(t, err, fmt.Sprintf("transfer budget spent without %d consecutive full blocks", blocks))
 	// The budget bounds what was sent.
-	require.LessOrEqual(t, node.mined+node.pooled, uint64((3+warmUpBlocks+poolBlocksAhead)*fakeBlockTransfers))
+	require.LessOrEqual(t, node.mined+node.pooled, uint64((blocks+warmUpBlocks+poolBlocksAhead)*fakeBlockTransfers))
 }
 
 func TestFillFailsOnARejectedTransfer(t *testing.T) {
@@ -269,7 +273,7 @@ func TestFillFailsOnARejectedTransfer(t *testing.T) {
 
 func TestFillStopsWithItsContext(t *testing.T) {
 	client := startFakeNode(t, new(fakeNode))
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
 	defer cancel()
 
 	// The context ends during the wait for the next poll.
