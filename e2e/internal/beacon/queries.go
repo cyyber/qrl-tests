@@ -4,12 +4,16 @@ import (
 	"context"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"maps"
+	"net/http"
 	"net/url"
 	"slices"
 	"strconv"
 	"strings"
 )
+
+const sszMediaType = "application/octet-stream"
 
 func (client *Client) Genesis(ctx context.Context) (Genesis, error) {
 	return getData[Genesis](ctx, client, "/qrl/v1/beacon/genesis")
@@ -87,6 +91,26 @@ func (client *Client) BlockHeader(ctx context.Context, blockID string) (BlockHea
 		} `json:"header"`
 	}](ctx, client, "/qrl/v1/beacon/headers/"+url.PathEscape(blockID))
 	return BlockHeader{Slot: header.Header.Message.Slot, Root: header.Root}, err
+}
+
+// EncodedBlockSize returns the length of a signed block's SSZ encoding, which
+// is the size gossip and the block-by-range responses carry uncompressed.
+// blockID is as for BlockHeader.
+func (client *Client) EncodedBlockSize(ctx context.Context, blockID string) (uint64, error) {
+	path := "/qrl/v1/beacon/blocks/" + url.PathEscape(blockID)
+	response, err := client.send(ctx, http.MethodGet, path, http.Header{"Accept": {sszMediaType}}, nil)
+	if err != nil {
+		return 0, err
+	}
+	defer response.Body.Close()
+	if contentType := response.Header.Get("Content-Type"); contentType != sszMediaType {
+		return 0, fmt.Errorf("GET %s returned %q, not SSZ", path, contentType)
+	}
+	size, err := io.Copy(io.Discard, response.Body)
+	if err != nil {
+		return 0, fmt.Errorf("read GET %s: %w", path, err)
+	}
+	return uint64(size), nil
 }
 
 // FinalityCheckpoints returns the justified and finalized checkpoints of the

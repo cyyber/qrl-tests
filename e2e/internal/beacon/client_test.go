@@ -439,3 +439,35 @@ func TestSpecUints(t *testing.T) {
 
 	require.ErrorContains(t, spec.Uints(map[string]*uint64{"MISSING": new(uint64)}), "does not define MISSING")
 }
+
+func TestEncodedBlockSize(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.Header.Get("Accept") != "application/octet-stream" {
+			_, _ = writer.Write([]byte(`{"data":{}}`))
+			return
+		}
+		switch request.URL.Path {
+		case "/qrl/v1/beacon/blocks/7":
+			writer.Header().Set("Content-Type", "application/octet-stream")
+			_, _ = writer.Write(make([]byte, 1234))
+		case "/qrl/v1/beacon/blocks/8":
+			http.NotFound(writer, request)
+		case "/qrl/v1/beacon/blocks/9":
+			writer.Header().Set("Content-Type", "application/json")
+			_, _ = writer.Write([]byte(`{"data":{}}`))
+		}
+	}))
+	defer server.Close()
+	client, err := New(server.URL)
+	require.NoError(t, err)
+
+	size, err := client.EncodedBlockSize(t.Context(), "7")
+	require.NoError(t, err)
+	assert.Equal(t, uint64(1234), size)
+
+	_, err = client.EncodedBlockSize(t.Context(), "8")
+	assert.True(t, IsNotFound(err), "a slot without a block is not found: %v", err)
+
+	_, err = client.EncodedBlockSize(t.Context(), "9")
+	assert.ErrorContains(t, err, "not SSZ")
+}

@@ -82,33 +82,16 @@ func (client *Client) postJSON(ctx context.Context, path string, payload, result
 }
 
 func (client *Client) do(ctx context.Context, method, path string, body io.Reader, result any) error {
-	reference, err := url.Parse(path)
-	if err != nil {
-		return fmt.Errorf("parse beacon path %q: %w", path, err)
-	}
-	endpoint := client.baseURL.ResolveReference(reference)
-
-	request, err := http.NewRequestWithContext(ctx, method, endpoint.String(), body)
-	if err != nil {
-		return err
-	}
+	header := http.Header{}
 	if body != nil {
-		request.Header.Set("Content-Type", "application/json")
+		header.Set("Content-Type", "application/json")
 	}
-
-	response, err := client.http.Do(request)
+	response, err := client.send(ctx, method, path, header, body)
 	if err != nil {
 		return err
 	}
 	defer response.Body.Close()
 
-	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
-		payload, _ := io.ReadAll(io.LimitReader(response.Body, 4096))
-		return &responseError{
-			method: method, path: path, status: response.Status,
-			statusCode: response.StatusCode, body: strings.TrimSpace(string(payload)),
-		}
-	}
 	if result == nil {
 		return nil
 	}
@@ -116,4 +99,36 @@ func (client *Client) do(ctx context.Context, method, path string, body io.Reade
 		return fmt.Errorf("decode %s %s: %w", method, path, err)
 	}
 	return nil
+}
+
+// send returns the response to a request, or an error for a status other
+// than 2xx.
+func (client *Client) send(
+	ctx context.Context, method, path string, header http.Header, body io.Reader,
+) (*http.Response, error) {
+	reference, err := url.Parse(path)
+	if err != nil {
+		return nil, fmt.Errorf("parse beacon path %q: %w", path, err)
+	}
+	endpoint := client.baseURL.ResolveReference(reference)
+
+	request, err := http.NewRequestWithContext(ctx, method, endpoint.String(), body)
+	if err != nil {
+		return nil, err
+	}
+	request.Header = header
+
+	response, err := client.http.Do(request)
+	if err != nil {
+		return nil, err
+	}
+	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
+		defer response.Body.Close()
+		payload, _ := io.ReadAll(io.LimitReader(response.Body, 4096))
+		return nil, &responseError{
+			method: method, path: path, status: response.Status,
+			statusCode: response.StatusCode, body: strings.TrimSpace(string(payload)),
+		}
+	}
+	return response, nil
 }
