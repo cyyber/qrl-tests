@@ -282,8 +282,10 @@ func (filler *filler) sign(count uint64) ([]*types.Transaction, error) {
 func transferFeeCap(baseFee, tip *big.Int, fullBlocks int) (*big.Int, error) {
 	feeCap := baseFeeAfter(baseFee, fullBlocks+feeCapMarginBlocks)
 	feeCap.Add(feeCap, tip)
-	if fee := new(big.Int).Mul(feeCap, new(big.Int).SetUint64(params.TxGas)); fee.Cmp(defaultRPCTxFeeCap) > 0 {
-		return nil, fmt.Errorf("%w: from a base fee of %s, a transfer's fee would reach %s planck", ErrFeeCap, baseFee, fee)
+	// A node refuses a transaction that could pay more than its own limit.
+	maxFee := new(big.Int).Mul(feeCap, new(big.Int).SetUint64(params.TxGas))
+	if maxFee.Cmp(defaultRPCTxFeeCap) > 0 {
+		return nil, fmt.Errorf("%w: from a base fee of %s, a transfer's fee would reach %s planck", ErrFeeCap, baseFee, maxFee)
 	}
 	return feeCap, nil
 }
