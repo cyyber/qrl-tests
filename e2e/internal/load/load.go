@@ -232,8 +232,7 @@ func (filler *filler) refillPool(ctx context.Context) error {
 		return nil
 	}
 	count := want - pending
-	// The blocks are not filling: stop before the base fee outgrows the fee
-	// cap the transfers were signed with.
+	// The blocks are not filling.
 	if count > filler.transfersLeft {
 		return fmt.Errorf("transfer budget spent without %d consecutive full blocks, at block %d", filler.requestedBlocks, filler.lastBlockRead)
 	}
