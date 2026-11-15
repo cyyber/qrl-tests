@@ -1,5 +1,5 @@
-// Package load fills blocks: it keeps the pool stocked with transfers until
-// the chain has a run of consecutive full blocks.
+// Package load fills blocks: it keeps the transaction pool stocked with
+// transfers until the chain has a run of consecutive full blocks.
 package load
 
 import (
@@ -51,8 +51,9 @@ func (block Block) Full() bool {
 }
 
 // Fill sends transfers from wallet until the chain has the requested number
-// of consecutive full blocks, then waits for the pool to empty. It returns
-// a summary of each full block; there can be more of them than requested.
+// of consecutive full blocks, then waits for the transaction pool to empty. It
+// returns a summary of each full block; there can be more of them than
+// requested.
 func Fill(ctx context.Context, client *qrlclient.Client, wallet qrlwallet.Wallet, poll time.Duration, blocks int) ([]Block, error) {
 	if blocks <= 0 {
 		return nil, fmt.Errorf("cannot fill %d blocks", blocks)
