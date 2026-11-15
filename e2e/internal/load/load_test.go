@@ -118,14 +118,17 @@ func (node *fakeNode) MaxPriorityFeePerGas() *hexutil.Big {
 func (node *fakeNode) BlockNumber() hexutil.Uint64 {
 	node.mutex.Lock()
 	defer node.mutex.Unlock()
+
 	taken := uint64(fakeBlockTransfers)
 	if node.blockCapacity != nil {
 		taken = node.blockCapacity(uint64(len(node.blockTransfers)) + 1)
 	}
 	taken = min(taken, node.pooled)
+
 	node.pooled -= taken
 	node.mined += taken
 	node.blockTransfers = append(node.blockTransfers, taken)
+
 	return hexutil.Uint64(len(node.blockTransfers))
 }
 
