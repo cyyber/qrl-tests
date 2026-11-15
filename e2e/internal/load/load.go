@@ -70,23 +70,23 @@ func Fill(ctx context.Context, client *qrlclient.Client, wallet qrlwallet.Wallet
 	if err := filler.drainPool(ctx); err != nil {
 		return nil, err
 	}
-	return filler.run, nil
+	return filler.fullBlocks, nil
 }
 
 type filler struct {
-	client *qrlclient.Client
-	wallet qrlwallet.Wallet
-	signer types.Signer
-	tip    *big.Int
-	feeCap *big.Int
-	blocks int
-	ticker *time.Ticker
+	client          *qrlclient.Client
+	wallet          qrlwallet.Wallet
+	signer          types.Signer
+	tip             *big.Int
+	feeCap          *big.Int
+	requestedBlocks int
+	ticker          *time.Ticker
 
 	transfersPerBlock uint64
 	transfersLeft     uint64
 	nextNonce         uint64
 	lastBlockRead     uint64
-	run               []Block
+	fullBlocks        []Block
 	runEnded          bool
 }
 
@@ -121,7 +121,7 @@ func newFiller(ctx context.Context, client *qrlclient.Client, wallet qrlwallet.W
 		signer:            types.NewZondSigner(chainID),
 		tip:               tip,
 		feeCap:            feeCap,
-		blocks:            blocks,
+		requestedBlocks:   blocks,
 		ticker:            time.NewTicker(poll),
 		transfersPerBlock: transfersPerBlock,
 		transfersLeft:     uint64(maxFullBlocks) * transfersPerBlock,
@@ -179,14 +179,14 @@ func (filler *filler) drainPool(ctx context.Context) error {
 func (filler *filler) waitForNextPoll(ctx context.Context) error {
 	select {
 	case <-ctx.Done():
-		return fmt.Errorf("waiting for %d full blocks and an empty pool, %d full blocks so far: %w", filler.blocks, len(filler.run), ctx.Err())
+		return fmt.Errorf("waiting for %d full blocks and an empty pool, %d full blocks so far: %w", filler.requestedBlocks, len(filler.fullBlocks), ctx.Err())
 	case <-filler.ticker.C:
 		return nil
 	}
 }
 
 func (filler *filler) runComplete() bool {
-	return len(filler.run) >= filler.blocks
+	return len(filler.fullBlocks) >= filler.requestedBlocks
 }
 
 func (filler *filler) updateRun(ctx context.Context) error {
@@ -202,11 +202,11 @@ func (filler *filler) updateRun(ctx context.Context) error {
 		filler.lastBlockRead++
 		switch {
 		case block.Full():
-			filler.run = append(filler.run, block)
+			filler.fullBlocks = append(filler.fullBlocks, block)
 		case filler.runComplete():
 			filler.runEnded = true
 		default:
-			filler.run = nil
+			filler.fullBlocks = nil
 		}
 	}
 	return nil
@@ -231,7 +231,7 @@ func (filler *filler) refillPool(ctx context.Context) error {
 	}
 	count := want - pending
 	if count > filler.transfersLeft {
-		return fmt.Errorf("no run of %d full blocks by block %d", filler.blocks, filler.lastBlockRead)
+		return fmt.Errorf("no run of %d full blocks by block %d", filler.requestedBlocks, filler.lastBlockRead)
 	}
 	transfers, err := filler.sign(count)
 	if err != nil {
