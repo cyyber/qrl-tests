@@ -2,13 +2,13 @@ package load
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -19,6 +19,7 @@ import (
 	qrlwallet "github.com/theQRL/go-qrl/crypto/pqcrypto/wallet"
 	"github.com/theQRL/go-qrl/params"
 	"github.com/theQRL/go-qrl/qrlclient"
+	"github.com/theQRL/go-qrl/rpc"
 )
 
 func TestBlockFull(t *testing.T) {
@@ -40,27 +41,26 @@ func TestBlockFull(t *testing.T) {
 }
 
 func TestTransferFeeCap(t *testing.T) {
-	tip := big.NewInt(1)
+	baseFee, tip := big.NewInt(1_000_000_000), big.NewInt(1)
+	const fullBlocks = 10
 
-	// The fee cap is above the base fee that many full blocks lead to.
-	baseFee := big.NewInt(1_000_000_000)
-	const blocks = 10
-	feeCap, err := transferFeeCap(baseFee, tip, blocks)
+	feeCap, err := transferFeeCap(baseFee, tip, fullBlocks)
 	require.NoError(t, err)
-	reached := new(big.Int).Set(baseFee)
-	for range blocks {
-		reached.Add(reached, new(big.Int).Div(reached, big.NewInt(params.DefaultBaseFeeChangeDenominator)))
-	}
-	require.Equal(t, 1, feeCap.Cmp(reached), "fee cap %s, base fee after %d full blocks %s", feeCap, blocks, reached)
-
-	// A base fee too low for an eighth of it to count still rises by one.
-	feeCap, err = transferFeeCap(big.NewInt(7), tip, blocks)
-	require.NoError(t, err)
-	require.Equal(t, 1, feeCap.Cmp(big.NewInt(7+blocks)))
+	want := baseFeeAfter(baseFee, fullBlocks+feeCapMarginBlocks)
+	require.Equal(t, want.Add(want, tip), feeCap)
 
 	// A transfer cannot pay more than the node accepts over the API.
 	_, err = transferFeeCap(baseFee, tip, 200)
 	require.ErrorIs(t, err, ErrFeeCap)
+}
+
+func TestBaseFeeAfter(t *testing.T) {
+	baseFee := big.NewInt(800)
+	require.Equal(t, big.NewInt(1012), baseFeeAfter(baseFee, 2), "800, then 900, then 1012")
+	require.Equal(t, big.NewInt(800), baseFeeAfter(baseFee, 0))
+	require.Equal(t, big.NewInt(800), baseFee, "the base fee passed in is not changed")
+	// A base fee too low for an eighth of it to count still rises by one.
+	require.Equal(t, big.NewInt(10), baseFeeAfter(big.NewInt(7), 3))
 }
 
 // The fake node's blocks hold a few transfers, so that a test signs few.
@@ -68,9 +68,9 @@ const fakeBlockTransfers = 4
 
 var fakeChainID = big.NewInt(1337)
 
-// fakeNode is the JSON-RPC API of a node as Fill uses it. It builds a block
-// each time its block number is read: the block takes the transfers the pool
-// has, up to its capacity.
+// fakeNode is the qrl API of a node as Fill uses it. It builds a block each
+// time its block number is read: the block takes the transfers the pool has,
+// up to its capacity.
 type fakeNode struct {
 	baseFee *big.Int
 	// capacity is how many transfers the block with the given number takes;
@@ -79,7 +79,9 @@ type fakeNode struct {
 	// reject, when set, is the pool's answer to a transfer.
 	reject func(tx *types.Transaction) error
 
-	mu     sync.Mutex
+	requests atomic.Int64
+
+	mutex  sync.Mutex
 	blocks []uint64 // transfers in each block, from block 1
 	pooled uint64
 	mined  uint64
@@ -90,7 +92,13 @@ func startFakeNode(t *testing.T, node *fakeNode) *qrlclient.Client {
 	if node.baseFee == nil {
 		node.baseFee = big.NewInt(1000)
 	}
-	server := httptest.NewServer(node)
+	api := rpc.NewServer()
+	t.Cleanup(api.Stop)
+	require.NoError(t, api.RegisterName("qrl", node))
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		node.requests.Add(1)
+		api.ServeHTTP(writer, request)
+	}))
 	t.Cleanup(server.Close)
 	client, err := qrlclient.Dial(server.URL)
 	require.NoError(t, err)
@@ -98,102 +106,19 @@ func startFakeNode(t *testing.T, node *fakeNode) *qrlclient.Client {
 	return client
 }
 
-type rpcRequest struct {
-	ID     json.RawMessage   `json:"id"`
-	Method string            `json:"method"`
-	Params []json.RawMessage `json:"params"`
+func (node *fakeNode) ChainId() *hexutil.Big {
+	return (*hexutil.Big)(fakeChainID)
 }
 
-func (node *fakeNode) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
-	var raw json.RawMessage
-	if err := json.NewDecoder(request.Body).Decode(&raw); err != nil {
-		http.Error(writer, err.Error(), http.StatusBadRequest)
-		return
-	}
-	answer := func(call rpcRequest) map[string]any {
-		result, err := node.call(call.Method, call.Params)
-		if err != nil {
-			return map[string]any{"jsonrpc": "2.0", "id": call.ID, "error": map[string]any{"code": -32000, "message": err.Error()}}
-		}
-		return map[string]any{"jsonrpc": "2.0", "id": call.ID, "result": result}
-	}
-	var batch []rpcRequest
-	if json.Unmarshal(raw, &batch) == nil {
-		answers := make([]map[string]any, len(batch))
-		for index, call := range batch {
-			answers[index] = answer(call)
-		}
-		_ = json.NewEncoder(writer).Encode(answers)
-		return
-	}
-	var call rpcRequest
-	if err := json.Unmarshal(raw, &call); err != nil {
-		http.Error(writer, err.Error(), http.StatusBadRequest)
-		return
-	}
-	_ = json.NewEncoder(writer).Encode(answer(call))
+func (node *fakeNode) MaxPriorityFeePerGas() *hexutil.Big {
+	return (*hexutil.Big)(big.NewInt(1))
 }
 
-func (node *fakeNode) call(method string, args []json.RawMessage) (any, error) {
-	node.mu.Lock()
-	defer node.mu.Unlock()
-	switch method {
-	case "qrl_chainId":
-		return (*hexutil.Big)(fakeChainID), nil
-	case "qrl_blockNumber":
-		node.build()
-		return hexutil.Uint64(len(node.blocks)), nil
-	case "qrl_getBlockByNumber":
-		var tag string
-		if err := json.Unmarshal(args[0], &tag); err != nil {
-			return nil, err
-		}
-		number := uint64(len(node.blocks))
-		if tag != "latest" {
-			parsed, err := hexutil.DecodeUint64(tag)
-			if err != nil {
-				return nil, err
-			}
-			number = parsed
-		}
-		return node.block(number), nil
-	case "qrl_maxPriorityFeePerGas":
-		return "0x1", nil
-	case "qrl_getTransactionCount":
-		var tag string
-		if err := json.Unmarshal(args[1], &tag); err != nil {
-			return nil, err
-		}
-		if tag == "pending" {
-			return hexutil.Uint64(node.mined + node.pooled), nil
-		}
-		return hexutil.Uint64(node.mined), nil
-	case "qrl_sendRawTransaction":
-		var raw hexutil.Bytes
-		if err := json.Unmarshal(args[0], &raw); err != nil {
-			return nil, err
-		}
-		var tx types.Transaction
-		if err := tx.UnmarshalBinary(raw); err != nil {
-			return nil, err
-		}
-		// The pool only takes the next nonce: Fill sends in nonce order.
-		if want := node.mined + node.pooled; tx.Nonce() != want {
-			return nil, fmt.Errorf("transfer has nonce %d, want %d", tx.Nonce(), want)
-		}
-		if node.reject != nil {
-			if err := node.reject(&tx); err != nil {
-				return nil, err
-			}
-		}
-		node.pooled++
-		return tx.Hash(), nil
-	}
-	return nil, fmt.Errorf("the fake node has no method %s", method)
-}
-
-// build adds a block with the pool's transfers, up to the block's capacity.
-func (node *fakeNode) build() {
+// BlockNumber adds a block with the pool's transfers, up to the block's
+// capacity, and returns its number.
+func (node *fakeNode) BlockNumber() hexutil.Uint64 {
+	node.mutex.Lock()
+	defer node.mutex.Unlock()
 	taken := uint64(fakeBlockTransfers)
 	if node.capacity != nil {
 		taken = node.capacity(uint64(len(node.blocks)) + 1)
@@ -202,10 +127,16 @@ func (node *fakeNode) build() {
 	node.pooled -= taken
 	node.mined += taken
 	node.blocks = append(node.blocks, taken)
+	return hexutil.Uint64(len(node.blocks))
 }
 
-func (node *fakeNode) block(number uint64) map[string]any {
-	if number > uint64(len(node.blocks)) {
+func (node *fakeNode) GetBlockByNumber(number rpc.BlockNumber, _ bool) map[string]any {
+	node.mutex.Lock()
+	defer node.mutex.Unlock()
+	if number == rpc.LatestBlockNumber {
+		number = rpc.BlockNumber(len(node.blocks))
+	}
+	if number < 0 || int(number) > len(node.blocks) {
 		return nil
 	}
 	var transfers uint64
@@ -214,7 +145,7 @@ func (node *fakeNode) block(number uint64) map[string]any {
 	}
 	return map[string]any{
 		"number":           hexutil.Uint64(number),
-		"hash":             common.BigToHash(new(big.Int).SetUint64(number + 1)),
+		"hash":             common.BigToHash(big.NewInt(int64(number) + 1)),
 		"parentHash":       common.Hash{},
 		"miner":            common.Address{},
 		"stateRoot":        common.Hash{},
@@ -234,14 +165,60 @@ func (node *fakeNode) block(number uint64) map[string]any {
 	}
 }
 
+func (node *fakeNode) GetTransactionCount(_ common.Address, block rpc.BlockNumber) hexutil.Uint64 {
+	node.mutex.Lock()
+	defer node.mutex.Unlock()
+	if block == rpc.PendingBlockNumber {
+		return hexutil.Uint64(node.mined + node.pooled)
+	}
+	return hexutil.Uint64(node.mined)
+}
+
+func (node *fakeNode) SendRawTransaction(raw hexutil.Bytes) (common.Hash, error) {
+	node.mutex.Lock()
+	defer node.mutex.Unlock()
+	tx := new(types.Transaction)
+	if err := tx.UnmarshalBinary(raw); err != nil {
+		return common.Hash{}, err
+	}
+	// The pool only takes the next nonce: Fill sends in nonce order.
+	if want := node.mined + node.pooled; tx.Nonce() != want {
+		return common.Hash{}, fmt.Errorf("transfer has nonce %d, want %d", tx.Nonce(), want)
+	}
+	if node.reject != nil {
+		if err := node.reject(tx); err != nil {
+			return common.Hash{}, err
+		}
+	}
+	node.pooled++
+	return tx.Hash(), nil
+}
+
+func newWallet(t *testing.T) qrlwallet.Wallet {
+	t.Helper()
+	wallet, err := qrlwallet.Generate(qrlwallet.ML_DSA_87)
+	require.NoError(t, err)
+	return wallet
+}
+
+// signingFiller is a filler with what sign needs.
+func signingFiller(t *testing.T, nonce uint64) *filler {
+	t.Helper()
+	return &filler{
+		wallet:    newWallet(t),
+		signer:    types.NewZondSigner(fakeChainID),
+		tip:       big.NewInt(1),
+		feeCap:    big.NewInt(100),
+		nextNonce: nonce,
+	}
+}
+
 func fill(t *testing.T, node *fakeNode, blocks int) ([]Block, error) {
 	t.Helper()
 	client := startFakeNode(t, node)
-	wallet, err := qrlwallet.Generate(qrlwallet.ML_DSA_87)
-	require.NoError(t, err)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	return Fill(ctx, client, wallet, time.Millisecond, blocks)
+	return Fill(ctx, client, newWallet(t), time.Millisecond, blocks)
 }
 
 func TestFill(t *testing.T) {
@@ -312,28 +289,18 @@ func TestFillFailsOnARejectedTransfer(t *testing.T) {
 
 func TestFillStopsWithItsContext(t *testing.T) {
 	client := startFakeNode(t, new(fakeNode))
-	wallet, err := qrlwallet.Generate(qrlwallet.ML_DSA_87)
-	require.NoError(t, err)
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
 	// The context ends during the wait for the next poll.
-	_, err = Fill(ctx, client, wallet, time.Hour, 3)
+	_, err := Fill(ctx, client, newWallet(t), time.Hour, 3)
 	require.ErrorIs(t, err, context.DeadlineExceeded)
 	require.ErrorContains(t, err, "waiting for 3 full blocks and an empty pool, 0 full blocks so far")
 }
 
 func TestSign(t *testing.T) {
-	wallet, err := qrlwallet.Generate(qrlwallet.ML_DSA_87)
-	require.NoError(t, err)
 	const nonce, count = 7, 40
-	filler := &filler{
-		wallet:    wallet,
-		signer:    types.NewZondSigner(fakeChainID),
-		tip:       big.NewInt(1),
-		feeCap:    big.NewInt(100),
-		nextNonce: nonce,
-	}
+	filler := signingFiller(t, nonce)
 	transfers, err := filler.sign(count)
 	require.NoError(t, err)
 	require.Len(t, transfers, count)
@@ -341,15 +308,19 @@ func TestSign(t *testing.T) {
 		require.Equal(t, uint64(nonce+index), tx.Nonce())
 		sender, err := types.Sender(filler.signer, tx)
 		require.NoError(t, err)
-		require.Equal(t, common.Address(wallet.GetAddress()), sender)
+		require.Equal(t, common.Address(filler.wallet.GetAddress()), sender)
 	}
 }
 
-func TestBaseFeeAfter(t *testing.T) {
-	baseFee := big.NewInt(800)
-	require.Equal(t, big.NewInt(1012), baseFeeAfter(baseFee, 2), "800, then 900, then 1012")
-	require.Equal(t, big.NewInt(800), baseFeeAfter(baseFee, 0))
-	require.Equal(t, big.NewInt(800), baseFee, "the base fee passed in is not changed")
-	// A base fee too low for an eighth of it to count still rises by one.
-	require.Equal(t, big.NewInt(10), baseFeeAfter(big.NewInt(7), 3))
+func TestSendSplitsTheTransfersAcrossRequests(t *testing.T) {
+	node := new(fakeNode)
+	client := startFakeNode(t, node)
+	const count = 2*transfersPerRequest + 1
+	transfers, err := signingFiller(t, 0).sign(count)
+	require.NoError(t, err)
+
+	require.NoError(t, send(t.Context(), client, transfers))
+	require.EqualValues(t, 3, node.requests.Load())
+	// The fake pool takes a transfer only in nonce order.
+	require.EqualValues(t, count, node.pooled)
 }
