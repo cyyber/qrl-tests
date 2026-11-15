@@ -282,7 +282,7 @@ func TestFillStartsOverAfterABlockThatIsNotFull(t *testing.T) {
 func TestFillGivesUpWhenBlocksDoNotFill(t *testing.T) {
 	node := &fakeNode{capacity: func(uint64) uint64 { return fakeBlockTransfers / 2 }}
 	_, err := fill(t, node, 3)
-	require.ErrorContains(t, err, "no run of 3 full blocks")
+	require.ErrorContains(t, err, "transfer budget spent without 3 consecutive full blocks")
 	// The budget bounds what was sent.
 	require.LessOrEqual(t, node.mined+node.pooled, uint64((3+warmUpBlocks+poolBlocksAhead)*fakeBlockTransfers))
 }
