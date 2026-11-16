@@ -62,12 +62,8 @@ const defaultSecondsPerSlot = 5
 type profileSpec struct {
 	participants            []participantSpec
 	preregisteredValidators int
-	// secondsPerSlot is defaultSecondsPerSlot when zero.
-	secondsPerSlot int
-	// startTimeout is the budget for a start that configures none,
-	// DefaultStartTimeout when zero. A network with longer slots takes longer
-	// to produce the blocks that show it is ready.
-	startTimeout time.Duration
+	secondsPerSlot          int
+	startTimeout            time.Duration
 }
 
 type participantSpec struct {
