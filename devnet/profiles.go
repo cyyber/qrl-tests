@@ -19,8 +19,6 @@ var (
 	slasherCLExtraParams = append(slices.Clone(defaultCLExtraParams), "--slasher", "--subscribe-all-subnets")
 )
 
-// Further profiles arrive with, or just ahead of, the lanes that exercise
-// them.
 const (
 	ProfileSingle Profile = "single"
 	// ProfileAnchored has two participants that share the validators. The
