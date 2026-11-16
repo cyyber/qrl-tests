@@ -45,6 +45,10 @@ var (
 	// RPCWrite is how long go-qrl's HTTP server takes to write a reply
 	// before it closes the connection: WriteTimeout in rpc.
 	RPCWrite = Cap{Name: "JSON-RPC reply write", Limit: uint64(30 * time.Second)}
+	// RPCWebSocketWrite is how long go-qrl takes to write a reply or a
+	// notification to a WebSocket before it closes the connection:
+	// defaultWriteTimeout in rpc.
+	RPCWebSocketWrite = Cap{Name: "JSON-RPC WebSocket write", Limit: uint64(10 * time.Second)}
 	// QRLMessageWrite is how long go-qrl takes to write a protocol message
 	// before it drops the peer: frameWriteTimeout in p2p.
 	QRLMessageWrite = Cap{Name: "qrl protocol message write", Limit: uint64(20 * time.Second)}
