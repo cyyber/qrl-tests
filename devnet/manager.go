@@ -48,9 +48,7 @@ type StartOptions struct {
 	Images      Images
 	Parameters  []byte
 	Profile     Profile
-	// Timeout is the budget for the start. When zero it is the profile's own,
-	// or DefaultStartTimeout for a profile without one or replaced by
-	// Parameters.
+	// Timeout is the start budget; zero means the default.
 	Timeout time.Duration
 
 	// FailureDiagnosticsDir, when set, receives the enclave's diagnostics
