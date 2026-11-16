@@ -63,7 +63,9 @@ type profileSpec struct {
 	preregisteredValidators int
 	// secondsPerSlot is defaultSecondsPerSlot when zero.
 	secondsPerSlot int
-	// startTimeout is the least a start is given: see Profile.startTimeout.
+	// startTimeout is the least a start is given, whatever timeout is
+	// configured. A network with longer slots takes longer to produce the
+	// blocks that show it is ready.
 	startTimeout time.Duration
 }
 
@@ -125,13 +127,6 @@ func ParseProfile(value string) (Profile, error) {
 		return "", fmt.Errorf("unknown development-network profile %q: the profiles are %s", value, strings.Join(names, ", "))
 	}
 	return profile, nil
-}
-
-// startTimeout returns the budget for starting a network of the profile: the
-// configured one, or the profile's own if that is longer. A network with
-// longer slots takes longer to produce the blocks that show it is ready.
-func (profile Profile) startTimeout(configured time.Duration) time.Duration {
-	return max(configured, profileSpecs[profile].startTimeout)
 }
 
 // ParticipantValidators returns the genesis indices of the validators run by

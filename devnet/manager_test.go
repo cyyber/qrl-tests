@@ -297,6 +297,18 @@ func TestStartIsBoundedByItsTimeout(t *testing.T) {
 	}
 }
 
+func TestStartNamesTheBudgetItExceeded(t *testing.T) {
+	manager := testManager(&fakeEnclaveClient{services: singleParticipant()})
+	manager.probe = func(context.Context, string, string) error { return errors.New("not ready") }
+	options := startOptions()
+	options.Timeout = 10 * time.Millisecond
+
+	_, err := manager.Start(t.Context(), options)
+	require.ErrorContains(t, err, "wait for network readiness: not ready")
+	require.ErrorContains(t, err, "start budget of 10ms exceeded")
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+}
+
 func TestInspect(t *testing.T) {
 	_, err := testManager(new(fakeEnclaveClient)).Inspect(t.Context(), "missing")
 	require.ErrorContains(t, err, `network "missing" is not running`)

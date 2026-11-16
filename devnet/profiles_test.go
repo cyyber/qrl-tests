@@ -2,7 +2,6 @@ package devnet
 
 import (
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -72,14 +71,4 @@ func TestParticipantValidators(t *testing.T) {
 	require.Len(t, ProfileSingle.ParticipantValidators(0), 64)
 	require.Empty(t, ProfileSingle.ParticipantValidators(1))
 	require.Empty(t, ProfileSingle.ParticipantValidators(-1))
-}
-
-func TestStartTimeout(t *testing.T) {
-	// A profile without a start timeout of its own takes the configured one.
-	require.Equal(t, time.Minute, ProfileSingle.startTimeout(time.Minute))
-	require.Equal(t, DefaultStartTimeout, ProfileSingle.startTimeout(DefaultStartTimeout))
-
-	// Longer slots need more than the default, and a longer budget stands.
-	require.Equal(t, 10*time.Minute, ProfileMainnetSlots.startTimeout(DefaultStartTimeout))
-	require.Equal(t, 15*time.Minute, ProfileMainnetSlots.startTimeout(15*time.Minute))
 }

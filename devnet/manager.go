@@ -115,7 +115,9 @@ func (manager *Manager) Start(ctx context.Context, options StartOptions) (enviro
 	options.Backend = cmp.Or(options.Backend, BackendDocker)
 	options.Profile = cmp.Or(options.Profile, ProfileSingle)
 
-	ctx, cancel := context.WithTimeout(ctx, options.Profile.startTimeout(cmp.Or(options.Timeout, DefaultStartTimeout)))
+	timeout := max(cmp.Or(options.Timeout, DefaultStartTimeout), profileSpecs[options.Profile].startTimeout)
+	ctx, cancel := context.WithTimeoutCause(ctx, timeout,
+		fmt.Errorf("start budget of %s exceeded: %w", timeout, context.DeadlineExceeded))
 	defer cancel()
 
 	parameters, err := resolveParameters(devwallet.Address, options)
@@ -269,7 +271,9 @@ func retryUntil(ctx context.Context, operation func() error) error {
 		}
 		select {
 		case <-ctx.Done():
-			return errors.Join(err, ctx.Err())
+			// The cause names the budget a start ran out of; without one it
+			// is ctx.Err().
+			return errors.Join(err, context.Cause(ctx))
 		case <-ticker.C:
 		}
 	}
