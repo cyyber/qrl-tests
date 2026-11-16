@@ -49,7 +49,8 @@ type StartOptions struct {
 	Parameters  []byte
 	Profile     Profile
 	// Timeout is the budget for the start. When zero it is the profile's own,
-	// or DefaultStartTimeout for a profile without one.
+	// or DefaultStartTimeout for a profile without one or replaced by
+	// Parameters.
 	Timeout time.Duration
 
 	// FailureDiagnosticsDir, when set, receives the enclave's diagnostics
@@ -115,7 +116,12 @@ func (manager *Manager) Start(ctx context.Context, options StartOptions) (enviro
 	options.Backend = cmp.Or(options.Backend, BackendDocker)
 	options.Profile = cmp.Or(options.Profile, ProfileSingle)
 
-	timeout := cmp.Or(options.Timeout, profileSpecs[options.Profile].startTimeout, DefaultStartTimeout)
+	// Parameters replace the profile, its start timeout included.
+	var profileTimeout time.Duration
+	if options.Parameters == nil {
+		profileTimeout = profileSpecs[options.Profile].startTimeout
+	}
+	timeout := cmp.Or(options.Timeout, profileTimeout, DefaultStartTimeout)
 	ctx, cancel := context.WithTimeoutCause(ctx, timeout,
 		fmt.Errorf("start budget of %s exceeded: %w", timeout, context.DeadlineExceeded))
 	defer cancel()

@@ -3,12 +3,14 @@ package devnet
 import (
 	"context"
 	"errors"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/cyyber/qrl-tests/devnet/internal/kurtosis"
+	"github.com/cyyber/qrl-tests/internal/devwallet"
 	"github.com/stretchr/testify/require"
 )
 
@@ -272,17 +274,20 @@ func TestStartDefaults(t *testing.T) {
 }
 
 func TestStartIsBoundedByItsTimeout(t *testing.T) {
+	parameters := fmt.Appendf(nil, "network_params:\n  prefunded_accounts:\n    %s: {}\n", devwallet.Address)
 	tests := []struct {
-		name    string
-		profile Profile
-		timeout time.Duration
-		want    time.Duration
+		name       string
+		profile    Profile
+		parameters []byte
+		timeout    time.Duration
+		want       time.Duration
 	}{
 		{name: "default", want: DefaultStartTimeout},
 		{name: "configured", timeout: time.Minute, want: time.Minute},
 		{name: "the profile's own", profile: ProfileMainnetSlots, want: 10 * time.Minute},
 		{name: "configured, shorter than the profile's", profile: ProfileMainnetSlots, timeout: time.Minute, want: time.Minute},
 		{name: "configured, longer than the profile's", profile: ProfileMainnetSlots, timeout: 15 * time.Minute, want: 15 * time.Minute},
+		{name: "profile replaced by parameters", profile: ProfileMainnetSlots, parameters: parameters, want: DefaultStartTimeout},
 	}
 
 	for _, test := range tests {
@@ -294,7 +299,7 @@ func TestStartIsBoundedByItsTimeout(t *testing.T) {
 				return nil
 			}
 			options := startOptions()
-			options.Profile, options.Timeout = test.profile, test.timeout
+			options.Profile, options.Parameters, options.Timeout = test.profile, test.parameters, test.timeout
 
 			_, err := manager.Start(t.Context(), options)
 			require.NoError(t, err)
