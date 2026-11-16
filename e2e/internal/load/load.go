@@ -95,6 +95,64 @@ func FillWith(ctx context.Context, client *qrlclient.Client, wallet qrlwallet.Wa
 	return filler.fullBlocks, nil
 }
 
+// Steady sends transfers from wallet for the given number of blocks so that
+// each block takes about percent of what a full block holds, and returns a
+// summary of each of them. A load of at most half of a block leaves the base
+// fee where it is, so it can last: full blocks raise the base fee by an eighth
+// each, and price themselves out within dozens of blocks.
+func Steady(ctx context.Context, client *qrlclient.Client, wallet qrlwallet.Wallet, poll time.Duration, blocks, percent int) ([]Block, error) {
+	if blocks <= 0 {
+		return nil, fmt.Errorf("cannot load %d blocks", blocks)
+	}
+	if percent <= 0 || percent > 50 {
+		return nil, fmt.Errorf("a steady load is at most half of a block, not %d%%", percent)
+	}
+	filler, err := newFiller(ctx, client, wallet, poll, 1, Transfers)
+	if err != nil {
+		return nil, err
+	}
+	defer filler.stop()
+
+	var (
+		perBlock = filler.transfersPerBlock * uint64(percent) / 100
+		loaded   []Block
+	)
+	for len(loaded) < blocks {
+		// A block takes what is in the pool when it is built.
+		pending, err := filler.pendingTransfers(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if pending < perBlock {
+			transfers, err := filler.sign(perBlock - pending)
+			if err != nil {
+				return nil, err
+			}
+			if err := send(ctx, client, transfers); err != nil {
+				return nil, err
+			}
+			filler.nextNonce += perBlock - pending
+		}
+		select {
+		case <-ctx.Done():
+			return nil, fmt.Errorf("loading %d blocks, %d so far: %w", blocks, len(loaded), ctx.Err())
+		case <-filler.ticker.C:
+		}
+		latest, err := client.BlockNumber(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("read block number: %w", err)
+		}
+		for ; filler.lastBlockRead < latest; filler.lastBlockRead++ {
+			block, err := readBlock(ctx, client, filler.lastBlockRead+1)
+			if err != nil {
+				return nil, err
+			}
+			loaded = append(loaded, block)
+		}
+	}
+	return loaded, nil
+}
+
 type filler struct {
 	client          *qrlclient.Client
 	wallet          qrlwallet.Wallet
