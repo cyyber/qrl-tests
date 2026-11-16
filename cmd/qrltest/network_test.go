@@ -59,7 +59,16 @@ func TestNetworkStart(t *testing.T) {
 		Profile:    devnet.ProfileSingle,
 		Timeout:    90 * time.Second,
 	}, controller.startOptions)
-	require.False(t, controller.startDeadline, "the manager applies the timeout, where a profile can raise it")
+	require.False(t, controller.startDeadline, "the manager applies the timeout")
+}
+
+func TestNetworkStartLeavesAnUnsetTimeoutToTheProfile(t *testing.T) {
+	t.Setenv("DEVNET_START_TIMEOUT", "")
+
+	controller := new(recordingController)
+	runCommand(t, controller, "network", "start", "--profile", "mainnet-slots")
+	require.Equal(t, devnet.ProfileMainnetSlots, controller.startOptions.Profile)
+	require.Zero(t, controller.startOptions.Timeout)
 }
 
 func TestNetworkStop(t *testing.T) {

@@ -140,7 +140,7 @@ func TestRunBuildsCommandAndCleansUp(t *testing.T) {
 	require.Equal(t, devnet.ProfileSingle, networks.started.Profile)
 	require.Equal(t, []byte(`{"custom":true}`), networks.started.Parameters)
 	require.Equal(t, time.Minute, networks.started.Timeout)
-	require.False(t, networks.startDeadline, "the manager applies the timeout, where a profile can raise it")
+	require.False(t, networks.startDeadline, "the manager applies the timeout")
 	require.Equal(t, []string{"qrl-tests"}, networks.stopped)
 	require.Empty(t, networks.collected)
 	require.Equal(t, "go", command.Path)

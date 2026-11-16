@@ -28,7 +28,7 @@ and waits for readiness. It does not build images or run the test suites.
 | `DEVNET_GENESIS_IMAGE` | `local/qrl-genesis-generator:devnet` | Genesis generator image reference |
 | `DEVNET_QRYSM_ALLTOOLS_IMAGE` | `local/qrysm-alltools:devnet` | Qrysm all-tools image reference, for E2E lanes that run its command-line tools; it is not pulled |
 | `DEVNET_PROFILE` | `single` | Built-in profile used by `network-start` |
-| `DEVNET_START_TIMEOUT` | `5m` | Network startup budget; the `mainnet-slots` profile gets at least `10m` |
+| `DEVNET_START_TIMEOUT` | `5m`, or `10m` for the `mainnet-slots` profile | Network startup budget |
 | `DEVNET_PARAMS_FILE` | unset | Complete qrl-package YAML parameters |
 
 `e2e-run` derives its network profile from `E2E_LANE` and does not use
@@ -58,7 +58,7 @@ start before any enclave is created. The qrl-package revision is pinned in code
 qrl-package YAML argument object. The file is used unchanged, including its
 image references and development wallet address. Existing JSON parameter files
 remain supported. Image flags are ignored when the file is set, and
-`DEVNET_PROFILE` then only sets the minimum start timeout.
+`DEVNET_PROFILE` then only sets the default start timeout.
 
 The checked-in [`network_params.yaml`](network_params.yaml) is a complete
 single-participant example. Custom files must pre-fund the checked-in

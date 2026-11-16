@@ -64,10 +64,10 @@ type profileSpec struct {
 	preregisteredValidators int
 	// secondsPerSlot is defaultSecondsPerSlot when zero.
 	secondsPerSlot int
-	// minStartTimeout is the least a start is given, whatever timeout is
-	// configured. A network with longer slots takes longer to produce the
-	// blocks that show it is ready.
-	minStartTimeout time.Duration
+	// startTimeout is the budget for a start that configures none,
+	// DefaultStartTimeout when zero. A network with longer slots takes longer
+	// to produce the blocks that show it is ready.
+	startTimeout time.Duration
 }
 
 type participantSpec struct {
@@ -104,9 +104,9 @@ var profileSpecs = map[Profile]profileSpec{
 		{validatorCount: 22, clExtraParams: slasherCLExtraParams},
 	}},
 	ProfileMainnetSlots: {
-		participants:    []participantSpec{{validatorCount: 256}},
-		secondsPerSlot:  60,
-		minStartTimeout: 10 * time.Minute,
+		participants:   []participantSpec{{validatorCount: 256}},
+		secondsPerSlot: 60,
+		startTimeout:   10 * time.Minute,
 	},
 }
 
