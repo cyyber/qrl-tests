@@ -62,7 +62,7 @@ func TestNetworkStart(t *testing.T) {
 	require.False(t, controller.startDeadline, "the manager applies the timeout")
 }
 
-func TestNetworkStartLeavesAnUnsetTimeoutToTheProfile(t *testing.T) {
+func TestNetworkStartUnsetTimeout(t *testing.T) {
 	t.Setenv("DEVNET_START_TIMEOUT", "")
 
 	controller := new(recordingController)
