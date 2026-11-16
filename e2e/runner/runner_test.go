@@ -36,6 +36,7 @@ const (
 type recordingNetworks struct {
 	mutex                     sync.Mutex
 	started                   devnet.StartOptions
+	startDeadline             bool
 	inspected                 string
 	checked                   string
 	stopped                   []string
@@ -67,10 +68,11 @@ func newTestRunner(t *testing.T, configuration Config, stdout, stderr io.Writer)
 	return runner
 }
 
-func (networks *recordingNetworks) Start(_ context.Context, options devnet.StartOptions) (devnet.Environment, error) {
+func (networks *recordingNetworks) Start(ctx context.Context, options devnet.StartOptions) (devnet.Environment, error) {
 	networks.mutex.Lock()
 	defer networks.mutex.Unlock()
 	networks.started = options
+	_, networks.startDeadline = ctx.Deadline()
 	if networks.startErr != nil {
 		return devnet.Environment{}, networks.startErr
 	}
@@ -138,6 +140,7 @@ func TestRunBuildsCommandAndCleansUp(t *testing.T) {
 	require.Equal(t, devnet.ProfileSingle, networks.started.Profile)
 	require.Equal(t, []byte(`{"custom":true}`), networks.started.Parameters)
 	require.Equal(t, time.Minute, networks.started.Timeout)
+	require.False(t, networks.startDeadline, "the manager applies the timeout, where a profile can raise it")
 	require.Equal(t, []string{"qrl-tests"}, networks.stopped)
 	require.Empty(t, networks.collected)
 	require.Equal(t, "go", command.Path)

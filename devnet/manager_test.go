@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -20,6 +21,7 @@ type fakeEnclaveClient struct {
 	createdName    string
 	packageLocator string
 	destroyed      bool
+	onRun          func(context.Context)
 	onDestroy      func(context.Context)
 	stopped        []string
 	started        []string
@@ -35,8 +37,11 @@ func (client *fakeEnclaveClient) CreateEnclave(_ context.Context, name string) e
 	return client.createErr
 }
 
-func (client *fakeEnclaveClient) RunRemotePackage(_ context.Context, _, locator, _ string) error {
+func (client *fakeEnclaveClient) RunRemotePackage(ctx context.Context, _, locator, _ string) error {
 	client.packageLocator = locator
+	if client.onRun != nil {
+		client.onRun(ctx)
+	}
 	return client.runErr
 }
 
@@ -298,15 +303,50 @@ func TestStartIsBoundedByItsTimeout(t *testing.T) {
 }
 
 func TestStartNamesTheBudgetItExceeded(t *testing.T) {
-	manager := testManager(&fakeEnclaveClient{services: singleParticipant()})
-	manager.probe = func(context.Context, string, string) error { return errors.New("not ready") }
-	options := startOptions()
-	options.Timeout = 10 * time.Millisecond
+	tests := []struct {
+		name      string
+		arrange   func(*fakeEnclaveClient, *Manager)
+		wantError string
+	}{
+		{
+			// The Kurtosis client reports an expired context as a closed
+			// stream, which says nothing of a timeout.
+			name: "package run",
+			arrange: func(client *fakeEnclaveClient, _ *Manager) {
+				client.runErr = errors.New("stream closed")
+				client.onRun = func(ctx context.Context) { <-ctx.Done() }
+			},
+			wantError: "run pinned qrl-package: stream closed",
+		},
+		{
+			// Like the real probe, this one retries on a context of its own.
+			name: "readiness wait",
+			arrange: func(_ *fakeEnclaveClient, manager *Manager) {
+				manager.probe = func(ctx context.Context, _, _ string) error {
+					probeCtx, cancel := context.WithTimeout(ctx, time.Minute)
+					defer cancel()
+					return retryUntil(probeCtx, func() error { return errors.New("not ready") })
+				}
+			},
+			wantError: "wait for network readiness: not ready",
+		},
+	}
 
-	_, err := manager.Start(t.Context(), options)
-	require.ErrorContains(t, err, "wait for network readiness: not ready")
-	require.ErrorContains(t, err, "start budget of 10ms exceeded")
-	require.ErrorIs(t, err, context.DeadlineExceeded)
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			client := &fakeEnclaveClient{services: singleParticipant()}
+			manager := testManager(client)
+			test.arrange(client, manager)
+			options := startOptions()
+			options.Timeout = 10 * time.Millisecond
+
+			_, err := manager.Start(t.Context(), options)
+			require.ErrorContains(t, err, test.wantError)
+			require.ErrorIs(t, err, context.DeadlineExceeded)
+			require.Equal(t, 1, strings.Count(err.Error(), "start budget of 10ms exceeded"), err)
+			require.True(t, client.destroyed)
+		})
+	}
 }
 
 func TestInspect(t *testing.T) {

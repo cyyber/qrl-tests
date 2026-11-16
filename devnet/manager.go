@@ -115,7 +115,7 @@ func (manager *Manager) Start(ctx context.Context, options StartOptions) (enviro
 	options.Backend = cmp.Or(options.Backend, BackendDocker)
 	options.Profile = cmp.Or(options.Profile, ProfileSingle)
 
-	timeout := max(cmp.Or(options.Timeout, DefaultStartTimeout), profileSpecs[options.Profile].startTimeout)
+	timeout := max(cmp.Or(options.Timeout, DefaultStartTimeout), profileSpecs[options.Profile].minStartTimeout)
 	ctx, cancel := context.WithTimeoutCause(ctx, timeout,
 		fmt.Errorf("start budget of %s exceeded: %w", timeout, context.DeadlineExceeded))
 	defer cancel()
@@ -142,7 +142,9 @@ func (manager *Manager) Start(ctx context.Context, options StartOptions) (enviro
 	}
 	defer func() {
 		if err != nil {
-			err = manager.finishFailedStart(client, options, err)
+			// The cause is read before the cleanup, which may itself outlast
+			// the budget of a start that failed for another reason.
+			err = manager.finishFailedStart(client, options, withCause(ctx, err))
 		}
 	}()
 
@@ -271,10 +273,19 @@ func retryUntil(ctx context.Context, operation func() error) error {
 		}
 		select {
 		case <-ctx.Done():
-			// The cause names the budget a start ran out of; without one it
-			// is ctx.Err().
-			return errors.Join(err, context.Cause(ctx))
+			return withCause(ctx, err)
 		case <-ticker.C:
 		}
 	}
+}
+
+// withCause joins the reason ctx ended to err, unless ctx has not ended or
+// err already carries the reason. For a start that ran out of its budget, the
+// reason names the budget.
+func withCause(ctx context.Context, err error) error {
+	cause := context.Cause(ctx)
+	if cause == nil || errors.Is(err, cause) {
+		return err
+	}
+	return errors.Join(err, cause)
 }

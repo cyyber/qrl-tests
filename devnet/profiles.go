@@ -19,7 +19,8 @@ var (
 	slasherCLExtraParams = append(slices.Clone(defaultCLExtraParams), "--slasher", "--subscribe-all-subnets")
 )
 
-// Further profiles arrive together with the lanes that exercise them.
+// Further profiles arrive with, or just ahead of, the lanes that exercise
+// them.
 const (
 	ProfileSingle Profile = "single"
 	// ProfileAnchored has two participants that share the validators. The
@@ -50,8 +51,8 @@ const (
 	// beacon node with a slasher. Stopping the second's validator client takes
 	// just over a third of the stake offline, so finality stops.
 	ProfileInactivityLeak Profile = "inactivity-leak"
-	// ProfileMainnetSlots is the single profile with mainnet's 60-second
-	// slots and 256 validators: a full committee of 32 in each of an epoch's
+	// ProfileMainnetSlots is the single profile with 256 validators and
+	// mainnet's 60-second slots: a full committee of 32 in each of an epoch's
 	// 8 slots. Finality first advances about 32 minutes after genesis.
 	ProfileMainnetSlots Profile = "mainnet-slots"
 )
@@ -63,10 +64,10 @@ type profileSpec struct {
 	preregisteredValidators int
 	// secondsPerSlot is defaultSecondsPerSlot when zero.
 	secondsPerSlot int
-	// startTimeout is the least a start is given, whatever timeout is
+	// minStartTimeout is the least a start is given, whatever timeout is
 	// configured. A network with longer slots takes longer to produce the
 	// blocks that show it is ready.
-	startTimeout time.Duration
+	minStartTimeout time.Duration
 }
 
 type participantSpec struct {
@@ -103,9 +104,9 @@ var profileSpecs = map[Profile]profileSpec{
 		{validatorCount: 22, clExtraParams: slasherCLExtraParams},
 	}},
 	ProfileMainnetSlots: {
-		participants:   []participantSpec{{validatorCount: 256}},
-		secondsPerSlot: 60,
-		startTimeout:   10 * time.Minute,
+		participants:    []participantSpec{{validatorCount: 256}},
+		secondsPerSlot:  60,
+		minStartTimeout: 10 * time.Minute,
 	},
 }
 

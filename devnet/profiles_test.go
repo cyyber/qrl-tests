@@ -40,8 +40,10 @@ func TestParseProfile(t *testing.T) {
 	require.Equal(t, ProfileMainnetSlots, profile)
 
 	_, err = ParseProfile("unknown")
-	require.ErrorContains(t, err, `unknown development-network profile "unknown": the profiles are anchored, double-proposal,`)
-	require.ErrorContains(t, err, "mainnet-slots")
+	require.ErrorContains(t, err, `unknown development-network profile "unknown": the profiles are `)
+	for name := range profileSpecs {
+		require.ErrorContains(t, err, string(name))
+	}
 }
 
 func TestSpareValidators(t *testing.T) {

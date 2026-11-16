@@ -14,11 +14,13 @@ import (
 
 type recordingController struct {
 	startOptions   devnet.StartOptions
+	startDeadline  bool
 	stoppedEnclave string
 }
 
-func (controller *recordingController) Start(_ context.Context, options devnet.StartOptions) (devnet.Environment, error) {
+func (controller *recordingController) Start(ctx context.Context, options devnet.StartOptions) (devnet.Environment, error) {
 	controller.startOptions = options
+	_, controller.startDeadline = ctx.Deadline()
 	return devnet.Environment{}, nil
 }
 
@@ -57,6 +59,7 @@ func TestNetworkStart(t *testing.T) {
 		Profile:    devnet.ProfileSingle,
 		Timeout:    90 * time.Second,
 	}, controller.startOptions)
+	require.False(t, controller.startDeadline, "the manager applies the timeout, where a profile can raise it")
 }
 
 func TestNetworkStop(t *testing.T) {
