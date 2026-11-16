@@ -52,7 +52,7 @@ const (
 	ProfileInactivityLeak Profile = "inactivity-leak"
 	// ProfileMainnetSlots is the single profile with mainnet's 60-second
 	// slots and 256 validators: a full committee of 32 in each of an epoch's
-	// 8 slots. The first epoch is finalized about 32 minutes after genesis.
+	// 8 slots. Finality first advances about 32 minutes after genesis.
 	ProfileMainnetSlots Profile = "mainnet-slots"
 )
 
@@ -63,7 +63,7 @@ type profileSpec struct {
 	preregisteredValidators int
 	// secondsPerSlot is defaultSecondsPerSlot when zero.
 	secondsPerSlot int
-	// startTimeout is the least a start is given: see Profile.StartTimeout.
+	// startTimeout is the least a start is given: see Profile.startTimeout.
 	startTimeout time.Duration
 }
 
@@ -117,15 +117,20 @@ func ParseProfile(value string) (Profile, error) {
 
 	profile := Profile(trimmed)
 	if _, exists := profileSpecs[profile]; !exists {
-		return "", fmt.Errorf("unknown development-network profile %q", value)
+		names := make([]string, 0, len(profileSpecs))
+		for name := range profileSpecs {
+			names = append(names, string(name))
+		}
+		slices.Sort(names)
+		return "", fmt.Errorf("unknown development-network profile %q: the profiles are %s", value, strings.Join(names, ", "))
 	}
 	return profile, nil
 }
 
-// StartTimeout returns the budget for starting a network of the profile: the
+// startTimeout returns the budget for starting a network of the profile: the
 // configured one, or the profile's own if that is longer. A network with
 // longer slots takes longer to produce the blocks that show it is ready.
-func (profile Profile) StartTimeout(configured time.Duration) time.Duration {
+func (profile Profile) startTimeout(configured time.Duration) time.Duration {
 	return max(configured, profileSpecs[profile].startTimeout)
 }
 

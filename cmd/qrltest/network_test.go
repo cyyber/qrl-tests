@@ -14,13 +14,11 @@ import (
 
 type recordingController struct {
 	startOptions   devnet.StartOptions
-	startDeadline  time.Time
 	stoppedEnclave string
 }
 
-func (controller *recordingController) Start(ctx context.Context, options devnet.StartOptions) (devnet.Environment, error) {
+func (controller *recordingController) Start(_ context.Context, options devnet.StartOptions) (devnet.Environment, error) {
 	controller.startOptions = options
-	controller.startDeadline, _ = ctx.Deadline()
 	return devnet.Environment{}, nil
 }
 
@@ -41,6 +39,7 @@ func TestNetworkStart(t *testing.T) {
 		"network", "start", "--enclave-name", enclaveName,
 		"--execution-image", "local/go-qrl:test",
 		"--params-file", paramsFile,
+		"--timeout", "90s",
 	)
 
 	require.Equal(t, "network ready\n", output)
@@ -56,17 +55,8 @@ func TestNetworkStart(t *testing.T) {
 		},
 		Parameters: parameters,
 		Profile:    devnet.ProfileSingle,
+		Timeout:    90 * time.Second,
 	}, controller.startOptions)
-}
-
-func TestNetworkStartGivesAProfileItsStartTimeout(t *testing.T) {
-	controller := new(recordingController)
-	runCommand(t, controller, "network", "start")
-	require.LessOrEqual(t, time.Until(controller.startDeadline), devnet.DefaultStartTimeout)
-
-	runCommand(t, controller, "network", "start", "--profile", "mainnet-slots")
-	require.Equal(t, devnet.ProfileMainnetSlots, controller.startOptions.Profile)
-	require.Greater(t, time.Until(controller.startDeadline), devnet.DefaultStartTimeout)
 }
 
 func TestNetworkStop(t *testing.T) {

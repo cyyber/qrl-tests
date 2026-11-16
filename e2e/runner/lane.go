@@ -59,13 +59,11 @@ func (runner *Runner) acquireLane(ctx context.Context, plan runPlan, lane laneRu
 		Images:                runner.configuration.Images,
 		Parameters:            runner.configuration.Parameters,
 		Profile:               lane.definition.Profile,
+		Timeout:               runner.configuration.StartTimeout,
 		FailureDiagnosticsDir: filepath.Join(lane.reportDir, diagnosticsDirectory),
 	}
 
-	startTimeout := lane.definition.Profile.StartTimeout(runner.configuration.StartTimeout)
-	startCtx, cancelStart := context.WithTimeout(ctx, startTimeout)
-	environment, err := runner.networks.Start(startCtx, options)
-	cancelStart()
+	environment, err := runner.networks.Start(ctx, options)
 	if err != nil {
 		return laneLease{}, fmt.Errorf("start network: %w", err)
 	}

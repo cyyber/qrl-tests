@@ -41,7 +41,8 @@ func TestParseProfile(t *testing.T) {
 	require.Equal(t, ProfileMainnetSlots, profile)
 
 	_, err = ParseProfile("unknown")
-	require.ErrorContains(t, err, "unknown development-network profile")
+	require.ErrorContains(t, err, `unknown development-network profile "unknown": the profiles are anchored, double-proposal,`)
+	require.ErrorContains(t, err, "mainnet-slots")
 }
 
 func TestSpareValidators(t *testing.T) {
@@ -75,10 +76,10 @@ func TestParticipantValidators(t *testing.T) {
 
 func TestStartTimeout(t *testing.T) {
 	// A profile without a start timeout of its own takes the configured one.
-	require.Equal(t, time.Minute, ProfileSingle.StartTimeout(time.Minute))
-	require.Equal(t, DefaultStartTimeout, ProfileSingle.StartTimeout(DefaultStartTimeout))
+	require.Equal(t, time.Minute, ProfileSingle.startTimeout(time.Minute))
+	require.Equal(t, DefaultStartTimeout, ProfileSingle.startTimeout(DefaultStartTimeout))
 
 	// Longer slots need more than the default, and a longer budget stands.
-	require.Equal(t, 10*time.Minute, ProfileMainnetSlots.StartTimeout(DefaultStartTimeout))
-	require.Equal(t, 15*time.Minute, ProfileMainnetSlots.StartTimeout(15*time.Minute))
+	require.Equal(t, 10*time.Minute, ProfileMainnetSlots.startTimeout(DefaultStartTimeout))
+	require.Equal(t, 15*time.Minute, ProfileMainnetSlots.startTimeout(15*time.Minute))
 }

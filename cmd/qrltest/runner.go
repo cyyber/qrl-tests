@@ -109,7 +109,7 @@ func runnerFlags() []cli.Flag {
 		backendFlag(),
 		&cli.DurationFlag{
 			Name:    "start-timeout",
-			Usage:   "network start budget",
+			Usage:   "network start budget; a lane's profile may raise it",
 			Value:   devnet.DefaultStartTimeout,
 			EnvVars: []string{"DEVNET_START_TIMEOUT"},
 		},

@@ -48,6 +48,9 @@ type StartOptions struct {
 	Images      Images
 	Parameters  []byte
 	Profile     Profile
+	// Timeout is the budget for the start, DefaultStartTimeout when zero. A
+	// profile with a start timeout of its own gets at least that.
+	Timeout time.Duration
 
 	// FailureDiagnosticsDir, when set, receives the enclave's diagnostics
 	// before cleanup of a failed start is attempted.
@@ -111,6 +114,9 @@ func (manager *Manager) Start(ctx context.Context, options StartOptions) (enviro
 	options.EnclaveName = cmp.Or(options.EnclaveName, DefaultEnclaveName)
 	options.Backend = cmp.Or(options.Backend, BackendDocker)
 	options.Profile = cmp.Or(options.Profile, ProfileSingle)
+
+	ctx, cancel := context.WithTimeout(ctx, options.Profile.startTimeout(cmp.Or(options.Timeout, DefaultStartTimeout)))
+	defer cancel()
 
 	parameters, err := resolveParameters(devwallet.Address, options)
 	if err != nil {

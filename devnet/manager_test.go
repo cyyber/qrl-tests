@@ -266,6 +266,37 @@ func TestStartDefaults(t *testing.T) {
 	require.False(t, client.destroyed)
 }
 
+func TestStartIsBoundedByItsTimeout(t *testing.T) {
+	tests := []struct {
+		name    string
+		profile Profile
+		timeout time.Duration
+		want    time.Duration
+	}{
+		{name: "default", want: DefaultStartTimeout},
+		{name: "configured", timeout: time.Minute, want: time.Minute},
+		{name: "raised by the profile", profile: ProfileMainnetSlots, timeout: time.Minute, want: 10 * time.Minute},
+		{name: "longer than the profile's", profile: ProfileMainnetSlots, timeout: 15 * time.Minute, want: 15 * time.Minute},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			manager := testManager(&fakeEnclaveClient{services: singleParticipant()})
+			var deadline time.Time
+			manager.probe = func(ctx context.Context, _, _ string) error {
+				deadline, _ = ctx.Deadline()
+				return nil
+			}
+			options := startOptions()
+			options.Profile, options.Timeout = test.profile, test.timeout
+
+			_, err := manager.Start(t.Context(), options)
+			require.NoError(t, err)
+			require.WithinDuration(t, time.Now().Add(test.want), deadline, 5*time.Second)
+		})
+	}
+}
+
 func TestInspect(t *testing.T) {
 	_, err := testManager(new(fakeEnclaveClient)).Inspect(t.Context(), "missing")
 	require.ErrorContains(t, err, `network "missing" is not running`)

@@ -58,7 +58,7 @@ start before any enclave is created. The qrl-package revision is pinned in code
 qrl-package YAML argument object. The file is used unchanged, including its
 image references and development wallet address. Existing JSON parameter files
 remain supported. Image flags and `DEVNET_PROFILE` are ignored when the file is
-set.
+set; only the profile's start timeout still applies.
 
 The checked-in [`network_params.yaml`](network_params.yaml) is a complete
 single-participant example. Custom files must pre-fund the checked-in

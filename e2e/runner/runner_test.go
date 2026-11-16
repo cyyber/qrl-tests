@@ -137,6 +137,7 @@ func TestRunBuildsCommandAndCleansUp(t *testing.T) {
 	require.Equal(t, "qrl-tests", networks.started.EnclaveName)
 	require.Equal(t, devnet.ProfileSingle, networks.started.Profile)
 	require.Equal(t, []byte(`{"custom":true}`), networks.started.Parameters)
+	require.Equal(t, time.Minute, networks.started.Timeout)
 	require.Equal(t, []string{"qrl-tests"}, networks.stopped)
 	require.Empty(t, networks.collected)
 	require.Equal(t, "go", command.Path)
@@ -515,7 +516,6 @@ func TestNewResolvesConfigurationDefaults(t *testing.T) {
 	require.Equal(t, devnet.DefaultEnclaveName, runner.configuration.BaseName)
 	require.Equal(t, DefaultReportDir, runner.configuration.ReportDir)
 	require.Equal(t, devnet.BackendDocker, runner.configuration.Backend)
-	require.Equal(t, devnet.DefaultStartTimeout, runner.configuration.StartTimeout)
 	require.Equal(t, devnet.DefaultQrysmAlltoolsImage, runner.configuration.QrysmAlltoolsImage)
 
 	configured := New(Config{QrysmAlltoolsImage: " registry.example/qrysm-alltools:dev "}, io.Discard, io.Discard)
