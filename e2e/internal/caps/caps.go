@@ -55,6 +55,9 @@ var (
 	// BeaconResponse is how long a qrysm peer takes to write a whole
 	// response, of up to 64 blocks, before the stream is reset: RESP_TIMEOUT.
 	BeaconResponse = Cap{Name: "beacon response write", Limit: uint64(50 * time.Second)}
+	// EngineGetPayload is how long qrysm waits for the execution client to
+	// hand over the block it built: defaultEngineTimeout in execution.
+	EngineGetPayload = Cap{Name: "engine API getPayload call", Limit: uint64(10 * time.Second)}
 	// EnginePayload is how long qrysm waits for the execution client to
 	// answer newPayload or forkchoiceUpdated: ExecutionEngineTimeoutValue.
 	EnginePayload = Cap{Name: "engine API payload call", Limit: uint64(8 * time.Second)}
