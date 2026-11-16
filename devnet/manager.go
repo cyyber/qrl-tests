@@ -283,9 +283,6 @@ func retryUntil(ctx context.Context, operation func() error) error {
 	}
 }
 
-// withCause joins the reason ctx ended to err, unless ctx has not ended or
-// err already carries the reason. For a start that ran out of its budget, the
-// reason names the budget.
 func withCause(ctx context.Context, err error) error {
 	cause := context.Cause(ctx)
 	if cause == nil || errors.Is(err, cause) {
