@@ -26,7 +26,7 @@ func networkCommand(network networkController) *cli.Command {
 		parametersFileFlag(),
 		&cli.DurationFlag{
 			Name:    "timeout",
-			Usage:   "network start budget; a profile may raise it",
+			Usage:   "network start budget",
 			Value:   devnet.DefaultStartTimeout,
 			EnvVars: []string{"DEVNET_START_TIMEOUT"},
 		},
