@@ -55,6 +55,9 @@ var (
 	// BeaconResponse is how long a qrysm peer takes to write a whole
 	// response, of up to 64 blocks, before the stream is reset: RESP_TIMEOUT.
 	BeaconResponse = Cap{Name: "beacon response write", Limit: uint64(50 * time.Second)}
+	// BeaconGossipValidation is how long qrysm takes to validate a gossip
+	// message before it gives up on it: pubsubMessageTimeout in sync.
+	BeaconGossipValidation = Cap{Name: "beacon gossip validation", Limit: uint64(30 * time.Second)}
 	// EngineGetPayload is how long qrysm waits for the execution client to
 	// hand over the block it built: defaultEngineTimeout in execution.
 	EngineGetPayload = Cap{Name: "engine API getPayload call", Limit: uint64(10 * time.Second)}
