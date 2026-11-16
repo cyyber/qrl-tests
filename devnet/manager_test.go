@@ -3,11 +3,14 @@ package devnet
 import (
 	"context"
 	"errors"
+	"fmt"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/cyyber/qrl-tests/devnet/internal/kurtosis"
+	"github.com/cyyber/qrl-tests/internal/devwallet"
 	"github.com/stretchr/testify/require"
 )
 
@@ -20,6 +23,7 @@ type fakeEnclaveClient struct {
 	createdName    string
 	packageLocator string
 	destroyed      bool
+	onRun          func(context.Context)
 	onDestroy      func(context.Context)
 	stopped        []string
 	started        []string
@@ -35,8 +39,11 @@ func (client *fakeEnclaveClient) CreateEnclave(_ context.Context, name string) e
 	return client.createErr
 }
 
-func (client *fakeEnclaveClient) RunRemotePackage(_ context.Context, _, locator, _ string) error {
+func (client *fakeEnclaveClient) RunRemotePackage(ctx context.Context, _, locator, _ string) error {
 	client.packageLocator = locator
+	if client.onRun != nil {
+		client.onRun(ctx)
+	}
 	return client.runErr
 }
 
@@ -264,6 +271,77 @@ func TestStartDefaults(t *testing.T) {
 	require.Equal(t, DefaultEnclaveName, environment.EnclaveName)
 	require.Equal(t, BackendDocker, environment.Backend)
 	require.False(t, client.destroyed)
+}
+
+func TestStartTimeout(t *testing.T) {
+	parameters := fmt.Appendf(nil, "network_params:\n  prefunded_accounts:\n    %s: {}\n", devwallet.Address)
+	tests := []struct {
+		name       string
+		profile    Profile
+		parameters []byte
+		timeout    time.Duration
+		want       time.Duration
+	}{
+		{name: "default", want: DefaultStartTimeout},
+		{name: "the profile's own", profile: ProfileMainnetSlotTime, want: 10 * time.Minute},
+		{name: "configured", profile: ProfileMainnetSlotTime, timeout: time.Minute, want: time.Minute},
+		{name: "profile replaced by parameters", profile: ProfileMainnetSlotTime, parameters: parameters, want: DefaultStartTimeout},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			manager := testManager(&fakeEnclaveClient{services: singleParticipant()})
+			var deadline time.Time
+			manager.probe = func(ctx context.Context, _, _ string) error {
+				deadline, _ = ctx.Deadline()
+				return nil
+			}
+			options := startOptions()
+			options.Profile, options.Parameters, options.Timeout = test.profile, test.parameters, test.timeout
+
+			_, err := manager.Start(t.Context(), options)
+			require.NoError(t, err)
+			require.WithinDuration(t, time.Now().Add(test.want), deadline, 5*time.Second)
+		})
+	}
+}
+
+func TestStartTimeoutError(t *testing.T) {
+	options := startOptions()
+	options.Timeout = 10 * time.Millisecond
+
+	// A start that timed out names its budget, once.
+	requireBudgetNamedOnce := func(t *testing.T, err error) {
+		t.Helper()
+		require.ErrorIs(t, err, context.DeadlineExceeded)
+		require.Equal(t, 1, strings.Count(err.Error(), "start budget of 10ms exceeded"), err)
+	}
+
+	t.Run("package run", func(t *testing.T) {
+		// The package run outlasts the budget. Kurtosis then reports a
+		// closed stream, which says nothing of a timeout.
+		client := &fakeEnclaveClient{services: singleParticipant(), runErr: errors.New("stream closed")}
+		client.onRun = func(ctx context.Context) { <-ctx.Done() }
+
+		_, err := testManager(client).Start(t.Context(), options)
+		require.ErrorContains(t, err, "run pinned qrl-package: stream closed")
+		requireBudgetNamedOnce(t, err)
+	})
+
+	t.Run("readiness wait", func(t *testing.T) {
+		// The network never becomes ready. Like the real probe, this one
+		// retries on a context of its own.
+		manager := testManager(&fakeEnclaveClient{services: singleParticipant()})
+		manager.probe = func(ctx context.Context, _, _ string) error {
+			probeCtx, cancel := context.WithTimeout(ctx, time.Minute)
+			defer cancel()
+			return retryUntil(probeCtx, func() error { return errors.New("not ready") })
+		}
+
+		_, err := manager.Start(t.Context(), options)
+		require.ErrorContains(t, err, "wait for network readiness: not ready")
+		requireBudgetNamedOnce(t, err)
+	})
 }
 
 func TestInspect(t *testing.T) {

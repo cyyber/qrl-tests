@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"time"
 )
 
 type Profile string
@@ -18,7 +19,6 @@ var (
 	slasherCLExtraParams = append(slices.Clone(defaultCLExtraParams), "--slasher", "--subscribe-all-subnets")
 )
 
-// Further profiles arrive together with the lanes that exercise them.
 const (
 	ProfileSingle Profile = "single"
 	// ProfileAnchored has two participants that share the validators. The
@@ -49,11 +49,19 @@ const (
 	// beacon node with a slasher. Stopping the second's validator client takes
 	// just over a third of the stake offline, so finality stops.
 	ProfileInactivityLeak Profile = "inactivity-leak"
+	// ProfileMainnetSlotTime is the single profile with mainnet's 60-second
+	// slots, and 256 validators for a full committee of 32 in every slot.
+	// Epochs keep the 8 slots of every profile, not mainnet's 128.
+	ProfileMainnetSlotTime Profile = "mainnet-slot-time"
 )
+
+const defaultSecondsPerSlot = 5
 
 type profileSpec struct {
 	participants            []participantSpec
 	preregisteredValidators int
+	secondsPerSlot          int
+	startTimeout            time.Duration
 }
 
 type participantSpec struct {
@@ -89,6 +97,11 @@ var profileSpecs = map[Profile]profileSpec{
 		{validatorCount: 43, clExtraParams: slasherCLExtraParams},
 		{validatorCount: 22, clExtraParams: slasherCLExtraParams},
 	}},
+	ProfileMainnetSlotTime: {
+		participants:   []participantSpec{{validatorCount: 256}},
+		secondsPerSlot: 60,
+		startTimeout:   10 * time.Minute,
+	},
 }
 
 // ParseProfile validates the raw value, resolving the empty value to the

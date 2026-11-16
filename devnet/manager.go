@@ -48,6 +48,8 @@ type StartOptions struct {
 	Images      Images
 	Parameters  []byte
 	Profile     Profile
+	// Timeout is the start budget; zero means the default.
+	Timeout time.Duration
 
 	// FailureDiagnosticsDir, when set, receives the enclave's diagnostics
 	// before cleanup of a failed start is attempted.
@@ -112,6 +114,16 @@ func (manager *Manager) Start(ctx context.Context, options StartOptions) (enviro
 	options.Backend = cmp.Or(options.Backend, BackendDocker)
 	options.Profile = cmp.Or(options.Profile, ProfileSingle)
 
+	// The profile's start timeout applies only when no parameters replace it.
+	var profileTimeout time.Duration
+	if options.Parameters == nil {
+		profileTimeout = profileSpecs[options.Profile].startTimeout
+	}
+	timeout := cmp.Or(options.Timeout, profileTimeout, DefaultStartTimeout)
+	ctx, cancel := context.WithTimeoutCause(ctx, timeout,
+		fmt.Errorf("start budget of %s exceeded: %w", timeout, context.DeadlineExceeded))
+	defer cancel()
+
 	parameters, err := resolveParameters(devwallet.Address, options)
 	if err != nil {
 		return Environment{}, fmt.Errorf("prepare qrl-package parameters: %w", err)
@@ -134,7 +146,9 @@ func (manager *Manager) Start(ctx context.Context, options StartOptions) (enviro
 	}
 	defer func() {
 		if err != nil {
-			err = manager.finishFailedStart(client, options, err)
+			// The cause is read before the cleanup, which may itself outlast
+			// the budget of a start that failed for another reason.
+			err = manager.finishFailedStart(client, options, withCause(ctx, err))
 		}
 	}()
 
@@ -263,8 +277,16 @@ func retryUntil(ctx context.Context, operation func() error) error {
 		}
 		select {
 		case <-ctx.Done():
-			return errors.Join(err, ctx.Err())
+			return withCause(ctx, err)
 		case <-ticker.C:
 		}
 	}
+}
+
+func withCause(ctx context.Context, err error) error {
+	cause := context.Cause(ctx)
+	if cause == nil || errors.Is(err, cause) {
+		return err
+	}
+	return errors.Join(err, cause)
 }

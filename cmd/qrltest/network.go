@@ -25,10 +25,10 @@ func networkCommand(network networkController) *cli.Command {
 		},
 		parametersFileFlag(),
 		&cli.DurationFlag{
-			Name:    "timeout",
-			Usage:   "network start budget",
-			Value:   devnet.DefaultStartTimeout,
-			EnvVars: []string{"DEVNET_START_TIMEOUT"},
+			Name:        "timeout",
+			Usage:       "network start budget",
+			DefaultText: "5m0s, or the profile's own",
+			EnvVars:     []string{"DEVNET_START_TIMEOUT"},
 		},
 	}
 	startFlags = append(startFlags, imageFlags()...)
@@ -59,15 +59,13 @@ func networkCommand(network networkController) *cli.Command {
 						return err
 					}
 
-					ctx, cancel := context.WithTimeout(command.Context, command.Duration("timeout"))
-					defer cancel()
-
-					if _, err := network.Start(ctx, devnet.StartOptions{
+					if _, err := network.Start(command.Context, devnet.StartOptions{
 						EnclaveName: command.String("enclave-name"),
 						Backend:     backend,
 						Images:      imagesFromFlags(command),
 						Parameters:  parameters,
 						Profile:     profile,
+						Timeout:     command.Duration("timeout"),
 					}); err != nil {
 						return err
 					}

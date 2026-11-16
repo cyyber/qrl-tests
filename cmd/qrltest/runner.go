@@ -108,10 +108,10 @@ func runnerFlags() []cli.Flag {
 		},
 		backendFlag(),
 		&cli.DurationFlag{
-			Name:    "start-timeout",
-			Usage:   "network start budget",
-			Value:   devnet.DefaultStartTimeout,
-			EnvVars: []string{"DEVNET_START_TIMEOUT"},
+			Name:        "start-timeout",
+			Usage:       "network start budget",
+			DefaultText: "5m0s, or the profile's own",
+			EnvVars:     []string{"DEVNET_START_TIMEOUT"},
 		},
 		&cli.Int64Flag{
 			Name:    "seed",

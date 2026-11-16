@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/cyyber/qrl-tests/devnet"
 	"github.com/stretchr/testify/require"
@@ -13,11 +14,13 @@ import (
 
 type recordingController struct {
 	startOptions   devnet.StartOptions
+	startDeadline  bool
 	stoppedEnclave string
 }
 
-func (controller *recordingController) Start(_ context.Context, options devnet.StartOptions) (devnet.Environment, error) {
+func (controller *recordingController) Start(ctx context.Context, options devnet.StartOptions) (devnet.Environment, error) {
 	controller.startOptions = options
+	_, controller.startDeadline = ctx.Deadline()
 	return devnet.Environment{}, nil
 }
 
@@ -38,6 +41,7 @@ func TestNetworkStart(t *testing.T) {
 		"network", "start", "--enclave-name", enclaveName,
 		"--execution-image", "local/go-qrl:test",
 		"--params-file", paramsFile,
+		"--timeout", "90s",
 	)
 
 	require.Equal(t, "network ready\n", output)
@@ -53,7 +57,18 @@ func TestNetworkStart(t *testing.T) {
 		},
 		Parameters: parameters,
 		Profile:    devnet.ProfileSingle,
+		Timeout:    90 * time.Second,
 	}, controller.startOptions)
+	require.False(t, controller.startDeadline, "the manager applies the timeout")
+}
+
+func TestNetworkStartUnsetTimeout(t *testing.T) {
+	t.Setenv("DEVNET_START_TIMEOUT", "")
+
+	controller := new(recordingController)
+	runCommand(t, controller, "network", "start", "--profile", "mainnet-slot-time")
+	require.Equal(t, devnet.ProfileMainnetSlotTime, controller.startOptions.Profile)
+	require.Zero(t, controller.startOptions.Timeout)
 }
 
 func TestNetworkStop(t *testing.T) {

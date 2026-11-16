@@ -36,6 +36,7 @@ const (
 type recordingNetworks struct {
 	mutex                     sync.Mutex
 	started                   devnet.StartOptions
+	startDeadline             bool
 	inspected                 string
 	checked                   string
 	stopped                   []string
@@ -67,10 +68,11 @@ func newTestRunner(t *testing.T, configuration Config, stdout, stderr io.Writer)
 	return runner
 }
 
-func (networks *recordingNetworks) Start(_ context.Context, options devnet.StartOptions) (devnet.Environment, error) {
+func (networks *recordingNetworks) Start(ctx context.Context, options devnet.StartOptions) (devnet.Environment, error) {
 	networks.mutex.Lock()
 	defer networks.mutex.Unlock()
 	networks.started = options
+	_, networks.startDeadline = ctx.Deadline()
 	if networks.startErr != nil {
 		return devnet.Environment{}, networks.startErr
 	}
@@ -137,6 +139,8 @@ func TestRunBuildsCommandAndCleansUp(t *testing.T) {
 	require.Equal(t, "qrl-tests", networks.started.EnclaveName)
 	require.Equal(t, devnet.ProfileSingle, networks.started.Profile)
 	require.Equal(t, []byte(`{"custom":true}`), networks.started.Parameters)
+	require.Equal(t, time.Minute, networks.started.Timeout)
+	require.False(t, networks.startDeadline, "the manager applies the timeout")
 	require.Equal(t, []string{"qrl-tests"}, networks.stopped)
 	require.Empty(t, networks.collected)
 	require.Equal(t, "go", command.Path)
@@ -515,7 +519,6 @@ func TestNewResolvesConfigurationDefaults(t *testing.T) {
 	require.Equal(t, devnet.DefaultEnclaveName, runner.configuration.BaseName)
 	require.Equal(t, DefaultReportDir, runner.configuration.ReportDir)
 	require.Equal(t, devnet.BackendDocker, runner.configuration.Backend)
-	require.Equal(t, devnet.DefaultStartTimeout, runner.configuration.StartTimeout)
 	require.Equal(t, devnet.DefaultQrysmAlltoolsImage, runner.configuration.QrysmAlltoolsImage)
 
 	configured := New(Config{QrysmAlltoolsImage: " registry.example/qrysm-alltools:dev "}, io.Discard, io.Discard)

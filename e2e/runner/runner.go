@@ -46,7 +46,6 @@ func (configuration Config) withDefaults() Config {
 	configuration.BaseName = cmp.Or(configuration.BaseName, devnet.DefaultEnclaveName)
 	configuration.ReportDir = cmp.Or(configuration.ReportDir, DefaultReportDir)
 	configuration.Backend = cmp.Or(configuration.Backend, devnet.BackendDocker)
-	configuration.StartTimeout = cmp.Or(configuration.StartTimeout, devnet.DefaultStartTimeout)
 	configuration.QrysmAlltoolsImage = cmp.Or(
 		strings.TrimSpace(configuration.QrysmAlltoolsImage), devnet.DefaultQrysmAlltoolsImage)
 	return configuration
