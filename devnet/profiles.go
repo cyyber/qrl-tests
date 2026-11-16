@@ -114,12 +114,7 @@ func ParseProfile(value string) (Profile, error) {
 
 	profile := Profile(trimmed)
 	if _, exists := profileSpecs[profile]; !exists {
-		names := make([]string, 0, len(profileSpecs))
-		for name := range profileSpecs {
-			names = append(names, string(name))
-		}
-		slices.Sort(names)
-		return "", fmt.Errorf("unknown development-network profile %q: the profiles are %s", value, strings.Join(names, ", "))
+		return "", fmt.Errorf("unknown development-network profile %q", value)
 	}
 	return profile, nil
 }
