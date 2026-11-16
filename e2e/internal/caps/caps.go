@@ -39,6 +39,9 @@ var (
 	// RPCCall is how long go-qrl runs a qrl_call or a gas estimate before it
 	// gives up: RPCQRVMTimeout in qrlconfig.
 	RPCCall = Cap{Name: "JSON-RPC call time", Limit: uint64(5 * time.Second)}
+	// RPCTrace is how long go-qrl traces a call or a transaction before it
+	// gives up: defaultTraceTimeout in qrl/tracers.
+	RPCTrace = Cap{Name: "JSON-RPC trace time", Limit: uint64(5 * time.Second)}
 	// RPCWrite is how long go-qrl's HTTP server takes to write a reply
 	// before it closes the connection: WriteTimeout in rpc.
 	RPCWrite = Cap{Name: "JSON-RPC reply write", Limit: uint64(30 * time.Second)}
