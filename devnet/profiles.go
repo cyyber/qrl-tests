@@ -49,9 +49,8 @@ const (
 	// beacon node with a slasher. Stopping the second's validator client takes
 	// just over a third of the stake offline, so finality stops.
 	ProfileInactivityLeak Profile = "inactivity-leak"
-	// ProfileMainnetSlotTime is the single profile with 256 validators and
-	// mainnet's 60-second slots: a full committee of 32 in each of an epoch's
-	// 8 slots. Finality first advances about 32 minutes after genesis.
+	// ProfileMainnetSlotTime is the single profile with mainnet's 60-second
+	// slots, and 256 validators for a full committee of 32 in every slot.
 	ProfileMainnetSlotTime Profile = "mainnet-slot-time"
 )
 
