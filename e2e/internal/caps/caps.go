@@ -36,6 +36,18 @@ var (
 	// EngineRequestBody is the largest request body go-qrl's engine API
 	// accepts: engineAPIBodyLimit in node.
 	EngineRequestBody = Cap{Name: "engine API request body", Limit: 128 << 20}
+	// RPCCall is how long go-qrl runs a qrl_call or a gas estimate before it
+	// gives up: RPCQRVMTimeout in qrlconfig.
+	RPCCall = Cap{Name: "JSON-RPC call time", Limit: uint64(5 * time.Second)}
+	// RPCWrite is how long go-qrl's HTTP server takes to write a reply
+	// before it closes the connection: WriteTimeout in rpc.
+	RPCWrite = Cap{Name: "JSON-RPC reply write", Limit: uint64(30 * time.Second)}
+	// QRLMessageWrite is how long go-qrl takes to write a protocol message
+	// before it drops the peer: frameWriteTimeout in p2p.
+	QRLMessageWrite = Cap{Name: "qrl protocol message write", Limit: uint64(20 * time.Second)}
+	// BeaconResponse is how long a qrysm peer takes to write a whole
+	// response, of up to 64 blocks, before the stream is reset: RESP_TIMEOUT.
+	BeaconResponse = Cap{Name: "beacon response write", Limit: uint64(50 * time.Second)}
 	// EnginePayload is how long qrysm waits for the execution client to
 	// answer newPayload or forkchoiceUpdated: ExecutionEngineTimeoutValue.
 	EnginePayload = Cap{Name: "engine API payload call", Limit: uint64(8 * time.Second)}
@@ -107,6 +119,12 @@ func (limit Cap) Check(class Class, observed uint64) Result {
 // CheckDuration holds observed to the cap as a time budget.
 func (limit Cap) CheckDuration(observed time.Duration) Result {
 	return limit.Check(TimeBudget, uint64(max(observed, 0)))
+}
+
+// MinBandwidth returns the slowest link, in megabits per second, that carries
+// size bytes within the cap, for a cap that is a time limit.
+func (limit Cap) MinBandwidth(size uint64) float64 {
+	return float64(size) * 8 / 1e6 / time.Duration(limit.Limit).Seconds()
 }
 
 // Spare returns the share of the cap that the observed value leaves, which is

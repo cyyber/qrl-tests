@@ -61,3 +61,8 @@ func TestResultString(t *testing.T) {
 		"engine API payload call: 1.5s of 8s, 81.2% to spare: pass",
 		EnginePayload.CheckDuration(1500*time.Millisecond).String())
 }
+
+func TestMinBandwidth(t *testing.T) {
+	limit := Cap{Name: "test", Limit: uint64(20 * time.Second)}
+	require.InDelta(t, 4.0, limit.MinBandwidth(10_000_000), 1e-9, "10 MB in 20 s needs 4 Mbit/s")
+}
