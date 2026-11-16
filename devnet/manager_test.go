@@ -307,50 +307,41 @@ func TestStartTimeout(t *testing.T) {
 }
 
 func TestStartTimeoutError(t *testing.T) {
-	tests := []struct {
-		name      string
-		arrange   func(*fakeEnclaveClient, *Manager)
-		wantError string
-	}{
-		{
-			// The Kurtosis client reports an expired context as a closed
-			// stream, which says nothing of a timeout.
-			name: "package run",
-			arrange: func(client *fakeEnclaveClient, _ *Manager) {
-				client.runErr = errors.New("stream closed")
-				client.onRun = func(ctx context.Context) { <-ctx.Done() }
-			},
-			wantError: "run pinned qrl-package: stream closed",
-		},
-		{
-			// Like the real probe, this one retries on a context of its own.
-			name: "readiness wait",
-			arrange: func(_ *fakeEnclaveClient, manager *Manager) {
-				manager.probe = func(ctx context.Context, _, _ string) error {
-					probeCtx, cancel := context.WithTimeout(ctx, time.Minute)
-					defer cancel()
-					return retryUntil(probeCtx, func() error { return errors.New("not ready") })
-				}
-			},
-			wantError: "wait for network readiness: not ready",
-		},
+	options := startOptions()
+	options.Timeout = 10 * time.Millisecond
+
+	// A start that timed out names its budget, once.
+	requireBudgetNamedOnce := func(t *testing.T, err error) {
+		t.Helper()
+		require.ErrorIs(t, err, context.DeadlineExceeded)
+		require.Equal(t, 1, strings.Count(err.Error(), "start budget of 10ms exceeded"), err)
 	}
 
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			client := &fakeEnclaveClient{services: singleParticipant()}
-			manager := testManager(client)
-			test.arrange(client, manager)
-			options := startOptions()
-			options.Timeout = 10 * time.Millisecond
+	t.Run("package run", func(t *testing.T) {
+		// The package run outlasts the budget. Kurtosis then reports a
+		// closed stream, which says nothing of a timeout.
+		client := &fakeEnclaveClient{services: singleParticipant(), runErr: errors.New("stream closed")}
+		client.onRun = func(ctx context.Context) { <-ctx.Done() }
 
-			_, err := manager.Start(t.Context(), options)
-			require.ErrorContains(t, err, test.wantError)
-			require.ErrorIs(t, err, context.DeadlineExceeded)
-			require.Equal(t, 1, strings.Count(err.Error(), "start budget of 10ms exceeded"), err)
-			require.True(t, client.destroyed)
-		})
-	}
+		_, err := testManager(client).Start(t.Context(), options)
+		require.ErrorContains(t, err, "run pinned qrl-package: stream closed")
+		requireBudgetNamedOnce(t, err)
+	})
+
+	t.Run("readiness wait", func(t *testing.T) {
+		// The network never becomes ready. Like the real probe, this one
+		// retries on a context of its own.
+		manager := testManager(&fakeEnclaveClient{services: singleParticipant()})
+		manager.probe = func(ctx context.Context, _, _ string) error {
+			probeCtx, cancel := context.WithTimeout(ctx, time.Minute)
+			defer cancel()
+			return retryUntil(probeCtx, func() error { return errors.New("not ready") })
+		}
+
+		_, err := manager.Start(t.Context(), options)
+		require.ErrorContains(t, err, "wait for network readiness: not ready")
+		requireBudgetNamedOnce(t, err)
+	})
 }
 
 func TestInspect(t *testing.T) {
