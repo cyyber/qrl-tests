@@ -54,7 +54,8 @@ var droppingMeters = []string{
 	"txpool_queued_ratelimit",
 }
 
-// Log lines that mean a node crashed, or refused a message for its size.
+// Log lines that mean a node crashed, refused a message for its size, or
+// fell behind on its database.
 var troubleSignatures = []string{
 	"panic:",
 	"fatal error:",
@@ -63,6 +64,7 @@ var troubleSignatures = []string{
 	"level=panic",
 	"message too long",
 	"read limit exceeded",
+	"degraded performance",
 }
 
 // Ledger records the state of a network's containers when a suite starts
@@ -205,6 +207,16 @@ func (ledger *Ledger) troubleLines(ctx context.Context, entry *watched) ([]strin
 // MetricsURL returns the URL of the go-qrl metrics page that a container
 // serves on port, published to the host.
 func MetricsURL(ctx context.Context, docker ContainerReader, container string, port uint16) (string, error) {
+	hostPort, err := PublishedPort(ctx, docker, container, port)
+	if err != nil {
+		return "", err
+	}
+	return "http://127.0.0.1:" + hostPort + "/debug/metrics/prometheus", nil
+}
+
+// PublishedPort returns the host port that a container's TCP port is
+// published to.
+func PublishedPort(ctx context.Context, docker ContainerReader, container string, port uint16) (string, error) {
 	inspected, err := docker.ContainerInspect(ctx, container, dockerclient.ContainerInspectOptions{})
 	if err != nil {
 		return "", fmt.Errorf("inspect %s: %w", container, err)
@@ -212,9 +224,9 @@ func MetricsURL(ctx context.Context, docker ContainerReader, container string, p
 	published, _ := network.PortFrom(port, network.TCP)
 	settings := inspected.Container.NetworkSettings
 	if settings == nil || len(settings.Ports[published]) == 0 || settings.Ports[published][0].HostPort == "" {
-		return "", fmt.Errorf("metrics port %d is not published", port)
+		return "", fmt.Errorf("port %d of %s is not published", port, container)
 	}
-	return "http://127.0.0.1:" + settings.Ports[published][0].HostPort + "/debug/metrics/prometheus", nil
+	return settings.Ports[published][0].HostPort, nil
 }
 
 // readMeters reads the unlabelled values of a metrics page in the Prometheus
@@ -250,4 +262,35 @@ func readMeters(ctx context.Context, url string) (map[string]float64, error) {
 		return nil, errors.New("the metrics page has no values")
 	}
 	return meters, nil
+}
+
+// Gauge reads an unlabelled value, such as "txpool_slots", from a metrics
+// page in the Prometheus text format.
+func Gauge(ctx context.Context, metricsURL, name string) (float64, error) {
+	meters, err := readMeters(ctx, metricsURL)
+	if err != nil {
+		return 0, err
+	}
+	value, found := meters[name]
+	if !found {
+		return 0, fmt.Errorf("the metrics have no %s", name)
+	}
+	return value, nil
+}
+
+// SummaryMean returns the mean observation of a Prometheus summary or
+// histogram, or zero for one without observations.
+func SummaryMean(ctx context.Context, metricsURL, name string) (float64, error) {
+	meters, err := readMeters(ctx, metricsURL)
+	if err != nil {
+		return 0, err
+	}
+	count, found := meters[name+"_count"]
+	if !found {
+		return 0, fmt.Errorf("the metrics have no %s", name)
+	}
+	if count == 0 {
+		return 0, nil
+	}
+	return meters[name+"_sum"] / count, nil
 }
