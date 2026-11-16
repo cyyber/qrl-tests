@@ -273,7 +273,7 @@ func TestStartDefaults(t *testing.T) {
 	require.False(t, client.destroyed)
 }
 
-func TestStartIsBoundedByItsTimeout(t *testing.T) {
+func TestStartTimeout(t *testing.T) {
 	parameters := fmt.Appendf(nil, "network_params:\n  prefunded_accounts:\n    %s: {}\n", devwallet.Address)
 	tests := []struct {
 		name       string
@@ -306,7 +306,7 @@ func TestStartIsBoundedByItsTimeout(t *testing.T) {
 	}
 }
 
-func TestStartNamesTheBudgetItExceeded(t *testing.T) {
+func TestStartTimeoutError(t *testing.T) {
 	tests := []struct {
 		name      string
 		arrange   func(*fakeEnclaveClient, *Manager)
