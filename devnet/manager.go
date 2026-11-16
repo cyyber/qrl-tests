@@ -114,7 +114,7 @@ func (manager *Manager) Start(ctx context.Context, options StartOptions) (enviro
 	options.Backend = cmp.Or(options.Backend, BackendDocker)
 	options.Profile = cmp.Or(options.Profile, ProfileSingle)
 
-	// Parameters replace the profile, its start timeout included.
+	// The profile's start timeout applies only when no parameters replace it.
 	var profileTimeout time.Duration
 	if options.Parameters == nil {
 		profileTimeout = profileSpecs[options.Profile].startTimeout
