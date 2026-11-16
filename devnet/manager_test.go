@@ -284,10 +284,10 @@ func TestStartIsBoundedByItsTimeout(t *testing.T) {
 	}{
 		{name: "default", want: DefaultStartTimeout},
 		{name: "configured", timeout: time.Minute, want: time.Minute},
-		{name: "the profile's own", profile: ProfileMainnetSlots, want: 10 * time.Minute},
-		{name: "configured, shorter than the profile's", profile: ProfileMainnetSlots, timeout: time.Minute, want: time.Minute},
-		{name: "configured, longer than the profile's", profile: ProfileMainnetSlots, timeout: 15 * time.Minute, want: 15 * time.Minute},
-		{name: "profile replaced by parameters", profile: ProfileMainnetSlots, parameters: parameters, want: DefaultStartTimeout},
+		{name: "the profile's own", profile: ProfileMainnetSlotTime, want: 10 * time.Minute},
+		{name: "configured, shorter than the profile's", profile: ProfileMainnetSlotTime, timeout: time.Minute, want: time.Minute},
+		{name: "configured, longer than the profile's", profile: ProfileMainnetSlotTime, timeout: 15 * time.Minute, want: 15 * time.Minute},
+		{name: "profile replaced by parameters", profile: ProfileMainnetSlotTime, parameters: parameters, want: DefaultStartTimeout},
 	}
 
 	for _, test := range tests {

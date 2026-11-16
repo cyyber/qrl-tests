@@ -66,8 +66,8 @@ func TestNetworkStartUnsetTimeout(t *testing.T) {
 	t.Setenv("DEVNET_START_TIMEOUT", "")
 
 	controller := new(recordingController)
-	runCommand(t, controller, "network", "start", "--profile", "mainnet-slots")
-	require.Equal(t, devnet.ProfileMainnetSlots, controller.startOptions.Profile)
+	runCommand(t, controller, "network", "start", "--profile", "mainnet-slot-time")
+	require.Equal(t, devnet.ProfileMainnetSlotTime, controller.startOptions.Profile)
 	require.Zero(t, controller.startOptions.Timeout)
 }
 

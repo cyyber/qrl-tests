@@ -119,8 +119,8 @@ func TestDoubleProposalProfileParameters(t *testing.T) {
 	require.Equal(t, float64(0), watcher["validator_count"])
 }
 
-func TestMainnetSlotsProfileParameters(t *testing.T) {
-	payload, err := resolveParameters("Q"+strings.Repeat("a", 128), StartOptions{Profile: ProfileMainnetSlots})
+func TestMainnetSlotTimeProfileParameters(t *testing.T) {
+	payload, err := resolveParameters("Q"+strings.Repeat("a", 128), StartOptions{Profile: ProfileMainnetSlotTime})
 	require.NoError(t, err)
 
 	var parameters map[string]any

@@ -51,10 +51,10 @@ const (
 	// beacon node with a slasher. Stopping the second's validator client takes
 	// just over a third of the stake offline, so finality stops.
 	ProfileInactivityLeak Profile = "inactivity-leak"
-	// ProfileMainnetSlots is the single profile with 256 validators and
+	// ProfileMainnetSlotTime is the single profile with 256 validators and
 	// mainnet's 60-second slots: a full committee of 32 in each of an epoch's
 	// 8 slots. Finality first advances about 32 minutes after genesis.
-	ProfileMainnetSlots Profile = "mainnet-slots"
+	ProfileMainnetSlotTime Profile = "mainnet-slot-time"
 )
 
 const defaultSecondsPerSlot = 5
@@ -103,7 +103,7 @@ var profileSpecs = map[Profile]profileSpec{
 		{validatorCount: 43, clExtraParams: slasherCLExtraParams},
 		{validatorCount: 22, clExtraParams: slasherCLExtraParams},
 	}},
-	ProfileMainnetSlots: {
+	ProfileMainnetSlotTime: {
 		participants:   []participantSpec{{validatorCount: 256}},
 		secondsPerSlot: 60,
 		startTimeout:   10 * time.Minute,
