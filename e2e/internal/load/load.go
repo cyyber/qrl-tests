@@ -51,15 +51,36 @@ func (block Block) Full() bool {
 	return block.GasUsed*100 >= block.GasLimit*fullPercent
 }
 
+// Shape is the transaction a fill sends.
+type Shape struct {
+	// Gas is what the transaction uses. A block counts as full by the gas
+	// its transactions use, so this has to be what they use, not more.
+	Gas uint64
+	// To is nil for a transaction that creates a contract.
+	To   *common.Address
+	Data []byte
+}
+
+// Transfers is the shape Fill sends: a plain transfer.
+var Transfers = Shape{Gas: params.TxGas, To: &recipient}
+
 // Fill sends transfers from wallet until the chain has the requested number
 // of consecutive full blocks, then waits for the transaction pool to empty. It
 // returns a summary of each full block; there can be more of them than
 // requested.
 func Fill(ctx context.Context, client *qrlclient.Client, wallet qrlwallet.Wallet, poll time.Duration, blocks int) ([]Block, error) {
+	return FillWith(ctx, client, wallet, poll, blocks, Transfers)
+}
+
+// FillWith is Fill with transactions of the given shape.
+func FillWith(ctx context.Context, client *qrlclient.Client, wallet qrlwallet.Wallet, poll time.Duration, blocks int, shape Shape) ([]Block, error) {
 	if blocks <= 0 {
 		return nil, fmt.Errorf("cannot fill %d blocks", blocks)
 	}
-	filler, err := newFiller(ctx, client, wallet, poll, blocks)
+	if shape.Gas < params.TxGas {
+		return nil, fmt.Errorf("a transaction uses at least %d gas, not %d", params.TxGas, shape.Gas)
+	}
+	filler, err := newFiller(ctx, client, wallet, poll, blocks, shape)
 	if err != nil {
 		return nil, err
 	}
@@ -81,6 +102,7 @@ type filler struct {
 	tip             *big.Int
 	feeCap          *big.Int
 	requestedBlocks int
+	shape           Shape
 	ticker          *time.Ticker
 
 	transfersPerBlock uint64
@@ -91,7 +113,7 @@ type filler struct {
 	runEnded          bool
 }
 
-func newFiller(ctx context.Context, client *qrlclient.Client, wallet qrlwallet.Wallet, poll time.Duration, blocks int) (*filler, error) {
+func newFiller(ctx context.Context, client *qrlclient.Client, wallet qrlwallet.Wallet, poll time.Duration, blocks int, shape Shape) (*filler, error) {
 	chainID, err := client.ChainID(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("read chain ID: %w", err)
@@ -110,11 +132,11 @@ func newFiller(ctx context.Context, client *qrlclient.Client, wallet qrlwallet.W
 	}
 
 	maxFullBlocks := blocks + warmUpBlocks + poolBlocksAhead
-	feeCap, err := transferFeeCap(head.BaseFee, tip, maxFullBlocks)
+	feeCap, err := transferFeeCap(head.BaseFee, tip, shape.Gas, maxFullBlocks)
 	if err != nil {
 		return nil, fmt.Errorf("cannot fill %d blocks: %w", blocks, err)
 	}
-	transfersPerBlock := head.GasLimit / params.TxGas
+	transfersPerBlock := head.GasLimit / shape.Gas
 
 	return &filler{
 		client:            client,
@@ -123,6 +145,7 @@ func newFiller(ctx context.Context, client *qrlclient.Client, wallet qrlwallet.W
 		tip:               tip,
 		feeCap:            feeCap,
 		requestedBlocks:   blocks,
+		shape:             shape,
 		ticker:            time.NewTicker(poll),
 		transfersPerBlock: transfersPerBlock,
 		transfersLeft:     uint64(maxFullBlocks) * transfersPerBlock,
@@ -261,9 +284,10 @@ func (filler *filler) sign(count uint64) ([]*types.Transaction, error) {
 				Nonce:     nonce,
 				GasTipCap: filler.tip,
 				GasFeeCap: filler.feeCap,
-				Gas:       params.TxGas,
-				To:        &recipient,
+				Gas:       filler.shape.Gas,
+				To:        filler.shape.To,
 				Value:     big.NewInt(1),
+				Data:      filler.shape.Data,
 			})
 			if err != nil {
 				return fmt.Errorf("sign transfer %d: %w", nonce, err)
@@ -278,13 +302,14 @@ func (filler *filler) sign(count uint64) ([]*types.Transaction, error) {
 	return transfers, nil
 }
 
-// transferFeeCap returns a fee cap high enough for the transfers to stay
-// payable after the given number of full blocks has raised the base fee.
-func transferFeeCap(baseFee, tip *big.Int, fullBlocks int) (*big.Int, error) {
+// transferFeeCap returns a fee cap high enough for transfers of the given gas
+// to stay payable after the given number of full blocks has raised the base
+// fee.
+func transferFeeCap(baseFee, tip *big.Int, gas uint64, fullBlocks int) (*big.Int, error) {
 	feeCap := baseFeeAfter(baseFee, fullBlocks+feeCapMarginBlocks)
 	feeCap.Add(feeCap, tip)
 	// A node refuses a transaction that could pay more than its own limit.
-	maxFee := new(big.Int).Mul(feeCap, new(big.Int).SetUint64(params.TxGas))
+	maxFee := new(big.Int).Mul(feeCap, new(big.Int).SetUint64(gas))
 	if maxFee.Cmp(defaultRPCTxFeeCap) > 0 {
 		return nil, fmt.Errorf("%w: from a base fee of %s, a transfer's fee would reach %s planck", ErrFeeCap, baseFee, maxFee)
 	}
