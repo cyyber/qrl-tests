@@ -85,5 +85,7 @@ func TestSlotDuration(t *testing.T) {
 	require.Equal(t, 5*time.Second, ProfileSingle.SlotDuration())
 	require.Equal(t, time.Minute, ProfileMainnetSlotTime.SlotDuration())
 	require.Equal(t, time.Minute, ProfileMainnetSlotTimePair.SlotDuration())
-	require.Equal(t, 5*time.Second, ProfileOperationsPair.SlotDuration())
+	require.Equal(t, 6*time.Second, ProfileOperationsPair.SlotDuration())
+	require.Equal(t, 6*time.Second, ProfileValidatorCap.SlotDuration())
+	require.Equal(t, 6*time.Second, ProfileSixSecondSlots.SlotDuration())
 }

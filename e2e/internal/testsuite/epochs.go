@@ -8,7 +8,7 @@ import (
 	gomega "github.com/onsi/gomega"
 )
 
-const maxEpochDuration = 40 * time.Second
+const maxEpochDuration = 48 * time.Second
 
 // ExpectShortEpochs fails fast on epochs longer than the suites' timeouts
 // assume.
