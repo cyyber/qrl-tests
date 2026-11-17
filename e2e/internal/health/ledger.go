@@ -127,6 +127,11 @@ func (ledger *Ledger) Problems(ctx context.Context) ([]string, error) {
 func (ledger *Ledger) problems(ctx context.Context, entry *watched) ([]string, error) {
 	inspected, err := ledger.docker.ContainerInspect(ctx, entry.Name, dockerclient.ContainerInspectOptions{})
 	if err != nil {
+		// A container that was removed is trouble to report, not a failure
+		// to read the ledger.
+		if strings.Contains(err.Error(), "No such container") {
+			return []string{"no longer exists"}, nil
+		}
 		return nil, err
 	}
 	var problems []string

@@ -412,8 +412,21 @@ func (container *Container) Logs(lines int) (string, error) {
 // Exec runs command inside the container and returns its combined output. A
 // non-zero exit code is an error that carries the output.
 func (container *Container) Exec(ctx context.Context, command ...string) (string, error) {
+	return Exec(ctx, container.client, container.id, command...)
+}
+
+// Executor runs commands in containers.
+type Executor interface {
+	ExecCreate(context.Context, string, dockerclient.ExecCreateOptions) (dockerclient.ExecCreateResult, error)
+	ExecAttach(context.Context, string, dockerclient.ExecAttachOptions) (dockerclient.ExecAttachResult, error)
+	ExecInspect(context.Context, string, dockerclient.ExecInspectOptions) (dockerclient.ExecInspectResult, error)
+}
+
+// Exec runs command inside any running container, such as a devnet node's,
+// like Container.Exec.
+func Exec(ctx context.Context, client Executor, container string, command ...string) (string, error) {
 	commandLine := strings.Join(command, " ")
-	created, err := container.client.ExecCreate(ctx, container.id, dockerclient.ExecCreateOptions{
+	created, err := client.ExecCreate(ctx, container, dockerclient.ExecCreateOptions{
 		AttachStdout: true,
 		AttachStderr: true,
 		Cmd:          command,
@@ -421,7 +434,7 @@ func (container *Container) Exec(ctx context.Context, command ...string) (string
 	if err != nil {
 		return "", fmt.Errorf("create exec %s: %w", commandLine, err)
 	}
-	attached, err := container.client.ExecAttach(ctx, created.ID, dockerclient.ExecAttachOptions{})
+	attached, err := client.ExecAttach(ctx, created.ID, dockerclient.ExecAttachOptions{})
 	if err != nil {
 		return "", fmt.Errorf("attach exec %s: %w", commandLine, err)
 	}
@@ -438,7 +451,7 @@ func (container *Container) Exec(ctx context.Context, command ...string) (string
 		}
 		return output.String(), fmt.Errorf("read exec %s: %w", commandLine, err)
 	}
-	inspected, err := container.client.ExecInspect(ctx, created.ID, dockerclient.ExecInspectOptions{})
+	inspected, err := client.ExecInspect(ctx, created.ID, dockerclient.ExecInspectOptions{})
 	if err != nil {
 		return output.String(), fmt.Errorf("inspect exec %s: %w", commandLine, err)
 	}
