@@ -300,9 +300,10 @@ func create(ctx context.Context, client Client, spec Spec, attached bool) (*Cont
 	return container, nil
 }
 
-// freeHostPorts returns count TCP ports that are free on 127.0.0.1. Docker 28
-// gives up on a port it picks itself after ten taken ports in a row, and a
-// devnet's published ports fill the start of the range it picks from.
+// freeHostPorts returns the given number of free TCP ports on 127.0.0.1.
+// Docker 28 gives up on a port it picks itself after ten taken ports in a
+// row, and a devnet's published ports fill the start of the range it picks
+// from.
 func freeHostPorts(count int) ([]string, error) {
 	// Each port stays taken until all are picked, so none is picked twice.
 	var listeners []net.Listener
