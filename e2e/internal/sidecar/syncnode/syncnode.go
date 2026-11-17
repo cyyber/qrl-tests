@@ -3,6 +3,7 @@
 package syncnode
 
 import (
+	"cmp"
 	"context"
 	"crypto/rand"
 	"errors"
@@ -21,6 +22,7 @@ import (
 	"github.com/golang-jwt/jwt/v4"
 	"github.com/theQRL/go-qrl/common/hexutil"
 	"github.com/theQRL/go-qrl/p2p"
+	"github.com/theQRL/go-qrl/p2p/qnode"
 	"github.com/theQRL/go-qrl/qrlclient"
 	"github.com/theQRL/go-qrl/rpc"
 )
@@ -47,6 +49,9 @@ const (
 	beaconStopTimeout    = 30 * time.Second
 
 	failureLogLines = 100
+
+	// gqrl's own default for --maxpeers.
+	defaultMaxPeers = 50
 )
 
 const startScript = `#!/bin/sh
@@ -58,6 +63,7 @@ exec gqrl \
   --datadir="${DATA_DIR}" \
   --networkid="${NETWORK_ID}" \
   --syncmode="${SYNC_MODE}" \
+  --maxpeers="${MAX_PEERS}" \
   --cache=512 \
   --nodiscover \
   --http \
@@ -88,6 +94,11 @@ type Config struct {
 	SyncMode     string
 	BeaconOrigin BeaconOrigin
 	Source       devnet.Participant
+	// ExecutionOnly leaves the beacon node out. The execution client then
+	// follows no chain until SyncToHead names the block to sync to.
+	ExecutionOnly bool
+	// MaxPeers is gqrl's --maxpeers, its default of 50 when zero.
+	MaxPeers int
 }
 
 // BeaconOrigin is where the sync node's beacon node starts from: genesis, or
@@ -107,6 +118,11 @@ type Node struct {
 
 	ExecutionWSURL      string
 	ExecutionMetricsURL string
+
+	engineURL    string
+	engineSecret []byte
+	// executionAlias is the execution client's name on the enclave network.
+	executionAlias string
 
 	execution   *sidecar.Container
 	consensus   *sidecar.Container
@@ -165,13 +181,13 @@ func start(ctx context.Context, config Config, client dockerClient, querySource 
 	}
 	jwtHex := []byte(hexutil.Encode(secret))
 
-	node := &Node{sourceQnode: endpoints.qnode}
 	executionAlias := "qrl-tests-" + config.Name + "-execution"
+	node := &Node{sourceQnode: endpoints.qnode, executionAlias: executionAlias}
 	node.execution, err = sidecar.Start(ctx, client, sidecar.Spec{
 		Name:       config.Name + " execution client",
 		Image:      config.ExecutionImage,
 		Entrypoint: []string{"/bin/sh", startScriptPath},
-		Env:        executionEnv(endpoints.networkID, config.SyncMode),
+		Env:        executionEnv(endpoints.networkID, config.SyncMode, cmp.Or(config.MaxPeers, defaultMaxPeers)),
 		Files: []sidecar.File{
 			{Name: startScriptPath, Body: []byte(startScript), Mode: 0o755},
 			{Name: genesisPath, Body: files.genesis},
@@ -189,6 +205,9 @@ func start(ctx context.Context, config Config, client dockerClient, querySource 
 	}
 	if err := node.setExecutionEndpoints(ctx, secret); err != nil {
 		return nil, errors.Join(err, node.closeContainers())
+	}
+	if config.ExecutionOnly {
+		return node, nil
 	}
 
 	node.consensus, err = sidecar.Start(ctx, client, sidecar.Spec{
@@ -213,11 +232,17 @@ func start(ctx context.Context, config Config, client dockerClient, querySource 
 }
 
 func validate(config Config) error {
-	if config.ExecutionImage == "" || config.ConsensusImage == "" {
-		return errors.New("sync node needs an execution and a consensus image")
+	if config.ExecutionImage == "" {
+		return errors.New("sync node needs an execution image")
+	}
+	if config.ConsensusImage == "" && !config.ExecutionOnly {
+		return errors.New("sync node needs a consensus image")
 	}
 	if config.SyncMode != "snap" && config.SyncMode != "full" {
 		return fmt.Errorf("sync mode %q is not snap or full", config.SyncMode)
+	}
+	if config.MaxPeers < 0 {
+		return fmt.Errorf("max peers %d is negative", config.MaxPeers)
 	}
 	if config.BeaconOrigin != Genesis && config.BeaconOrigin != Checkpoint {
 		return fmt.Errorf("beacon origin %q is not genesis or checkpoint", config.BeaconOrigin)
@@ -228,8 +253,9 @@ func validate(config Config) error {
 	return nil
 }
 
-func executionEnv(networkID, syncMode string) []string {
+func executionEnv(networkID, syncMode string, maxPeers int) []string {
 	return []string{
+		"MAX_PEERS=" + strconv.Itoa(maxPeers),
 		"DATA_DIR=" + executionDataDir,
 		"GENESIS_FILE=" + genesisPath,
 		"JWT_FILE=" + jwtPath,
@@ -333,17 +359,22 @@ func querySourceEndpoints(ctx context.Context, participant devnet.Participant) (
 	}, nil
 }
 
-// privateQnode points a qnode URL at privateIP, keeping its node ID and
-// listening port and dropping the discovery port the node does not use.
-func privateQnode(qnode, privateIP string) (string, error) {
-	parsed, err := url.Parse(qnode)
-	if err != nil || parsed.Scheme != "qnode" || parsed.User == nil || parsed.Port() == "" {
-		return "", fmt.Errorf("source qnode %q is not a qnode://<id>@<ip>:<port> URL", qnode)
-	}
+// privateQnode points a qnode URL at privateIP.
+func privateQnode(rawURL, privateIP string) (string, error) {
 	if net.ParseIP(privateIP) == nil {
 		return "", fmt.Errorf("source execution private IP %q is invalid", privateIP)
 	}
-	parsed.Host = net.JoinHostPort(privateIP, parsed.Port())
+	return qnodeAt(rawURL, privateIP)
+}
+
+// qnodeAt points a qnode URL at host, keeping its node ID and listening port
+// and dropping the discovery port the node does not use.
+func qnodeAt(rawURL, host string) (string, error) {
+	parsed, err := url.Parse(rawURL)
+	if err != nil || parsed.Scheme != "qnode" || parsed.User == nil || parsed.Port() == "" {
+		return "", fmt.Errorf("qnode %q is not a qnode://<id>@<ip>:<port> URL", rawURL)
+	}
+	parsed.Host = net.JoinHostPort(host, parsed.Port())
 	parsed.RawQuery = ""
 	return parsed.String(), nil
 }
@@ -382,7 +413,8 @@ func (node *Node) setExecutionEndpoints(ctx context.Context, jwtSecret []byte) e
 		return err
 	}
 
-	node.Engine, err = rpc.DialOptions(ctx, "http://"+engine, rpc.WithHTTPAuth(engineAuth(jwtSecret)))
+	node.engineURL, node.engineSecret = "http://"+engine, jwtSecret
+	node.Engine, err = rpc.DialOptions(ctx, node.engineURL, rpc.WithHTTPAuth(engineAuth(jwtSecret, 0)))
 	if err != nil {
 		return fmt.Errorf("dial the engine API: %w", err)
 	}
@@ -391,11 +423,18 @@ func (node *Node) setExecutionEndpoints(ctx context.Context, jwtSecret []byte) e
 	return nil
 }
 
+// EngineWithClock returns a client of the engine API whose tokens are issued
+// by a clock that is ahead of this one by skew, or behind it for a negative
+// skew. The caller closes it.
+func (node *Node) EngineWithClock(ctx context.Context, skew time.Duration) (*rpc.Client, error) {
+	return rpc.DialOptions(ctx, node.engineURL, rpc.WithHTTPAuth(engineAuth(node.engineSecret, skew)))
+}
+
 // engineAuth signs a fresh token for each engine API request; the execution
 // client accepts a token for a minute after it was issued.
-func engineAuth(secret []byte) rpc.HTTPAuth {
+func engineAuth(secret []byte, skew time.Duration) rpc.HTTPAuth {
 	return func(header http.Header) error {
-		token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{"iat": jwt.NewNumericDate(time.Now())})
+		token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{"iat": jwt.NewNumericDate(time.Now().Add(skew))})
 		signed, err := token.SignedString(secret)
 		if err != nil {
 			return fmt.Errorf("sign engine API token: %w", err)
@@ -464,8 +503,10 @@ func poll(ctx context.Context, container *sidecar.Container, port uint16, ready 
 }
 
 func (node *Node) Stop(ctx context.Context) error {
-	if err := node.consensus.Stop(ctx, beaconStopTimeout); err != nil {
-		return err
+	if node.consensus != nil {
+		if err := node.consensus.Stop(ctx, beaconStopTimeout); err != nil {
+			return err
+		}
 	}
 	return node.execution.Stop(ctx, executionStopTimeout)
 }
@@ -477,10 +518,61 @@ func (node *Node) Resume(ctx context.Context) error {
 	if err := node.waitForExecution(ctx); err != nil {
 		return err
 	}
+	if node.consensus == nil {
+		return nil
+	}
 	if err := node.consensus.Start(ctx); err != nil {
 		return err
 	}
 	return node.waitForBeacon(ctx)
+}
+
+// Peer returns the URL that a node on the enclave network adds the execution
+// client by, which names it by its alias there, and its node ID.
+func (node *Node) Peer(ctx context.Context) (string, qnode.ID, error) {
+	var info p2p.NodeInfo
+	if err := node.Execution.Client().CallContext(ctx, &info, "admin_nodeInfo"); err != nil {
+		return "", qnode.ID{}, fmt.Errorf("read execution node info: %w", err)
+	}
+	address, err := qnodeAt(info.Qnode, node.executionAlias)
+	if err != nil {
+		return "", qnode.ID{}, err
+	}
+	id, err := qnode.ParseID(info.ID)
+	if err != nil {
+		return "", qnode.ID{}, fmt.Errorf("execution node ID: %w", err)
+	}
+	return address, id, nil
+}
+
+// AddPeer has the execution client dial the node at peerURL, and dial it again
+// whenever they disconnect.
+func (node *Node) AddPeer(ctx context.Context, peerURL string) error {
+	var added bool
+	if err := node.Execution.Client().CallContext(ctx, &added, "admin_addPeer", peerURL); err != nil {
+		return fmt.Errorf("add peer %s: %w", peerURL, err)
+	}
+	if !added {
+		return fmt.Errorf("execution client did not add peer %s", peerURL)
+	}
+	return nil
+}
+
+// Peers returns the IDs of the execution client's peers.
+func (node *Node) Peers(ctx context.Context) ([]qnode.ID, error) {
+	var peers []p2p.PeerInfo
+	if err := node.Execution.Client().CallContext(ctx, &peers, "admin_peers"); err != nil {
+		return nil, fmt.Errorf("read execution peers: %w", err)
+	}
+	ids := make([]qnode.ID, len(peers))
+	for index, peer := range peers {
+		id, err := qnode.ParseID(peer.ID)
+		if err != nil {
+			return nil, fmt.Errorf("peer ID: %w", err)
+		}
+		ids[index] = id
+	}
+	return ids, nil
 }
 
 // ExecutionLog returns the execution client's whole output.
@@ -490,6 +582,9 @@ func (node *Node) ExecutionLog() (string, error) {
 
 // BeaconLog returns the beacon node's whole output.
 func (node *Node) BeaconLog() (string, error) {
+	if node.consensus == nil {
+		return "", nil
+	}
 	return node.consensus.Logs(0)
 }
 
@@ -534,4 +629,13 @@ func (node *Node) closeContainers() error {
 		node.Engine.Close()
 	}
 	return errors.Join(node.consensus.Close(), node.execution.Close())
+}
+
+// Containers returns the Docker IDs of the node's containers.
+func (node *Node) Containers() []string {
+	ids := []string{node.execution.ID()}
+	if node.consensus != nil {
+		ids = append(ids, node.consensus.ID())
+	}
+	return ids
 }

@@ -21,6 +21,8 @@ import (
 	"github.com/moby/moby/api/types/network"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/theQRL/go-qrl/p2p/qnode"
+	"github.com/theQRL/go-qrl/qrlclient"
 )
 
 var _ dockerClient = (*sidecartest.Docker)(nil)
@@ -96,7 +98,7 @@ func newDocker(t *testing.T) (docker *sidecartest.Docker, addedPeers *[]string) 
 
 func TestStartScriptVariablesAreSet(t *testing.T) {
 	set := map[string]bool{}
-	for _, variable := range executionEnv("1337", "snap") {
+	for _, variable := range executionEnv("1337", "snap", 50) {
 		name, _, _ := strings.Cut(variable, "=")
 		set[name] = true
 	}
@@ -126,6 +128,7 @@ func TestStartLaunchesBothClients(t *testing.T) {
 	require.Equal(t, "gqrl:test", execution.Config.Image)
 	require.Contains(t, execution.Config.Env, "NETWORK_ID=1337")
 	require.Contains(t, execution.Config.Env, "SYNC_MODE=snap")
+	require.Contains(t, execution.Config.Env, "MAX_PEERS=50", "gqrl's default")
 	require.Equal(t, containertypes.NetworkMode("kt-devnet"), execution.HostConfig.NetworkMode)
 	require.Equal(t, []string{"qrl-tests-sync-node-execution"},
 		execution.NetworkingConfig.EndpointsConfig["kt-devnet"].Aliases)
@@ -163,6 +166,33 @@ func TestStartLaunchesBothClients(t *testing.T) {
 	require.Len(t, docker.Removed, 2)
 }
 
+func TestStartExecutionOnly(t *testing.T) {
+	docker, addedPeers := newDocker(t)
+	config := testConfig()
+	config.ExecutionOnly = true
+	config.ConsensusImage = ""
+	config.MaxPeers = 2
+
+	node, err := start(t.Context(), config, docker, testSourceEndpoints)
+	require.NoError(t, err)
+	require.Len(t, docker.Created, 1, "only the execution client")
+	require.Contains(t, docker.Created[0].Config.Env, "MAX_PEERS=2")
+	require.NotNil(t, node.Execution)
+	require.NotNil(t, node.Engine)
+	require.Nil(t, node.Beacon)
+
+	require.NoError(t, node.Stop(t.Context()))
+	require.Len(t, docker.Stopped, 1)
+	require.NoError(t, node.Resume(t.Context()))
+	require.Equal(t, []string{sourceQnode, sourceQnode}, *addedPeers)
+	log, err := node.BeaconLog()
+	require.NoError(t, err)
+	require.Empty(t, log)
+
+	require.NoError(t, node.Close())
+	require.Len(t, docker.Removed, 1)
+}
+
 func TestStartFailures(t *testing.T) {
 	for _, test := range []struct {
 		name    string
@@ -172,9 +202,14 @@ func TestStartFailures(t *testing.T) {
 		created int
 	}{
 		{
+			name:    "no execution image",
+			edit:    func(config *Config, _ *sidecartest.Docker) { config.ExecutionImage = "" },
+			wantErr: "sync node needs an execution image",
+		},
+		{
 			name:    "no consensus image",
 			edit:    func(config *Config, _ *sidecartest.Docker) { config.ConsensusImage = "" },
-			wantErr: "sync node needs an execution and a consensus image",
+			wantErr: "sync node needs a consensus image",
 		},
 		{
 			name:    "bad sync mode",
@@ -185,6 +220,11 @@ func TestStartFailures(t *testing.T) {
 			name:    "bad beacon origin",
 			edit:    func(config *Config, _ *sidecartest.Docker) { config.BeaconOrigin = "backfill" },
 			wantErr: `beacon origin "backfill" is not genesis or checkpoint`,
+		},
+		{
+			name:    "negative max peers",
+			edit:    func(config *Config, _ *sidecartest.Docker) { config.MaxPeers = -1 },
+			wantErr: "max peers -1 is negative",
 		},
 		{
 			name:    "name is not a DNS label",
@@ -233,12 +273,15 @@ func TestStartFailures(t *testing.T) {
 }
 
 func TestPrivateQnode(t *testing.T) {
-	qnode, err := privateQnode("qnode://abcd@127.0.0.1:30303?discport=30301", "172.16.0.11")
+	private, err := privateQnode("qnode://abcd@127.0.0.1:30303?discport=30301", "172.16.0.11")
 	require.NoError(t, err)
-	require.Equal(t, "qnode://abcd@172.16.0.11:30303", qnode)
+	require.Equal(t, "qnode://abcd@172.16.0.11:30303", private)
 
 	_, err = privateQnode("enode://abcd@127.0.0.1:30303", "172.16.0.11")
 	require.ErrorContains(t, err, "is not a qnode://<id>@<ip>:<port> URL")
+	aliased, err := qnodeAt("qnode://abcd@127.0.0.1:30303?discport=30301", "qrl-tests-capped-execution")
+	require.NoError(t, err)
+	require.Equal(t, "qnode://abcd@qrl-tests-capped-execution:30303", aliased)
 	_, err = privateQnode("qnode://abcd@127.0.0.1", "172.16.0.11")
 	require.ErrorContains(t, err, "is not a qnode://<id>@<ip>:<port> URL")
 	_, err = privateQnode("qnode://abcd@127.0.0.1:30303", "")
@@ -265,7 +308,7 @@ func TestPrivateBeaconPeer(t *testing.T) {
 func TestEngineAuth(t *testing.T) {
 	secret := []byte("0123456789abcdef0123456789abcdef")
 	header := http.Header{}
-	require.NoError(t, engineAuth(secret)(header))
+	require.NoError(t, engineAuth(secret, 0)(header))
 
 	signed, found := strings.CutPrefix(header.Get("Authorization"), "Bearer ")
 	require.True(t, found)
@@ -277,4 +320,50 @@ func TestEngineAuth(t *testing.T) {
 
 	_, err = jwt.Parse(signed, func(*jwt.Token) (any, error) { return []byte("another secret"), nil })
 	require.ErrorIs(t, err, jwt.ErrSignatureInvalid)
+	// A clock that is behind issues its tokens in the past.
+	require.NoError(t, engineAuth(secret, -70*time.Second)(header))
+	signed, _ = strings.CutPrefix(header.Get("Authorization"), "Bearer ")
+	_, err = jwt.ParseWithClaims(signed, &claims, func(*jwt.Token) (any, error) { return secret, nil })
+	require.NoError(t, err)
+	require.WithinDuration(t, time.Now().Add(-70*time.Second), claims.IssuedAt.Time, 5*time.Second)
+}
+
+func TestPeers(t *testing.T) {
+	const id = "aabbccddeeff00112233445566778899aabbccddeeff00112233445566778899"
+	var added []string
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		var call struct {
+			ID     json.RawMessage `json:"id"`
+			Method string          `json:"method"`
+			Params []string        `json:"params"`
+		}
+		assert.NoError(t, json.NewDecoder(request.Body).Decode(&call))
+		results := map[string]string{
+			"admin_nodeInfo": `{"id":"` + id + `","qnode":"qnode://abcd@127.0.0.1:30303?discport=30301"}`,
+			"admin_addPeer":  "true",
+			"admin_peers":    `[{"id":"` + id + `"}]`,
+		}
+		if call.Method == "admin_addPeer" {
+			added = append(added, call.Params...)
+		}
+		writer.Header().Set("Content-Type", "application/json")
+		_, _ = writer.Write([]byte(`{"jsonrpc":"2.0","id":` + string(call.ID) + `,"result":` + results[call.Method] + `}`))
+	}))
+	defer server.Close()
+	client, err := qrlclient.DialContext(t.Context(), server.URL)
+	require.NoError(t, err)
+	node := &Node{Execution: client, executionAlias: "qrl-tests-capped-execution"}
+	defer client.Close()
+
+	address, nodeID, err := node.Peer(t.Context())
+	require.NoError(t, err)
+	require.Equal(t, "qnode://abcd@qrl-tests-capped-execution:30303", address)
+	require.Equal(t, qnode.HexID(id), nodeID)
+
+	require.NoError(t, node.AddPeer(t.Context(), "qnode://ef01@qrl-tests-other-execution:30303"))
+	require.Equal(t, []string{"qnode://ef01@qrl-tests-other-execution:30303"}, added)
+
+	peers, err := node.Peers(t.Context())
+	require.NoError(t, err)
+	require.Equal(t, []qnode.ID{qnode.HexID(id)}, peers)
 }
