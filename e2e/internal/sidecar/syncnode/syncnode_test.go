@@ -144,8 +144,7 @@ func TestStartLaunchesBothClients(t *testing.T) {
 	require.NotNil(t, node.Beacon)
 	require.NotNil(t, node.Engine)
 
-	// With HostPort cleared, the fake Docker reports the host port each
-	// container port was bound to, so a URL built from the wrong port fails.
+	// Clearing HostPort makes the fake Docker report each port's own binding.
 	shared := docker.HostPort
 	docker.HostPort = ""
 	node.Engine.Close()
