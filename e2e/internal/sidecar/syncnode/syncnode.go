@@ -103,15 +103,11 @@ const (
 type Node struct {
 	Execution *qrlclient.Client
 	Beacon    *beacon.Client
+	Engine    *rpc.Client
 
-	// ExecutionWS is the execution client's WebSocket URL, for subscriptions.
-	ExecutionWS string
-	// ExecutionMetrics is the URL of the execution client's metrics, in the
-	// Prometheus text format.
+	// URLs of the execution client's WebSocket API and Prometheus metrics.
+	ExecutionWS      string
 	ExecutionMetrics string
-	// Engine is the execution client's engine API, which the node's beacon
-	// node drives.
-	Engine *rpc.Client
 
 	execution   *sidecar.Container
 	consensus   *sidecar.Container
