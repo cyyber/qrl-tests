@@ -342,9 +342,9 @@ func (container *Container) Close() error {
 	return nil
 }
 
-// PublishedAddress returns the host address, as host:port, that port is
-// published at; port is one of the Spec's Ports. It returns an *ExitError
-// once the container has stopped.
+// PublishedAddress returns the host:port on this machine that reaches the
+// given container port, which must be one of the Spec's Ports. It returns an
+// *ExitError once the container has stopped.
 func (container *Container) PublishedAddress(ctx context.Context, port uint16) (string, error) {
 	published, _ := network.PortFrom(port, network.TCP)
 	if _, listed := container.ports[published]; !listed {
