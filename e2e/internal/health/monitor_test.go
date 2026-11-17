@@ -59,6 +59,13 @@ func TestMemoryUsage(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, uint64(123456789), usage)
 
+	usage, err = MemoryUsage(t.Context(), fakeStats(`{"memory_stats":{"usage":1000,"stats":{"inactive_file":300}}}`), "node")
+	require.NoError(t, err)
+	require.Equal(t, uint64(700), usage, "cgroup v2, without inactive files")
+	usage, err = MemoryUsage(t.Context(), fakeStats(`{"memory_stats":{"usage":1000,"stats":{"total_inactive_file":400}}}`), "node")
+	require.NoError(t, err)
+	require.Equal(t, uint64(600), usage, "cgroup v1, without inactive files")
+
 	_, err = MemoryUsage(t.Context(), fakeStats(`{}`), "node")
 	require.ErrorContains(t, err, "no memory usage")
 }

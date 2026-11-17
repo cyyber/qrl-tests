@@ -191,7 +191,9 @@ type StatsReader interface {
 	ContainerStats(context.Context, string, dockerclient.ContainerStatsOptions) (dockerclient.ContainerStatsResult, error)
 }
 
-// MemoryUsage returns the bytes of memory a container uses.
+// MemoryUsage returns the bytes of memory a container uses, as docker stats
+// shows them: without the page cache of files it has not touched lately, which
+// grows with the files it writes and the kernel can take back.
 func MemoryUsage(ctx context.Context, docker StatsReader, container string) (uint64, error) {
 	result, err := docker.ContainerStats(ctx, container, dockerclient.ContainerStatsOptions{})
 	if err != nil {
@@ -201,6 +203,11 @@ func MemoryUsage(ctx context.Context, docker StatsReader, container string) (uin
 	var stats struct {
 		Memory struct {
 			Usage uint64 `json:"usage"`
+			Stats struct {
+				// cgroup v2, and cgroup v1.
+				InactiveFile      uint64 `json:"inactive_file"`
+				TotalInactiveFile uint64 `json:"total_inactive_file"`
+			} `json:"stats"`
 		} `json:"memory_stats"`
 	}
 	if err := json.NewDecoder(result.Body).Decode(&stats); err != nil {
@@ -209,5 +216,6 @@ func MemoryUsage(ctx context.Context, docker StatsReader, container string) (uin
 	if stats.Memory.Usage == 0 {
 		return 0, errors.New("the stats of " + container + " have no memory usage")
 	}
-	return stats.Memory.Usage, nil
+	inactive := max(stats.Memory.Stats.InactiveFile, stats.Memory.Stats.TotalInactiveFile)
+	return stats.Memory.Usage - min(inactive, stats.Memory.Usage), nil
 }
