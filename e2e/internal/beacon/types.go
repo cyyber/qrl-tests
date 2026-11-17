@@ -1,6 +1,9 @@
 package beacon
 
-import "math/bits"
+import (
+	"encoding/json"
+	"math/bits"
+)
 
 // FarFutureEpoch is the sentinel the beacon API reports for epochs that have
 // not been scheduled, such as the exit epoch of an active validator.
@@ -75,20 +78,48 @@ type SignedVoluntaryExit struct {
 }
 
 type Withdrawal struct {
+	// Index numbers the chain's withdrawals, one after another.
+	Index          uint64 `json:"index,string"`
 	ValidatorIndex uint64 `json:"validator_index,string"`
 	Address        string `json:"address"`
 	Amount         uint64 `json:"amount,string"`
+}
+
+// ExecutionData is a proposer's vote for a snapshot of the execution chain's
+// deposits. Deposits count once a voting period's majority votes for one.
+type ExecutionData struct {
+	DepositRoot  string `json:"deposit_root"`
+	DepositCount uint64 `json:"deposit_count,string"`
+	BlockHash    string `json:"block_hash"`
 }
 
 type BlockOperations struct {
 	Slot                 uint64
 	ProposerIndex        uint64
 	ExecutionBlockNumber uint64
-	VoluntaryExits       []uint64
-	Withdrawals          []Withdrawal
-	Attestations         []Attestation
-	ProposerSlashings    []ProposerSlashing
-	AttesterSlashings    []AttesterSlashing
+	ExecutionGasUsed     uint64
+	ExecutionGasLimit    uint64
+	ExecutionData        ExecutionData
+	// SyncCommitteeBits mark the sync committee members whose signatures the
+	// block's sync aggregate carries.
+	SyncCommitteeBits []byte
+	// Deposits is how many deposits the block processes.
+	Deposits          int
+	VoluntaryExits    []uint64
+	Withdrawals       []Withdrawal
+	Attestations      []Attestation
+	ProposerSlashings []ProposerSlashing
+	AttesterSlashings []AttesterSlashing
+}
+
+// SyncParticipants is how many sync committee members the block's sync
+// aggregate carries a signature of.
+func (operations BlockOperations) SyncParticipants() int {
+	var count int
+	for _, octet := range operations.SyncCommitteeBits {
+		count += bits.OnesCount8(octet)
+	}
+	return count
 }
 
 // AttestationData is what an attestation votes for.
@@ -111,6 +142,17 @@ type Attestation struct {
 func (attestation Attestation) Includes(position uint64) bool {
 	aggregation := attestation.AggregationBits
 	return position < bitlistLen(aggregation) && aggregation[position/8]&(1<<(position%8)) != 0
+}
+
+// Voters is how many committee members cast the attestation.
+func (attestation Attestation) Voters() int {
+	var count int
+	for position := range bitlistLen(attestation.AggregationBits) {
+		if attestation.Includes(position) {
+			count++
+		}
+	}
+	return count
 }
 
 // bitlistLen returns the length of an SSZ bitlist: the index of its highest
@@ -144,12 +186,47 @@ type AttesterSlashing struct {
 	Attestation2 IndexedAttestation
 }
 
+// SignedIndexedAttestation is an indexed attestation as the beacon API takes
+// it: with each attester's signature, in attesting index order.
+type SignedIndexedAttestation struct {
+	AttestingIndices []uint64
+	Data             AttestationData
+	Signatures       []string
+}
+
+func (attestation SignedIndexedAttestation) MarshalJSON() ([]byte, error) {
+	return json.Marshal(struct {
+		AttestingIndices []string        `json:"attesting_indices"`
+		Data             AttestationData `json:"data"`
+		Signatures       []string        `json:"signatures"`
+	}{formatIndices(attestation.AttestingIndices), attestation.Data, attestation.Signatures})
+}
+
+// SignedAttesterSlashing is the evidence of a double or surround vote as the
+// beacon API takes it.
+type SignedAttesterSlashing struct {
+	Attestation1 SignedIndexedAttestation `json:"attestation_1"`
+	Attestation2 SignedIndexedAttestation `json:"attestation_2"`
+}
+
 type BeaconBlockHeaderMessage struct {
 	Slot          uint64 `json:"slot,string"`
 	ProposerIndex uint64 `json:"proposer_index,string"`
 	ParentRoot    string `json:"parent_root"`
 	StateRoot     string `json:"state_root"`
 	BodyRoot      string `json:"body_root"`
+}
+
+type SignedBeaconBlockHeader struct {
+	Message   BeaconBlockHeaderMessage `json:"message"`
+	Signature string                   `json:"signature"`
+}
+
+// SignedProposerSlashing is the evidence of a double proposal, as the beacon
+// API takes it: two headers of one slot that the proposer signed.
+type SignedProposerSlashing struct {
+	SignedHeader1 SignedBeaconBlockHeader `json:"signed_header_1"`
+	SignedHeader2 SignedBeaconBlockHeader `json:"signed_header_2"`
 }
 
 // ProposerSlashing is the evidence of a double proposal: two headers of one

@@ -3,6 +3,7 @@ package beacon
 import (
 	"context"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"io"
 	"maps"
@@ -113,6 +114,26 @@ func (client *Client) EncodedBlockSize(ctx context.Context, blockID string) (uin
 	return uint64(size), nil
 }
 
+// EncodedStateSize returns the length of a beacon state's SSZ encoding, which
+// is what a node that starts from a checkpoint downloads. stateID is "head",
+// "finalized" or a slot.
+func (client *Client) EncodedStateSize(ctx context.Context, stateID string) (uint64, error) {
+	path := "/qrl/v1/debug/beacon/states/" + url.PathEscape(stateID)
+	response, err := client.send(ctx, http.MethodGet, path, http.Header{"Accept": {sszMediaType}}, nil)
+	if err != nil {
+		return 0, err
+	}
+	defer response.Body.Close()
+	if contentType := response.Header.Get("Content-Type"); contentType != sszMediaType {
+		return 0, fmt.Errorf("GET %s returned %q, not SSZ", path, contentType)
+	}
+	size, err := io.Copy(io.Discard, response.Body)
+	if err != nil {
+		return 0, fmt.Errorf("read GET %s: %w", path, err)
+	}
+	return uint64(size), nil
+}
+
 // FinalityCheckpoints returns the justified and finalized checkpoints of the
 // head state.
 func (client *Client) FinalityCheckpoints(ctx context.Context) (FinalityCheckpoints, error) {
@@ -208,11 +229,7 @@ func (client *Client) ValidatorsAt(ctx context.Context, stateID string, indices 
 // included: the total that state's epoch processing uses for base rewards.
 // It reads every active validator, which suits a devnet, not a large network.
 func (client *Client) TotalActiveBalance(ctx context.Context, stateID string) (uint64, error) {
-	records, err := getData[[]validatorWire](
-		ctx, client,
-		"/qrl/v1/beacon/states/"+url.PathEscape(stateID)+
-			"/validators?status=active_ongoing&status=active_exiting&status=active_slashed",
-	)
+	records, err := client.activeValidators(ctx, stateID)
 	if err != nil {
 		return 0, err
 	}
@@ -221,6 +238,22 @@ func (client *Client) TotalActiveBalance(ctx context.Context, stateID string) (u
 		total += record.Validator.EffectiveBalance
 	}
 	return total, nil
+}
+
+// ActiveValidatorCount returns how many validators the state at stateID holds
+// as active in its current epoch, slashed ones included. It reads every active
+// validator, which suits a devnet, not a large network.
+func (client *Client) ActiveValidatorCount(ctx context.Context, stateID string) (int, error) {
+	records, err := client.activeValidators(ctx, stateID)
+	return len(records), err
+}
+
+func (client *Client) activeValidators(ctx context.Context, stateID string) ([]validatorWire, error) {
+	return getData[[]validatorWire](
+		ctx, client,
+		"/qrl/v1/beacon/states/"+url.PathEscape(stateID)+
+			"/validators?status=active_ongoing&status=active_exiting&status=active_slashed",
+	)
 }
 
 // InactivityScores returns every validator's inactivity score in the state at
@@ -267,8 +300,15 @@ type blockWire struct {
 			ProposerSlashings []proposerSlashingWire `json:"proposer_slashings"`
 			AttesterSlashings []attesterSlashingWire `json:"attester_slashings"`
 			Attestations      []attestationWire      `json:"attestations"`
-			Payload           struct {
+			Deposits          []json.RawMessage      `json:"deposits"`
+			ExecutionData     ExecutionData          `json:"execution_data"`
+			SyncAggregate     struct {
+				Bits string `json:"sync_committee_bits"`
+			} `json:"sync_aggregate"`
+			Payload struct {
 				BlockNumber uint64       `json:"block_number,string"`
+				GasUsed     uint64       `json:"gas_used,string"`
+				GasLimit    uint64       `json:"gas_limit,string"`
 				Withdrawals []Withdrawal `json:"withdrawals"`
 			} `json:"execution_payload"`
 		} `json:"body"`
@@ -311,9 +351,9 @@ func (wire indexedAttestationWire) indexed() (IndexedAttestation, error) {
 	return attestation, nil
 }
 
-// BlockOperations returns the proposer, exits, withdrawals, attestations and
-// slashings of one block. A slot without a block is reported through
-// IsNotFound.
+// BlockOperations returns the proposer, exits, withdrawals, attestations,
+// slashings, sync aggregate and execution data vote of one block. A slot
+// without a block is reported through IsNotFound.
 func (client *Client) BlockOperations(ctx context.Context, blockID string) (BlockOperations, error) {
 	block, err := getData[blockWire](ctx, client, "/qrl/v1/beacon/blocks/"+url.PathEscape(blockID))
 	if err != nil {
@@ -324,7 +364,17 @@ func (client *Client) BlockOperations(ctx context.Context, blockID string) (Bloc
 		Slot:                 block.Message.Slot,
 		ProposerIndex:        block.Message.ProposerIndex,
 		ExecutionBlockNumber: block.Message.Body.Payload.BlockNumber,
+		ExecutionGasUsed:     block.Message.Body.Payload.GasUsed,
+		ExecutionGasLimit:    block.Message.Body.Payload.GasLimit,
+		ExecutionData:        block.Message.Body.ExecutionData,
+		Deposits:             len(block.Message.Body.Deposits),
 		Withdrawals:          block.Message.Body.Payload.Withdrawals,
+	}
+	if raw := block.Message.Body.SyncAggregate.Bits; raw != "" {
+		operations.SyncCommitteeBits, err = hex.DecodeString(strings.TrimPrefix(raw, "0x"))
+		if err != nil {
+			return BlockOperations{}, fmt.Errorf("sync committee bits %q: %w", raw, err)
+		}
 	}
 	for _, exit := range block.Message.Body.VoluntaryExits {
 		operations.VoluntaryExits = append(operations.VoluntaryExits, exit.Message.ValidatorIndex)
@@ -408,6 +458,40 @@ func (client *Client) ProposerDuties(ctx context.Context, epoch uint64) ([]Propo
 
 func (client *Client) SubmitVoluntaryExit(ctx context.Context, exit SignedVoluntaryExit) error {
 	return client.postJSON(ctx, "/qrl/v1/beacon/pool/voluntary_exits", exit, nil)
+}
+
+// SubmitProposerSlashing adds the evidence of a double proposal to the node's
+// pool, for a later block to include.
+func (client *Client) SubmitProposerSlashing(ctx context.Context, slashing SignedProposerSlashing) error {
+	return client.postJSON(ctx, "/qrl/v1/beacon/pool/proposer_slashings", slashing, nil)
+}
+
+// SubmitAttesterSlashing adds the evidence of a double or surround vote to the
+// node's pool, for a later block to include.
+func (client *Client) SubmitAttesterSlashing(ctx context.Context, slashing SignedAttesterSlashing) error {
+	return client.postJSON(ctx, "/qrl/v1/beacon/pool/attester_slashings", slashing, nil)
+}
+
+// SyncCommittee returns the validators of the sync committee for epoch, as the
+// state at stateID has it, in the order of the sync aggregate's bits. A
+// validator may hold more than one place.
+func (client *Client) SyncCommittee(ctx context.Context, stateID string, epoch uint64) ([]uint64, error) {
+	committee, err := getData[struct {
+		Validators []string `json:"validators"`
+	}](ctx, client,
+		"/qrl/v1/beacon/states/"+url.PathEscape(stateID)+"/sync_committees?epoch="+strconv.FormatUint(epoch, 10),
+	)
+	if err != nil {
+		return nil, err
+	}
+	validators := make([]uint64, len(committee.Validators))
+	for position, raw := range committee.Validators {
+		validators[position], err = strconv.ParseUint(raw, 10, 64)
+		if err != nil {
+			return nil, fmt.Errorf("sync committee validator %q: %w", raw, err)
+		}
+	}
+	return validators, nil
 }
 
 // AttestationRewards returns the given validators' attestation rewards for a

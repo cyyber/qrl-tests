@@ -131,6 +131,9 @@ func TestClientDecodesQrysmResponses(t *testing.T) {
 		EffectiveBalance: 39998000000000, ExitEpoch: FarFutureEpoch, WithdrawableEpoch: FarFutureEpoch,
 	}, validator)
 
+	active, err := client.ActiveValidatorCount(t.Context(), "95")
+	require.NoError(t, err)
+	require.Equal(t, 2, active)
 	totalActive, err := client.TotalActiveBalance(t.Context(), "95")
 	require.NoError(t, err)
 	require.Equal(t, uint64(79998000000000), totalActive)
@@ -470,4 +473,24 @@ func TestEncodedBlockSize(t *testing.T) {
 
 	_, err = client.EncodedBlockSize(t.Context(), "9")
 	assert.ErrorContains(t, err, "not SSZ")
+}
+
+func TestEncodedStateSize(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.URL.Path != "/qrl/v1/debug/beacon/states/head" || request.Header.Get("Accept") != "application/octet-stream" {
+			http.NotFound(writer, request)
+			return
+		}
+		writer.Header().Set("Content-Type", "application/octet-stream")
+		_, _ = writer.Write(make([]byte, 4321))
+	}))
+	defer server.Close()
+	client, err := New(server.URL)
+	require.NoError(t, err)
+
+	size, err := client.EncodedStateSize(t.Context(), "head")
+	require.NoError(t, err)
+	assert.Equal(t, uint64(4321), size)
+	_, err = client.EncodedStateSize(t.Context(), "7")
+	assert.True(t, IsNotFound(err))
 }
