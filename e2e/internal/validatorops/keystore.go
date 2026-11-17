@@ -10,6 +10,9 @@ import (
 
 	"github.com/google/uuid"
 	"golang.org/x/crypto/argon2"
+
+	walletcommon "github.com/theQRL/go-qrllib/wallet/common"
+	walletmldsa "github.com/theQRL/go-qrllib/wallet/ml_dsa_87"
 )
 
 const (
@@ -160,4 +163,26 @@ func argon2Key(password, salt []byte, params keystoreKDFParams) ([]byte, error) 
 		return nil, fmt.Errorf("invalid keystore KDF params")
 	}
 	return argon2.IDKey(password, salt, uint32(params.T), uint32(params.M), uint8(params.P), uint32(params.DKLen)), nil
+}
+
+// KeyFromKeystore decrypts a keystore in the Qrysm local-wallet format, such
+// as a genesis validator's.
+func KeyFromKeystore(keystore []byte, password string) (*Key, error) {
+	var file keystoreFile
+	if err := json.Unmarshal(keystore, &file); err != nil {
+		return nil, fmt.Errorf("decode keystore: %w", err)
+	}
+	secret, err := decryptSecret(file.Crypto, password)
+	if err != nil {
+		return nil, fmt.Errorf("decrypt keystore: %w", err)
+	}
+	seed, err := walletcommon.ToSeed(secret)
+	if err != nil {
+		return nil, err
+	}
+	wallet, err := walletmldsa.NewWalletFromSeed(seed)
+	if err != nil {
+		return nil, err
+	}
+	return &Key{wallet: wallet}, nil
 }

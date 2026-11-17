@@ -95,3 +95,55 @@ func merkleize(chunks []Root) Root {
 	}
 	return level[0]
 }
+
+// VoluntaryExit is what a validator key signs to leave the validator set.
+type VoluntaryExit struct {
+	Epoch          uint64
+	ValidatorIndex uint64
+}
+
+func (exit VoluntaryExit) HashTreeRoot() Root {
+	return merkleize([]Root{uint64Root(exit.Epoch), uint64Root(exit.ValidatorIndex)})
+}
+
+// BeaconBlockHeader is what a proposer signs for a block: the block with its
+// body replaced by the body's root.
+type BeaconBlockHeader struct {
+	Slot          uint64
+	ProposerIndex uint64
+	ParentRoot    Root
+	StateRoot     Root
+	BodyRoot      Root
+}
+
+func (header BeaconBlockHeader) HashTreeRoot() Root {
+	return merkleize([]Root{
+		uint64Root(header.Slot), uint64Root(header.ProposerIndex), header.ParentRoot, header.StateRoot, header.BodyRoot,
+	})
+}
+
+type Checkpoint struct {
+	Epoch uint64
+	Root  Root
+}
+
+func (checkpoint Checkpoint) HashTreeRoot() Root {
+	return merkleize([]Root{uint64Root(checkpoint.Epoch), checkpoint.Root})
+}
+
+// AttestationData is what an attester signs: its vote for a head and for the
+// source and target checkpoints.
+type AttestationData struct {
+	Slot            uint64
+	CommitteeIndex  uint64
+	BeaconBlockRoot Root
+	Source          Checkpoint
+	Target          Checkpoint
+}
+
+func (data AttestationData) HashTreeRoot() Root {
+	return merkleize([]Root{
+		uint64Root(data.Slot), uint64Root(data.CommitteeIndex), data.BeaconBlockRoot,
+		data.Source.HashTreeRoot(), data.Target.HashTreeRoot(),
+	})
+}

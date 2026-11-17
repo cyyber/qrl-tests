@@ -73,3 +73,14 @@ func TestRandaoCommitmentMatchesQrysm(t *testing.T) {
 	commitment := RandaoCommitment(seed[:])
 	require.Equal(t, "3a4c6ce43d45814c5f37ef3d08b4888af27ffbfb8f2870d0229d3fabe941c6b9", hex.EncodeToString(commitment[:]))
 }
+
+func TestAttestationDataRootMatchesQrysm(t *testing.T) {
+	data := AttestationData{
+		Slot:            77,
+		BeaconBlockRoot: Root(bytes.Repeat([]byte{0x11}, RootLength)),
+		Source:          Checkpoint{Epoch: 8, Root: Root(bytes.Repeat([]byte{0x22}, RootLength))},
+		Target:          Checkpoint{Epoch: 9, Root: Root(bytes.Repeat([]byte{0x33}, RootLength))},
+	}
+	root := data.HashTreeRoot()
+	require.Equal(t, "6e75fb202d1600567dfa5bf79e38d0e9291894cbfebc1a299e10fc1667f3ae77", hex.EncodeToString(root[:]))
+}

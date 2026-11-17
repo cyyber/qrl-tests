@@ -37,3 +37,17 @@ func TestKeystoreJSON(t *testing.T) {
 	_, err = key.KeystoreJSON("")
 	require.ErrorContains(t, err, "keystore password is required")
 }
+
+func TestKeyFromKeystore(t *testing.T) {
+	key, err := DeterministicKey(0x42)
+	require.NoError(t, err)
+	keystore, err := key.KeystoreJSON(KeystorePassword)
+	require.NoError(t, err)
+
+	decrypted, err := KeyFromKeystore([]byte(keystore), KeystorePassword)
+	require.NoError(t, err)
+	require.Equal(t, key.PublicKey(), decrypted.PublicKey())
+
+	_, err = KeyFromKeystore([]byte(keystore), "wrong")
+	require.ErrorContains(t, err, "decrypt keystore")
+}
