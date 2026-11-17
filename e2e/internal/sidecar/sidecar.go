@@ -284,7 +284,7 @@ func create(ctx context.Context, client Client, spec Spec, attached bool) (*Cont
 	if created.ID == "" {
 		return nil, fmt.Errorf("create %s container: Docker returned no container ID", spec.Name)
 	}
-	container := &Container{client: client, id: created.ID, name: spec.Name, ports: spec.Ports}
+	container := &Container{client: client, id: created.ID, name: spec.Name, ports: slices.Clone(spec.Ports)}
 
 	if _, err := client.CopyToContainer(ctx, created.ID, dockerclient.CopyToContainerOptions{
 		DestinationPath: "/",

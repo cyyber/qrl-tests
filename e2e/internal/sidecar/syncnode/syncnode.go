@@ -374,29 +374,36 @@ func privateBeaconPeer(identity beacon.Identity, privateIP string) (string, erro
 // connectExecutionEndpoints sets the execution client's endpoints other than
 // its RPC API. Their host ports stay the same when the client is restarted.
 func (node *Node) connectExecutionEndpoints(ctx context.Context, jwtSecret []byte) error {
-	var engineURL string
-	for _, endpoint := range []struct {
-		port uint16
-		url  *string
-		base string
-		path string
-	}{
-		{wsPort, &node.ExecutionWS, "ws://", ""},
-		{metricsPort, &node.ExecutionMetrics, "http://", "/debug/metrics/prometheus"},
-		{enginePort, &engineURL, "http://", ""},
-	} {
-		hostPort, err := node.execution.PublishedPort(ctx, endpoint.port)
-		if err != nil {
-			return err
-		}
-		*endpoint.url = endpoint.base + net.JoinHostPort("127.0.0.1", hostPort) + endpoint.path
+	ws, err := node.executionAddress(ctx, wsPort)
+	if err != nil {
+		return err
 	}
-	engine, err := rpc.DialOptions(ctx, engineURL, rpc.WithHTTPAuth(engineAuth(jwtSecret)))
+	metrics, err := node.executionAddress(ctx, metricsPort)
+	if err != nil {
+		return err
+	}
+	engine, err := node.executionAddress(ctx, enginePort)
+	if err != nil {
+		return err
+	}
+
+	node.Engine, err = rpc.DialOptions(ctx, "http://"+engine, rpc.WithHTTPAuth(engineAuth(jwtSecret)))
 	if err != nil {
 		return fmt.Errorf("dial the engine API: %w", err)
 	}
-	node.Engine = engine
+	node.ExecutionWS = "ws://" + ws
+	node.ExecutionMetrics = "http://" + metrics + "/debug/metrics/prometheus"
 	return nil
+}
+
+// executionAddress returns the host address the execution client's port is
+// published at.
+func (node *Node) executionAddress(ctx context.Context, port uint16) (string, error) {
+	hostPort, err := node.execution.PublishedPort(ctx, port)
+	if err != nil {
+		return "", err
+	}
+	return net.JoinHostPort("127.0.0.1", hostPort), nil
 }
 
 // engineAuth gives each engine API request a token signed with the secret,

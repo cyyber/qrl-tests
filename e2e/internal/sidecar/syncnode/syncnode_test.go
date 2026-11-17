@@ -105,6 +105,16 @@ func TestStartScriptVariablesAreSet(t *testing.T) {
 	}
 }
 
+// boundHostPort returns the host port a container binds its port to.
+func boundHostPort(t *testing.T, host *containertypes.HostConfig, number uint16) string {
+	t.Helper()
+	port, ok := network.PortFrom(number, network.TCP)
+	require.True(t, ok)
+	bindings := host.PortBindings[port]
+	require.Len(t, bindings, 1)
+	return bindings[0].HostPort
+}
+
 func TestStartLaunchesBothClients(t *testing.T) {
 	docker, addedPeers := newDocker(t)
 
@@ -136,6 +146,17 @@ func TestStartLaunchesBothClients(t *testing.T) {
 	require.Equal(t, "ws://"+published, node.ExecutionWS)
 	require.Equal(t, "http://"+published+"/debug/metrics/prometheus", node.ExecutionMetrics)
 	require.NotNil(t, node.Engine)
+
+	// Without the fake's shared host port, each endpoint is at its own port's.
+	shared := docker.HostPort
+	docker.HostPort = ""
+	node.Engine.Close()
+	require.NoError(t, node.connectExecutionEndpoints(t.Context(), nil))
+	require.Equal(t, "ws://127.0.0.1:"+boundHostPort(t, execution.HostConfig, wsPort), node.ExecutionWS)
+	require.Equal(t, "http://127.0.0.1:"+boundHostPort(t, execution.HostConfig, metricsPort)+"/debug/metrics/prometheus",
+		node.ExecutionMetrics)
+	require.NotEqual(t, boundHostPort(t, execution.HostConfig, wsPort), boundHostPort(t, execution.HostConfig, metricsPort))
+	docker.HostPort = shared
 
 	require.NoError(t, node.Stop(t.Context()))
 	require.Len(t, docker.Stopped, 2)
