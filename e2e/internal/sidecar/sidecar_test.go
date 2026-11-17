@@ -83,9 +83,13 @@ func TestStartPublishesEachPort(t *testing.T) {
 
 	_, err = container.PublishedPort(t.Context(), 7503)
 	require.EqualError(t, err, "test sidecar does not publish port 7503")
+}
 
+func TestStartRefusesPortListedTwice(t *testing.T) {
+	spec := testSpec()
 	spec.Ports = []uint16{7500, 7501, 7500}
-	_, err = Start(t.Context(), docker, spec)
+
+	_, err := Start(t.Context(), sidecartest.NewDocker(), spec)
 	require.EqualError(t, err, "test sidecar port 7500 is listed twice")
 }
 
@@ -356,60 +360,42 @@ func TestProcessCloseClosesOwnedClient(t *testing.T) {
 func TestPublishedPortErrors(t *testing.T) {
 	exited := &containertypes.State{Status: containertypes.StateExited, ExitCode: 1}
 	for _, test := range []struct {
-		name     string
-		noPort   bool
-		state    *containertypes.State
-		logs     string
-		fail     map[string]error
-		wantExit bool
-		wantErr  string
+		name    string
+		state   *containertypes.State
+		logs    string
+		fail    map[string]error
+		wantErr string
 	}{
 		{
-			name:     "exited with logs",
-			state:    exited,
-			logs:     "could not read config\n",
-			wantExit: true,
-			wantErr:  "test sidecar container exited with code 1\nlast log lines:\ncould not read config",
+			name:    "exited with logs",
+			state:   exited,
+			logs:    "could not read config\n",
+			wantErr: "test sidecar container exited with code 1\nlast log lines:\ncould not read config",
 		},
 		{
-			name:     "dead without logs",
-			state:    &containertypes.State{Status: containertypes.StateDead, Error: "OCI runtime error"},
-			wantExit: true,
-			wantErr:  "test sidecar container is dead: OCI runtime error",
+			name:    "dead without logs",
+			state:   &containertypes.State{Status: containertypes.StateDead, Error: "OCI runtime error"},
+			wantErr: "test sidecar container is dead: OCI runtime error",
 		},
 		{
-			name:     "logs unavailable",
-			state:    exited,
-			fail:     map[string]error{"ContainerLogs": errors.New("daemon unavailable")},
-			wantExit: true,
-			wantErr:  "test sidecar container exited with code 1\n(logs unavailable: daemon unavailable)",
-		},
-		{
-			name:    "no port in the spec",
-			noPort:  true,
-			wantErr: "test sidecar does not publish port 7500",
+			name:    "logs unavailable",
+			state:   exited,
+			fail:    map[string]error{"ContainerLogs": errors.New("daemon unavailable")},
+			wantErr: "test sidecar container exited with code 1\n(logs unavailable: daemon unavailable)",
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			docker := sidecartest.NewDocker()
-			spec := testSpec()
-			if test.noPort {
-				spec.Ports = nil
-			}
-			container, err := Start(t.Context(), docker, spec)
+			container, err := Start(t.Context(), docker, testSpec())
 			require.NoError(t, err)
-			if test.state != nil {
-				docker.State = test.state
-			}
+			docker.State = test.state
 			docker.Logs = test.logs
 			maps.Copy(docker.Fail, test.fail)
 
 			_, err = container.PublishedPort(t.Context(), 7500)
 			require.EqualError(t, err, test.wantErr)
-			if test.wantExit {
-				var exitErr *ExitError
-				require.ErrorAs(t, err, &exitErr)
-			}
+			var exitErr *ExitError
+			require.ErrorAs(t, err, &exitErr)
 		})
 	}
 }
