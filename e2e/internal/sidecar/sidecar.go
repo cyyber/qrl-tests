@@ -246,11 +246,11 @@ func create(ctx context.Context, client Client, spec Spec, attached bool) (*Cont
 		AttachStderr: attached,
 		OpenStdin:    spec.Stdin,
 		StdinOnce:    spec.Stdin,
+		ExposedPorts: network.PortSet{},
 	}
-	hostConfig := &containertypes.HostConfig{ExtraHosts: []string{containerHost + ":host-gateway"}}
-	if len(spec.Ports) > 0 {
-		config.ExposedPorts = network.PortSet{}
-		hostConfig.PortBindings = network.PortMap{}
+	hostConfig := &containertypes.HostConfig{
+		ExtraHosts:   []string{containerHost + ":host-gateway"},
+		PortBindings: network.PortMap{},
 	}
 	hostPorts, err := freeHostPorts(len(spec.Ports))
 	if err != nil {
