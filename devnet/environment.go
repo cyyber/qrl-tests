@@ -17,6 +17,7 @@ const (
 	rpcPortID           = "rpc"
 	webSocketPortID     = "ws"
 	engineRPCPortID     = "engine-rpc"
+	p2pPortID           = "tcp-discovery"
 	consensusHTTPPortID = "http"
 	validatorHTTPPortID = "http-validator"
 	metricsPortID       = "metrics"
@@ -64,6 +65,8 @@ type ExecutionService struct {
 	GraphQLURL   string `json:"graphql_url"`
 	WebSocketURL string `json:"websocket_url"`
 	EngineURL    string `json:"engine_url"`
+	// P2PAddress is the host and port that peers connect to.
+	P2PAddress string `json:"p2p_address"`
 }
 
 type ConsensusService struct {
@@ -128,6 +131,7 @@ func participantsFromServices(services map[string]kurtosis.Service) ([]Participa
 				return nil, fmt.Errorf("execution service %q: %w", name, err)
 			}
 			participant.Execution.EngineURL = optionalPublicEndpoint(service, engineRPCPortID, "http")
+			participant.Execution.P2PAddress = optionalPublicHostPort(service, p2pPortID)
 		case "beacon":
 			participant.Consensus.ServiceInfo = info
 			participant.Consensus.URL, err = service.PublicEndpoint(consensusHTTPPortID, "http")

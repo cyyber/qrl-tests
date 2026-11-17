@@ -1,6 +1,7 @@
 package devnet
 
 import (
+	"cmp"
 	"fmt"
 	"slices"
 	"strings"
@@ -53,6 +54,19 @@ const (
 	// slots, and 256 validators for a full committee of 32 in every slot.
 	// Epochs keep the 8 slots of every profile, not mainnet's 128.
 	ProfileMainnetSlotTime Profile = "mainnet-slot-time"
+	// ProfileMainnetSlotTimePair is ProfileMainnetSlotTime with the validators
+	// split evenly between two participants, so that each one's blocks and
+	// votes reach the other over gossip.
+	ProfileMainnetSlotTimePair Profile = "mainnet-slot-time-pair"
+	// ProfileValidatorCap is the single profile with 255 validators, one
+	// short of the most its 8 slots an epoch can hold: a committee of 32 in
+	// each.
+	ProfileValidatorCap Profile = "validator-cap"
+	// ProfileOperationsPair is ProfileMainnetSlotTimePair at the default
+	// five-second slots: full committees and a sync committee drawn from 256
+	// validators, and an execution voting period short enough for a deposit
+	// to count within about an hour.
+	ProfileOperationsPair Profile = "operations-pair"
 )
 
 const defaultSecondsPerSlot = 5
@@ -102,6 +116,19 @@ var profileSpecs = map[Profile]profileSpec{
 		secondsPerSlot: 60,
 		startTimeout:   10 * time.Minute,
 	},
+	ProfileMainnetSlotTimePair: {
+		participants:   []participantSpec{{validatorCount: 128}, {validatorCount: 128}},
+		secondsPerSlot: 60,
+		startTimeout:   10 * time.Minute,
+	},
+	ProfileValidatorCap: {
+		participants: []participantSpec{{validatorCount: 255}},
+		startTimeout: 10 * time.Minute,
+	},
+	ProfileOperationsPair: {
+		participants: []participantSpec{{validatorCount: 128}, {validatorCount: 128}},
+		startTimeout: 10 * time.Minute,
+	},
 }
 
 // ParseProfile validates the raw value, resolving the empty value to the
@@ -117,6 +144,11 @@ func ParseProfile(value string) (Profile, error) {
 		return "", fmt.Errorf("unknown development-network profile %q", value)
 	}
 	return profile, nil
+}
+
+// SlotDuration is the length of the profile's slots.
+func (profile Profile) SlotDuration() time.Duration {
+	return time.Duration(cmp.Or(profileSpecs[profile].secondsPerSlot, defaultSecondsPerSlot)) * time.Second
 }
 
 // ParticipantValidators returns the genesis indices of the validators run by

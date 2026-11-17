@@ -2,6 +2,7 @@ package devnet
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -67,7 +68,22 @@ func TestParticipantValidators(t *testing.T) {
 	require.Empty(t, ProfileInactivityLeak.SpareValidators())
 	require.Len(t, ProfileMainnetSlotTime.ParticipantValidators(0), 256)
 	require.Empty(t, ProfileMainnetSlotTime.SpareValidators())
+	require.Len(t, ProfileValidatorCap.ParticipantValidators(0), 255)
+	require.Empty(t, ProfileValidatorCap.SpareValidators())
+	require.Len(t, ProfileMainnetSlotTimePair.ParticipantValidators(0), 128)
+	require.Len(t, ProfileMainnetSlotTimePair.ParticipantValidators(1), 128)
+	require.Empty(t, ProfileMainnetSlotTimePair.SpareValidators())
+	require.Len(t, ProfileOperationsPair.ParticipantValidators(0), 128)
+	require.Equal(t, uint64(128), ProfileOperationsPair.ParticipantValidators(1)[0])
+	require.Empty(t, ProfileOperationsPair.SpareValidators())
 	require.Len(t, ProfileSingle.ParticipantValidators(0), 64)
 	require.Empty(t, ProfileSingle.ParticipantValidators(1))
 	require.Empty(t, ProfileSingle.ParticipantValidators(-1))
+}
+
+func TestSlotDuration(t *testing.T) {
+	require.Equal(t, 5*time.Second, ProfileSingle.SlotDuration())
+	require.Equal(t, time.Minute, ProfileMainnetSlotTime.SlotDuration())
+	require.Equal(t, time.Minute, ProfileMainnetSlotTimePair.SlotDuration())
+	require.Equal(t, 5*time.Second, ProfileOperationsPair.SlotDuration())
 }
