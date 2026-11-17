@@ -105,7 +105,6 @@ type Node struct {
 	Beacon    *beacon.Client
 	Engine    *rpc.Client
 
-	// URLs of the execution client's WebSocket API and Prometheus metrics.
 	ExecutionWS      string
 	ExecutionMetrics string
 
