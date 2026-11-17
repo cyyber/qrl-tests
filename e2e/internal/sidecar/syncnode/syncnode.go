@@ -558,6 +558,19 @@ func (node *Node) AddPeer(ctx context.Context, peerURL string) error {
 	return nil
 }
 
+// DropSource disconnects the execution client from the source, and stops it
+// from dialing the source again.
+func (node *Node) DropSource(ctx context.Context) error {
+	var removed bool
+	if err := node.Execution.Client().CallContext(ctx, &removed, "admin_removePeer", node.sourceQnode); err != nil {
+		return fmt.Errorf("remove the source peer: %w", err)
+	}
+	if !removed {
+		return errors.New("execution client did not remove the source peer")
+	}
+	return nil
+}
+
 // Peers returns the IDs of the execution client's peers.
 func (node *Node) Peers(ctx context.Context) ([]qnode.ID, error) {
 	var peers []p2p.PeerInfo

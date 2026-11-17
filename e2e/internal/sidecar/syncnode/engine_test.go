@@ -10,7 +10,6 @@ import (
 	"github.com/theQRL/go-qrl/common"
 	"github.com/theQRL/go-qrl/common/hexutil"
 	"github.com/theQRL/go-qrl/core/types"
-	"github.com/theQRL/go-qrl/qrlclient"
 	"github.com/theQRL/go-qrl/rpc"
 )
 
@@ -135,16 +134,6 @@ func TestSyncToFailsOnAnInvalidBlock(t *testing.T) {
 	err := node.syncTo(t.Context(), testBlock())
 	require.ErrorContains(t, err, "finds block 42 invalid")
 	require.Equal(t, []string{"newPayload"}, engine.calls, "an invalid block is not named the head")
-}
-
-func TestDropSource(t *testing.T) {
-	admin := &fakeAdmin{knows: sourceQnode}
-	node := &Node{Execution: qrlclient.NewClient(dialAPI(t, "admin", admin)), sourceQnode: sourceQnode}
-	require.NoError(t, node.DropSource(t.Context()))
-	require.Equal(t, []string{sourceQnode}, admin.removed)
-
-	node.sourceQnode = "qnode://other@172.16.0.13:30303"
-	require.ErrorContains(t, node.DropSource(t.Context()), "did not remove the source peer")
 }
 
 func TestPayloadRequestSize(t *testing.T) {

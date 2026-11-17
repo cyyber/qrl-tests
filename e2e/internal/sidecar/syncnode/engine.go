@@ -3,7 +3,6 @@ package syncnode
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 
 	"github.com/theQRL/go-qrl/common"
@@ -93,6 +92,7 @@ func executionPayload(block *types.Block) (map[string]any, error) {
 		}
 		transactions[index] = raw
 	}
+	// engine_newPayloadV2 refuses a null list of withdrawals.
 	withdrawals := block.Withdrawals()
 	if withdrawals == nil {
 		withdrawals = types.Withdrawals{}
@@ -115,17 +115,4 @@ func executionPayload(block *types.Block) (map[string]any, error) {
 		"transactions":  transactions,
 		"withdrawals":   withdrawals,
 	}, nil
-}
-
-// DropSource disconnects the execution client from the source, and stops it
-// from dialing the source again.
-func (node *Node) DropSource(ctx context.Context) error {
-	var removed bool
-	if err := node.Execution.Client().CallContext(ctx, &removed, "admin_removePeer", node.sourceQnode); err != nil {
-		return fmt.Errorf("remove the source peer: %w", err)
-	}
-	if !removed {
-		return errors.New("execution client did not remove the source peer")
-	}
-	return nil
 }

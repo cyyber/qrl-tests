@@ -367,3 +367,13 @@ func TestPeers(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, []qnode.ID{qnode.HexID(id)}, peers)
 }
+
+func TestDropSource(t *testing.T) {
+	admin := &fakeAdmin{knows: sourceQnode}
+	node := &Node{Execution: qrlclient.NewClient(dialAPI(t, "admin", admin)), sourceQnode: sourceQnode}
+	require.NoError(t, node.DropSource(t.Context()))
+	require.Equal(t, []string{sourceQnode}, admin.removed)
+
+	node.sourceQnode = "qnode://other@172.16.0.13:30303"
+	require.ErrorContains(t, node.DropSource(t.Context()), "did not remove the source peer")
+}
