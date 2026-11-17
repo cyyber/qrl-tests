@@ -391,8 +391,8 @@ func (node *Node) setExecutionEndpoints(ctx context.Context, jwtSecret []byte) e
 	return nil
 }
 
-// engineAuth gives each engine API request a token signed with the secret,
-// which the execution client accepts for a minute.
+// engineAuth signs a fresh token for each engine API request; the execution
+// client accepts a token for a minute after it was issued.
 func engineAuth(secret []byte) rpc.HTTPAuth {
 	return func(header http.Header) error {
 		token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{"iat": jwt.NewNumericDate(time.Now())})
