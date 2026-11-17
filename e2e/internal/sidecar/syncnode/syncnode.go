@@ -374,15 +374,15 @@ func privateBeaconPeer(identity beacon.Identity, privateIP string) (string, erro
 // connectExecutionEndpoints sets the execution client's endpoints other than
 // its RPC API. Their host ports stay the same when the client is restarted.
 func (node *Node) connectExecutionEndpoints(ctx context.Context, jwtSecret []byte) error {
-	ws, err := node.executionAddress(ctx, wsPort)
+	ws, err := node.execution.PublishedAddress(ctx, wsPort)
 	if err != nil {
 		return err
 	}
-	metrics, err := node.executionAddress(ctx, metricsPort)
+	metrics, err := node.execution.PublishedAddress(ctx, metricsPort)
 	if err != nil {
 		return err
 	}
-	engine, err := node.executionAddress(ctx, enginePort)
+	engine, err := node.execution.PublishedAddress(ctx, enginePort)
 	if err != nil {
 		return err
 	}
@@ -394,16 +394,6 @@ func (node *Node) connectExecutionEndpoints(ctx context.Context, jwtSecret []byt
 	node.ExecutionWS = "ws://" + ws
 	node.ExecutionMetrics = "http://" + metrics + "/debug/metrics/prometheus"
 	return nil
-}
-
-// executionAddress returns the host address the execution client's port is
-// published at.
-func (node *Node) executionAddress(ctx context.Context, port uint16) (string, error) {
-	hostPort, err := node.execution.PublishedPort(ctx, port)
-	if err != nil {
-		return "", err
-	}
-	return net.JoinHostPort("127.0.0.1", hostPort), nil
 }
 
 // engineAuth gives each engine API request a token signed with the secret,
@@ -421,9 +411,9 @@ func engineAuth(secret []byte) rpc.HTTPAuth {
 }
 
 func (node *Node) waitForExecution(ctx context.Context) error {
-	return poll(ctx, node.execution, rpcPort, func(ctx context.Context, hostPort string) error {
+	return poll(ctx, node.execution, rpcPort, func(ctx context.Context, address string) error {
 		if node.Execution == nil {
-			client, err := qrlclient.DialContext(ctx, "http://"+hostPort)
+			client, err := qrlclient.DialContext(ctx, "http://"+address)
 			if err != nil {
 				return err
 			}
@@ -441,9 +431,9 @@ func (node *Node) waitForExecution(ctx context.Context) error {
 }
 
 func (node *Node) waitForBeacon(ctx context.Context) error {
-	return poll(ctx, node.consensus, beaconPort, func(ctx context.Context, hostPort string) error {
+	return poll(ctx, node.consensus, beaconPort, func(ctx context.Context, address string) error {
 		if node.Beacon == nil {
-			client, err := beacon.New("http://" + hostPort)
+			client, err := beacon.New("http://" + address)
 			if err != nil {
 				return err
 			}
@@ -460,13 +450,13 @@ func poll(ctx context.Context, container *sidecar.Container, port uint16, ready 
 	ticker := time.NewTicker(readyPollInterval)
 	defer ticker.Stop()
 	for {
-		hostPort, err := container.PublishedPort(ctx, port)
+		address, err := container.PublishedAddress(ctx, port)
 		var exitErr *sidecar.ExitError
 		if errors.As(err, &exitErr) {
 			return err
 		}
 		if err == nil {
-			if err = ready(ctx, net.JoinHostPort("127.0.0.1", hostPort)); err == nil {
+			if err = ready(ctx, address); err == nil {
 				return nil
 			}
 		}

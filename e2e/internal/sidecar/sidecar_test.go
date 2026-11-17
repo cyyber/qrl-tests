@@ -56,9 +56,9 @@ func TestStartCreatesPublishedContainer(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, []string{"start.sh", "config/network/config.yaml"}, names)
 
-	hostPort, err := container.PublishedPort(t.Context(), 7500)
+	address, err := container.PublishedAddress(t.Context(), 7500)
 	require.NoError(t, err)
-	require.Equal(t, bindings[0].HostPort, hostPort)
+	require.Equal(t, "127.0.0.1:"+bindings[0].HostPort, address)
 
 	require.NoError(t, container.Close())
 	require.Equal(t, []string{sidecartest.ContainerID}, docker.Removed)
@@ -73,15 +73,15 @@ func TestStartPublishesEachPort(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, docker.LastCreated().Config.ExposedPorts, len(spec.Ports))
 
-	hostPorts := map[string]bool{}
+	addresses := map[string]bool{}
 	for _, port := range spec.Ports {
-		hostPort, err := container.PublishedPort(t.Context(), port)
+		address, err := container.PublishedAddress(t.Context(), port)
 		require.NoError(t, err)
-		hostPorts[hostPort] = true
+		addresses[address] = true
 	}
-	require.Len(t, hostPorts, len(spec.Ports), "each port has a host port of its own")
+	require.Len(t, addresses, len(spec.Ports), "each port has a host port of its own")
 
-	_, err = container.PublishedPort(t.Context(), 7503)
+	_, err = container.PublishedAddress(t.Context(), 7503)
 	require.EqualError(t, err, "test sidecar does not publish port 7503")
 }
 
@@ -357,7 +357,7 @@ func TestProcessCloseClosesOwnedClient(t *testing.T) {
 	require.Equal(t, []string{sidecartest.ContainerID}, docker.Removed)
 }
 
-func TestPublishedPortErrors(t *testing.T) {
+func TestPublishedAddressOfStoppedContainer(t *testing.T) {
 	exited := &containertypes.State{Status: containertypes.StateExited, ExitCode: 1}
 	for _, test := range []struct {
 		name    string
@@ -392,7 +392,7 @@ func TestPublishedPortErrors(t *testing.T) {
 			docker.Logs = test.logs
 			maps.Copy(docker.Fail, test.fail)
 
-			_, err = container.PublishedPort(t.Context(), 7500)
+			_, err = container.PublishedAddress(t.Context(), 7500)
 			require.EqualError(t, err, test.wantErr)
 			var exitErr *ExitError
 			require.ErrorAs(t, err, &exitErr)

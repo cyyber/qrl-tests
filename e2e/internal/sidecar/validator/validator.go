@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net"
 	"strconv"
 	"strings"
 	"time"
@@ -243,7 +242,7 @@ func waitForKeymanager(ctx context.Context, container *sidecar.Container) (*keym
 }
 
 func connectKeymanager(ctx context.Context, container *sidecar.Container) (*keymanager.Client, error) {
-	hostPort, err := container.PublishedPort(ctx, gatewayPort)
+	address, err := container.PublishedAddress(ctx, gatewayPort)
 	if err != nil {
 		return nil, err
 	}
@@ -255,7 +254,7 @@ func connectKeymanager(ctx context.Context, container *sidecar.Container) (*keym
 	if err != nil {
 		return nil, err
 	}
-	keymanagerClient, err := keymanager.New("http://"+net.JoinHostPort("127.0.0.1", hostPort), parsed)
+	keymanagerClient, err := keymanager.New("http://"+address, parsed)
 	if err != nil {
 		return nil, err
 	}

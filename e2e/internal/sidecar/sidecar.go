@@ -342,9 +342,10 @@ func (container *Container) Close() error {
 	return nil
 }
 
-// PublishedPort returns the host port bound to port, one of the Spec's Ports.
-// It returns an *ExitError once the container has stopped.
-func (container *Container) PublishedPort(ctx context.Context, port uint16) (string, error) {
+// PublishedAddress returns the host address, as host:port, that port is
+// published at; port is one of the Spec's Ports. It returns an *ExitError
+// once the container has stopped.
+func (container *Container) PublishedAddress(ctx context.Context, port uint16) (string, error) {
 	published, _ := network.PortFrom(port, network.TCP)
 	if _, listed := container.ports[published]; !listed {
 		return "", fmt.Errorf("%s does not publish port %d", container.name, port)
@@ -363,7 +364,11 @@ func (container *Container) PublishedPort(ctx context.Context, port uint16) (str
 		}
 		return "", container.WithLogs(&ExitError{name: container.name, status: status})
 	}
-	return publishedHostPort(inspected.Container, published)
+	hostPort, err := publishedHostPort(inspected.Container, published)
+	if err != nil {
+		return "", err
+	}
+	return net.JoinHostPort(loopback.String(), hostPort), nil
 }
 
 func publishedHostPort(inspected containertypes.InspectResponse, port network.Port) (string, error) {
