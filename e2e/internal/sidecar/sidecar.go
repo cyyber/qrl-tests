@@ -36,7 +36,7 @@ const (
 	labelKey = "qrl-tests.sidecar"
 )
 
-// loopback is the host address ports are published on.
+// loopback is the host address that container ports are published on.
 var loopback = netip.MustParseAddr("127.0.0.1")
 
 // Client is the part of the Docker client that sidecars use.
