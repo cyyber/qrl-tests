@@ -83,6 +83,10 @@ func TestStartPublishesEachPort(t *testing.T) {
 
 	_, err = container.PublishedPort(t.Context(), 7503)
 	require.EqualError(t, err, "test sidecar does not publish port 7503")
+
+	spec.Ports = []uint16{7500, 7501, 7500}
+	_, err = Start(t.Context(), docker, spec)
+	require.EqualError(t, err, "test sidecar port 7500 is listed twice")
 }
 
 func TestStartNetwork(t *testing.T) {

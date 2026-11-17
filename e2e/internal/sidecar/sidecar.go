@@ -96,7 +96,7 @@ type Container struct {
 	client Client
 	id     string
 	name   string
-	ports  []uint16
+	ports  []network.Port
 }
 
 // Start creates and starts the container, removing it again on any failure.
@@ -256,11 +256,16 @@ func create(ctx context.Context, client Client, spec Spec, attached bool) (*Cont
 	if err != nil {
 		return nil, fmt.Errorf("find host ports for %s: %w", spec.Name, err)
 	}
+	ports := make([]network.Port, len(spec.Ports))
 	for index, number := range spec.Ports {
 		port, ok := network.PortFrom(number, network.TCP)
 		if !ok {
 			return nil, fmt.Errorf("%s port %d is invalid", spec.Name, number)
 		}
+		if slices.Contains(ports[:index], port) {
+			return nil, fmt.Errorf("%s port %d is listed twice", spec.Name, number)
+		}
+		ports[index] = port
 		config.ExposedPorts[port] = struct{}{}
 		hostConfig.PortBindings[port] = []network.PortBinding{{HostIP: netip.MustParseAddr("127.0.0.1"), HostPort: hostPorts[index]}}
 	}
@@ -284,7 +289,7 @@ func create(ctx context.Context, client Client, spec Spec, attached bool) (*Cont
 	if created.ID == "" {
 		return nil, fmt.Errorf("create %s container: Docker returned no container ID", spec.Name)
 	}
-	container := &Container{client: client, id: created.ID, name: spec.Name, ports: slices.Clone(spec.Ports)}
+	container := &Container{client: client, id: created.ID, name: spec.Name, ports: ports}
 
 	if _, err := client.CopyToContainer(ctx, created.ID, dockerclient.CopyToContainerOptions{
 		DestinationPath: "/",
@@ -341,10 +346,10 @@ func (container *Container) Close() error {
 // PublishedPort returns the host port bound to port, one of the Spec's Ports.
 // It returns an *ExitError once the container has stopped.
 func (container *Container) PublishedPort(ctx context.Context, port uint16) (string, error) {
-	if !slices.Contains(container.ports, port) {
+	published, ok := network.PortFrom(port, network.TCP)
+	if !ok || !slices.Contains(container.ports, published) {
 		return "", fmt.Errorf("%s does not publish port %d", container.name, port)
 	}
-	published, _ := network.PortFrom(port, network.TCP)
 	inspected, err := container.client.ContainerInspect(ctx, container.id, dockerclient.ContainerInspectOptions{})
 	if err != nil {
 		return "", fmt.Errorf("inspect %s container: %w", container.name, err)
