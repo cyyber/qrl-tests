@@ -6,6 +6,7 @@ require (
 	github.com/distribution/reference v0.6.0
 	github.com/docker/cli v29.7.2+incompatible
 	github.com/google/uuid v1.6.0
+	github.com/gorilla/websocket v1.5.3
 	github.com/kurtosis-tech/kurtosis/api/golang v1.20.0
 	github.com/moby/moby/api v1.55.0
 	github.com/moby/moby/client v0.5.1
@@ -58,7 +59,6 @@ require (
 	github.com/golang/snappy v1.0.0 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/google/pprof v0.0.0-20260402051712-545e8a4df936 // indirect
-	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/graph-gophers/graphql-go v1.3.0 // indirect
 	github.com/hashicorp/go-bexpr v0.1.10 // indirect
 	github.com/holiman/bloomfilter/v2 v2.0.3 // indirect
