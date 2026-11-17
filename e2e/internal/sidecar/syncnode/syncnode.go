@@ -163,7 +163,7 @@ func start(ctx context.Context, config Config, client dockerClient, querySource 
 	if _, err := rand.Read(secret); err != nil {
 		return nil, fmt.Errorf("generate JWT secret: %w", err)
 	}
-	secretHex := []byte(hexutil.Encode(secret))
+	jwtHex := []byte(hexutil.Encode(secret))
 
 	node := &Node{sourceQnode: endpoints.qnode}
 	executionAlias := "qrl-tests-" + config.Name + "-execution"
@@ -175,7 +175,7 @@ func start(ctx context.Context, config Config, client dockerClient, querySource 
 		Files: []sidecar.File{
 			{Name: startScriptPath, Body: []byte(startScript), Mode: 0o755},
 			{Name: genesisPath, Body: files.genesis},
-			{Name: jwtPath, Body: secretHex},
+			{Name: jwtPath, Body: jwtHex},
 		},
 		Ports:   []uint16{rpcPort, wsPort, enginePort, metricsPort},
 		Network: networkName,
@@ -198,7 +198,7 @@ func start(ctx context.Context, config Config, client dockerClient, querySource 
 		Files: []sidecar.File{
 			{Name: chainConfigPath, Body: files.chainConfig},
 			{Name: genesisStatePath, Body: files.genesisState},
-			{Name: jwtPath, Body: secretHex},
+			{Name: jwtPath, Body: jwtHex},
 		},
 		Ports:   []uint16{beaconPort},
 		Network: networkName,
