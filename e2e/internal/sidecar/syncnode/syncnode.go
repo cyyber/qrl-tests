@@ -439,8 +439,8 @@ func (node *Node) waitForBeacon(ctx context.Context) error {
 	})
 }
 
-// poll calls ready with the host:port the container's port is published at
-// until it succeeds, failing at once if the container stops.
+// poll calls ready with the published address of the container's port until
+// ready succeeds. It fails at once if the container stops.
 func poll(ctx context.Context, container *sidecar.Container, port uint16, ready func(context.Context, string) error) error {
 	ticker := time.NewTicker(readyPollInterval)
 	defer ticker.Stop()
