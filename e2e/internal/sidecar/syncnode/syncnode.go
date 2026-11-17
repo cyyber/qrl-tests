@@ -105,8 +105,8 @@ type Node struct {
 	Beacon    *beacon.Client
 	Engine    *rpc.Client
 
-	ExecutionWS      string
-	ExecutionMetrics string
+	ExecutionWSURL      string
+	ExecutionMetricsURL string
 
 	execution   *sidecar.Container
 	consensus   *sidecar.Container
@@ -386,8 +386,8 @@ func (node *Node) connectExecutionEndpoints(ctx context.Context, jwtSecret []byt
 	if err != nil {
 		return fmt.Errorf("dial the engine API: %w", err)
 	}
-	node.ExecutionWS = "ws://" + ws
-	node.ExecutionMetrics = "http://" + metrics + "/debug/metrics/prometheus"
+	node.ExecutionWSURL = "ws://" + ws
+	node.ExecutionMetricsURL = "http://" + metrics + "/debug/metrics/prometheus"
 	return nil
 }
 
