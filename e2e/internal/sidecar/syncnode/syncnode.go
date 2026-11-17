@@ -187,7 +187,7 @@ func start(ctx context.Context, config Config, client dockerClient, querySource 
 	if err := node.waitForExecution(ctx); err != nil {
 		return nil, errors.Join(err, node.closeContainers())
 	}
-	if err := node.connectExecutionEndpoints(ctx, secret); err != nil {
+	if err := node.setExecutionEndpoints(ctx, secret); err != nil {
 		return nil, errors.Join(err, node.closeContainers())
 	}
 
@@ -366,9 +366,9 @@ func privateBeaconPeer(identity beacon.Identity, privateIP string) (string, erro
 	return "", fmt.Errorf("source beacon node reports no TCP address in %q", identity.P2PAddresses)
 }
 
-// connectExecutionEndpoints sets the execution client's endpoints other than
+// setExecutionEndpoints sets the execution client's endpoints other than
 // its RPC API. Their host ports stay the same when the client is restarted.
-func (node *Node) connectExecutionEndpoints(ctx context.Context, jwtSecret []byte) error {
+func (node *Node) setExecutionEndpoints(ctx context.Context, jwtSecret []byte) error {
 	ws, err := node.execution.PublishedAddress(ctx, wsPort)
 	if err != nil {
 		return err

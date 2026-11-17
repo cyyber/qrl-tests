@@ -151,7 +151,7 @@ func TestStartLaunchesBothClients(t *testing.T) {
 	shared := docker.HostPort
 	docker.HostPort = ""
 	node.Engine.Close()
-	require.NoError(t, node.connectExecutionEndpoints(t.Context(), nil))
+	require.NoError(t, node.setExecutionEndpoints(t.Context(), nil))
 	require.Equal(t, "ws://127.0.0.1:"+boundHostPort(t, execution.HostConfig, wsPort), node.ExecutionWSURL)
 	require.Equal(t, "http://127.0.0.1:"+boundHostPort(t, execution.HostConfig, metricsPort)+"/debug/metrics/prometheus",
 		node.ExecutionMetricsURL)
