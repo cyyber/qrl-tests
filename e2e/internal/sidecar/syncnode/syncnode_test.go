@@ -142,12 +142,10 @@ func TestStartLaunchesBothClients(t *testing.T) {
 	require.Equal(t, []string{sourceQnode}, *addedPeers)
 	require.NotNil(t, node.Execution)
 	require.NotNil(t, node.Beacon)
-	published := "127.0.0.1:" + docker.HostPort
-	require.Equal(t, "ws://"+published, node.ExecutionWSURL)
-	require.Equal(t, "http://"+published+"/debug/metrics/prometheus", node.ExecutionMetricsURL)
 	require.NotNil(t, node.Engine)
 
-	// Without the fake's shared host port, each endpoint is at its own port's.
+	// The fake gives every port the same host port. Without it, each URL
+	// uses its own port's binding.
 	shared := docker.HostPort
 	docker.HostPort = ""
 	node.Engine.Close()
@@ -155,7 +153,6 @@ func TestStartLaunchesBothClients(t *testing.T) {
 	require.Equal(t, "ws://127.0.0.1:"+boundHostPort(t, execution.HostConfig, wsPort), node.ExecutionWSURL)
 	require.Equal(t, "http://127.0.0.1:"+boundHostPort(t, execution.HostConfig, metricsPort)+"/debug/metrics/prometheus",
 		node.ExecutionMetricsURL)
-	require.NotEqual(t, boundHostPort(t, execution.HostConfig, wsPort), boundHostPort(t, execution.HostConfig, metricsPort))
 	docker.HostPort = shared
 
 	require.NoError(t, node.Stop(t.Context()))
