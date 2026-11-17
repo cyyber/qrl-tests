@@ -6,9 +6,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"math/big"
 	"runtime"
 	"slices"
+	"strings"
+	"syscall"
 	"time"
 
 	"github.com/theQRL/go-qrl/common"
@@ -27,7 +30,10 @@ const (
 	poolBlocksAhead     = 3
 	warmUpBlocks        = 6
 	transfersPerRequest = 128
+	sendAttempts        = 3
 	feeCapMarginBlocks  = 8
+	// alreadyKnown is the pool's error for a transaction it holds.
+	alreadyKnown = "already known"
 )
 
 var defaultRPCTxFeeCap = big.NewInt(params.Quanta)
@@ -390,6 +396,18 @@ func baseFeeAfter(baseFee *big.Int, fullBlocks int) *big.Int {
 
 func send(ctx context.Context, client *qrlclient.Client, transfers []*types.Transaction) error {
 	for batch := range slices.Chunk(transfers, transfersPerRequest) {
+		if err := sendBatch(ctx, client, batch); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// sendBatch sends one request of transfers. A request whose connection drops
+// before the reply is sent again: the node may have taken some of it, and
+// reports those as already known.
+func sendBatch(ctx context.Context, client *qrlclient.Client, batch []*types.Transaction) error {
+	for attempt := 1; ; attempt++ {
 		elems := make([]rpc.BatchElem, len(batch))
 		for index, tx := range batch {
 			raw, err := tx.MarshalBinary()
@@ -402,16 +420,26 @@ func send(ctx context.Context, client *qrlclient.Client, transfers []*types.Tran
 				Result: new(common.Hash),
 			}
 		}
-		if err := client.Client().BatchCallContext(ctx, elems); err != nil {
+		err := client.Client().BatchCallContext(ctx, elems)
+		if err != nil && attempt < sendAttempts && droppedConnection(err) && ctx.Err() == nil {
+			continue
+		}
+		if err != nil {
 			return fmt.Errorf("send transfers from %d: %w", batch[0].Nonce(), err)
 		}
 		for index, elem := range elems {
-			if elem.Error != nil {
+			if elem.Error != nil && !(attempt > 1 && strings.Contains(elem.Error.Error(), alreadyKnown)) {
 				return fmt.Errorf("send transfer %d: %w", batch[index].Nonce(), elem.Error)
 			}
 		}
+		return nil
 	}
-	return nil
+}
+
+// droppedConnection reports whether a request failed because its connection
+// closed before the reply.
+func droppedConnection(err error) bool {
+	return errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) || errors.Is(err, syscall.ECONNRESET)
 }
 
 func readBlock(ctx context.Context, client *qrlclient.Client, number uint64) (Block, error) {

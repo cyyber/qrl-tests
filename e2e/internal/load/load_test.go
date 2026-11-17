@@ -1,9 +1,11 @@
 package load
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
@@ -80,6 +82,9 @@ type fakeNode struct {
 	rejectTransfer func(tx *types.Transaction) error
 
 	requests atomic.Int64
+	// dropReplies is how many more batch requests the node takes and then
+	// closes the connection of without replying.
+	dropReplies atomic.Int64
 
 	mutex          sync.Mutex
 	blockTransfers []uint64
@@ -96,6 +101,16 @@ func startFakeNode(t *testing.T, node *fakeNode) *qrlclient.Client {
 
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		node.requests.Add(1)
+		body, err := io.ReadAll(request.Body)
+		require.NoError(t, err)
+		request.Body = io.NopCloser(bytes.NewReader(body))
+		if bytes.HasPrefix(body, []byte("[")) && node.dropReplies.Add(-1) >= 0 {
+			api.ServeHTTP(httptest.NewRecorder(), request)
+			connection, _, err := writer.(http.Hijacker).Hijack()
+			require.NoError(t, err)
+			require.NoError(t, connection.Close())
+			return
+		}
 		api.ServeHTTP(writer, request)
 	}))
 	t.Cleanup(server.Close)
@@ -192,7 +207,9 @@ func (node *fakeNode) SendRawTransaction(raw hexutil.Bytes) (common.Hash, error)
 		return common.Hash{}, err
 	}
 	// The pool only takes the next nonce: Fill sends in nonce order.
-	if want := node.mined + node.pooled; tx.Nonce() != want {
+	if want := node.mined + node.pooled; tx.Nonce() < want {
+		return common.Hash{}, errors.New("already known")
+	} else if tx.Nonce() != want {
 		return common.Hash{}, fmt.Errorf("transfer has nonce %d, want %d", tx.Nonce(), want)
 	}
 	if node.rejectTransfer != nil {
@@ -235,11 +252,14 @@ const fillBlocks = 3
 
 func TestFill(t *testing.T) {
 	for _, test := range []struct {
-		name         string
-		partialBlock uint64
+		name           string
+		partialBlock   uint64
+		droppedReplies int64
 	}{
 		{name: "every block full"},
 		{name: "a block that is not full", partialBlock: 2},
+		// The node takes the transfers, and the resent ones are already known.
+		{name: "a request whose connection drops", droppedReplies: sendAttempts - 1},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			node := &fakeNode{blockCapacity: func(number uint64) uint64 {
@@ -248,6 +268,7 @@ func TestFill(t *testing.T) {
 				}
 				return fakeBlockTransfers
 			}}
+			node.dropReplies.Store(test.droppedReplies)
 			run, err := fill(t, node, time.Millisecond, 30*time.Second)
 			require.NoError(t, err)
 
@@ -297,6 +318,16 @@ func TestFillFails(t *testing.T) {
 			}},
 			poll: time.Millisecond, timeout: 30 * time.Second,
 			err: "send transfer 5: txpool is full",
+		},
+		{
+			name: "a connection that keeps dropping",
+			node: func() *fakeNode {
+				node := new(fakeNode)
+				node.dropReplies.Store(sendAttempts)
+				return node
+			}(),
+			poll: time.Millisecond, timeout: 30 * time.Second,
+			err: "send transfers from 0: Post",
 		},
 		{
 			// The context ends during the wait for the next poll.
