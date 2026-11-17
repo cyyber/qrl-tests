@@ -357,7 +357,7 @@ func TestProcessCloseClosesOwnedClient(t *testing.T) {
 	require.Equal(t, []string{sidecartest.ContainerID}, docker.Removed)
 }
 
-func TestPublishedAddressOfStoppedContainer(t *testing.T) {
+func TestPublishedAddressStopped(t *testing.T) {
 	exited := &containertypes.State{Status: containertypes.StateExited, ExitCode: 1}
 	for _, test := range []struct {
 		name    string
