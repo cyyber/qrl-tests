@@ -26,12 +26,12 @@ import (
 )
 
 const (
-	rpcPort          = 8545
-	wsPort           = 8546
-	enginePort       = 8551
-	metricsPort      = 6060
-	beaconPort       = 3500
-	sourceBeaconPort = 3500
+	executionRPCPort     = 8545
+	executionWSPort      = 8546
+	executionEnginePort  = 8551
+	executionMetricsPort = 6060
+	beaconPort           = 3500
+	sourceBeaconPort     = 3500
 
 	networkConfigDir  = "/network-configs"
 	genesisPath       = networkConfigDir + "/genesis.json"
@@ -177,7 +177,7 @@ func start(ctx context.Context, config Config, client dockerClient, querySource 
 			{Name: genesisPath, Body: files.genesis},
 			{Name: jwtPath, Body: jwtHex},
 		},
-		Ports:   []uint16{rpcPort, wsPort, enginePort, metricsPort},
+		Ports:   []uint16{executionRPCPort, executionWSPort, executionEnginePort, executionMetricsPort},
 		Network: networkName,
 		Aliases: []string{executionAlias},
 	})
@@ -235,10 +235,10 @@ func executionEnv(networkID, syncMode string) []string {
 		"JWT_FILE=" + jwtPath,
 		"NETWORK_ID=" + networkID,
 		"SYNC_MODE=" + syncMode,
-		"RPC_PORT=" + strconv.Itoa(rpcPort),
-		"WS_PORT=" + strconv.Itoa(wsPort),
-		"METRICS_PORT=" + strconv.Itoa(metricsPort),
-		"ENGINE_PORT=" + strconv.Itoa(enginePort),
+		"RPC_PORT=" + strconv.Itoa(executionRPCPort),
+		"WS_PORT=" + strconv.Itoa(executionWSPort),
+		"METRICS_PORT=" + strconv.Itoa(executionMetricsPort),
+		"ENGINE_PORT=" + strconv.Itoa(executionEnginePort),
 	}
 }
 
@@ -246,7 +246,7 @@ func beaconCommand(executionHost string, endpoints sourceEndpoints, origin Beaco
 	command := []string{
 		"--accept-terms-of-use=true",
 		"--datadir=" + beaconDataDir,
-		"--execution-endpoint=http://" + net.JoinHostPort(executionHost, strconv.Itoa(enginePort)),
+		"--execution-endpoint=http://" + net.JoinHostPort(executionHost, strconv.Itoa(executionEnginePort)),
 		"--jwt-secret=" + jwtPath,
 		"--chain-config-file=" + chainConfigPath,
 		"--genesis-state=" + genesisStatePath,
@@ -369,15 +369,15 @@ func privateBeaconPeer(identity beacon.Identity, privateIP string) (string, erro
 // setExecutionEndpoints sets the execution client's endpoints other than
 // its RPC API. Their host ports stay the same when the client is restarted.
 func (node *Node) setExecutionEndpoints(ctx context.Context, jwtSecret []byte) error {
-	ws, err := node.execution.PublishedAddress(ctx, wsPort)
+	ws, err := node.execution.PublishedAddress(ctx, executionWSPort)
 	if err != nil {
 		return err
 	}
-	metrics, err := node.execution.PublishedAddress(ctx, metricsPort)
+	metrics, err := node.execution.PublishedAddress(ctx, executionMetricsPort)
 	if err != nil {
 		return err
 	}
-	engine, err := node.execution.PublishedAddress(ctx, enginePort)
+	engine, err := node.execution.PublishedAddress(ctx, executionEnginePort)
 	if err != nil {
 		return err
 	}
@@ -406,7 +406,7 @@ func engineAuth(secret []byte) rpc.HTTPAuth {
 }
 
 func (node *Node) waitForExecution(ctx context.Context) error {
-	return poll(ctx, node.execution, rpcPort, func(ctx context.Context, address string) error {
+	return poll(ctx, node.execution, executionRPCPort, func(ctx context.Context, address string) error {
 		if node.Execution == nil {
 			client, err := qrlclient.DialContext(ctx, "http://"+address)
 			if err != nil {
