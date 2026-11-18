@@ -116,6 +116,7 @@ func (watch *PeerWatch) Drops(ctx context.Context) ([]PeerDrop, error) {
 	watch.mutex.Lock()
 	settled := watch.closed || watch.err != nil
 	watch.mutex.Unlock()
+
 	var unreachable error
 	if !settled {
 		unreachable = watch.check(ctx)
