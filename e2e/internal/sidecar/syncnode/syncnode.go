@@ -90,14 +90,11 @@ type Config struct {
 	ExecutionImage string
 	ConsensusImage string
 	// SyncMode is gqrl's --syncmode, "snap" or "full".
-	SyncMode     string
-	BeaconOrigin BeaconOrigin
-	Source       devnet.Participant
-	// ExecutionOnly leaves the beacon node out. The execution client then
-	// follows no chain until SyncToHead names the block to sync to.
+	SyncMode      string
+	BeaconOrigin  BeaconOrigin
+	Source        devnet.Participant
 	ExecutionOnly bool
-	// MaxPeers is gqrl's --maxpeers, its default of 50 when zero.
-	MaxPeers int
+	MaxPeers      int
 }
 
 // BeaconOrigin is where the sync node's beacon node starts from: genesis, or
