@@ -40,8 +40,7 @@ func (admin *fakeAdmin) PeerEvents(ctx context.Context) (*rpc.Subscription, erro
 	return subscription, nil
 }
 
-// startFakeNode serves an API over WebSocket and returns its URL. Stopping
-// the API closes its connections.
+// startFakeNode serves an API over WebSocket. Stopping it closes the connections.
 func startFakeNode(t *testing.T) (url string, api *rpc.Server) {
 	t.Helper()
 	api = rpc.NewServer()
