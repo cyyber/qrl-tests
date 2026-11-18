@@ -103,6 +103,10 @@ type Container struct {
 
 // Start creates and starts the container, removing it again on any failure.
 func Start(ctx context.Context, client Client, spec Spec) (*Container, error) {
+	return retryTakenPort(func() (*Container, error) { return start(ctx, client, spec) })
+}
+
+func start(ctx context.Context, client Client, spec Spec) (*Container, error) {
 	container, err := create(ctx, client, spec, false)
 	if err != nil {
 		return nil, err
@@ -117,6 +121,10 @@ func Start(ctx context.Context, client Client, spec Spec) (*Container, error) {
 // *ExitError and removes the container; on success the container stays so its
 // output can be read, and the caller must Close it.
 func Run(ctx context.Context, client Client, spec Spec) (*Container, error) {
+	return retryTakenPort(func() (*Container, error) { return run(ctx, client, spec) })
+}
+
+func run(ctx context.Context, client Client, spec Spec) (*Container, error) {
 	container, err := create(ctx, client, spec, false)
 	if err != nil {
 		return nil, err
@@ -170,6 +178,10 @@ func AttachDocker(ctx context.Context, spec Spec) (*Process, error) {
 // Attach starts the container attached to its output, and to its stdin if
 // spec.Stdin is set. On failure, the container is removed.
 func Attach(ctx context.Context, client Client, spec Spec) (*Process, error) {
+	return retryTakenPort(func() (*Process, error) { return attach(ctx, client, spec) })
+}
+
+func attach(ctx context.Context, client Client, spec Spec) (*Process, error) {
 	container, err := create(ctx, client, spec, true)
 	if err != nil {
 		return nil, err
@@ -322,6 +334,22 @@ func freeHostPorts(count int) ([]string, error) {
 		ports[index] = strconv.Itoa(listener.Addr().(*net.TCPAddr).Port)
 	}
 	return ports, nil
+}
+
+// takenPortAttempts is how many times a container is created and started
+// before a taken host port fails it.
+const takenPortAttempts = 3
+
+// retryTakenPort calls start again, with fresh host ports, while Docker
+// refuses one as taken: a port free on 127.0.0.1 can still be one that Docker
+// has allocated to another container.
+func retryTakenPort[T any](start func() (T, error)) (T, error) {
+	for attempt := 1; ; attempt++ {
+		result, err := start()
+		if err == nil || attempt == takenPortAttempts || !strings.Contains(err.Error(), "port is already allocated") {
+			return result, err
+		}
+	}
 }
 
 func (container *Container) abort(err error) error {

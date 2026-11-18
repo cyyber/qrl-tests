@@ -163,6 +163,35 @@ func TestStartRemovesContainerOnFailure(t *testing.T) {
 	}
 }
 
+// takenPortDocker refuses to start its first containers, as Docker does when a
+// host port one publishes is taken.
+type takenPortDocker struct {
+	*sidecartest.Docker
+	refusals int
+}
+
+func (docker *takenPortDocker) ContainerStart(ctx context.Context, id string, options dockerclient.ContainerStartOptions) (dockerclient.ContainerStartResult, error) {
+	if docker.refusals > 0 {
+		docker.refusals--
+		return dockerclient.ContainerStartResult{}, errors.New("failed to set up container networking: port is already allocated")
+	}
+	return docker.Docker.ContainerStart(ctx, id, options)
+}
+
+func TestStartRetriesATakenPort(t *testing.T) {
+	docker := &takenPortDocker{Docker: sidecartest.NewDocker(), refusals: takenPortAttempts - 1}
+	container, err := Start(t.Context(), docker, testSpec())
+	require.NoError(t, err)
+	defer container.Close()
+	require.Len(t, docker.Created, takenPortAttempts)
+	require.Len(t, docker.Removed, takenPortAttempts-1, "each refused container is removed")
+
+	docker = &takenPortDocker{Docker: sidecartest.NewDocker(), refusals: takenPortAttempts}
+	_, err = Start(t.Context(), docker, testSpec())
+	require.ErrorContains(t, err, "port is already allocated")
+	require.Len(t, docker.Created, takenPortAttempts)
+}
+
 func TestRunWaitsForSuccessfulExit(t *testing.T) {
 	docker := sidecartest.NewDocker()
 	docker.Files["/out/a.json"] = []byte("[]")
