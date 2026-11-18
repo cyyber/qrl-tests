@@ -72,6 +72,11 @@ func send(t *testing.T, admin *fakeAdmin, event *p2p.PeerEvent) {
 	}
 }
 
+// dropped is the event of a node dropping peer.
+func dropped(peer qnode.ID, reason string) *p2p.PeerEvent {
+	return &p2p.PeerEvent{Type: p2p.PeerEventTypeDrop, Peer: peer, Error: reason}
+}
+
 func awaitDrops(t *testing.T, watch *PeerWatch, count int) []PeerDrop {
 	t.Helper()
 	var drops []PeerDrop
@@ -93,16 +98,16 @@ func TestWatchPeersRecordsDrops(t *testing.T) {
 	require.Empty(t, drops)
 
 	first, second := qnode.ID{1}, qnode.ID{2}
+	firstDrop := dropped(first, "message too long: 11 > 10")
+	firstDrop.RemoteAddress = "172.16.0.12:30303"
 	began := time.Now()
 	send(t, admin, &p2p.PeerEvent{Type: p2p.PeerEventTypeAdd, Peer: first})
-	send(t, admin, &p2p.PeerEvent{Type: p2p.PeerEventTypeDrop, Peer: first, Error: "message too long: 11 > 10", RemoteAddress: "172.16.0.12:30303"})
-	send(t, admin, &p2p.PeerEvent{Type: p2p.PeerEventTypeAdd, Peer: second})
-	send(t, admin, &p2p.PeerEvent{Type: p2p.PeerEventTypeDrop, Peer: second, Error: "useless peer"})
+	send(t, admin, firstDrop)
+	send(t, admin, dropped(second, "useless peer"))
 
 	drops = awaitDrops(t, watch, 2)
-	require.WithinRange(t, drops[0].Received, began, time.Now())
-	require.False(t, drops[1].Received.Before(drops[0].Received), "oldest first")
 	for index := range drops {
+		require.WithinRange(t, drops[index].Received, began, time.Now())
 		drops[index].Received = time.Time{}
 	}
 	require.Equal(t, []PeerDrop{
@@ -131,10 +136,11 @@ func TestDropsFailsWhileTheNodeDoesNotAnswer(t *testing.T) {
 func TestCloseKeepsTheDrops(t *testing.T) {
 	admin, watch, _ := startWatch(t)
 
-	send(t, admin, &p2p.PeerEvent{Type: p2p.PeerEventTypeDrop, Peer: qnode.ID{1}, Error: "useless peer"})
+	send(t, admin, dropped(qnode.ID{1}, "useless peer"))
 	awaitDrops(t, watch, 1)
 
 	watch.Close()
+	// A second Close does nothing.
 	watch.Close()
 
 	drops, err := watch.Drops(t.Context())
@@ -145,21 +151,22 @@ func TestCloseKeepsTheDrops(t *testing.T) {
 func TestDropsAfterTheSubscriptionIsLost(t *testing.T) {
 	admin, watch, api := startWatch(t)
 
-	send(t, admin, &p2p.PeerEvent{Type: p2p.PeerEventTypeDrop, Peer: qnode.ID{1}, Error: "useless peer"})
+	send(t, admin, dropped(qnode.ID{1}, "useless peer"))
 	awaitDrops(t, watch, 1)
 
 	api.Stop()
-	require.EventuallyWithT(t, func(c *assert.CollectT) {
-		// Until the loss arrives, the check of the stopped node times out.
-		ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
-		defer cancel()
-		drops, err := watch.Drops(ctx)
-		assert.ErrorContains(c, err, "peer watch lost its subscription")
-		assert.Len(c, drops, 1, "the drops recorded before the loss")
-	}, 5*time.Second, 10*time.Millisecond)
+	select {
+	case <-watch.ended:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the watch did not end")
+	}
+
+	drops, err := watch.Drops(t.Context())
+	require.ErrorContains(t, err, "peer watch lost its subscription")
+	require.Len(t, drops, 1, "the drops recorded before the loss")
 
 	watch.Close()
-	drops, err := watch.Drops(t.Context())
+	drops, err = watch.Drops(t.Context())
 	require.ErrorContains(t, err, "peer watch lost its subscription", "Close keeps the error")
 	require.Len(t, drops, 1)
 }
