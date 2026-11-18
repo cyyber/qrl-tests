@@ -50,8 +50,8 @@ func startFakeNode(t *testing.T) (url string, api *rpc.Server) {
 	return "ws" + strings.TrimPrefix(server.URL, "http"), api
 }
 
-// startWatch watches a fake node with the admin API.
-func startWatch(t *testing.T) (*fakeAdmin, *PeerWatch) {
+// startPeerWatch watches the peers of a fake node with the admin API.
+func startPeerWatch(t *testing.T) (*fakeAdmin, *PeerWatch) {
 	t.Helper()
 	url, api := startFakeNode(t)
 	admin := &fakeAdmin{events: make(chan *p2p.PeerEvent), api: api}
@@ -91,7 +91,7 @@ func awaitDrops(t *testing.T, watch *PeerWatch, count int) []PeerDrop {
 }
 
 func TestWatchPeers(t *testing.T) {
-	admin, watch := startWatch(t)
+	admin, watch := startPeerWatch(t)
 	defer watch.Close()
 
 	drops, err := watch.Drops(t.Context())
@@ -120,7 +120,7 @@ func TestWatchPeers(t *testing.T) {
 }
 
 func TestDropsFailedCheck(t *testing.T) {
-	admin, watch := startWatch(t)
+	admin, watch := startPeerWatch(t)
 	defer watch.Close()
 
 	send(t, admin, dropped(qnode.ID{1}, "useless peer"))
@@ -137,7 +137,7 @@ func TestDropsFailedCheck(t *testing.T) {
 }
 
 func TestClose(t *testing.T) {
-	admin, watch := startWatch(t)
+	admin, watch := startPeerWatch(t)
 
 	send(t, admin, dropped(qnode.ID{1}, "useless peer"))
 	awaitDrops(t, watch, 1)
@@ -152,7 +152,7 @@ func TestClose(t *testing.T) {
 }
 
 func TestLostSubscription(t *testing.T) {
-	admin, watch := startWatch(t)
+	admin, watch := startPeerWatch(t)
 
 	send(t, admin, dropped(qnode.ID{1}, "useless peer"))
 	awaitDrops(t, watch, 1)
