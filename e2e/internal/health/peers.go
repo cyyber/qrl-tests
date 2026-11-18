@@ -110,9 +110,8 @@ func (watch *PeerWatch) check(ctx context.Context) error {
 	return nil
 }
 
-// Drops returns the peers dropped so far, oldest first. It fails if the
-// node no longer answers, so a blind watch never reports no drops; the drops
-// recorded until then come with the error.
+// Drops returns the peers dropped so far, oldest first, and an error if the
+// node stopped answering.
 func (watch *PeerWatch) Drops(ctx context.Context) ([]PeerDrop, error) {
 	watch.mutex.Lock()
 	settled := watch.closed || watch.err != nil
