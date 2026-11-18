@@ -50,7 +50,6 @@ const (
 
 	failureLogLines = 100
 
-	// gqrl's own default for --maxpeers.
 	defaultMaxPeers = 50
 )
 
