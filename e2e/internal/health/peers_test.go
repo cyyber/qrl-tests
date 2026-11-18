@@ -2,6 +2,7 @@ package health
 
 import (
 	"context"
+	"net"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -14,8 +15,7 @@ import (
 	"github.com/theQRL/go-qrl/rpc"
 )
 
-// fakeAdmin is a node's admin API, as far as its peer events, and the server
-// that serves it.
+// fakeAdmin is a node's admin API with only its peer events, and its server.
 type fakeAdmin struct {
 	events chan *p2p.PeerEvent
 	api    *rpc.Server
@@ -175,4 +175,18 @@ func TestWatchPeersNeedsTheAdminAPI(t *testing.T) {
 	url, _ := startFakeNode(t)
 	_, err := WatchPeers(t.Context(), url)
 	require.ErrorContains(t, err, "subscribe to the peer events")
+}
+
+func TestDialOnceRefusesToRedial(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	defer listener.Close()
+	dialer := dialOnce()
+
+	conn, err := dialer.NetDialContext(t.Context(), "tcp", listener.Addr().String())
+	require.NoError(t, err)
+	conn.Close()
+
+	_, err = dialer.NetDialContext(t.Context(), "tcp", listener.Addr().String())
+	require.ErrorIs(t, err, errRedial)
 }

@@ -4,11 +4,16 @@ package health
 import (
 	"cmp"
 	"context"
+	"errors"
 	"fmt"
+	"net"
+	"net/http"
 	"slices"
 	"sync"
+	"sync/atomic"
 	"time"
 
+	"github.com/gorilla/websocket"
 	"github.com/theQRL/go-qrl/p2p"
 	"github.com/theQRL/go-qrl/p2p/qnode"
 	"github.com/theQRL/go-qrl/rpc"
@@ -43,7 +48,7 @@ func WatchPeers(ctx context.Context, wsURL string) (*PeerWatch, error) {
 	ctx, cancel := context.WithTimeout(ctx, startTimeout)
 	defer cancel()
 
-	client, err := rpc.DialContext(ctx, wsURL)
+	client, err := rpc.DialOptions(ctx, wsURL, rpc.WithWebsocketDialer(dialOnce()))
 	if err != nil {
 		return nil, fmt.Errorf("dial %s: %w", wsURL, err)
 	}
@@ -58,6 +63,25 @@ func WatchPeers(ctx context.Context, wsURL string) (*PeerWatch, error) {
 	watch := &PeerWatch{client: client, subscription: subscription, ended: make(chan struct{})}
 	go watch.record(events)
 	return watch, nil
+}
+
+// errRedial refuses a second connection: the subscription lives on the first
+// one only, so a check answered on a new one would vouch for a dead watch.
+var errRedial = errors.New("the peer watch does not reconnect")
+
+// dialOnce is a WebSocket dialer that connects once and then refuses.
+func dialOnce() websocket.Dialer {
+	var dialed atomic.Bool
+	return websocket.Dialer{
+		Proxy: http.ProxyFromEnvironment,
+		NetDialContext: func(ctx context.Context, network, address string) (net.Conn, error) {
+			if dialed.Swap(true) {
+				return nil, errRedial
+			}
+			var dialer net.Dialer
+			return dialer.DialContext(ctx, network, address)
+		},
+	}
 }
 
 func (watch *PeerWatch) record(events <-chan *p2p.PeerEvent) {
@@ -121,7 +145,7 @@ func (watch *PeerWatch) check(ctx context.Context) error {
 }
 
 // Drops returns the peers dropped so far, oldest first, and an error if the
-// node stopped answering.
+// watch lost its subscription or the node does not answer.
 func (watch *PeerWatch) Drops(ctx context.Context) ([]PeerDrop, error) {
 	unreachable := watch.check(ctx)
 
