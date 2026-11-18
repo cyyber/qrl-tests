@@ -40,8 +40,8 @@ const (
 )
 
 // WatchPeers records the peers dropped by the node at url, a WebSocket
-// endpoint with the admin API, until Close. ctx bounds only the start, and a
-// restarted node ends the watch.
+// endpoint with the admin API, until Close. ctx is used only to connect, and
+// a restarted node ends the watch.
 func WatchPeers(ctx context.Context, url string) (*PeerWatch, error) {
 	ctx, cancel := context.WithTimeout(ctx, startTimeout)
 	defer cancel()
