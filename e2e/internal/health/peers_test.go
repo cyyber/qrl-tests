@@ -91,7 +91,7 @@ func awaitDrops(t *testing.T, watch *PeerWatch, count int) []PeerDrop {
 	return drops
 }
 
-func TestWatchPeersRecordsDrops(t *testing.T) {
+func TestWatchPeers(t *testing.T) {
 	admin, watch := startWatch(t)
 	defer watch.Close()
 
@@ -120,7 +120,7 @@ func TestWatchPeersRecordsDrops(t *testing.T) {
 	require.False(t, again[0].Received.IsZero(), "the watch keeps its own copy")
 }
 
-func TestDropsFailsWhenTheCheckFails(t *testing.T) {
+func TestDropsFailedCheck(t *testing.T) {
 	admin, watch := startWatch(t)
 	defer watch.Close()
 
@@ -137,7 +137,7 @@ func TestDropsFailsWhenTheCheckFails(t *testing.T) {
 	require.NoError(t, err, "a failed check is not kept")
 }
 
-func TestCloseKeepsTheDrops(t *testing.T) {
+func TestClose(t *testing.T) {
 	admin, watch := startWatch(t)
 
 	send(t, admin, dropped(qnode.ID{1}, "useless peer"))
@@ -152,7 +152,7 @@ func TestCloseKeepsTheDrops(t *testing.T) {
 	require.Len(t, drops, 1)
 }
 
-func TestDropsAfterTheSubscriptionIsLost(t *testing.T) {
+func TestLostSubscription(t *testing.T) {
 	admin, watch := startWatch(t)
 
 	send(t, admin, dropped(qnode.ID{1}, "useless peer"))
@@ -178,13 +178,13 @@ func TestDropsAfterTheSubscriptionIsLost(t *testing.T) {
 	require.Len(t, drops, 1)
 }
 
-func TestWatchPeersNeedsTheAdminAPI(t *testing.T) {
+func TestWatchPeersNoAdmin(t *testing.T) {
 	url, _ := startFakeNode(t)
 	_, err := WatchPeers(t.Context(), url)
 	require.ErrorContains(t, err, "subscribe to the peer events")
 }
 
-func TestDialOnceRefusesToRedial(t *testing.T) {
+func TestDialOnce(t *testing.T) {
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
 	defer listener.Close()
