@@ -336,9 +336,8 @@ func freeHostPorts(ctx context.Context, client Client, count int) ([]string, err
 	return ports, nil
 }
 
-// takenHostPorts returns the host ports that Docker's containers have taken,
-// which can look free on 127.0.0.1: those a running container publishes, and
-// those a stopped one takes back when it starts again.
+// takenHostPorts returns the host ports Docker's containers hold, running or
+// stopped, which can still look free on 127.0.0.1.
 func takenHostPorts(ctx context.Context, client Client) (map[string]bool, error) {
 	listed, err := client.ContainerList(ctx, dockerclient.ContainerListOptions{All: true})
 	if err != nil {
