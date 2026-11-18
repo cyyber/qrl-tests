@@ -180,7 +180,7 @@ func TestLostSubscription(t *testing.T) {
 func TestWatchPeersNoAdmin(t *testing.T) {
 	url, _ := startFakeNode(t)
 	_, err := WatchPeers(t.Context(), url)
-	require.ErrorContains(t, err, "subscribe to the peer events")
+	require.ErrorContains(t, err, "subscribe to admin_peerEvents")
 }
 
 func TestDialOnce(t *testing.T) {

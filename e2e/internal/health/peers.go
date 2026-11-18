@@ -57,7 +57,7 @@ func WatchPeers(ctx context.Context, wsURL string) (*PeerWatch, error) {
 	subscription, err := client.Subscribe(ctx, "admin", events, "peerEvents")
 	if err != nil {
 		client.Close()
-		return nil, fmt.Errorf("subscribe to the peer events of %s: %w", wsURL, err)
+		return nil, fmt.Errorf("subscribe to admin_peerEvents on %s: %w", wsURL, err)
 	}
 
 	watch := &PeerWatch{client: client, subscription: subscription, ended: make(chan struct{})}
