@@ -40,6 +40,16 @@ func (admin *fakeAdmin) PeerEvents(ctx context.Context) (*rpc.Subscription, erro
 	return subscription, nil
 }
 
+// emit has the node emit event, failing the test if nothing takes it.
+func (admin *fakeAdmin) emit(t *testing.T, event *p2p.PeerEvent) {
+	t.Helper()
+	select {
+	case admin.events <- event:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the fake node took no event")
+	}
+}
+
 // startFakeNode serves an API over WebSocket. Stopping it closes the connections.
 func startFakeNode(t *testing.T) (url string, api *rpc.Server) {
 	t.Helper()
@@ -59,16 +69,6 @@ func startPeerWatch(t *testing.T) (*fakeAdmin, *PeerWatch) {
 	watch, err := WatchPeers(t.Context(), url)
 	require.NoError(t, err)
 	return admin, watch
-}
-
-// emit has the node emit event, failing the test if nothing takes it.
-func (admin *fakeAdmin) emit(t *testing.T, event *p2p.PeerEvent) {
-	t.Helper()
-	select {
-	case admin.events <- event:
-	case <-time.After(5 * time.Second):
-		t.Fatal("the fake node took no event")
-	}
 }
 
 const peerAddress = "172.16.0.12:30303"
