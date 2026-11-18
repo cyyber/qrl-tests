@@ -59,13 +59,13 @@ const (
 	// votes reach the other over gossip.
 	ProfileMainnetSlotTimePair Profile = "mainnet-slot-time-pair"
 	// ProfileValidatorCap is the single profile with 255 validators, one
-	// short of the most its 8 slots an epoch can hold: a committee of 32 in
-	// each. Its slots are six seconds, like those of the profiles below.
+	// short of a committee of 32 in each of an epoch's 8 slots. Its slots are
+	// six seconds, like those of the profiles below.
 	ProfileValidatorCap Profile = "validator-cap"
 	// ProfileOperationsPair is ProfileMainnetSlotTimePair at six-second
-	// slots: full committees and a sync committee drawn from 256 validators,
-	// and an execution voting period short enough for a deposit to count
-	// within about an hour and a quarter.
+	// slots: full committees and a sync committee drawn from 256 validators.
+	// At six-second slots, a deposit counts within about an hour and a
+	// quarter.
 	ProfileOperationsPair Profile = "operations-pair"
 	// ProfileSixSecondSlots is the single profile at six-second slots.
 	ProfileSixSecondSlots Profile = "six-second-slots"

@@ -10,10 +10,10 @@ import (
 func TestParticipantsFromServices(t *testing.T) {
 	services := map[string]kurtosis.Service{
 		"cl-2-qrysm-gqrl": service("cl-2-qrysm-gqrl", "beacon", map[string]uint16{"http": 4202, "rpc": 4402, "metrics": 4302}),
-		"el-2-gqrl-qrysm": service("el-2-gqrl-qrysm", "execution", map[string]uint16{"rpc": 3202, "ws": 3302, "engine-rpc": 3402, "tcp-discovery": 3502}),
+		"el-2-gqrl-qrysm": service("el-2-gqrl-qrysm", "execution", map[string]uint16{"rpc": 3202, "ws": 3302, "engine-rpc": 3402}),
 		"vc-2-gqrl-qrysm": service("vc-2-gqrl-qrysm", "validator", map[string]uint16{"http-validator": 5202, "metrics": 5302}),
 		"cl-1-qrysm-gqrl": service("cl-1-qrysm-gqrl", "beacon", map[string]uint16{"http": 4201, "rpc": 4401, "metrics": 4301}),
-		"el-1-gqrl-qrysm": service("el-1-gqrl-qrysm", "execution", map[string]uint16{"rpc": 3201, "ws": 3301, "engine-rpc": 3401, "tcp-discovery": 3501}),
+		"el-1-gqrl-qrysm": service("el-1-gqrl-qrysm", "execution", map[string]uint16{"rpc": 3201, "ws": 3301, "engine-rpc": 3401}),
 		"vc-1-gqrl-qrysm": service("vc-1-gqrl-qrysm", "validator", map[string]uint16{"http-validator": 5201, "metrics": 5301}),
 		"prometheus":      {Labels: map[string]string{"qrl-package.client-type": "utility"}},
 	}
@@ -27,7 +27,6 @@ func TestParticipantsFromServices(t *testing.T) {
 				ServiceInfo: ServiceInfo{Name: "el-1-gqrl-qrysm", ID: "el-1-gqrl-qrysm-id", PrivateIP: "10.0.0.1"},
 				RPCURL:      "http://127.0.0.1:3201", GraphQLURL: "http://127.0.0.1:3201/graphql",
 				WebSocketURL: "ws://127.0.0.1:3301", EngineURL: "http://127.0.0.1:3401",
-				P2PAddress: "127.0.0.1:3501",
 			},
 			Consensus: ConsensusService{
 				ServiceInfo: ServiceInfo{Name: "cl-1-qrysm-gqrl", ID: "cl-1-qrysm-gqrl-id", PrivateIP: "10.0.0.1"},
@@ -44,7 +43,6 @@ func TestParticipantsFromServices(t *testing.T) {
 				ServiceInfo: ServiceInfo{Name: "el-2-gqrl-qrysm", ID: "el-2-gqrl-qrysm-id", PrivateIP: "10.0.0.2"},
 				RPCURL:      "http://127.0.0.1:3202", GraphQLURL: "http://127.0.0.1:3202/graphql",
 				WebSocketURL: "ws://127.0.0.1:3302", EngineURL: "http://127.0.0.1:3402",
-				P2PAddress: "127.0.0.1:3502",
 			},
 			Consensus: ConsensusService{
 				ServiceInfo: ServiceInfo{Name: "cl-2-qrysm-gqrl", ID: "cl-2-qrysm-gqrl-id", PrivateIP: "10.0.0.2"},
