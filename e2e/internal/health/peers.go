@@ -28,10 +28,9 @@ type PeerWatch struct {
 	subscription *rpc.ClientSubscription
 	stopped      chan struct{}
 
-	mutex  sync.Mutex
-	drops  []PeerDrop
-	err    error
-	closed bool
+	mutex sync.Mutex
+	drops []PeerDrop
+	err   error
 }
 
 const (
@@ -100,8 +99,14 @@ func (watch *PeerWatch) fail(err error) {
 }
 
 // check calls the node over the watch's connection and fails if it gets no
-// answer in time.
+// answer in time. A watch that has ended keeps the error it ended with.
 func (watch *PeerWatch) check(ctx context.Context) error {
+	select {
+	case <-watch.stopped:
+		return nil
+	default:
+	}
+
 	ctx, cancel := context.WithTimeout(ctx, checkTimeout)
 	defer cancel()
 	if err := watch.client.CallContext(ctx, nil, "rpc_modules"); err != nil {
@@ -113,14 +118,7 @@ func (watch *PeerWatch) check(ctx context.Context) error {
 // Drops returns the peers dropped so far, oldest first, and an error if the
 // node stopped answering.
 func (watch *PeerWatch) Drops(ctx context.Context) ([]PeerDrop, error) {
-	watch.mutex.Lock()
-	settled := watch.closed || watch.err != nil
-	watch.mutex.Unlock()
-
-	var unreachable error
-	if !settled {
-		unreachable = watch.check(ctx)
-	}
+	unreachable := watch.check(ctx)
 
 	watch.mutex.Lock()
 	defer watch.mutex.Unlock()
@@ -130,19 +128,10 @@ func (watch *PeerWatch) Drops(ctx context.Context) ([]PeerDrop, error) {
 // Close checks the node one last time and ends the watch. It can take up to
 // 20 seconds on a stalled node.
 func (watch *PeerWatch) Close() {
-	watch.mutex.Lock()
-	closed, failed := watch.closed, watch.err != nil
-	watch.closed = true
-	watch.mutex.Unlock()
-	if closed {
-		return
+	if err := watch.check(context.Background()); err != nil {
+		watch.fail(err)
 	}
 
-	if !failed {
-		if err := watch.check(context.Background()); err != nil {
-			watch.fail(err)
-		}
-	}
 	watch.subscription.Unsubscribe()
 	<-watch.stopped
 	watch.client.Close()
