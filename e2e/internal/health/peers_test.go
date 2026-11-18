@@ -72,12 +72,12 @@ func send(t *testing.T, admin *fakeAdmin, event *p2p.PeerEvent) {
 	}
 }
 
+const peerAddress = "172.16.0.12:30303"
+
 // dropped is the event of a node dropping peer, at peerAddress.
 func dropped(peer qnode.ID, reason string) *p2p.PeerEvent {
 	return &p2p.PeerEvent{Type: p2p.PeerEventTypeDrop, Peer: peer, RemoteAddress: peerAddress, Error: reason}
 }
-
-const peerAddress = "172.16.0.12:30303"
 
 func awaitDrops(t *testing.T, watch *PeerWatch, count int) []PeerDrop {
 	t.Helper()
@@ -120,17 +120,21 @@ func TestWatchPeersRecordsDrops(t *testing.T) {
 	require.False(t, again[0].Received.IsZero(), "the watch keeps its own copy")
 }
 
-func TestDropsFailsWhileTheNodeDoesNotAnswer(t *testing.T) {
-	_, watch := startWatch(t)
+func TestDropsFailsWhenTheCheckFails(t *testing.T) {
+	admin, watch := startWatch(t)
 	defer watch.Close()
+
+	send(t, admin, dropped(qnode.ID{1}, "useless peer"))
+	awaitDrops(t, watch, 1)
 
 	cancelled, cancel := context.WithCancel(t.Context())
 	cancel()
-	_, err := watch.Drops(cancelled)
+	drops, err := watch.Drops(cancelled)
 	require.ErrorContains(t, err, "peer watch cannot reach the node")
+	require.Len(t, drops, 1, "the drops come with the error")
 
 	_, err = watch.Drops(t.Context())
-	require.NoError(t, err, "a node that answers again is watched again")
+	require.NoError(t, err, "a failed check is not kept")
 }
 
 func TestCloseKeepsTheDrops(t *testing.T) {
@@ -160,6 +164,9 @@ func TestDropsAfterTheSubscriptionIsLost(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("the watch did not end")
 	}
+
+	err := watch.client.CallContext(t.Context(), nil, "rpc_modules")
+	require.ErrorIs(t, err, errRedial, "the client does not reconnect")
 
 	drops, err := watch.Drops(t.Context())
 	require.ErrorContains(t, err, "peer watch lost its subscription")
