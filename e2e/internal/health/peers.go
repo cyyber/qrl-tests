@@ -90,7 +90,7 @@ func (watch *PeerWatch) add(event *p2p.PeerEvent) {
 	watch.drops = append(watch.drops, PeerDrop{Received: time.Now(), Peer: event.Peer, RemoteAddress: event.RemoteAddress, Reason: event.Error})
 }
 
-// fail keeps the first error the watch meets.
+// fail records err unless the watch has already failed.
 func (watch *PeerWatch) fail(err error) {
 	watch.mutex.Lock()
 	defer watch.mutex.Unlock()
