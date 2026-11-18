@@ -13,7 +13,7 @@ import (
 	"github.com/theQRL/go-qrl/rpc"
 )
 
-// PeerDrop is a peer that a node disconnected from.
+// PeerDrop is a peer whose connection to the node ended.
 type PeerDrop struct {
 	// Time is when the watch received the drop.
 	Time time.Time
@@ -36,7 +36,8 @@ type PeerWatch struct {
 }
 
 // WatchPeers starts recording the peers dropped by the node at url, a
-// WebSocket endpoint that serves the admin API.
+// WebSocket endpoint that serves the admin API. ctx bounds the dial and the
+// subscription only; Close ends the watch.
 func WatchPeers(ctx context.Context, url string) (*PeerWatch, error) {
 	client, err := rpc.DialContext(ctx, url)
 	if err != nil {

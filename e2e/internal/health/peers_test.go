@@ -52,6 +52,16 @@ func startFakeNode(t *testing.T, admin *fakeAdmin) (url string, api *rpc.Server)
 	return "ws" + strings.TrimPrefix(server.URL, "http"), api
 }
 
+// startWatch watches a fake node, which the test stops through api.
+func startWatch(t *testing.T) (admin *fakeAdmin, watch *PeerWatch, api *rpc.Server) {
+	t.Helper()
+	admin = &fakeAdmin{events: make(chan *p2p.PeerEvent)}
+	url, api := startFakeNode(t, admin)
+	watch, err := WatchPeers(t.Context(), url)
+	require.NoError(t, err)
+	return admin, watch, api
+}
+
 func awaitDrops(t *testing.T, watch *PeerWatch, count int) []PeerDrop {
 	t.Helper()
 	var drops []PeerDrop
@@ -65,11 +75,7 @@ func awaitDrops(t *testing.T, watch *PeerWatch, count int) []PeerDrop {
 }
 
 func TestWatchPeersRecordsDrops(t *testing.T) {
-	admin := &fakeAdmin{events: make(chan *p2p.PeerEvent)}
-	url, _ := startFakeNode(t, admin)
-
-	watch, err := WatchPeers(t.Context(), url)
-	require.NoError(t, err)
+	admin, watch, _ := startWatch(t)
 	defer watch.Close()
 
 	drops, err := watch.Drops()
@@ -97,11 +103,7 @@ func TestWatchPeersRecordsDrops(t *testing.T) {
 }
 
 func TestCloseKeepsTheDrops(t *testing.T) {
-	admin := &fakeAdmin{events: make(chan *p2p.PeerEvent)}
-	url, _ := startFakeNode(t, admin)
-
-	watch, err := WatchPeers(t.Context(), url)
-	require.NoError(t, err)
+	admin, watch, _ := startWatch(t)
 
 	admin.events <- &p2p.PeerEvent{Type: p2p.PeerEventTypeDrop, Peer: qnode.ID{1}, Error: "useless peer"}
 	awaitDrops(t, watch, 1)
@@ -113,12 +115,8 @@ func TestCloseKeepsTheDrops(t *testing.T) {
 	require.Len(t, drops, 1)
 }
 
-func TestDropsFailsOnceTheSubscriptionIsLost(t *testing.T) {
-	admin := &fakeAdmin{events: make(chan *p2p.PeerEvent)}
-	url, api := startFakeNode(t, admin)
-
-	watch, err := WatchPeers(t.Context(), url)
-	require.NoError(t, err)
+func TestDropsAfterTheSubscriptionIsLost(t *testing.T) {
+	admin, watch, api := startWatch(t)
 	defer watch.Close()
 
 	admin.events <- &p2p.PeerEvent{Type: p2p.PeerEventTypeDrop, Peer: qnode.ID{1}, Error: "useless peer"}
