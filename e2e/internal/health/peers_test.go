@@ -100,19 +100,19 @@ func TestWatchPeersRecordsDrops(t *testing.T) {
 	send(t, admin, &p2p.PeerEvent{Type: p2p.PeerEventTypeDrop, Peer: second, Error: "useless peer"})
 
 	drops = awaitDrops(t, watch, 2)
-	require.WithinRange(t, drops[0].Time, began, time.Now())
-	require.False(t, drops[1].Time.Before(drops[0].Time), "oldest first")
+	require.WithinRange(t, drops[0].Received, began, time.Now())
+	require.False(t, drops[1].Received.Before(drops[0].Received), "oldest first")
 	for index := range drops {
-		drops[index].Time = time.Time{}
+		drops[index].Received = time.Time{}
 	}
 	require.Equal(t, []PeerDrop{
-		{Peer: first, Address: "172.16.0.12:30303", Reason: "message too long: 11 > 10"},
+		{Peer: first, RemoteAddress: "172.16.0.12:30303", Reason: "message too long: 11 > 10"},
 		{Peer: second, Reason: "useless peer"},
 	}, drops)
 
 	again, err := watch.Drops(t.Context())
 	require.NoError(t, err)
-	require.False(t, again[0].Time.IsZero(), "the watch keeps its own copy")
+	require.False(t, again[0].Received.IsZero(), "the watch keeps its own copy")
 }
 
 func TestDropsFailsWhileTheNodeDoesNotAnswer(t *testing.T) {

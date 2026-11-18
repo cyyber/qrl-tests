@@ -16,13 +16,10 @@ import (
 
 // PeerDrop is a peer whose connection to the node ended.
 type PeerDrop struct {
-	// Time is when the watch received the drop.
-	Time time.Time
-	Peer qnode.ID
-	// Address is the peer's remote host:port.
-	Address string
-	// Reason is the node's error for the disconnection.
-	Reason string
+	Received      time.Time
+	Peer          qnode.ID
+	RemoteAddress string
+	Reason        string
 }
 
 // PeerWatch records the peers an execution node drops.
@@ -89,7 +86,7 @@ func (watch *PeerWatch) add(event *p2p.PeerEvent) {
 	}
 	watch.mutex.Lock()
 	defer watch.mutex.Unlock()
-	watch.drops = append(watch.drops, PeerDrop{Time: time.Now(), Peer: event.Peer, Address: event.RemoteAddress, Reason: event.Error})
+	watch.drops = append(watch.drops, PeerDrop{Received: time.Now(), Peer: event.Peer, RemoteAddress: event.RemoteAddress, Reason: event.Error})
 }
 
 // fail keeps the first error the watch meets.
