@@ -1,4 +1,4 @@
-// Package health watches nodes for signs of trouble while a suite runs.
+// Package health checks that a suite's load leaves the network healthy.
 package health
 
 import (
