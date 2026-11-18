@@ -26,7 +26,7 @@ type PeerDrop struct {
 type PeerWatch struct {
 	client       *rpc.Client
 	subscription *rpc.ClientSubscription
-	stopped      chan struct{}
+	ended        chan struct{}
 
 	mutex sync.Mutex
 	drops []PeerDrop
@@ -55,13 +55,13 @@ func WatchPeers(ctx context.Context, wsURL string) (*PeerWatch, error) {
 		return nil, fmt.Errorf("subscribe to the peer events of %s: %w", wsURL, err)
 	}
 
-	watch := &PeerWatch{client: client, subscription: subscription, stopped: make(chan struct{})}
+	watch := &PeerWatch{client: client, subscription: subscription, ended: make(chan struct{})}
 	go watch.record(events)
 	return watch, nil
 }
 
 func (watch *PeerWatch) record(events <-chan *p2p.PeerEvent) {
-	defer close(watch.stopped)
+	defer close(watch.ended)
 	for {
 		select {
 		case event := <-events:
@@ -86,7 +86,12 @@ func (watch *PeerWatch) add(event *p2p.PeerEvent) {
 	}
 	watch.mutex.Lock()
 	defer watch.mutex.Unlock()
-	watch.drops = append(watch.drops, PeerDrop{Received: time.Now(), Peer: event.Peer, RemoteAddress: event.RemoteAddress, Reason: event.Error})
+	watch.drops = append(watch.drops, PeerDrop{
+		Received:      time.Now(),
+		Peer:          event.Peer,
+		RemoteAddress: event.RemoteAddress,
+		Reason:        event.Error,
+	})
 }
 
 // fail records err unless the watch has already failed.
@@ -102,7 +107,7 @@ func (watch *PeerWatch) fail(err error) {
 // answer in time. A watch that has ended keeps the error it ended with.
 func (watch *PeerWatch) check(ctx context.Context) error {
 	select {
-	case <-watch.stopped:
+	case <-watch.ended:
 		return nil
 	default:
 	}
@@ -133,6 +138,6 @@ func (watch *PeerWatch) Close() {
 	}
 
 	watch.subscription.Unsubscribe()
-	<-watch.stopped
+	<-watch.ended
 	watch.client.Close()
 }
