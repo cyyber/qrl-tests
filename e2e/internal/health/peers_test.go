@@ -181,12 +181,12 @@ func TestDialOnceRefusesToRedial(t *testing.T) {
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
 	defer listener.Close()
-	dialer := dialOnce()
+	address, dialer := listener.Addr().String(), dialOnce()
 
-	conn, err := dialer.NetDialContext(t.Context(), "tcp", listener.Addr().String())
+	conn, err := dialer.NetDialContext(t.Context(), "tcp", address)
 	require.NoError(t, err)
 	conn.Close()
 
-	_, err = dialer.NetDialContext(t.Context(), "tcp", listener.Addr().String())
+	_, err = dialer.NetDialContext(t.Context(), "tcp", address)
 	require.ErrorIs(t, err, errRedial)
 }
