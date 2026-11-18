@@ -14,9 +14,11 @@ import (
 	"github.com/theQRL/go-qrl/rpc"
 )
 
-// fakeAdmin is a node's admin API, as far as its peer events.
+// fakeAdmin is a node's admin API, as far as its peer events, and the server
+// that serves it.
 type fakeAdmin struct {
 	events chan *p2p.PeerEvent
+	api    *rpc.Server
 }
 
 func (admin *fakeAdmin) PeerEvents(ctx context.Context) (*rpc.Subscription, error) {
@@ -38,28 +40,26 @@ func (admin *fakeAdmin) PeerEvents(ctx context.Context) (*rpc.Subscription, erro
 	return subscription, nil
 }
 
-// startFakeNode serves the API over WebSocket and returns its URL. Stopping
+// startFakeNode serves an API over WebSocket and returns its URL. Stopping
 // the API closes its connections.
-func startFakeNode(t *testing.T, admin *fakeAdmin) (url string, api *rpc.Server) {
+func startFakeNode(t *testing.T) (url string, api *rpc.Server) {
 	t.Helper()
 	api = rpc.NewServer()
 	t.Cleanup(api.Stop)
-	if admin != nil {
-		require.NoError(t, api.RegisterName("admin", admin))
-	}
 	server := httptest.NewServer(api.WebsocketHandler([]string{"*"}))
 	t.Cleanup(server.Close)
 	return "ws" + strings.TrimPrefix(server.URL, "http"), api
 }
 
-// startWatch watches a fake node, which the test stops through api.
-func startWatch(t *testing.T) (admin *fakeAdmin, watch *PeerWatch, api *rpc.Server) {
+// startWatch watches a fake node with the admin API.
+func startWatch(t *testing.T) (*fakeAdmin, *PeerWatch) {
 	t.Helper()
-	admin = &fakeAdmin{events: make(chan *p2p.PeerEvent)}
-	url, api := startFakeNode(t, admin)
+	url, api := startFakeNode(t)
+	admin := &fakeAdmin{events: make(chan *p2p.PeerEvent), api: api}
+	require.NoError(t, api.RegisterName("admin", admin))
 	watch, err := WatchPeers(t.Context(), url)
 	require.NoError(t, err)
-	return admin, watch, api
+	return admin, watch
 }
 
 // send has the fake node emit event, failing the test if nothing takes it.
@@ -72,10 +72,12 @@ func send(t *testing.T, admin *fakeAdmin, event *p2p.PeerEvent) {
 	}
 }
 
-// dropped is the event of a node dropping peer.
+// dropped is the event of a node dropping peer, at peerAddress.
 func dropped(peer qnode.ID, reason string) *p2p.PeerEvent {
-	return &p2p.PeerEvent{Type: p2p.PeerEventTypeDrop, Peer: peer, Error: reason}
+	return &p2p.PeerEvent{Type: p2p.PeerEventTypeDrop, Peer: peer, RemoteAddress: peerAddress, Error: reason}
 }
+
+const peerAddress = "172.16.0.12:30303"
 
 func awaitDrops(t *testing.T, watch *PeerWatch, count int) []PeerDrop {
 	t.Helper()
@@ -90,7 +92,7 @@ func awaitDrops(t *testing.T, watch *PeerWatch, count int) []PeerDrop {
 }
 
 func TestWatchPeersRecordsDrops(t *testing.T) {
-	admin, watch, _ := startWatch(t)
+	admin, watch := startWatch(t)
 	defer watch.Close()
 
 	drops, err := watch.Drops(t.Context())
@@ -98,11 +100,9 @@ func TestWatchPeersRecordsDrops(t *testing.T) {
 	require.Empty(t, drops)
 
 	first, second := qnode.ID{1}, qnode.ID{2}
-	firstDrop := dropped(first, "message too long: 11 > 10")
-	firstDrop.RemoteAddress = "172.16.0.12:30303"
 	began := time.Now()
 	send(t, admin, &p2p.PeerEvent{Type: p2p.PeerEventTypeAdd, Peer: first})
-	send(t, admin, firstDrop)
+	send(t, admin, dropped(first, "message too long: 11 > 10"))
 	send(t, admin, dropped(second, "useless peer"))
 
 	drops = awaitDrops(t, watch, 2)
@@ -111,8 +111,8 @@ func TestWatchPeersRecordsDrops(t *testing.T) {
 		drops[index].Received = time.Time{}
 	}
 	require.Equal(t, []PeerDrop{
-		{Peer: first, RemoteAddress: "172.16.0.12:30303", Reason: "message too long: 11 > 10"},
-		{Peer: second, Reason: "useless peer"},
+		{Peer: first, RemoteAddress: peerAddress, Reason: "message too long: 11 > 10"},
+		{Peer: second, RemoteAddress: peerAddress, Reason: "useless peer"},
 	}, drops)
 
 	again, err := watch.Drops(t.Context())
@@ -121,7 +121,7 @@ func TestWatchPeersRecordsDrops(t *testing.T) {
 }
 
 func TestDropsFailsWhileTheNodeDoesNotAnswer(t *testing.T) {
-	_, watch, _ := startWatch(t)
+	_, watch := startWatch(t)
 	defer watch.Close()
 
 	cancelled, cancel := context.WithCancel(t.Context())
@@ -134,7 +134,7 @@ func TestDropsFailsWhileTheNodeDoesNotAnswer(t *testing.T) {
 }
 
 func TestCloseKeepsTheDrops(t *testing.T) {
-	admin, watch, _ := startWatch(t)
+	admin, watch := startWatch(t)
 
 	send(t, admin, dropped(qnode.ID{1}, "useless peer"))
 	awaitDrops(t, watch, 1)
@@ -149,12 +149,12 @@ func TestCloseKeepsTheDrops(t *testing.T) {
 }
 
 func TestDropsAfterTheSubscriptionIsLost(t *testing.T) {
-	admin, watch, api := startWatch(t)
+	admin, watch := startWatch(t)
 
 	send(t, admin, dropped(qnode.ID{1}, "useless peer"))
 	awaitDrops(t, watch, 1)
 
-	api.Stop()
+	admin.api.Stop()
 	select {
 	case <-watch.ended:
 	case <-time.After(5 * time.Second):
@@ -172,7 +172,7 @@ func TestDropsAfterTheSubscriptionIsLost(t *testing.T) {
 }
 
 func TestWatchPeersNeedsTheAdminAPI(t *testing.T) {
-	url, _ := startFakeNode(t, nil)
+	url, _ := startFakeNode(t)
 	_, err := WatchPeers(t.Context(), url)
 	require.ErrorContains(t, err, "subscribe to the peer events")
 }
