@@ -34,13 +34,16 @@ type PeerWatch struct {
 	closed bool
 }
 
-const nodeTimeout = 10 * time.Second
+const (
+	startTimeout = 10 * time.Second
+	checkTimeout = 10 * time.Second
+)
 
 // WatchPeers records the peers dropped by the node at url, a WebSocket
 // endpoint with the admin API, until Close. ctx bounds only the start, and a
 // restarted node ends the watch.
 func WatchPeers(ctx context.Context, url string) (*PeerWatch, error) {
-	ctx, cancel := context.WithTimeout(ctx, nodeTimeout)
+	ctx, cancel := context.WithTimeout(ctx, startTimeout)
 	defer cancel()
 	client, err := rpc.DialContext(ctx, url)
 	if err != nil {
@@ -96,9 +99,9 @@ func (watch *PeerWatch) fail(err error) {
 }
 
 // check returns an error if the node does not answer on the watch's
-// connection within ctx and nodeTimeout.
+// connection within ctx and checkTimeout.
 func (watch *PeerWatch) check(ctx context.Context) error {
-	ctx, cancel := context.WithTimeout(ctx, nodeTimeout)
+	ctx, cancel := context.WithTimeout(ctx, checkTimeout)
 	defer cancel()
 	if err := watch.client.CallContext(ctx, nil, "rpc_modules"); err != nil {
 		return fmt.Errorf("peer watch cannot reach the node: %w", err)
