@@ -127,9 +127,8 @@ func (watch *PeerWatch) Drops(ctx context.Context) ([]PeerDrop, error) {
 	return slices.Clone(watch.drops), cmp.Or(watch.err, unreachable)
 }
 
-// Close ends the watch after checking the node one last time, so Drops after
-// Close fails for a node that was gone. It can take up to 20 seconds for a
-// node that has stalled. A second Close does nothing.
+// Close checks the node one last time and ends the watch. It can take up to
+// 20 seconds on a stalled node.
 func (watch *PeerWatch) Close() {
 	watch.mutex.Lock()
 	closed, failed := watch.closed, watch.err != nil
