@@ -136,7 +136,7 @@ func TestDropsFailedCheck(t *testing.T) {
 	require.NoError(t, err, "a failed check is not kept")
 }
 
-func TestClose(t *testing.T) {
+func TestDropsAfterClose(t *testing.T) {
 	admin, watch := startPeerWatch(t)
 
 	admin.emit(t, dropped(qnode.ID{1}, "useless peer"))
