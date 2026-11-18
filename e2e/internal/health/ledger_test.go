@@ -79,6 +79,7 @@ func TestLedger(t *testing.T) {
 			problem: "node: restarted",
 		},
 		{name: "a meter that rose", change: func(*fakeDocker) {}, discard: "3", problem: "node: txpool_pending_discard rose by 3"},
+		{name: "a meter that rose a million", change: func(*fakeDocker) {}, discard: "1000000", problem: "node: txpool_pending_discard rose by 1000000"},
 		{
 			name:    "a crash in the log",
 			change:  func(docker *fakeDocker) { docker.logs = "INFO [11-16] Imported\npanic: runtime error\n" },

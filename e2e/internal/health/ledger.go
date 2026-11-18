@@ -151,7 +151,7 @@ func (ledger *Ledger) problems(ctx context.Context, entry *watched) ([]string, e
 		}
 		for _, name := range droppingMeters {
 			if rise := meters[name] - entry.meters[name]; rise > 0 {
-				problems = append(problems, fmt.Sprintf("%s rose by %g", name, rise))
+				problems = append(problems, name+" rose by "+strconv.FormatFloat(rise, 'f', -1, 64))
 			}
 		}
 	}
