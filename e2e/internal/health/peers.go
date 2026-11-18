@@ -18,6 +18,8 @@ type PeerDrop struct {
 	// Time is when the watch received the drop.
 	Time time.Time
 	Peer qnode.ID
+	// Address is the peer's remote host:port.
+	Address string
 	// Reason is the node's error for the disconnection.
 	Reason string
 }
@@ -58,6 +60,7 @@ func (watch *PeerWatch) record(events <-chan *p2p.PeerEvent) {
 		case event := <-events:
 			watch.add(event)
 		case err := <-watch.subscription.Err():
+			// err is nil when Close unsubscribed.
 			for len(events) > 0 {
 				watch.add(<-events)
 			}
@@ -75,22 +78,28 @@ func (watch *PeerWatch) add(event *p2p.PeerEvent) {
 	}
 	watch.mutex.Lock()
 	defer watch.mutex.Unlock()
-	watch.drops = append(watch.drops, PeerDrop{Time: time.Now(), Peer: event.Peer, Reason: event.Error})
+	watch.drops = append(watch.drops, PeerDrop{Time: time.Now(), Peer: event.Peer, Address: event.RemoteAddress, Reason: event.Error})
 }
 
-// Drops returns the peers dropped since the watch began, oldest first. It
-// fails once the watch has lost its subscription: after that, no drops says
-// nothing about the node.
+// Drops returns the peers dropped since the watch began, oldest first. Once
+// the watch has lost its subscription it returns the drops seen until then
+// with an error: after that, no drops says nothing about the node.
+//
+// A drop the node has just sent may not have arrived yet, and a node that
+// stalls without closing the connection is noticed only after about a minute
+// of failed pings.
 func (watch *PeerWatch) Drops() ([]PeerDrop, error) {
 	watch.mutex.Lock()
 	defer watch.mutex.Unlock()
+	drops := slices.Clone(watch.drops)
 	if watch.err != nil {
-		return nil, fmt.Errorf("peer watch lost its subscription: %w", watch.err)
+		return drops, fmt.Errorf("peer watch lost its subscription: %w", watch.err)
 	}
-	return slices.Clone(watch.drops), nil
+	return drops, nil
 }
 
-// Close ends the watch. Drops still returns what it recorded.
+// Close ends the watch, waiting up to 10 seconds for a node that does not
+// answer the unsubscribe. Drops still returns what it recorded.
 func (watch *PeerWatch) Close() {
 	watch.subscription.Unsubscribe()
 	<-watch.stopped
