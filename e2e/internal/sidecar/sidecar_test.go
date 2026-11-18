@@ -95,13 +95,13 @@ func TestStartRefusesPortListedTwice(t *testing.T) {
 	require.EqualError(t, err, "test sidecar port 7500 is listed twice")
 }
 
-// boundDocker has a running container that publishes port 50001, a stopped
+// takenDocker has a running container that publishes port 50001, a stopped
 // one bound to port 50002, and one removed since it was listed.
-type boundDocker struct {
+type takenDocker struct {
 	*sidecartest.Docker
 }
 
-func (docker boundDocker) ContainerInspect(ctx context.Context, id string, options dockerclient.ContainerInspectOptions) (dockerclient.ContainerInspectResult, error) {
+func (docker takenDocker) ContainerInspect(ctx context.Context, id string, options dockerclient.ContainerInspectOptions) (dockerclient.ContainerInspectResult, error) {
 	switch id {
 	case "stopped":
 		port, _ := network.PortFrom(8545, network.TCP)
@@ -114,17 +114,17 @@ func (docker boundDocker) ContainerInspect(ctx context.Context, id string, optio
 	return docker.Docker.ContainerInspect(ctx, id, options)
 }
 
-func TestBoundHostPorts(t *testing.T) {
-	docker := boundDocker{sidecartest.NewDocker()}
+func TestTakenHostPorts(t *testing.T) {
+	docker := takenDocker{sidecartest.NewDocker()}
 	docker.Containers = []containertypes.Summary{
 		{ID: "running", State: containertypes.StateRunning, Ports: []containertypes.PortSummary{{PrivatePort: 8545, PublicPort: 50001}, {PrivatePort: 9001}}},
 		{ID: "stopped", State: containertypes.StateExited},
 		{ID: "removed", State: containertypes.StateExited},
 	}
 
-	bound, err := boundHostPorts(t.Context(), docker)
+	taken, err := takenHostPorts(t.Context(), docker)
 	require.NoError(t, err)
-	require.Equal(t, map[string]bool{"50001": true, "50002": true}, bound)
+	require.Equal(t, map[string]bool{"50001": true, "50002": true}, taken)
 	require.Equal(t, []dockerclient.ContainerListOptions{{All: true}}, docker.Listed)
 }
 

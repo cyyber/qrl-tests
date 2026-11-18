@@ -303,14 +303,14 @@ func create(ctx context.Context, client Client, spec Spec, attached bool) (*Cont
 }
 
 // freeHostPorts returns the given number of TCP ports that are free on
-// 127.0.0.1 and that no container is bound to. Docker 28 gives up on a port it
+// 127.0.0.1 and that no container has taken. Docker 28 gives up on a port it
 // picks itself after ten taken ports in a row, and a devnet's published ports
 // fill the start of the range it picks from.
 func freeHostPorts(ctx context.Context, client Client, count int) ([]string, error) {
 	if count == 0 {
 		return nil, nil
 	}
-	bound, err := boundHostPorts(ctx, client)
+	taken, err := takenHostPorts(ctx, client)
 	if err != nil {
 		return nil, err
 	}
@@ -329,27 +329,27 @@ func freeHostPorts(ctx context.Context, client Client, count int) ([]string, err
 			return nil, err
 		}
 		listeners = append(listeners, listener)
-		if port := strconv.Itoa(listener.Addr().(*net.TCPAddr).Port); !bound[port] {
+		if port := strconv.Itoa(listener.Addr().(*net.TCPAddr).Port); !taken[port] {
 			ports = append(ports, port)
 		}
 	}
 	return ports, nil
 }
 
-// boundHostPorts returns the host ports that Docker's containers are bound to,
+// takenHostPorts returns the host ports that Docker's containers have taken,
 // which can look free on 127.0.0.1: those a running container publishes, and
 // those a stopped one takes back when it starts again.
-func boundHostPorts(ctx context.Context, client Client) (map[string]bool, error) {
+func takenHostPorts(ctx context.Context, client Client) (map[string]bool, error) {
 	listed, err := client.ContainerList(ctx, dockerclient.ContainerListOptions{All: true})
 	if err != nil {
 		return nil, fmt.Errorf("list containers: %w", err)
 	}
 
-	bound := map[string]bool{}
+	taken := map[string]bool{}
 	for _, summary := range listed.Items {
 		for _, port := range summary.Ports {
 			if port.PublicPort != 0 {
-				bound[strconv.Itoa(int(port.PublicPort))] = true
+				taken[strconv.Itoa(int(port.PublicPort))] = true
 			}
 		}
 		if summary.State == containertypes.StateRunning {
@@ -369,12 +369,12 @@ func boundHostPorts(ctx context.Context, client Client) (map[string]bool, error)
 		for _, bindings := range inspected.Container.HostConfig.PortBindings {
 			for _, binding := range bindings {
 				if binding.HostPort != "" {
-					bound[binding.HostPort] = true
+					taken[binding.HostPort] = true
 				}
 			}
 		}
 	}
-	return bound, nil
+	return taken, nil
 }
 
 func (container *Container) abort(err error) error {
