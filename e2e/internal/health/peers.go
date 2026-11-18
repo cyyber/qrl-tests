@@ -43,16 +43,19 @@ const (
 func WatchPeers(ctx context.Context, wsURL string) (*PeerWatch, error) {
 	ctx, cancel := context.WithTimeout(ctx, startTimeout)
 	defer cancel()
+
 	client, err := rpc.DialContext(ctx, wsURL)
 	if err != nil {
 		return nil, fmt.Errorf("dial %s: %w", wsURL, err)
 	}
+
 	events := make(chan *p2p.PeerEvent, 64)
 	subscription, err := client.Subscribe(ctx, "admin", events, "peerEvents")
 	if err != nil {
 		client.Close()
 		return nil, fmt.Errorf("subscribe to the peer events of %s: %w", wsURL, err)
 	}
+
 	watch := &PeerWatch{client: client, subscription: subscription, stopped: make(chan struct{})}
 	go watch.record(events)
 	return watch, nil
