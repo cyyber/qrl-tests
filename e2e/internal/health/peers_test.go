@@ -74,7 +74,7 @@ func startPeerWatch(t *testing.T) (*fakeAdmin, *PeerWatch) {
 
 const peerAddress = "172.16.0.12:30303"
 
-// dropped is the event the node sends when it drops peer for reason.
+// dropped is the event the node sends when it drops peer for the given reason.
 func dropped(peer qnode.ID, reason string) *p2p.PeerEvent {
 	return &p2p.PeerEvent{Type: p2p.PeerEventTypeDrop, Peer: peer, RemoteAddress: peerAddress, Error: reason}
 }
