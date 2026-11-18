@@ -61,8 +61,8 @@ func startPeerWatch(t *testing.T) (*fakeAdmin, *PeerWatch) {
 	return admin, watch
 }
 
-// send has the fake node emit event, failing the test if nothing takes it.
-func send(t *testing.T, admin *fakeAdmin, event *p2p.PeerEvent) {
+// emit has the node emit event, failing the test if nothing takes it.
+func (admin *fakeAdmin) emit(t *testing.T, event *p2p.PeerEvent) {
 	t.Helper()
 	select {
 	case admin.events <- event:
@@ -100,9 +100,9 @@ func TestWatchPeers(t *testing.T) {
 
 	first, second := qnode.ID{1}, qnode.ID{2}
 	began := time.Now()
-	send(t, admin, &p2p.PeerEvent{Type: p2p.PeerEventTypeAdd, Peer: first})
-	send(t, admin, dropped(first, "message too long: 11 > 10"))
-	send(t, admin, dropped(second, "useless peer"))
+	admin.emit(t, &p2p.PeerEvent{Type: p2p.PeerEventTypeAdd, Peer: first})
+	admin.emit(t, dropped(first, "message too long: 11 > 10"))
+	admin.emit(t, dropped(second, "useless peer"))
 
 	drops = awaitDrops(t, watch, 2)
 	for index := range drops {
@@ -123,7 +123,7 @@ func TestDropsFailedCheck(t *testing.T) {
 	admin, watch := startPeerWatch(t)
 	defer watch.Close()
 
-	send(t, admin, dropped(qnode.ID{1}, "useless peer"))
+	admin.emit(t, dropped(qnode.ID{1}, "useless peer"))
 	awaitDrops(t, watch, 1)
 
 	cancelled, cancel := context.WithCancel(t.Context())
@@ -139,7 +139,7 @@ func TestDropsFailedCheck(t *testing.T) {
 func TestClose(t *testing.T) {
 	admin, watch := startPeerWatch(t)
 
-	send(t, admin, dropped(qnode.ID{1}, "useless peer"))
+	admin.emit(t, dropped(qnode.ID{1}, "useless peer"))
 	awaitDrops(t, watch, 1)
 
 	watch.Close()
@@ -154,7 +154,7 @@ func TestClose(t *testing.T) {
 func TestLostSubscription(t *testing.T) {
 	admin, watch := startPeerWatch(t)
 
-	send(t, admin, dropped(qnode.ID{1}, "useless peer"))
+	admin.emit(t, dropped(qnode.ID{1}, "useless peer"))
 	awaitDrops(t, watch, 1)
 
 	admin.api.Stop()
