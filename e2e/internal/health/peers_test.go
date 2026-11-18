@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/theQRL/go-qrl/p2p"
 	"github.com/theQRL/go-qrl/p2p/qnode"
@@ -54,12 +55,12 @@ func startFakeNode(t *testing.T, admin *fakeAdmin) (url string, api *rpc.Server)
 func awaitDrops(t *testing.T, watch *PeerWatch, count int) []PeerDrop {
 	t.Helper()
 	var drops []PeerDrop
-	require.Eventually(t, func() bool {
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		var err error
 		drops, err = watch.Drops()
-		require.NoError(t, err)
-		return len(drops) == count
-	}, 5*time.Second, time.Millisecond)
+		assert.NoError(c, err)
+		assert.Len(c, drops, count)
+	}, 5*time.Second, 10*time.Millisecond)
 	return drops
 }
 
@@ -112,12 +113,10 @@ func TestDropsFailsOnceTheSubscriptionIsLost(t *testing.T) {
 	defer watch.Close()
 
 	api.Stop()
-	require.Eventually(t, func() bool {
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		_, err := watch.Drops()
-		return err != nil
-	}, 5*time.Second, time.Millisecond)
-	_, err = watch.Drops()
-	require.ErrorContains(t, err, "peer watch lost its subscription")
+		assert.ErrorContains(c, err, "peer watch lost its subscription")
+	}, 5*time.Second, 10*time.Millisecond)
 }
 
 func TestWatchPeersNeedsTheAdminAPI(t *testing.T) {

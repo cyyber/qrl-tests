@@ -15,6 +15,7 @@ import (
 
 // PeerDrop is a peer that a node disconnected from.
 type PeerDrop struct {
+	// Time is when the watch received the drop.
 	Time time.Time
 	Peer qnode.ID
 	// Reason is the node's error for the disconnection.
