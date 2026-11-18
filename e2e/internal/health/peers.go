@@ -99,8 +99,8 @@ func (watch *PeerWatch) fail(err error) {
 	}
 }
 
-// check returns an error if the node does not answer on the watch's
-// connection within ctx and checkTimeout.
+// check calls the node over the watch's connection and fails if it gets no
+// answer in time.
 func (watch *PeerWatch) check(ctx context.Context) error {
 	ctx, cancel := context.WithTimeout(ctx, checkTimeout)
 	defer cancel()
