@@ -65,11 +65,10 @@ func WatchPeers(ctx context.Context, wsURL string) (*PeerWatch, error) {
 	return watch, nil
 }
 
-// errRedial refuses a second connection: the subscription lives on the first
-// one only, so a check answered on a new one would vouch for a dead watch.
 var errRedial = errors.New("the peer watch does not reconnect")
 
-// dialOnce is a WebSocket dialer that connects once and then refuses.
+// dialOnce is a WebSocket dialer that connects once and then refuses, since
+// the subscription lives on the first connection only.
 func dialOnce() websocket.Dialer {
 	var dialed atomic.Bool
 	return websocket.Dialer{
