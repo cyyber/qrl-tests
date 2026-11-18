@@ -40,7 +40,8 @@ func (admin *fakeAdmin) PeerEvents(ctx context.Context) (*rpc.Subscription, erro
 	return subscription, nil
 }
 
-// emit has the node emit event, failing the test if nothing takes it.
+// emit has the node send event to the watch, failing the test if it isn't
+// taken within 5 seconds.
 func (admin *fakeAdmin) emit(t *testing.T, event *p2p.PeerEvent) {
 	t.Helper()
 	select {
