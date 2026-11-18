@@ -19,6 +19,7 @@ import (
 	"sync"
 	"time"
 
+	cerrdefs "github.com/containerd/errdefs"
 	"github.com/cyyber/qrl-tests/internal/containerfiles"
 	"github.com/cyyber/qrl-tests/internal/dockerapi"
 	"github.com/moby/moby/api/pkg/stdcopy"
@@ -44,6 +45,7 @@ type Client interface {
 	ContainerAttach(context.Context, string, dockerclient.ContainerAttachOptions) (dockerclient.ContainerAttachResult, error)
 	ContainerCreate(context.Context, dockerclient.ContainerCreateOptions) (dockerclient.ContainerCreateResult, error)
 	ContainerInspect(context.Context, string, dockerclient.ContainerInspectOptions) (dockerclient.ContainerInspectResult, error)
+	ContainerList(context.Context, dockerclient.ContainerListOptions) (dockerclient.ContainerListResult, error)
 	ContainerLogs(context.Context, string, dockerclient.ContainerLogsOptions) (dockerclient.ContainerLogsResult, error)
 	ContainerRemove(context.Context, string, dockerclient.ContainerRemoveOptions) (dockerclient.ContainerRemoveResult, error)
 	ContainerStart(context.Context, string, dockerclient.ContainerStartOptions) (dockerclient.ContainerStartResult, error)
@@ -103,10 +105,6 @@ type Container struct {
 
 // Start creates and starts the container, removing it again on any failure.
 func Start(ctx context.Context, client Client, spec Spec) (*Container, error) {
-	return retryTakenPort(func() (*Container, error) { return start(ctx, client, spec) })
-}
-
-func start(ctx context.Context, client Client, spec Spec) (*Container, error) {
 	container, err := create(ctx, client, spec, false)
 	if err != nil {
 		return nil, err
@@ -121,10 +119,6 @@ func start(ctx context.Context, client Client, spec Spec) (*Container, error) {
 // *ExitError and removes the container; on success the container stays so its
 // output can be read, and the caller must Close it.
 func Run(ctx context.Context, client Client, spec Spec) (*Container, error) {
-	return retryTakenPort(func() (*Container, error) { return run(ctx, client, spec) })
-}
-
-func run(ctx context.Context, client Client, spec Spec) (*Container, error) {
 	container, err := create(ctx, client, spec, false)
 	if err != nil {
 		return nil, err
@@ -178,10 +172,6 @@ func AttachDocker(ctx context.Context, spec Spec) (*Process, error) {
 // Attach starts the container attached to its output, and to its stdin if
 // spec.Stdin is set. On failure, the container is removed.
 func Attach(ctx context.Context, client Client, spec Spec) (*Process, error) {
-	return retryTakenPort(func() (*Process, error) { return attach(ctx, client, spec) })
-}
-
-func attach(ctx context.Context, client Client, spec Spec) (*Process, error) {
 	container, err := create(ctx, client, spec, true)
 	if err != nil {
 		return nil, err
@@ -266,7 +256,7 @@ func create(ctx context.Context, client Client, spec Spec, attached bool) (*Cont
 		ExtraHosts:   []string{containerHost + ":host-gateway"},
 		PortBindings: network.PortMap{},
 	}
-	hostPorts, err := freeHostPorts(len(spec.Ports))
+	hostPorts, err := freeHostPorts(ctx, client, len(spec.Ports))
 	if err != nil {
 		return nil, fmt.Errorf("find host ports for %s: %w", spec.Name, err)
 	}
@@ -312,11 +302,19 @@ func create(ctx context.Context, client Client, spec Spec, attached bool) (*Cont
 	return container, nil
 }
 
-// freeHostPorts returns the given number of free TCP ports on 127.0.0.1.
-// Docker 28 gives up on a port it picks itself after ten taken ports in a
-// row, and a devnet's published ports fill the start of the range it picks
-// from.
-func freeHostPorts(count int) ([]string, error) {
+// freeHostPorts returns the given number of TCP ports that are free on
+// 127.0.0.1 and that no container is bound to. Docker 28 gives up on a port it
+// picks itself after ten taken ports in a row, and a devnet's published ports
+// fill the start of the range it picks from.
+func freeHostPorts(ctx context.Context, client Client, count int) ([]string, error) {
+	if count == 0 {
+		return nil, nil
+	}
+	bound, err := boundHostPorts(ctx, client)
+	if err != nil {
+		return nil, err
+	}
+
 	// Each port stays taken until all are picked, so none is picked twice.
 	var listeners []net.Listener
 	defer func() {
@@ -324,32 +322,59 @@ func freeHostPorts(count int) ([]string, error) {
 			_ = listener.Close()
 		}
 	}()
-	ports := make([]string, count)
-	for index := range ports {
+	var ports []string
+	for len(ports) < count {
 		listener, err := net.Listen("tcp", "127.0.0.1:0")
 		if err != nil {
 			return nil, err
 		}
 		listeners = append(listeners, listener)
-		ports[index] = strconv.Itoa(listener.Addr().(*net.TCPAddr).Port)
+		if port := strconv.Itoa(listener.Addr().(*net.TCPAddr).Port); !bound[port] {
+			ports = append(ports, port)
+		}
 	}
 	return ports, nil
 }
 
-// takenPortAttempts is how many times a container is created and started
-// before a taken host port fails it.
-const takenPortAttempts = 3
+// boundHostPorts returns the host ports that Docker's containers are bound to,
+// which can look free on 127.0.0.1: those a running container publishes, and
+// those a stopped one takes back when it starts again.
+func boundHostPorts(ctx context.Context, client Client) (map[string]bool, error) {
+	listed, err := client.ContainerList(ctx, dockerclient.ContainerListOptions{All: true})
+	if err != nil {
+		return nil, fmt.Errorf("list containers: %w", err)
+	}
 
-// retryTakenPort calls start again, with fresh host ports, while Docker
-// refuses one as taken: a port free on 127.0.0.1 can still be one that Docker
-// has allocated to another container.
-func retryTakenPort[T any](start func() (T, error)) (T, error) {
-	for attempt := 1; ; attempt++ {
-		result, err := start()
-		if err == nil || attempt == takenPortAttempts || !strings.Contains(err.Error(), "port is already allocated") {
-			return result, err
+	bound := map[string]bool{}
+	for _, summary := range listed.Items {
+		for _, port := range summary.Ports {
+			if port.PublicPort != 0 {
+				bound[strconv.Itoa(int(port.PublicPort))] = true
+			}
+		}
+		if summary.State == containertypes.StateRunning {
+			continue
+		}
+
+		inspected, err := client.ContainerInspect(ctx, summary.ID, dockerclient.ContainerInspectOptions{})
+		if cerrdefs.IsNotFound(err) {
+			continue
+		}
+		if err != nil {
+			return nil, fmt.Errorf("inspect container %s: %w", summary.ID, err)
+		}
+		if inspected.Container.HostConfig == nil {
+			continue
+		}
+		for _, bindings := range inspected.Container.HostConfig.PortBindings {
+			for _, binding := range bindings {
+				if binding.HostPort != "" {
+					bound[binding.HostPort] = true
+				}
+			}
 		}
 	}
+	return bound, nil
 }
 
 func (container *Container) abort(err error) error {

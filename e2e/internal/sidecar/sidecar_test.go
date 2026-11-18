@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"maps"
 	"net"
@@ -11,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	cerrdefs "github.com/containerd/errdefs"
 	"github.com/cyyber/qrl-tests/e2e/internal/sidecar/sidecartest"
 	containertypes "github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/api/types/network"
@@ -93,6 +95,50 @@ func TestStartRefusesPortListedTwice(t *testing.T) {
 	require.EqualError(t, err, "test sidecar port 7500 is listed twice")
 }
 
+// boundDocker has a running container that publishes port 50001, a stopped
+// one bound to port 50002, and one removed since it was listed.
+type boundDocker struct {
+	*sidecartest.Docker
+}
+
+func (docker boundDocker) ContainerInspect(ctx context.Context, id string, options dockerclient.ContainerInspectOptions) (dockerclient.ContainerInspectResult, error) {
+	switch id {
+	case "stopped":
+		port, _ := network.PortFrom(8545, network.TCP)
+		return dockerclient.ContainerInspectResult{Container: containertypes.InspectResponse{
+			HostConfig: &containertypes.HostConfig{PortBindings: network.PortMap{port: {{HostPort: "50002"}}}},
+		}}, nil
+	case "removed":
+		return dockerclient.ContainerInspectResult{}, fmt.Errorf("no such container: %w", cerrdefs.ErrNotFound)
+	}
+	return docker.Docker.ContainerInspect(ctx, id, options)
+}
+
+func TestBoundHostPorts(t *testing.T) {
+	docker := boundDocker{sidecartest.NewDocker()}
+	docker.Containers = []containertypes.Summary{
+		{ID: "running", State: containertypes.StateRunning, Ports: []containertypes.PortSummary{{PrivatePort: 8545, PublicPort: 50001}, {PrivatePort: 9001}}},
+		{ID: "stopped", State: containertypes.StateExited},
+		{ID: "removed", State: containertypes.StateExited},
+	}
+
+	bound, err := boundHostPorts(t.Context(), docker)
+	require.NoError(t, err)
+	require.Equal(t, map[string]bool{"50001": true, "50002": true}, bound)
+	require.Equal(t, []dockerclient.ContainerListOptions{{All: true}}, docker.Listed)
+}
+
+func TestStartWithoutPortsListsNoContainers(t *testing.T) {
+	docker := sidecartest.NewDocker()
+	spec := testSpec()
+	spec.Ports = nil
+
+	container, err := Start(t.Context(), docker, spec)
+	require.NoError(t, err)
+	defer container.Close()
+	require.Empty(t, docker.Listed)
+}
+
 func TestStartNetwork(t *testing.T) {
 	docker := sidecartest.NewDocker()
 
@@ -161,35 +207,6 @@ func TestStartRemovesContainerOnFailure(t *testing.T) {
 			require.Equal(t, []string{sidecartest.ContainerID}, docker.Removed)
 		})
 	}
-}
-
-// takenPortDocker refuses to start its first containers, as Docker does when a
-// host port one publishes is taken.
-type takenPortDocker struct {
-	*sidecartest.Docker
-	refusals int
-}
-
-func (docker *takenPortDocker) ContainerStart(ctx context.Context, id string, options dockerclient.ContainerStartOptions) (dockerclient.ContainerStartResult, error) {
-	if docker.refusals > 0 {
-		docker.refusals--
-		return dockerclient.ContainerStartResult{}, errors.New("failed to set up container networking: port is already allocated")
-	}
-	return docker.Docker.ContainerStart(ctx, id, options)
-}
-
-func TestStartRetriesATakenPort(t *testing.T) {
-	docker := &takenPortDocker{Docker: sidecartest.NewDocker(), refusals: takenPortAttempts - 1}
-	container, err := Start(t.Context(), docker, testSpec())
-	require.NoError(t, err)
-	defer container.Close()
-	require.Len(t, docker.Created, takenPortAttempts)
-	require.Len(t, docker.Removed, takenPortAttempts-1, "each refused container is removed")
-
-	docker = &takenPortDocker{Docker: sidecartest.NewDocker(), refusals: takenPortAttempts}
-	_, err = Start(t.Context(), docker, testSpec())
-	require.ErrorContains(t, err, "port is already allocated")
-	require.Len(t, docker.Created, takenPortAttempts)
 }
 
 func TestRunWaitsForSuccessfulExit(t *testing.T) {
