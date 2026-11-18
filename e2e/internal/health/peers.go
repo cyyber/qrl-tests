@@ -36,10 +36,9 @@ type PeerWatch struct {
 
 const nodeTimeout = 10 * time.Second
 
-// WatchPeers starts recording the peers dropped by the node at url, a
-// WebSocket endpoint that serves the admin API. ctx bounds the dial and the
-// subscription only; Close ends the watch. The watch never resubscribes, so
-// a restarted node ends it.
+// WatchPeers records the peers dropped by the node at url, a WebSocket
+// endpoint with the admin API, until Close. ctx bounds only the start, and a
+// restarted node ends the watch.
 func WatchPeers(ctx context.Context, url string) (*PeerWatch, error) {
 	ctx, cancel := context.WithTimeout(ctx, nodeTimeout)
 	defer cancel()
