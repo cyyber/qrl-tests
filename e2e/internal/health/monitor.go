@@ -100,7 +100,7 @@ func (monitor *Monitor) Report(ctx context.Context, ownPeers ...qnode.ID) (Repor
 	if err != nil {
 		return Report{}, err
 	}
-	drops, err := monitor.peers.Drops()
+	drops, err := monitor.peers.Drops(ctx)
 	if err != nil {
 		return Report{}, err
 	}
