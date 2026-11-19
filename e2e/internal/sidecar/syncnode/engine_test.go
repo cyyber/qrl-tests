@@ -108,7 +108,7 @@ func TestSyncTo(t *testing.T) {
 	}, engine.forkchoice)
 }
 
-func TestSyncToEmptyLists(t *testing.T) {
+func TestSyncToEmptyBlock(t *testing.T) {
 	engine := &fakeEngine{payloadStatus: "SYNCING", headStatus: "SYNCING"}
 	node := engineNode(t, engine)
 
