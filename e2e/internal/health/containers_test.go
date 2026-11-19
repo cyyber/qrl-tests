@@ -228,5 +228,5 @@ func TestParticipantContainers(t *testing.T) {
 
 	docker.hostPort = ""
 	_, err = ParticipantContainers(t.Context(), docker, participant)
-	require.ErrorContains(t, err, "port 9001 of el-1--a is not published")
+	require.ErrorContains(t, err, "el-1--a: port 9001 is not published")
 }
