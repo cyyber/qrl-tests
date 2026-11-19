@@ -115,9 +115,8 @@ type Node struct {
 	ExecutionWSURL      string
 	ExecutionMetricsURL string
 
-	engineURL    string
-	engineSecret []byte
-	// executionAlias is the execution client's name on the enclave network.
+	engineURL      string
+	engineSecret   []byte
 	executionAlias string
 
 	execution   *sidecar.Container
