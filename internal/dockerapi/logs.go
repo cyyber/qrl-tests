@@ -13,8 +13,7 @@ type LogReader interface {
 	ContainerLogs(context.Context, string, dockerclient.ContainerLogsOptions) (dockerclient.ContainerLogsResult, error)
 }
 
-// Logs returns a container's stdout and stderr, limited by options' Tail or
-// Since.
+// Logs returns a container's stdout and stderr as one string.
 func Logs(ctx context.Context, docker LogReader, container string, options dockerclient.ContainerLogsOptions) (string, error) {
 	options.ShowStdout, options.ShowStderr = true, true
 	logs, err := docker.ContainerLogs(ctx, container, options)
