@@ -1,7 +1,6 @@
 package health
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"slices"
@@ -9,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/moby/moby/api/pkg/stdcopy"
+	"github.com/cyyber/qrl-tests/internal/dockerapi"
 	dockerclient "github.com/moby/moby/client"
 )
 
@@ -168,24 +167,17 @@ func (watch *ContainerWatch) problems(ctx context.Context, entry *watched) ([]st
 // troubleLines returns the container's log lines since Watch that carry a
 // trouble signature, at most a few of each.
 func (watch *ContainerWatch) troubleLines(ctx context.Context, entry *watched) ([]string, error) {
-	logs, err := watch.docker.ContainerLogs(ctx, entry.Name, dockerclient.ContainerLogsOptions{
-		ShowStdout: true,
-		ShowStderr: true,
-		Since:      fmt.Sprintf("%d.%09d", entry.since.Unix(), entry.since.Nanosecond()),
+	output, err := dockerapi.Logs(ctx, watch.docker, entry.Name, dockerclient.ContainerLogsOptions{
+		Since: fmt.Sprintf("%d.%09d", entry.since.Unix(), entry.since.Nanosecond()),
 	})
 	if err != nil {
-		return nil, err
-	}
-	defer logs.Close()
-	var output bytes.Buffer
-	if _, err := stdcopy.StdCopy(&output, &output, logs); err != nil {
 		return nil, err
 	}
 
 	const perSignature = 3
 	seen := make(map[string]int)
 	var lines []string
-	for line := range strings.Lines(output.String()) {
+	for line := range strings.Lines(output) {
 		index := slices.IndexFunc(troubleSignatures, func(signature string) bool {
 			return strings.Contains(line, signature)
 		})

@@ -463,21 +463,11 @@ func (container *Container) Logs(lines int) (string, error) {
 	if lines > 0 {
 		tail = strconv.Itoa(lines)
 	}
-	logs, err := container.client.ContainerLogs(ctx, container.id, dockerclient.ContainerLogsOptions{
-		ShowStdout: true,
-		ShowStderr: true,
-		Tail:       tail,
-	})
+	logs, err := dockerapi.Logs(ctx, container.client, container.id, dockerclient.ContainerLogsOptions{Tail: tail})
 	if err != nil {
 		return "", err
 	}
-	defer logs.Close()
-
-	var output bytes.Buffer
-	if _, err := stdcopy.StdCopy(&output, &output, logs); err != nil {
-		return "", err
-	}
-	return strings.TrimSpace(output.String()), nil
+	return strings.TrimSpace(logs), nil
 }
 
 // Exec runs command inside the container and returns its combined output. A
