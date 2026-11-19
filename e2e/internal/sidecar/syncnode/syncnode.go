@@ -512,8 +512,8 @@ func (node *Node) Resume(ctx context.Context) error {
 	return node.waitForBeacon(ctx)
 }
 
-// Peer returns the URL that a node on the enclave network adds the execution
-// client by, which names it by its alias there, and its node ID.
+// Peer returns the execution client's qnode URL, addressed by its alias on the
+// enclave network, and its node ID.
 func (node *Node) Peer(ctx context.Context) (string, qnode.ID, error) {
 	var info p2p.NodeInfo
 	if err := node.Execution.Client().CallContext(ctx, &info, "admin_nodeInfo"); err != nil {
