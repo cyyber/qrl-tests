@@ -11,8 +11,8 @@ import (
 
 const participantMetricsPort = 9001
 
-// ParticipantContainers returns the containers a devnet participant runs, the
-// execution one first and with its metrics page.
+// ParticipantContainers returns a devnet participant's containers. The first
+// is the execution client's, with its metrics URL.
 func ParticipantContainers(ctx context.Context, docker ContainerReader, participant devnet.Participant) ([]Container, error) {
 	execution := serviceContainer(participant.Execution.ServiceInfo)
 	metrics, err := metricsURL(ctx, docker, execution, participantMetricsPort)
