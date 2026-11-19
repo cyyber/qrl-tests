@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	"github.com/cyyber/qrl-tests/devnet"
-	"github.com/moby/moby/api/types/network"
+	"github.com/cyyber/qrl-tests/internal/dockerapi"
 	dockerclient "github.com/moby/moby/client"
 )
 
@@ -41,13 +41,9 @@ func PublishedPort(ctx context.Context, docker ContainerReader, container string
 	if err != nil {
 		return "", fmt.Errorf("inspect %s: %w", container, err)
 	}
-	published, _ := network.PortFrom(port, network.TCP)
-	var bindings []network.PortBinding
-	if settings := inspected.Container.NetworkSettings; settings != nil {
-		bindings = settings.Ports[published]
+	hostPort, err := dockerapi.HostPort(inspected.Container, port)
+	if err != nil {
+		return "", fmt.Errorf("%s: %w", container, err)
 	}
-	if len(bindings) == 0 || bindings[0].HostPort == "" {
-		return "", fmt.Errorf("port %d of %s is not published", port, container)
-	}
-	return bindings[0].HostPort, nil
+	return hostPort, nil
 }

@@ -421,22 +421,11 @@ func (container *Container) PublishedAddress(ctx context.Context, port uint16) (
 		}
 		return "", container.WithLogs(&ExitError{name: container.name, status: status})
 	}
-	hostPort, err := publishedHostPort(inspected.Container, published)
+	hostPort, err := dockerapi.HostPort(inspected.Container, port)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("%s: %w", container.name, err)
 	}
 	return net.JoinHostPort(loopback.String(), hostPort), nil
-}
-
-func publishedHostPort(inspected containertypes.InspectResponse, port network.Port) (string, error) {
-	if inspected.NetworkSettings == nil {
-		return "", errors.New("container has no network settings")
-	}
-	bindings := inspected.NetworkSettings.Ports[port]
-	if len(bindings) == 0 || bindings[0].HostPort == "" {
-		return "", fmt.Errorf("container port %s is not published", port)
-	}
-	return bindings[0].HostPort, nil
 }
 
 // ReadFile copies one file out of the container.

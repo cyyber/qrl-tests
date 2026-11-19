@@ -446,16 +446,6 @@ func TestPublishedAddressStopped(t *testing.T) {
 	}
 }
 
-func TestPublishedHostPortRequiresNetworkSettings(t *testing.T) {
-	port, ok := network.PortFrom(7500, network.TCP)
-	require.True(t, ok)
-	_, err := publishedHostPort(containertypes.InspectResponse{}, port)
-	require.EqualError(t, err, "container has no network settings")
-
-	_, err = publishedHostPort(containertypes.InspectResponse{NetworkSettings: &containertypes.NetworkSettings{}}, port)
-	require.EqualError(t, err, "container port 7500/tcp is not published")
-}
-
 func TestReadFile(t *testing.T) {
 	docker := sidecartest.NewDocker()
 	docker.Files["/data/token"] = []byte("abc\n")
