@@ -308,7 +308,7 @@ func TestPrivateBeaconPeer(t *testing.T) {
 func TestEngineAuth(t *testing.T) {
 	secret := []byte("0123456789abcdef0123456789abcdef")
 	header := http.Header{}
-	require.NoError(t, engineAuth(secret, 0)(header))
+	require.NoError(t, engineAuth(secret)(header))
 
 	signed, found := strings.CutPrefix(header.Get("Authorization"), "Bearer ")
 	require.True(t, found)
@@ -320,12 +320,6 @@ func TestEngineAuth(t *testing.T) {
 
 	_, err = jwt.Parse(signed, func(*jwt.Token) (any, error) { return []byte("another secret"), nil })
 	require.ErrorIs(t, err, jwt.ErrSignatureInvalid)
-	// A clock that is behind issues its tokens in the past.
-	require.NoError(t, engineAuth(secret, -70*time.Second)(header))
-	signed, _ = strings.CutPrefix(header.Get("Authorization"), "Bearer ")
-	_, err = jwt.ParseWithClaims(signed, &claims, func(*jwt.Token) (any, error) { return secret, nil })
-	require.NoError(t, err)
-	require.WithinDuration(t, time.Now().Add(-70*time.Second), claims.IssuedAt.Time, 5*time.Second)
 }
 
 func TestPeers(t *testing.T) {

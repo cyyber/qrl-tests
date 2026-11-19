@@ -115,8 +115,6 @@ type Node struct {
 	ExecutionWSURL      string
 	ExecutionMetricsURL string
 
-	engineURL      string
-	engineSecret   []byte
 	executionAlias string
 
 	execution   *sidecar.Container
@@ -408,8 +406,7 @@ func (node *Node) setExecutionEndpoints(ctx context.Context, jwtSecret []byte) e
 		return err
 	}
 
-	node.engineURL, node.engineSecret = "http://"+engine, jwtSecret
-	node.Engine, err = rpc.DialOptions(ctx, node.engineURL, rpc.WithHTTPAuth(engineAuth(jwtSecret, 0)))
+	node.Engine, err = rpc.DialOptions(ctx, "http://"+engine, rpc.WithHTTPAuth(engineAuth(jwtSecret)))
 	if err != nil {
 		return fmt.Errorf("dial the engine API: %w", err)
 	}
@@ -418,18 +415,11 @@ func (node *Node) setExecutionEndpoints(ctx context.Context, jwtSecret []byte) e
 	return nil
 }
 
-// EngineWithClock returns a client of the engine API whose tokens are issued
-// by a clock that is ahead of this one by skew, or behind it for a negative
-// skew. The caller closes it.
-func (node *Node) EngineWithClock(ctx context.Context, skew time.Duration) (*rpc.Client, error) {
-	return rpc.DialOptions(ctx, node.engineURL, rpc.WithHTTPAuth(engineAuth(node.engineSecret, skew)))
-}
-
 // engineAuth signs a fresh token for each engine API request; the execution
 // client accepts a token for a minute after it was issued.
-func engineAuth(secret []byte, skew time.Duration) rpc.HTTPAuth {
+func engineAuth(secret []byte) rpc.HTTPAuth {
 	return func(header http.Header) error {
-		token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{"iat": jwt.NewNumericDate(time.Now().Add(skew))})
+		token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{"iat": jwt.NewNumericDate(time.Now())})
 		signed, err := token.SignedString(secret)
 		if err != nil {
 			return fmt.Errorf("sign engine API token: %w", err)
