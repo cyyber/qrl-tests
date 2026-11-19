@@ -12,13 +12,10 @@ import (
 
 const invalidPayload = "INVALID"
 
-// SyncToHead starts the execution client's sync to the head block of source
-// and returns that block's header. It does not wait for the sync to finish.
-//
-// It drives the engine API as a beacon node that is behind does: it offers
-// the head block, which the client cannot import without its ancestors, then
-// names it the head. The client then fetches the chain up to it from its
-// peers. A beacon node that syncs block by block never makes it do that.
+// SyncToHead offers the execution client the source's head block and names it
+// the head, as a beacon node that is behind does, so the client fetches the
+// chain up to it from its peers. It returns the head's header without waiting
+// for the sync.
 func (node *Node) SyncToHead(ctx context.Context, source *qrlclient.Client) (*types.Header, error) {
 	head, err := source.BlockByNumber(ctx, nil)
 	if err != nil {
