@@ -9,7 +9,6 @@ import (
 	dockerclient "github.com/moby/moby/client"
 )
 
-// participantMetricsPort is the port of a participant's go-qrl metrics page.
 const participantMetricsPort = 9001
 
 // ParticipantContainers returns a devnet participant's execution container,
