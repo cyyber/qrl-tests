@@ -62,7 +62,7 @@ func (node *Node) syncTo(ctx context.Context, head *types.Block) error {
 	return nil
 }
 
-// executionPayload is the block as the engine API carries it.
+// executionPayload encodes block as the payload of engine_newPayloadV2.
 func executionPayload(block *types.Block) (map[string]any, error) {
 	transactions := make([]hexutil.Bytes, len(block.Transactions()))
 	for index, tx := range block.Transactions() {
