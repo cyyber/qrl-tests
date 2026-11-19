@@ -11,9 +11,8 @@ import (
 
 const participantMetricsPort = 9001
 
-// ParticipantContainers returns a devnet participant's execution container,
-// with its metrics page, and its consensus and validator containers if it runs
-// them.
+// ParticipantContainers returns the containers a devnet participant runs, the
+// execution one first and with its metrics page.
 func ParticipantContainers(ctx context.Context, docker ContainerReader, participant devnet.Participant) ([]Container, error) {
 	execution := serviceContainer(participant.Execution.ServiceInfo)
 	metrics, err := metricsURL(ctx, docker, execution, participantMetricsPort)
