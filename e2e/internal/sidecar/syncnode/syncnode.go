@@ -530,8 +530,8 @@ func (node *Node) Peer(ctx context.Context) (string, qnode.ID, error) {
 	return address, id, nil
 }
 
-// AddPeer has the execution client dial the node at peerURL, and dial it again
-// whenever they disconnect.
+// AddPeer makes peerURL a static peer of the execution client, which dials it
+// again after a disconnect but forgets it when the client restarts.
 func (node *Node) AddPeer(ctx context.Context, peerURL string) error {
 	var added bool
 	if err := node.Execution.Client().CallContext(ctx, &added, "admin_addPeer", peerURL); err != nil {
