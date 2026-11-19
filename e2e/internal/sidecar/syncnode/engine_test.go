@@ -35,17 +35,6 @@ func (engine *fakeEngine) ForkchoiceUpdatedV2(forkchoice map[string]common.Hash,
 	return map[string]any{"payloadStatus": map[string]string{"status": engine.status}}
 }
 
-// fakeAdmin is an execution client's admin API, as far as removing a peer.
-type fakeAdmin struct {
-	knows   string
-	removed []string
-}
-
-func (admin *fakeAdmin) RemovePeer(url string) bool {
-	admin.removed = append(admin.removed, url)
-	return url == admin.knows
-}
-
 func dialAPI(t *testing.T, namespace string, service any) *rpc.Client {
 	t.Helper()
 	api := rpc.NewServer()
