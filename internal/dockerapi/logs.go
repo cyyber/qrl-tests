@@ -8,7 +8,7 @@ import (
 	dockerclient "github.com/moby/moby/client"
 )
 
-// LogReader is the part of the Docker client that Logs uses.
+// LogReader reads a container's logs, as the Docker client does.
 type LogReader interface {
 	ContainerLogs(context.Context, string, dockerclient.ContainerLogsOptions) (dockerclient.ContainerLogsResult, error)
 }
