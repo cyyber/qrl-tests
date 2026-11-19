@@ -122,6 +122,14 @@ func TestLaneWithSuites(t *testing.T) {
 	require.True(t, sync.NeedsConsensusImage())
 	require.False(t, sync.NeedsValidatorImage())
 
+	deepSync, err := Named("limits-deep-sync")
+	require.NoError(t, err)
+	require.Equal(t, devnet.ProfileSixSecondSlots, deepSync.Profile)
+	require.Equal(t, []string{"./e2e/suites/limits/deepsync"}, deepSync.Packages())
+	require.True(t, deepSync.NeedsExecutionImage())
+	require.False(t, deepSync.NeedsConsensusImage())
+	require.False(t, deepSync.NeedsValidatorImage())
+
 	_, err = execution.WithSuites([]string{"unknown"})
 	require.ErrorContains(t, err, "unknown E2E suite")
 }
