@@ -13,14 +13,14 @@ import (
 	dockerclient "github.com/moby/moby/client"
 )
 
-// ContainerReader is the part of the Docker client the ledger uses.
+// ContainerReader is the part of the Docker client a ContainerWatch uses.
 type ContainerReader interface {
 	ContainerInspect(context.Context, string, dockerclient.ContainerInspectOptions) (dockerclient.ContainerInspectResult, error)
 	ContainerLogs(context.Context, string, dockerclient.ContainerLogsOptions) (dockerclient.ContainerLogsResult, error)
 }
 
-// Container is a node's container for the ledger to watch, by its Docker name
-// or ID, with the URL of its go-qrl metrics page if it has one.
+// Container is a node's container to watch, by its Docker name or ID, with
+// the URL of its go-qrl metrics page if it has one.
 type Container struct {
 	Name       string
 	MetricsURL string
@@ -62,11 +62,11 @@ var troubleSignatures = []string{
 	"degraded performance",
 }
 
-// Ledger records the state of a network's containers when a suite starts
-// loading them, and reports what has gone wrong since: a container that
+// ContainerWatch records the state of a network's containers when a suite
+// starts loading them, and reports what has gone wrong since: a container that
 // exited or restarted, a node that dropped or refused work, a crash or size
 // refusal in a log.
-type Ledger struct {
+type ContainerWatch struct {
 	docker  ContainerReader
 	watched []*watched
 }
@@ -79,14 +79,14 @@ type watched struct {
 	meters    map[string]float64
 }
 
-func NewLedger(docker ContainerReader) *Ledger {
-	return &Ledger{docker: docker}
+func NewContainerWatch(docker ContainerReader) *ContainerWatch {
+	return &ContainerWatch{docker: docker}
 }
 
 // Watch records the containers' state as the baseline for Problems.
-func (ledger *Ledger) Watch(ctx context.Context, containers ...Container) error {
+func (watch *ContainerWatch) Watch(ctx context.Context, containers ...Container) error {
 	for _, container := range containers {
-		inspected, err := ledger.docker.ContainerInspect(ctx, container.Name, dockerclient.ContainerInspectOptions{})
+		inspected, err := watch.docker.ContainerInspect(ctx, container.Name, dockerclient.ContainerInspectOptions{})
 		if err != nil {
 			return fmt.Errorf("inspect %s: %w", container.Name, err)
 		}
@@ -99,16 +99,16 @@ func (ledger *Ledger) Watch(ctx context.Context, containers ...Container) error 
 				return fmt.Errorf("%s: %w", container.Name, err)
 			}
 		}
-		ledger.watched = append(ledger.watched, entry)
+		watch.watched = append(watch.watched, entry)
 	}
 	return nil
 }
 
 // Problems returns what has gone wrong in the watched containers since Watch.
-func (ledger *Ledger) Problems(ctx context.Context) ([]string, error) {
+func (watch *ContainerWatch) Problems(ctx context.Context) ([]string, error) {
 	var problems []string
-	for _, entry := range ledger.watched {
-		found, err := ledger.problems(ctx, entry)
+	for _, entry := range watch.watched {
+		found, err := watch.problems(ctx, entry)
 		for _, problem := range found {
 			problems = append(problems, entry.Name+": "+problem)
 		}
@@ -119,8 +119,8 @@ func (ledger *Ledger) Problems(ctx context.Context) ([]string, error) {
 	return problems, nil
 }
 
-func (ledger *Ledger) problems(ctx context.Context, entry *watched) ([]string, error) {
-	inspected, err := ledger.docker.ContainerInspect(ctx, entry.Name, dockerclient.ContainerInspectOptions{})
+func (watch *ContainerWatch) problems(ctx context.Context, entry *watched) ([]string, error) {
+	inspected, err := watch.docker.ContainerInspect(ctx, entry.Name, dockerclient.ContainerInspectOptions{})
 	if err != nil {
 		return nil, err
 	}
@@ -154,7 +154,7 @@ func (ledger *Ledger) problems(ctx context.Context, entry *watched) ([]string, e
 		}
 	}
 
-	lines, err := ledger.troubleLines(ctx, entry)
+	lines, err := watch.troubleLines(ctx, entry)
 	if err != nil {
 		return problems, err
 	}
@@ -166,8 +166,8 @@ func (ledger *Ledger) problems(ctx context.Context, entry *watched) ([]string, e
 
 // troubleLines returns the container's log lines since Watch that carry a
 // trouble signature, at most a few of each.
-func (ledger *Ledger) troubleLines(ctx context.Context, entry *watched) ([]string, error) {
-	logs, err := ledger.docker.ContainerLogs(ctx, entry.Name, dockerclient.ContainerLogsOptions{
+func (watch *ContainerWatch) troubleLines(ctx context.Context, entry *watched) ([]string, error) {
+	logs, err := watch.docker.ContainerLogs(ctx, entry.Name, dockerclient.ContainerLogsOptions{
 		ShowStdout: true,
 		ShowStderr: true,
 		Since:      fmt.Sprintf("%d.%09d", entry.since.Unix(), entry.since.Nanosecond()),
