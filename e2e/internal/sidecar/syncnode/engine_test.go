@@ -35,7 +35,7 @@ func (engine *fakeEngine) ForkchoiceUpdatedV2(forkchoice map[string]common.Hash,
 	return map[string]any{"payloadStatus": map[string]string{"status": engine.headStatus}}
 }
 
-// engineNode returns a node whose engine API is engine.
+// engineNode returns a node connected to the fake engine over HTTP.
 func engineNode(t *testing.T, engine *fakeEngine) *Node {
 	t.Helper()
 	api := rpc.NewServer()
