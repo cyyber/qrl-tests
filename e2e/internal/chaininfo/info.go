@@ -89,7 +89,7 @@ func (chain Info) EpochAt(now time.Time) uint64 {
 	return uint64(now.Sub(chain.GenesisTime) / chain.EpochDuration)
 }
 
-// SlotAt is the slot the wall clock is in at now, which the head can lag.
+// SlotAt returns the slot the clock is in at now. The head can be behind it.
 func (chain Info) SlotAt(now time.Time) uint64 {
 	if now.Before(chain.GenesisTime) {
 		return 0
