@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
@@ -17,16 +18,20 @@ import (
 	"github.com/cyyber/qrl-tests/e2e/internal/beacon"
 	"github.com/cyyber/qrl-tests/e2e/internal/sidecar"
 	"github.com/cyyber/qrl-tests/internal/dockerapi"
+	"github.com/golang-jwt/jwt/v4"
 	"github.com/theQRL/go-qrl/common/hexutil"
 	"github.com/theQRL/go-qrl/p2p"
 	"github.com/theQRL/go-qrl/qrlclient"
+	"github.com/theQRL/go-qrl/rpc"
 )
 
 const (
-	rpcPort          = 8545
-	enginePort       = 8551
-	beaconPort       = 3500
-	sourceBeaconPort = 3500
+	executionRPCPort     = 8545
+	executionWSPort      = 8546
+	executionEnginePort  = 8551
+	executionMetricsPort = 6060
+	beaconPort           = 3500
+	sourceBeaconPort     = 3500
 
 	networkConfigDir  = "/network-configs"
 	genesisPath       = networkConfigDir + "/genesis.json"
@@ -59,7 +64,15 @@ exec gqrl \
   --http.addr=0.0.0.0 \
   --http.port="${RPC_PORT}" \
   --http.vhosts='*' \
-  --http.api=admin,qrl,net \
+  --http.api=admin,debug,qrl,net \
+  --ws \
+  --ws.addr=0.0.0.0 \
+  --ws.port="${WS_PORT}" \
+  --ws.origins='*' \
+  --ws.api=admin,debug,qrl,net \
+  --metrics \
+  --metrics.addr=0.0.0.0 \
+  --metrics.port="${METRICS_PORT}" \
   --authrpc.addr=0.0.0.0 \
   --authrpc.port="${ENGINE_PORT}" \
   --authrpc.vhosts='*' \
@@ -90,6 +103,10 @@ const (
 type Node struct {
 	Execution *qrlclient.Client
 	Beacon    *beacon.Client
+	Engine    *rpc.Client
+
+	ExecutionWSURL      string
+	ExecutionMetricsURL string
 
 	execution   *sidecar.Container
 	consensus   *sidecar.Container
@@ -142,10 +159,11 @@ func start(ctx context.Context, config Config, client dockerClient, querySource 
 	if err != nil {
 		return nil, err
 	}
-	jwt, err := newJWTSecret()
-	if err != nil {
-		return nil, err
+	secret := make([]byte, 32)
+	if _, err := rand.Read(secret); err != nil {
+		return nil, fmt.Errorf("generate JWT secret: %w", err)
 	}
+	jwtHex := []byte(hexutil.Encode(secret))
 
 	node := &Node{sourceQnode: endpoints.qnode}
 	executionAlias := "qrl-tests-" + config.Name + "-execution"
@@ -157,9 +175,9 @@ func start(ctx context.Context, config Config, client dockerClient, querySource 
 		Files: []sidecar.File{
 			{Name: startScriptPath, Body: []byte(startScript), Mode: 0o755},
 			{Name: genesisPath, Body: files.genesis},
-			{Name: jwtPath, Body: jwt},
+			{Name: jwtPath, Body: jwtHex},
 		},
-		Port:    rpcPort,
+		Ports:   []uint16{executionRPCPort, executionWSPort, executionEnginePort, executionMetricsPort},
 		Network: networkName,
 		Aliases: []string{executionAlias},
 	})
@@ -167,6 +185,9 @@ func start(ctx context.Context, config Config, client dockerClient, querySource 
 		return nil, err
 	}
 	if err := node.waitForExecution(ctx); err != nil {
+		return nil, errors.Join(err, node.closeContainers())
+	}
+	if err := node.setExecutionEndpoints(ctx, secret); err != nil {
 		return nil, errors.Join(err, node.closeContainers())
 	}
 
@@ -177,9 +198,9 @@ func start(ctx context.Context, config Config, client dockerClient, querySource 
 		Files: []sidecar.File{
 			{Name: chainConfigPath, Body: files.chainConfig},
 			{Name: genesisStatePath, Body: files.genesisState},
-			{Name: jwtPath, Body: jwt},
+			{Name: jwtPath, Body: jwtHex},
 		},
-		Port:    beaconPort,
+		Ports:   []uint16{beaconPort},
 		Network: networkName,
 	})
 	if err != nil {
@@ -214,8 +235,10 @@ func executionEnv(networkID, syncMode string) []string {
 		"JWT_FILE=" + jwtPath,
 		"NETWORK_ID=" + networkID,
 		"SYNC_MODE=" + syncMode,
-		"RPC_PORT=" + strconv.Itoa(rpcPort),
-		"ENGINE_PORT=" + strconv.Itoa(enginePort),
+		"RPC_PORT=" + strconv.Itoa(executionRPCPort),
+		"WS_PORT=" + strconv.Itoa(executionWSPort),
+		"METRICS_PORT=" + strconv.Itoa(executionMetricsPort),
+		"ENGINE_PORT=" + strconv.Itoa(executionEnginePort),
 	}
 }
 
@@ -223,7 +246,7 @@ func beaconCommand(executionHost string, endpoints sourceEndpoints, origin Beaco
 	command := []string{
 		"--accept-terms-of-use=true",
 		"--datadir=" + beaconDataDir,
-		"--execution-endpoint=http://" + net.JoinHostPort(executionHost, strconv.Itoa(enginePort)),
+		"--execution-endpoint=http://" + net.JoinHostPort(executionHost, strconv.Itoa(executionEnginePort)),
 		"--jwt-secret=" + jwtPath,
 		"--chain-config-file=" + chainConfigPath,
 		"--genesis-state=" + genesisStatePath,
@@ -267,14 +290,6 @@ func readNetworkFiles(ctx context.Context, client devnet.ServiceFileClient, part
 		*file.body = body
 	}
 	return files, nil
-}
-
-func newJWTSecret() ([]byte, error) {
-	secret := make([]byte, 32)
-	if _, err := rand.Read(secret); err != nil {
-		return nil, fmt.Errorf("generate JWT secret: %w", err)
-	}
-	return []byte(hexutil.Encode(secret)), nil
 }
 
 // querySourceEndpoints reads the source's network ID and the addresses its clients
@@ -351,10 +366,49 @@ func privateBeaconPeer(identity beacon.Identity, privateIP string) (string, erro
 	return "", fmt.Errorf("source beacon node reports no TCP address in %q", identity.P2PAddresses)
 }
 
+// setExecutionEndpoints sets the execution client's endpoints other than
+// its RPC API. Their host ports stay the same when the client is restarted.
+func (node *Node) setExecutionEndpoints(ctx context.Context, jwtSecret []byte) error {
+	ws, err := node.execution.PublishedAddress(ctx, executionWSPort)
+	if err != nil {
+		return err
+	}
+	metrics, err := node.execution.PublishedAddress(ctx, executionMetricsPort)
+	if err != nil {
+		return err
+	}
+	engine, err := node.execution.PublishedAddress(ctx, executionEnginePort)
+	if err != nil {
+		return err
+	}
+
+	node.Engine, err = rpc.DialOptions(ctx, "http://"+engine, rpc.WithHTTPAuth(engineAuth(jwtSecret)))
+	if err != nil {
+		return fmt.Errorf("dial the engine API: %w", err)
+	}
+	node.ExecutionWSURL = "ws://" + ws
+	node.ExecutionMetricsURL = "http://" + metrics + "/debug/metrics/prometheus"
+	return nil
+}
+
+// engineAuth signs a fresh token for each engine API request; the execution
+// client accepts a token for a minute after it was issued.
+func engineAuth(secret []byte) rpc.HTTPAuth {
+	return func(header http.Header) error {
+		token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{"iat": jwt.NewNumericDate(time.Now())})
+		signed, err := token.SignedString(secret)
+		if err != nil {
+			return fmt.Errorf("sign engine API token: %w", err)
+		}
+		header.Set("Authorization", "Bearer "+signed)
+		return nil
+	}
+}
+
 func (node *Node) waitForExecution(ctx context.Context) error {
-	return poll(ctx, node.execution, func(ctx context.Context, hostPort string) error {
+	return poll(ctx, node.execution, executionRPCPort, func(ctx context.Context, address string) error {
 		if node.Execution == nil {
-			client, err := qrlclient.DialContext(ctx, "http://"+hostPort)
+			client, err := qrlclient.DialContext(ctx, "http://"+address)
 			if err != nil {
 				return err
 			}
@@ -372,9 +426,9 @@ func (node *Node) waitForExecution(ctx context.Context) error {
 }
 
 func (node *Node) waitForBeacon(ctx context.Context) error {
-	return poll(ctx, node.consensus, func(ctx context.Context, hostPort string) error {
+	return poll(ctx, node.consensus, beaconPort, func(ctx context.Context, address string) error {
 		if node.Beacon == nil {
-			client, err := beacon.New("http://" + hostPort)
+			client, err := beacon.New("http://" + address)
 			if err != nil {
 				return err
 			}
@@ -385,19 +439,19 @@ func (node *Node) waitForBeacon(ctx context.Context) error {
 	})
 }
 
-// poll calls ready with the container's published host:port until it
-// succeeds, failing at once if the container stops.
-func poll(ctx context.Context, container *sidecar.Container, ready func(context.Context, string) error) error {
+// poll calls ready with the published address of the container's port until
+// ready succeeds. It fails at once if the container stops.
+func poll(ctx context.Context, container *sidecar.Container, port uint16, ready func(context.Context, string) error) error {
 	ticker := time.NewTicker(readyPollInterval)
 	defer ticker.Stop()
 	for {
-		hostPort, err := container.PublishedPort(ctx)
+		address, err := container.PublishedAddress(ctx, port)
 		var exitErr *sidecar.ExitError
 		if errors.As(err, &exitErr) {
 			return err
 		}
 		if err == nil {
-			if err = ready(ctx, net.JoinHostPort("127.0.0.1", hostPort)); err == nil {
+			if err = ready(ctx, address); err == nil {
 				return nil
 			}
 		}
@@ -475,6 +529,9 @@ func (node *Node) Close() error {
 func (node *Node) closeContainers() error {
 	if node.Execution != nil {
 		node.Execution.Close()
+	}
+	if node.Engine != nil {
+		node.Engine.Close()
 	}
 	return errors.Join(node.consensus.Close(), node.execution.Close())
 }

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"maps"
 	"net"
@@ -11,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	cerrdefs "github.com/containerd/errdefs"
 	"github.com/cyyber/qrl-tests/e2e/internal/sidecar/sidecartest"
 	containertypes "github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/api/types/network"
@@ -30,7 +32,7 @@ func testSpec() Spec {
 			{Name: "/start.sh", Body: []byte("#!/bin/sh\n"), Mode: 0o755},
 			{Name: "/config/network/config.yaml", Body: []byte("PRESET_BASE: minimal\n")},
 		},
-		Port: 7500,
+		Ports: []uint16{7500},
 	}
 }
 
@@ -56,12 +58,85 @@ func TestStartCreatesPublishedContainer(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, []string{"start.sh", "config/network/config.yaml"}, names)
 
-	hostPort, err := container.PublishedPort(t.Context())
+	address, err := container.PublishedAddress(t.Context(), 7500)
 	require.NoError(t, err)
-	require.Equal(t, bindings[0].HostPort, hostPort)
+	require.Equal(t, "127.0.0.1:"+bindings[0].HostPort, address)
 
 	require.NoError(t, container.Close())
 	require.Equal(t, []string{sidecartest.ContainerID}, docker.Removed)
+}
+
+func TestStartPublishesEachPort(t *testing.T) {
+	docker := sidecartest.NewDocker()
+	spec := testSpec()
+	spec.Ports = []uint16{7500, 7501, 7502}
+
+	container, err := Start(t.Context(), docker, spec)
+	require.NoError(t, err)
+	require.Len(t, docker.LastCreated().Config.ExposedPorts, len(spec.Ports))
+
+	addresses := map[string]bool{}
+	for _, port := range spec.Ports {
+		address, err := container.PublishedAddress(t.Context(), port)
+		require.NoError(t, err)
+		addresses[address] = true
+	}
+	require.Len(t, addresses, len(spec.Ports), "each port has a host port of its own")
+
+	_, err = container.PublishedAddress(t.Context(), 7503)
+	require.EqualError(t, err, "test sidecar does not publish port 7503")
+}
+
+func TestStartRefusesPortListedTwice(t *testing.T) {
+	spec := testSpec()
+	spec.Ports = []uint16{7500, 7501, 7500}
+
+	_, err := Start(t.Context(), sidecartest.NewDocker(), spec)
+	require.EqualError(t, err, "test sidecar port 7500 is listed twice")
+}
+
+// takenDocker has a running container that publishes port 50001, a stopped
+// one bound to port 50002, and one removed since it was listed.
+type takenDocker struct {
+	*sidecartest.Docker
+}
+
+func (docker takenDocker) ContainerInspect(ctx context.Context, id string, options dockerclient.ContainerInspectOptions) (dockerclient.ContainerInspectResult, error) {
+	switch id {
+	case "stopped":
+		port, _ := network.PortFrom(8545, network.TCP)
+		return dockerclient.ContainerInspectResult{Container: containertypes.InspectResponse{
+			HostConfig: &containertypes.HostConfig{PortBindings: network.PortMap{port: {{HostPort: "50002"}}}},
+		}}, nil
+	case "removed":
+		return dockerclient.ContainerInspectResult{}, fmt.Errorf("no such container: %w", cerrdefs.ErrNotFound)
+	}
+	return docker.Docker.ContainerInspect(ctx, id, options)
+}
+
+func TestTakenHostPorts(t *testing.T) {
+	docker := takenDocker{sidecartest.NewDocker()}
+	docker.Containers = []containertypes.Summary{
+		{ID: "running", State: containertypes.StateRunning, Ports: []containertypes.PortSummary{{PrivatePort: 8545, PublicPort: 50001}, {PrivatePort: 9001}}},
+		{ID: "stopped", State: containertypes.StateExited},
+		{ID: "removed", State: containertypes.StateExited},
+	}
+
+	taken, err := takenHostPorts(t.Context(), docker)
+	require.NoError(t, err)
+	require.Equal(t, map[string]bool{"50001": true, "50002": true}, taken)
+	require.Equal(t, []dockerclient.ContainerListOptions{{All: true}}, docker.Listed)
+}
+
+func TestStartWithoutPortsListsNoContainers(t *testing.T) {
+	docker := sidecartest.NewDocker()
+	spec := testSpec()
+	spec.Ports = nil
+
+	container, err := Start(t.Context(), docker, spec)
+	require.NoError(t, err)
+	defer container.Close()
+	require.Empty(t, docker.Listed)
 }
 
 func TestStartNetwork(t *testing.T) {
@@ -328,63 +403,45 @@ func TestProcessCloseClosesOwnedClient(t *testing.T) {
 	require.Equal(t, []string{sidecartest.ContainerID}, docker.Removed)
 }
 
-func TestPublishedPortErrors(t *testing.T) {
+func TestPublishedAddressStopped(t *testing.T) {
 	exited := &containertypes.State{Status: containertypes.StateExited, ExitCode: 1}
 	for _, test := range []struct {
-		name     string
-		noPort   bool
-		state    *containertypes.State
-		logs     string
-		fail     map[string]error
-		wantExit bool
-		wantErr  string
+		name    string
+		state   *containertypes.State
+		logs    string
+		fail    map[string]error
+		wantErr string
 	}{
 		{
-			name:     "exited with logs",
-			state:    exited,
-			logs:     "could not read config\n",
-			wantExit: true,
-			wantErr:  "test sidecar container exited with code 1\nlast log lines:\ncould not read config",
+			name:    "exited with logs",
+			state:   exited,
+			logs:    "could not read config\n",
+			wantErr: "test sidecar container exited with code 1\nlast log lines:\ncould not read config",
 		},
 		{
-			name:     "dead without logs",
-			state:    &containertypes.State{Status: containertypes.StateDead, Error: "OCI runtime error"},
-			wantExit: true,
-			wantErr:  "test sidecar container is dead: OCI runtime error",
+			name:    "dead without logs",
+			state:   &containertypes.State{Status: containertypes.StateDead, Error: "OCI runtime error"},
+			wantErr: "test sidecar container is dead: OCI runtime error",
 		},
 		{
-			name:     "logs unavailable",
-			state:    exited,
-			fail:     map[string]error{"ContainerLogs": errors.New("daemon unavailable")},
-			wantExit: true,
-			wantErr:  "test sidecar container exited with code 1\n(logs unavailable: daemon unavailable)",
-		},
-		{
-			name:    "no port in the spec",
-			noPort:  true,
-			wantErr: "test sidecar publishes no port",
+			name:    "logs unavailable",
+			state:   exited,
+			fail:    map[string]error{"ContainerLogs": errors.New("daemon unavailable")},
+			wantErr: "test sidecar container exited with code 1\n(logs unavailable: daemon unavailable)",
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			docker := sidecartest.NewDocker()
-			spec := testSpec()
-			if test.noPort {
-				spec.Port = 0
-			}
-			container, err := Start(t.Context(), docker, spec)
+			container, err := Start(t.Context(), docker, testSpec())
 			require.NoError(t, err)
-			if test.state != nil {
-				docker.State = test.state
-			}
+			docker.State = test.state
 			docker.Logs = test.logs
 			maps.Copy(docker.Fail, test.fail)
 
-			_, err = container.PublishedPort(t.Context())
+			_, err = container.PublishedAddress(t.Context(), 7500)
 			require.EqualError(t, err, test.wantErr)
-			if test.wantExit {
-				var exitErr *ExitError
-				require.ErrorAs(t, err, &exitErr)
-			}
+			var exitErr *ExitError
+			require.ErrorAs(t, err, &exitErr)
 		})
 	}
 }

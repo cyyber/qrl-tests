@@ -19,6 +19,7 @@ import (
 	"sync"
 	"time"
 
+	cerrdefs "github.com/containerd/errdefs"
 	"github.com/cyyber/qrl-tests/internal/containerfiles"
 	"github.com/cyyber/qrl-tests/internal/dockerapi"
 	"github.com/moby/moby/api/pkg/stdcopy"
@@ -36,11 +37,15 @@ const (
 	labelKey = "qrl-tests.sidecar"
 )
 
+// loopback is the host address that container ports are published on.
+var loopback = netip.MustParseAddr("127.0.0.1")
+
 // Client is the part of the Docker client that sidecars use.
 type Client interface {
 	ContainerAttach(context.Context, string, dockerclient.ContainerAttachOptions) (dockerclient.ContainerAttachResult, error)
 	ContainerCreate(context.Context, dockerclient.ContainerCreateOptions) (dockerclient.ContainerCreateResult, error)
 	ContainerInspect(context.Context, string, dockerclient.ContainerInspectOptions) (dockerclient.ContainerInspectResult, error)
+	ContainerList(context.Context, dockerclient.ContainerListOptions) (dockerclient.ContainerListResult, error)
 	ContainerLogs(context.Context, string, dockerclient.ContainerLogsOptions) (dockerclient.ContainerLogsResult, error)
 	ContainerRemove(context.Context, string, dockerclient.ContainerRemoveOptions) (dockerclient.ContainerRemoveResult, error)
 	ContainerStart(context.Context, string, dockerclient.ContainerStartOptions) (dockerclient.ContainerStartResult, error)
@@ -81,8 +86,8 @@ type Spec struct {
 	Files      []File
 	// Stdin keeps the container's standard input open for Attach.
 	Stdin bool
-	// Port, when set, is published on 127.0.0.1 at a free host port.
-	Port uint16
+	// Ports are each published on 127.0.0.1 at a free host port.
+	Ports []uint16
 	// Network, when set, is the Docker network the container joins instead of
 	// the default bridge, such as a Kurtosis enclave's network. Aliases are its
 	// DNS names there.
@@ -95,7 +100,7 @@ type Container struct {
 	client Client
 	id     string
 	name   string
-	port   network.Port
+	ports  network.PortSet
 }
 
 // Start creates and starts the container, removing it again on any failure.
@@ -245,21 +250,26 @@ func create(ctx context.Context, client Client, spec Spec, attached bool) (*Cont
 		AttachStderr: attached,
 		OpenStdin:    spec.Stdin,
 		StdinOnce:    spec.Stdin,
+		ExposedPorts: network.PortSet{},
 	}
-	hostConfig := &containertypes.HostConfig{ExtraHosts: []string{containerHost + ":host-gateway"}}
-	var port network.Port
-	if spec.Port != 0 {
-		var ok bool
-		port, ok = network.PortFrom(spec.Port, network.TCP)
+	hostConfig := &containertypes.HostConfig{
+		ExtraHosts:   []string{containerHost + ":host-gateway"},
+		PortBindings: network.PortMap{},
+	}
+	hostPorts, err := freeHostPorts(ctx, client, len(spec.Ports))
+	if err != nil {
+		return nil, fmt.Errorf("find host ports for %s: %w", spec.Name, err)
+	}
+	for index, number := range spec.Ports {
+		port, ok := network.PortFrom(number, network.TCP)
 		if !ok {
-			return nil, fmt.Errorf("%s port %d is invalid", spec.Name, spec.Port)
+			return nil, fmt.Errorf("%s port %d is invalid", spec.Name, number)
 		}
-		hostPort, err := freeHostPort()
-		if err != nil {
-			return nil, fmt.Errorf("find a host port for %s: %w", spec.Name, err)
+		if _, listed := config.ExposedPorts[port]; listed {
+			return nil, fmt.Errorf("%s port %d is listed twice", spec.Name, number)
 		}
-		config.ExposedPorts = network.PortSet{port: {}}
-		hostConfig.PortBindings = network.PortMap{port: {{HostIP: netip.MustParseAddr("127.0.0.1"), HostPort: hostPort}}}
+		config.ExposedPorts[port] = struct{}{}
+		hostConfig.PortBindings[port] = []network.PortBinding{{HostIP: loopback, HostPort: hostPorts[index]}}
 	}
 
 	var networking *network.NetworkingConfig
@@ -281,7 +291,7 @@ func create(ctx context.Context, client Client, spec Spec, attached bool) (*Cont
 	if created.ID == "" {
 		return nil, fmt.Errorf("create %s container: Docker returned no container ID", spec.Name)
 	}
-	container := &Container{client: client, id: created.ID, name: spec.Name, port: port}
+	container := &Container{client: client, id: created.ID, name: spec.Name, ports: config.ExposedPorts}
 
 	if _, err := client.CopyToContainer(ctx, created.ID, dockerclient.CopyToContainerOptions{
 		DestinationPath: "/",
@@ -292,17 +302,78 @@ func create(ctx context.Context, client Client, spec Spec, attached bool) (*Cont
 	return container, nil
 }
 
-// freeHostPort returns a TCP port that is free on 127.0.0.1. Docker 28 gives up
-// on a port it picks itself after ten taken ports in a row, and a devnet's
-// published ports fill the start of the range it picks from.
-func freeHostPort() (string, error) {
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		return "", err
+// freeHostPorts returns the given number of TCP ports that are free on
+// 127.0.0.1 and that no container has taken. Docker 28 gives up on a port it
+// picks itself after ten taken ports in a row, and a devnet's published ports
+// fill the start of the range it picks from.
+func freeHostPorts(ctx context.Context, client Client, count int) ([]string, error) {
+	if count == 0 {
+		return nil, nil
 	}
-	defer listener.Close()
-	_, port, err := net.SplitHostPort(listener.Addr().String())
-	return port, err
+	taken, err := takenHostPorts(ctx, client)
+	if err != nil {
+		return nil, err
+	}
+
+	// Each port stays taken until all are picked, so none is picked twice.
+	var listeners []net.Listener
+	defer func() {
+		for _, listener := range listeners {
+			_ = listener.Close()
+		}
+	}()
+	var ports []string
+	for len(ports) < count {
+		listener, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			return nil, err
+		}
+		listeners = append(listeners, listener)
+		if port := strconv.Itoa(listener.Addr().(*net.TCPAddr).Port); !taken[port] {
+			ports = append(ports, port)
+		}
+	}
+	return ports, nil
+}
+
+// takenHostPorts returns the host ports Docker's containers hold, running or
+// stopped, which can still look free on 127.0.0.1.
+func takenHostPorts(ctx context.Context, client Client) (map[string]bool, error) {
+	listed, err := client.ContainerList(ctx, dockerclient.ContainerListOptions{All: true})
+	if err != nil {
+		return nil, fmt.Errorf("list containers: %w", err)
+	}
+
+	taken := map[string]bool{}
+	for _, summary := range listed.Items {
+		for _, port := range summary.Ports {
+			if port.PublicPort != 0 {
+				taken[strconv.Itoa(int(port.PublicPort))] = true
+			}
+		}
+		if summary.State == containertypes.StateRunning {
+			continue
+		}
+
+		inspected, err := client.ContainerInspect(ctx, summary.ID, dockerclient.ContainerInspectOptions{})
+		if cerrdefs.IsNotFound(err) {
+			continue
+		}
+		if err != nil {
+			return nil, fmt.Errorf("inspect container %s: %w", summary.ID, err)
+		}
+		if inspected.Container.HostConfig == nil {
+			continue
+		}
+		for _, bindings := range inspected.Container.HostConfig.PortBindings {
+			for _, binding := range bindings {
+				if binding.HostPort != "" {
+					taken[binding.HostPort] = true
+				}
+			}
+		}
+	}
+	return taken, nil
 }
 
 func (container *Container) abort(err error) error {
@@ -323,11 +394,13 @@ func (container *Container) Close() error {
 	return nil
 }
 
-// PublishedPort returns the host port bound to the Spec's Port. It returns an
+// PublishedAddress returns the host:port on this machine that reaches the
+// given container port, which must be one of the Spec's Ports. It returns an
 // *ExitError once the container has stopped.
-func (container *Container) PublishedPort(ctx context.Context) (string, error) {
-	if !container.port.IsValid() {
-		return "", fmt.Errorf("%s publishes no port", container.name)
+func (container *Container) PublishedAddress(ctx context.Context, port uint16) (string, error) {
+	published, _ := network.PortFrom(port, network.TCP)
+	if _, listed := container.ports[published]; !listed {
+		return "", fmt.Errorf("%s does not publish port %d", container.name, port)
 	}
 	inspected, err := container.client.ContainerInspect(ctx, container.id, dockerclient.ContainerInspectOptions{})
 	if err != nil {
@@ -343,7 +416,11 @@ func (container *Container) PublishedPort(ctx context.Context) (string, error) {
 		}
 		return "", container.WithLogs(&ExitError{name: container.name, status: status})
 	}
-	return publishedHostPort(inspected.Container, container.port)
+	hostPort, err := publishedHostPort(inspected.Container, published)
+	if err != nil {
+		return "", err
+	}
+	return net.JoinHostPort(loopback.String(), hostPort), nil
 }
 
 func publishedHostPort(inspected containertypes.InspectResponse, port network.Port) (string, error) {

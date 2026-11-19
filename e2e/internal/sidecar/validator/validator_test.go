@@ -37,7 +37,7 @@ func TestStartWaitsForKeymanager(t *testing.T) {
 	require.Contains(t, docker.LastCreated().Config.Env, "BEACON_REST_API_PROVIDER=http://host.docker.internal:3500")
 	require.Contains(t, docker.LastCreated().Config.Env, "BEACON_RPC_PROVIDER=host.docker.internal:4000")
 	require.Contains(t, docker.LastCreated().Config.Env, "GRAFFITI=")
-	require.Len(t, docker.Listed, 1)
+	require.Len(t, docker.Listed, 2, "the beacon node's container, then every container for the host ports they have taken")
 	require.Equal(t, dockerclient.Filters{"label": {"com.kurtosistech.guid=consensus-service": true}}, docker.Listed[0].Filters)
 
 	docker.Logs = "Submitted new attestations\n"
