@@ -12,19 +12,23 @@ import (
 // participantMetricsPort is the port of a participant's go-qrl metrics page.
 const participantMetricsPort = 9001
 
-// ParticipantContainers returns a devnet participant's execution, consensus
-// and validator containers, the execution one with its metrics page.
+// ParticipantContainers returns a devnet participant's execution container,
+// with its metrics page, and its consensus and validator containers if it runs
+// them.
 func ParticipantContainers(ctx context.Context, docker ContainerReader, participant devnet.Participant) ([]Container, error) {
 	execution := serviceContainer(participant.Execution.ServiceInfo)
 	metrics, err := metricsURL(ctx, docker, execution, participantMetricsPort)
 	if err != nil {
 		return nil, err
 	}
-	return []Container{
-		{Name: execution, MetricsURL: metrics},
-		{Name: serviceContainer(participant.Consensus.ServiceInfo)},
-		{Name: serviceContainer(participant.Validator.ServiceInfo)},
-	}, nil
+
+	containers := []Container{{Name: execution, MetricsURL: metrics}}
+	for _, service := range []devnet.ServiceInfo{participant.Consensus.ServiceInfo, participant.Validator.ServiceInfo} {
+		if service.Name != "" {
+			containers = append(containers, Container{Name: serviceContainer(service)})
+		}
+	}
+	return containers, nil
 }
 
 // serviceContainer returns the Docker name of a Kurtosis service's container.

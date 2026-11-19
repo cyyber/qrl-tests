@@ -168,7 +168,7 @@ func (ledger *Ledger) troubleLines(ctx context.Context, entry *watched) ([]strin
 	logs, err := ledger.docker.ContainerLogs(ctx, entry.Name, dockerclient.ContainerLogsOptions{
 		ShowStdout: true,
 		ShowStderr: true,
-		Since:      strconv.FormatInt(entry.since.Unix(), 10),
+		Since:      fmt.Sprintf("%d.%09d", entry.since.Unix(), entry.since.Nanosecond()),
 	})
 	if err != nil {
 		return nil, err

@@ -96,28 +96,38 @@ func (monitor *Monitor) Report(ctx context.Context, ownPeers ...qnode.ID) (Repor
 	if err != nil {
 		return Report{}, err
 	}
+	// A node that is down fails the steps below, and its problems say why.
+	fail := func(err error) (Report, error) {
+		if len(problems) > 0 {
+			err = fmt.Errorf("%w; the ledger found %q", err, problems)
+		}
+		return Report{}, err
+	}
+
 	drops, err := monitor.peers.Drops(ctx)
 	if err != nil {
-		return Report{}, err
+		return fail(err)
 	}
 	head, err := monitor.beacon.HeadSlot(ctx)
 	if err != nil {
-		return Report{}, err
+		return fail(err)
 	}
 	missed, err := MissedSlots(ctx, monitor.beacon, monitor.firstSlot+1, head)
 	if err != nil {
-		return Report{}, err
+		return fail(err)
 	}
 	checkpoints, err := monitor.beacon.FinalityCheckpoints(ctx)
 	if err != nil {
-		return Report{}, err
+		return fail(err)
 	}
+
+	epoch := monitor.chain.EpochAt(time.Now())
 	return Report{
 		Problems:    problems,
 		PeerDrops:   except(drops, ownPeers...),
 		MissedSlots: missed,
-		Slots:       head - monitor.firstSlot,
-		FinalityLag: monitor.chain.EpochAt(time.Now()) - checkpoints.Finalized.Epoch,
+		Slots:       head - min(head, monitor.firstSlot),
+		FinalityLag: epoch - min(epoch, checkpoints.Finalized.Epoch),
 	}, nil
 }
 

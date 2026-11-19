@@ -2,37 +2,49 @@ package health
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"encoding/binary"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
+	"github.com/cyyber/qrl-tests/devnet"
 	containertypes "github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/api/types/network"
 	dockerclient "github.com/moby/moby/client"
 	"github.com/stretchr/testify/require"
 )
 
+// fakeDocker serves one container, which publishes port (6060 when zero) on
+// hostPort and has no state when stateless. It records the logs' Since.
 type fakeDocker struct {
-	mutex    sync.Mutex
-	state    containertypes.State
-	restarts int
-	hostPort string
-	logs     string
+	mutex     sync.Mutex
+	state     containertypes.State
+	stateless bool
+	restarts  int
+	port      uint16
+	hostPort  string
+	logs      string
+	since     string
 }
 
 func (docker *fakeDocker) ContainerInspect(context.Context, string, dockerclient.ContainerInspectOptions) (dockerclient.ContainerInspectResult, error) {
 	docker.mutex.Lock()
 	defer docker.mutex.Unlock()
-	state := docker.state
-	port, _ := network.PortFrom(6060, network.TCP)
+	var state *containertypes.State
+	if !docker.stateless {
+		state = new(docker.state)
+	}
+	port, _ := network.PortFrom(cmp.Or(docker.port, 6060), network.TCP)
 	return dockerclient.ContainerInspectResult{Container: containertypes.InspectResponse{
-		State:        &state,
+		State:        state,
 		RestartCount: docker.restarts,
 		NetworkSettings: &containertypes.NetworkSettings{
 			Ports: network.PortMap{port: {{HostIP: netip.IPv4Unspecified(), HostPort: docker.hostPort}}},
@@ -40,9 +52,10 @@ func (docker *fakeDocker) ContainerInspect(context.Context, string, dockerclient
 	}}, nil
 }
 
-func (docker *fakeDocker) ContainerLogs(context.Context, string, dockerclient.ContainerLogsOptions) (dockerclient.ContainerLogsResult, error) {
+func (docker *fakeDocker) ContainerLogs(_ context.Context, _ string, options dockerclient.ContainerLogsOptions) (dockerclient.ContainerLogsResult, error) {
 	docker.mutex.Lock()
 	defer docker.mutex.Unlock()
+	docker.since = options.Since
 	// Docker frames each write with its stream and length.
 	frame := make([]byte, 8, 8+len(docker.logs))
 	frame[0] = 1
@@ -74,9 +87,21 @@ func TestLedger(t *testing.T) {
 		},
 		{
 			name:    "a container that restarted",
-			change:  func(docker *fakeDocker) { docker.state.StartedAt, docker.restarts = "later", 1 },
+			change:  func(docker *fakeDocker) { docker.state.StartedAt = "later" },
 			discard: "0",
 			problem: "node: restarted",
+		},
+		{
+			name:    "a container that Docker restarted",
+			change:  func(docker *fakeDocker) { docker.restarts = 1 },
+			discard: "0",
+			problem: "node: restarted",
+		},
+		{
+			name:    "a container with no state",
+			change:  func(docker *fakeDocker) { docker.stateless = true },
+			discard: "0",
+			problem: "node: has no state",
 		},
 		{name: "a meter that rose", change: func(*fakeDocker) {}, discard: "3", problem: "node: txpool_pending_discard rose by 3"},
 		{name: "a meter that rose a million", change: func(*fakeDocker) {}, discard: "1000000", problem: "node: txpool_pending_discard rose by 1000000"},
@@ -119,4 +144,62 @@ func TestLedger(t *testing.T) {
 			require.Equal(t, []string{test.problem}, problems)
 		})
 	}
+}
+
+func TestLedgerLogs(t *testing.T) {
+	docker := &fakeDocker{state: containertypes.State{Running: true}}
+	ledger := NewLedger(docker)
+	before := time.Now()
+	require.NoError(t, ledger.Watch(t.Context(), Container{Name: "node"}))
+	docker.update(func(docker *fakeDocker) { docker.logs = strings.Repeat("panic: runtime error\n", 5) })
+
+	problems, err := ledger.Problems(t.Context())
+	require.NoError(t, err)
+	require.Len(t, problems, 3, "at most three lines of each signature")
+
+	seconds, err := strconv.ParseFloat(docker.since, 64)
+	require.NoError(t, err)
+	require.InDelta(t, float64(before.UnixNano())/1e9, seconds, 1, "the logs since Watch")
+	require.Regexp(t, `^[0-9]+\.[0-9]{9}$`, docker.since, "to the nanosecond")
+}
+
+func TestReadMeters(t *testing.T) {
+	page := "# TYPE chain_head gauge\nchain_head 7\nchain_inserts {quantile=\"0.5\"} 9\nnot_a_number x\n"
+	status := http.StatusOK
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.WriteHeader(status)
+		_, _ = writer.Write([]byte(page))
+	}))
+	defer server.Close()
+
+	meters, err := readMeters(t.Context(), server.URL)
+	require.NoError(t, err)
+	require.Equal(t, map[string]float64{"chain_head": 7}, meters, "comments, labelled and bad values are skipped")
+
+	page = "# nothing\n"
+	_, err = readMeters(t.Context(), server.URL)
+	require.ErrorContains(t, err, "has no values")
+
+	status = http.StatusServiceUnavailable
+	_, err = readMeters(t.Context(), server.URL)
+	require.ErrorContains(t, err, "503")
+}
+
+func TestParticipantContainers(t *testing.T) {
+	docker := &fakeDocker{port: participantMetricsPort, hostPort: "32000"}
+	participant := devnet.Participant{
+		Execution: devnet.ExecutionService{ServiceInfo: devnet.ServiceInfo{Name: "el-1", ID: "a"}},
+		Consensus: devnet.ConsensusService{ServiceInfo: devnet.ServiceInfo{Name: "cl-1", ID: "b"}},
+	}
+
+	containers, err := ParticipantContainers(t.Context(), docker, participant)
+	require.NoError(t, err)
+	require.Equal(t, []Container{
+		{Name: "el-1--a", MetricsURL: "http://127.0.0.1:32000/debug/metrics/prometheus"},
+		{Name: "cl-1--b"},
+	}, containers, "no validator container")
+
+	docker.hostPort = ""
+	_, err = ParticipantContainers(t.Context(), docker, participant)
+	require.ErrorContains(t, err, "port 9001 of el-1--a is not published")
 }
