@@ -14,7 +14,7 @@ const participantMetricsPort = 9001
 // ParticipantContainers returns a devnet participant's containers. The first
 // is the execution client's, with its metrics URL.
 func ParticipantContainers(ctx context.Context, docker ContainerReader, participant devnet.Participant) ([]Container, error) {
-	execution := serviceContainer(participant.Execution.ServiceInfo)
+	execution := kurtosisContainerName(participant.Execution.ServiceInfo)
 	metrics, err := metricsURL(ctx, docker, execution, participantMetricsPort)
 	if err != nil {
 		return nil, err
@@ -23,14 +23,13 @@ func ParticipantContainers(ctx context.Context, docker ContainerReader, particip
 	containers := []Container{{Name: execution, MetricsURL: metrics}}
 	for _, service := range []devnet.ServiceInfo{participant.Consensus.ServiceInfo, participant.Validator.ServiceInfo} {
 		if service.Name != "" {
-			containers = append(containers, Container{Name: serviceContainer(service)})
+			containers = append(containers, Container{Name: kurtosisContainerName(service)})
 		}
 	}
 	return containers, nil
 }
 
-// serviceContainer returns the Docker name of a Kurtosis service's container.
-func serviceContainer(service devnet.ServiceInfo) string {
+func kurtosisContainerName(service devnet.ServiceInfo) string {
 	return service.Name + "--" + service.ID
 }
 
