@@ -394,6 +394,11 @@ func (container *Container) Close() error {
 	return nil
 }
 
+// ID returns the container's Docker ID.
+func (container *Container) ID() string {
+	return container.id
+}
+
 // PublishedAddress returns the host:port on this machine that reaches the
 // given container port, which must be one of the Spec's Ports. It returns an
 // *ExitError once the container has stopped.

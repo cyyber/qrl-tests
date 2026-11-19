@@ -21,6 +21,7 @@ import (
 	"github.com/golang-jwt/jwt/v4"
 	"github.com/theQRL/go-qrl/common/hexutil"
 	"github.com/theQRL/go-qrl/p2p"
+	"github.com/theQRL/go-qrl/p2p/qnode"
 	"github.com/theQRL/go-qrl/qrlclient"
 	"github.com/theQRL/go-qrl/rpc"
 )
@@ -85,9 +86,10 @@ type Config struct {
 	ExecutionImage string
 	ConsensusImage string
 	// SyncMode is gqrl's --syncmode, "snap" or "full".
-	SyncMode     string
-	BeaconOrigin BeaconOrigin
-	Source       devnet.Participant
+	SyncMode      string
+	BeaconOrigin  BeaconOrigin
+	Source        devnet.Participant
+	ExecutionOnly bool
 }
 
 // BeaconOrigin is where the sync node's beacon node starts from: genesis, or
@@ -107,6 +109,8 @@ type Node struct {
 
 	ExecutionWSURL      string
 	ExecutionMetricsURL string
+
+	executionAlias string
 
 	execution   *sidecar.Container
 	consensus   *sidecar.Container
@@ -165,8 +169,8 @@ func start(ctx context.Context, config Config, client dockerClient, querySource 
 	}
 	jwtHex := []byte(hexutil.Encode(secret))
 
-	node := &Node{sourceQnode: endpoints.qnode}
 	executionAlias := "qrl-tests-" + config.Name + "-execution"
+	node := &Node{sourceQnode: endpoints.qnode, executionAlias: executionAlias}
 	node.execution, err = sidecar.Start(ctx, client, sidecar.Spec{
 		Name:       config.Name + " execution client",
 		Image:      config.ExecutionImage,
@@ -189,6 +193,9 @@ func start(ctx context.Context, config Config, client dockerClient, querySource 
 	}
 	if err := node.setExecutionEndpoints(ctx, secret); err != nil {
 		return nil, errors.Join(err, node.closeContainers())
+	}
+	if config.ExecutionOnly {
+		return node, nil
 	}
 
 	node.consensus, err = sidecar.Start(ctx, client, sidecar.Spec{
@@ -213,8 +220,11 @@ func start(ctx context.Context, config Config, client dockerClient, querySource 
 }
 
 func validate(config Config) error {
-	if config.ExecutionImage == "" || config.ConsensusImage == "" {
-		return errors.New("sync node needs an execution and a consensus image")
+	if config.ExecutionImage == "" {
+		return errors.New("sync node needs an execution image")
+	}
+	if config.ConsensusImage == "" && !config.ExecutionOnly {
+		return errors.New("sync node needs a consensus image")
 	}
 	if config.SyncMode != "snap" && config.SyncMode != "full" {
 		return fmt.Errorf("sync mode %q is not snap or full", config.SyncMode)
@@ -333,17 +343,22 @@ func querySourceEndpoints(ctx context.Context, participant devnet.Participant) (
 	}, nil
 }
 
-// privateQnode points a qnode URL at privateIP, keeping its node ID and
-// listening port and dropping the discovery port the node does not use.
-func privateQnode(qnode, privateIP string) (string, error) {
-	parsed, err := url.Parse(qnode)
-	if err != nil || parsed.Scheme != "qnode" || parsed.User == nil || parsed.Port() == "" {
-		return "", fmt.Errorf("source qnode %q is not a qnode://<id>@<ip>:<port> URL", qnode)
-	}
+// privateQnode points a qnode URL at privateIP.
+func privateQnode(rawURL, privateIP string) (string, error) {
 	if net.ParseIP(privateIP) == nil {
 		return "", fmt.Errorf("source execution private IP %q is invalid", privateIP)
 	}
-	parsed.Host = net.JoinHostPort(privateIP, parsed.Port())
+	return qnodeAt(rawURL, privateIP)
+}
+
+// qnodeAt points a qnode URL at host, keeping its node ID and listening port
+// and dropping the discovery port the node does not use.
+func qnodeAt(rawURL, host string) (string, error) {
+	parsed, err := url.Parse(rawURL)
+	if err != nil || parsed.Scheme != "qnode" || parsed.User == nil || parsed.Port() == "" {
+		return "", fmt.Errorf("qnode %q is not a qnode://<id>@<ip>:<port> URL", rawURL)
+	}
+	parsed.Host = net.JoinHostPort(host, parsed.Port())
 	parsed.RawQuery = ""
 	return parsed.String(), nil
 }
@@ -464,8 +479,10 @@ func poll(ctx context.Context, container *sidecar.Container, port uint16, ready 
 }
 
 func (node *Node) Stop(ctx context.Context) error {
-	if err := node.consensus.Stop(ctx, beaconStopTimeout); err != nil {
-		return err
+	if node.consensus != nil {
+		if err := node.consensus.Stop(ctx, beaconStopTimeout); err != nil {
+			return err
+		}
 	}
 	return node.execution.Stop(ctx, executionStopTimeout)
 }
@@ -477,10 +494,31 @@ func (node *Node) Resume(ctx context.Context) error {
 	if err := node.waitForExecution(ctx); err != nil {
 		return err
 	}
+	if node.consensus == nil {
+		return nil
+	}
 	if err := node.consensus.Start(ctx); err != nil {
 		return err
 	}
 	return node.waitForBeacon(ctx)
+}
+
+// Peer returns the execution client's qnode URL, addressed by its alias on the
+// enclave network, and its node ID.
+func (node *Node) Peer(ctx context.Context) (string, qnode.ID, error) {
+	var info p2p.NodeInfo
+	if err := node.Execution.Client().CallContext(ctx, &info, "admin_nodeInfo"); err != nil {
+		return "", qnode.ID{}, fmt.Errorf("read execution node info: %w", err)
+	}
+	address, err := qnodeAt(info.Qnode, node.executionAlias)
+	if err != nil {
+		return "", qnode.ID{}, err
+	}
+	id, err := qnode.ParseID(info.ID)
+	if err != nil {
+		return "", qnode.ID{}, fmt.Errorf("execution node ID: %w", err)
+	}
+	return address, id, nil
 }
 
 // ExecutionLog returns the execution client's whole output.
@@ -490,6 +528,9 @@ func (node *Node) ExecutionLog() (string, error) {
 
 // BeaconLog returns the beacon node's whole output.
 func (node *Node) BeaconLog() (string, error) {
+	if node.consensus == nil {
+		return "", nil
+	}
 	return node.consensus.Logs(0)
 }
 
@@ -534,4 +575,13 @@ func (node *Node) closeContainers() error {
 		node.Engine.Close()
 	}
 	return errors.Join(node.consensus.Close(), node.execution.Close())
+}
+
+// Containers returns the Docker IDs of the node's containers.
+func (node *Node) Containers() []string {
+	ids := []string{node.execution.ID()}
+	if node.consensus != nil {
+		ids = append(ids, node.consensus.ID())
+	}
+	return ids
 }
