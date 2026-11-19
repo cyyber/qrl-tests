@@ -13,9 +13,8 @@ import (
 	"github.com/theQRL/go-qrl/rpc"
 )
 
-// fakeEngine is an execution client's engine API. It answers newPayload with
-// payloadStatus and forkchoiceUpdated with headStatus, and records what it is
-// called with.
+// fakeEngine is an engine API that records its calls and answers with the
+// given statuses.
 type fakeEngine struct {
 	payloadStatus, headStatus string
 
