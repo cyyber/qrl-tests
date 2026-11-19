@@ -17,7 +17,7 @@ import (
 // Monitor watches a devnet participant for the length of a suite: its
 // containers, the peers its execution node drops, and its chain.
 type Monitor struct {
-	Ledger *Ledger
+	Containers *ContainerWatch
 
 	docker    dockerclient.APIClient
 	peers     *PeerWatch
@@ -33,7 +33,7 @@ func StartMonitor(ctx context.Context, participant devnet.Participant, client *b
 		return nil, fmt.Errorf("create Docker client: %w", err)
 	}
 
-	monitor := &Monitor{Ledger: NewLedger(docker), docker: docker, beacon: client, chain: chain}
+	monitor := &Monitor{Containers: NewContainerWatch(docker), docker: docker, beacon: client, chain: chain}
 	if err := monitor.start(ctx, participant); err != nil {
 		monitor.Close()
 		return nil, err
@@ -46,7 +46,7 @@ func (monitor *Monitor) start(ctx context.Context, participant devnet.Participan
 	if err != nil {
 		return err
 	}
-	if err := monitor.Ledger.Watch(ctx, containers...); err != nil {
+	if err := monitor.Containers.Watch(ctx, containers...); err != nil {
 		return err
 	}
 
@@ -68,7 +68,7 @@ func (monitor *Monitor) Close() {
 
 // Report is what a monitor has seen since it started.
 type Report struct {
-	// Problems are the ledger's: exits, restarts, dropped or refused work,
+	// Problems are the containers': exits, restarts, dropped or refused work,
 	// crashes and size refusals in logs.
 	Problems []string
 	// PeerDrops are the peers the execution node dropped.
@@ -93,10 +93,10 @@ func (report Report) String() string {
 // given peers, which the suite disconnects itself.
 func (monitor *Monitor) Report(ctx context.Context, ownPeers ...qnode.ID) (Report, error) {
 	// A node that is down fails the steps below, and its problems say why.
-	problems, err := monitor.Ledger.Problems(ctx)
+	problems, err := monitor.Containers.Problems(ctx)
 	fail := func(err error) (Report, error) {
 		if len(problems) > 0 {
-			err = fmt.Errorf("%w; the ledger found %q", err, problems)
+			err = fmt.Errorf("%w; the containers had %q", err, problems)
 		}
 		return Report{}, err
 	}

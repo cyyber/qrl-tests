@@ -68,7 +68,7 @@ func (docker *fakeDocker) update(change func(*fakeDocker)) {
 	change(docker)
 }
 
-func TestLedger(t *testing.T) {
+func TestContainerWatch(t *testing.T) {
 	for _, test := range []struct {
 		name string
 		// before and after are a dropping meter's value at Watch and at
@@ -131,8 +131,8 @@ func TestLedger(t *testing.T) {
 
 			metrics, err := metricsURL(t.Context(), docker, "node", 6060)
 			require.NoError(t, err)
-			ledger := NewLedger(docker)
-			require.NoError(t, ledger.Watch(t.Context(), Container{Name: "node", MetricsURL: metrics}))
+			watch := NewContainerWatch(docker)
+			require.NoError(t, watch.Watch(t.Context(), Container{Name: "node", MetricsURL: metrics}))
 			if test.change != nil {
 				docker.update(test.change)
 			}
@@ -140,14 +140,14 @@ func TestLedger(t *testing.T) {
 			discard = cmp.Or(test.after, "0")
 			mutex.Unlock()
 
-			problems, err := ledger.Problems(t.Context())
+			problems, err := watch.Problems(t.Context())
 			require.NoError(t, err)
 			require.Equal(t, test.problems, problems)
 		})
 	}
 }
 
-func TestLedgerKeepsProblemsOnError(t *testing.T) {
+func TestContainerWatchKeepsProblemsOnError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
 		_, _ = writer.Write([]byte("txpool_pending_discard 0\n"))
 	}))
@@ -157,26 +157,26 @@ func TestLedgerKeepsProblemsOnError(t *testing.T) {
 	}
 	metrics, err := metricsURL(t.Context(), docker, "node", 6060)
 	require.NoError(t, err)
-	ledger := NewLedger(docker)
-	require.NoError(t, ledger.Watch(t.Context(), Container{Name: "node", MetricsURL: metrics}))
+	watch := NewContainerWatch(docker)
+	require.NoError(t, watch.Watch(t.Context(), Container{Name: "node", MetricsURL: metrics}))
 
 	// A restarted node that does not serve its metrics yet.
 	docker.update(func(docker *fakeDocker) { docker.restarts = 1 })
 	server.Close()
 
-	problems, err := ledger.Problems(t.Context())
+	problems, err := watch.Problems(t.Context())
 	require.Error(t, err)
 	require.Equal(t, []string{"node: restarted"}, problems)
 }
 
-func TestLedgerLogs(t *testing.T) {
+func TestContainerWatchLogs(t *testing.T) {
 	docker := &fakeDocker{state: containertypes.State{Running: true}}
-	ledger := NewLedger(docker)
+	watch := NewContainerWatch(docker)
 	before := time.Now()
-	require.NoError(t, ledger.Watch(t.Context(), Container{Name: "node"}))
+	require.NoError(t, watch.Watch(t.Context(), Container{Name: "node"}))
 	docker.update(func(docker *fakeDocker) { docker.logs = strings.Repeat("panic: runtime error\n", 5) })
 
-	problems, err := ledger.Problems(t.Context())
+	problems, err := watch.Problems(t.Context())
 	require.NoError(t, err)
 	require.Len(t, problems, 3, "at most three lines of each signature")
 
