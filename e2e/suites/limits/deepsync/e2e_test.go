@@ -151,11 +151,11 @@ var _ = ginkgo.Describe(
 			})
 			watch := testsuite.MustSucceed(health.WatchPeers(ctx, node.ExecutionWSURL))
 			defer watch.Close()
-			// The node's own ledger: it is gone when the suite's is read.
+			// The node's own container watch: it is gone when the suite's report is read.
 			docker := testsuite.MustSucceed(dockerapi.New())
 			defer docker.Close()
-			ledger := health.NewLedger(docker)
-			gomega.Expect(ledger.Watch(ctx, health.Container{Name: node.Containers()[0], MetricsURL: node.ExecutionMetricsURL})).To(gomega.Succeed())
+			containers := health.NewContainerWatch(docker)
+			gomega.Expect(containers.Watch(ctx, health.Container{Name: node.Containers()[0], MetricsURL: node.ExecutionMetricsURL})).To(gomega.Succeed())
 
 			started := time.Now()
 			head := testsuite.MustSucceed(node.SyncToHead(ctx, source.Execution))
@@ -169,7 +169,7 @@ var _ = ginkgo.Describe(
 			gomega.Expect(synced.Hash()).To(gomega.Equal(last.Hash))
 
 			drops := testsuite.MustSucceed(watch.Drops(ctx))
-			problems := testsuite.MustSucceed(ledger.Problems(ctx))
+			problems := testsuite.MustSucceed(containers.Problems(ctx))
 			ginkgo.AddReportEntry("sync", fmt.Sprintf("%d blocks in %s, %d peer drops, %d problems", head.Number, time.Since(started).Round(time.Second), len(drops), len(problems)))
 			gomega.Expect(drops).To(gomega.BeEmpty(), "the node dropped its peer while it synced")
 			gomega.Expect(problems).To(gomega.BeEmpty(), "the syncing node had trouble")
