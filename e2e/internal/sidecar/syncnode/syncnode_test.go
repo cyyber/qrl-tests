@@ -279,13 +279,16 @@ func TestPrivateQnode(t *testing.T) {
 
 	_, err = privateQnode("enode://abcd@127.0.0.1:30303", "172.16.0.11")
 	require.ErrorContains(t, err, "is not a qnode://<id>@<ip>:<port> URL")
-	aliased, err := qnodeAt("qnode://abcd@127.0.0.1:30303?discport=30301", "qrl-tests-capped-execution")
-	require.NoError(t, err)
-	require.Equal(t, "qnode://abcd@qrl-tests-capped-execution:30303", aliased)
 	_, err = privateQnode("qnode://abcd@127.0.0.1", "172.16.0.11")
 	require.ErrorContains(t, err, "is not a qnode://<id>@<ip>:<port> URL")
 	_, err = privateQnode("qnode://abcd@127.0.0.1:30303", "")
 	require.ErrorContains(t, err, `source execution private IP "" is invalid`)
+}
+
+func TestQnodeAt(t *testing.T) {
+	aliased, err := qnodeAt("qnode://abcd@127.0.0.1:30303?discport=30301", "qrl-tests-capped-execution")
+	require.NoError(t, err)
+	require.Equal(t, "qnode://abcd@qrl-tests-capped-execution:30303", aliased)
 }
 
 func TestPrivateBeaconPeer(t *testing.T) {
@@ -323,7 +326,10 @@ func TestEngineAuth(t *testing.T) {
 }
 
 func TestPeers(t *testing.T) {
-	const id = "aabbccddeeff00112233445566778899aabbccddeeff00112233445566778899"
+	const (
+		id          = "aabbccddeeff00112233445566778899aabbccddeeff00112233445566778899"
+		refusedPeer = "qnode://ef02@qrl-tests-refused-execution:30303"
+	)
 	var added []string
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		var call struct {
@@ -339,6 +345,9 @@ func TestPeers(t *testing.T) {
 		}
 		if call.Method == "admin_addPeer" {
 			added = append(added, call.Params...)
+			if call.Params[0] == refusedPeer {
+				results[call.Method] = "false"
+			}
 		}
 		writer.Header().Set("Content-Type", "application/json")
 		_, _ = writer.Write([]byte(`{"jsonrpc":"2.0","id":` + string(call.ID) + `,"result":` + results[call.Method] + `}`))
@@ -356,6 +365,7 @@ func TestPeers(t *testing.T) {
 
 	require.NoError(t, node.AddPeer(t.Context(), "qnode://ef01@qrl-tests-other-execution:30303"))
 	require.Equal(t, []string{"qnode://ef01@qrl-tests-other-execution:30303"}, added)
+	require.ErrorContains(t, node.AddPeer(t.Context(), refusedPeer), "did not add peer")
 
 	peers, err := node.Peers(t.Context())
 	require.NoError(t, err)
