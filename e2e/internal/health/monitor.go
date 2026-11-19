@@ -113,7 +113,8 @@ func (monitor *Monitor) Report(ctx context.Context, ownPeers ...qnode.ID) (Repor
 		return fail(err)
 	}
 	// The clock's slot may still get its block; every slot before it is due one.
-	last := max(head+1, monitor.chain.SlotAt(time.Now())) - 1
+	now := time.Now()
+	last := max(head+1, monitor.chain.SlotAt(now)) - 1
 	missed, err := MissedSlots(ctx, monitor.beacon, monitor.firstSlot+1, last)
 	if err != nil {
 		return fail(err)
@@ -123,7 +124,7 @@ func (monitor *Monitor) Report(ctx context.Context, ownPeers ...qnode.ID) (Repor
 		return fail(err)
 	}
 
-	epoch := monitor.chain.EpochAt(time.Now())
+	epoch := monitor.chain.EpochAt(now)
 	return Report{
 		Problems:    problems,
 		PeerDrops:   except(drops, ownPeers...),

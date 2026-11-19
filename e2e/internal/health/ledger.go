@@ -109,11 +109,11 @@ func (ledger *Ledger) Problems(ctx context.Context) ([]string, error) {
 	var problems []string
 	for _, entry := range ledger.watched {
 		found, err := ledger.problems(ctx, entry)
-		if err != nil {
-			return problems, fmt.Errorf("%s: %w", entry.Name, err)
-		}
 		for _, problem := range found {
 			problems = append(problems, entry.Name+": "+problem)
+		}
+		if err != nil {
+			return problems, fmt.Errorf("%s: %w", entry.Name, err)
 		}
 	}
 	return problems, nil
@@ -145,7 +145,7 @@ func (ledger *Ledger) problems(ctx context.Context, entry *watched) ([]string, e
 	if entry.MetricsURL != "" && state != nil && state.Running {
 		meters, err := readMeters(ctx, entry.MetricsURL)
 		if err != nil {
-			return nil, err
+			return problems, err
 		}
 		for _, name := range droppingMeters {
 			if rise := meters[name] - baseline[name]; rise > 0 {
@@ -156,7 +156,7 @@ func (ledger *Ledger) problems(ctx context.Context, entry *watched) ([]string, e
 
 	lines, err := ledger.troubleLines(ctx, entry)
 	if err != nil {
-		return nil, err
+		return problems, err
 	}
 	for _, line := range lines {
 		problems = append(problems, "logged "+line)
