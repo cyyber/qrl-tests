@@ -68,8 +68,8 @@ func (monitor *Monitor) Close() {
 
 // Report is what a monitor has seen since it started.
 type Report struct {
-	// Problems are the containers': exits, restarts, dropped or refused work,
-	// crashes and size refusals in logs.
+	// Problems are what went wrong in the containers: exits, restarts, dropped
+	// or refused work, crashes and size refusals in logs.
 	Problems []string
 	// PeerDrops are the peers the execution node dropped.
 	PeerDrops []PeerDrop
