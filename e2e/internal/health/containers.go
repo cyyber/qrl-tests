@@ -32,6 +32,7 @@ var droppingMeters = []string{
 	"chain_reorg_drop",
 	"qrl_downloader_bodies_drop",
 	"qrl_downloader_bodies_timeout",
+	"qrl_downloader_headers_drop",
 	"qrl_downloader_headers_timeout",
 	"qrl_downloader_receipts_drop",
 	"qrl_downloader_receipts_timeout",
