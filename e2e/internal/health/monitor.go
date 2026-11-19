@@ -80,8 +80,8 @@ type Report struct {
 	FinalityLag uint64
 }
 
-// MaxFinalityLag is the lag of a healthy chain at most: it finalizes the
-// epoch before the previous one, and the current one may have just begun.
+// MaxFinalityLag is the most a healthy chain lags: it finalizes the epoch
+// before the previous one, and the current one may have just begun.
 const MaxFinalityLag = 3
 
 func (report Report) String() string {
@@ -92,16 +92,16 @@ func (report Report) String() string {
 // Report returns what the monitor has seen. It leaves out the drops of the
 // given peers, which the suite disconnects itself.
 func (monitor *Monitor) Report(ctx context.Context, ownPeers ...qnode.ID) (Report, error) {
-	problems, err := monitor.Ledger.Problems(ctx)
-	if err != nil {
-		return Report{}, err
-	}
 	// A node that is down fails the steps below, and its problems say why.
+	problems, err := monitor.Ledger.Problems(ctx)
 	fail := func(err error) (Report, error) {
 		if len(problems) > 0 {
 			err = fmt.Errorf("%w; the ledger found %q", err, problems)
 		}
 		return Report{}, err
+	}
+	if err != nil {
+		return fail(err)
 	}
 
 	drops, err := monitor.peers.Drops(ctx)
@@ -112,7 +112,9 @@ func (monitor *Monitor) Report(ctx context.Context, ownPeers ...qnode.ID) (Repor
 	if err != nil {
 		return fail(err)
 	}
-	missed, err := MissedSlots(ctx, monitor.beacon, monitor.firstSlot+1, head)
+	// The clock's slot may still get its block; every slot before it is due one.
+	last := max(head+1, monitor.chain.SlotAt(time.Now())) - 1
+	missed, err := MissedSlots(ctx, monitor.beacon, monitor.firstSlot+1, last)
 	if err != nil {
 		return fail(err)
 	}
@@ -126,7 +128,7 @@ func (monitor *Monitor) Report(ctx context.Context, ownPeers ...qnode.ID) (Repor
 		Problems:    problems,
 		PeerDrops:   except(drops, ownPeers...),
 		MissedSlots: missed,
-		Slots:       head - min(head, monitor.firstSlot),
+		Slots:       last - min(last, monitor.firstSlot),
 		FinalityLag: epoch - min(epoch, checkpoints.Finalized.Epoch),
 	}, nil
 }

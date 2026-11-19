@@ -1,7 +1,6 @@
 package health
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"fmt"
@@ -111,7 +110,7 @@ func (ledger *Ledger) Problems(ctx context.Context) ([]string, error) {
 	for _, entry := range ledger.watched {
 		found, err := ledger.problems(ctx, entry)
 		if err != nil {
-			return nil, fmt.Errorf("%s: %w", entry.Name, err)
+			return problems, fmt.Errorf("%s: %w", entry.Name, err)
 		}
 		for _, problem := range found {
 			problems = append(problems, entry.Name+": "+problem)
@@ -126,6 +125,7 @@ func (ledger *Ledger) problems(ctx context.Context, entry *watched) ([]string, e
 		return nil, err
 	}
 	var problems []string
+	baseline := entry.meters
 	state := inspected.Container.State
 	switch {
 	case state == nil:
@@ -138,6 +138,8 @@ func (ledger *Ledger) problems(ctx context.Context, entry *watched) ([]string, e
 		problems = append(problems, problem)
 	case state.StartedAt != entry.startedAt || inspected.Container.RestartCount != entry.restarts:
 		problems = append(problems, "restarted")
+		// Its meters began again at zero.
+		baseline = nil
 	}
 
 	if entry.MetricsURL != "" && state != nil && state.Running {
@@ -146,7 +148,7 @@ func (ledger *Ledger) problems(ctx context.Context, entry *watched) ([]string, e
 			return nil, err
 		}
 		for _, name := range droppingMeters {
-			if rise := meters[name] - entry.meters[name]; rise > 0 {
+			if rise := meters[name] - baseline[name]; rise > 0 {
 				problems = append(problems, name+" rose by "+strconv.FormatFloat(rise, 'f', -1, 64))
 			}
 		}
@@ -182,10 +184,7 @@ func (ledger *Ledger) troubleLines(ctx context.Context, entry *watched) ([]strin
 	const perSignature = 3
 	seen := make(map[string]int)
 	var lines []string
-	scanner := bufio.NewScanner(&output)
-	scanner.Buffer(nil, 1<<20)
-	for scanner.Scan() {
-		line := scanner.Text()
+	for line := range strings.Lines(output.String()) {
 		index := slices.IndexFunc(troubleSignatures, func(signature string) bool {
 			return strings.Contains(line, signature)
 		})
@@ -197,5 +196,5 @@ func (ledger *Ledger) troubleLines(ctx context.Context, entry *watched) ([]strin
 			lines = append(lines, strings.TrimSpace(line))
 		}
 	}
-	return lines, scanner.Err()
+	return lines, nil
 }

@@ -22,8 +22,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// fakeDocker serves one container, which publishes port (6060 when zero) on
-// hostPort and has no state when stateless. It records the logs' Since.
+// fakeDocker is one container; port defaults to 6060.
 type fakeDocker struct {
 	mutex     sync.Mutex
 	state     containertypes.State
@@ -71,49 +70,53 @@ func (docker *fakeDocker) update(change func(*fakeDocker)) {
 
 func TestLedger(t *testing.T) {
 	for _, test := range []struct {
-		name    string
-		change  func(*fakeDocker)
-		discard string
-		problem string
+		name string
+		// before and after are a dropping meter's value at Watch and at
+		// Problems, "0" when empty.
+		before, after string
+		change        func(*fakeDocker)
+		problems      []string
 	}{
-		{name: "a healthy node", change: func(*fakeDocker) {}, discard: "0"},
+		{name: "a healthy node"},
 		{
 			name: "a container that exited",
 			change: func(docker *fakeDocker) {
 				docker.state.Running, docker.state.ExitCode, docker.state.OOMKilled = false, 137, true
 			},
-			discard: "0",
-			problem: "node: exited with code 137, out of memory",
+			problems: []string{"node: exited with code 137, out of memory"},
 		},
 		{
-			name:    "a container that restarted",
-			change:  func(docker *fakeDocker) { docker.state.StartedAt = "later" },
-			discard: "0",
-			problem: "node: restarted",
+			name:     "a container that restarted",
+			change:   func(docker *fakeDocker) { docker.state.StartedAt = "later" },
+			problems: []string{"node: restarted"},
 		},
 		{
-			name:    "a container that Docker restarted",
-			change:  func(docker *fakeDocker) { docker.restarts = 1 },
-			discard: "0",
-			problem: "node: restarted",
+			name:     "a container that Docker restarted",
+			change:   func(docker *fakeDocker) { docker.restarts = 1 },
+			problems: []string{"node: restarted"},
 		},
 		{
-			name:    "a container with no state",
-			change:  func(docker *fakeDocker) { docker.stateless = true },
-			discard: "0",
-			problem: "node: has no state",
+			name:     "a meter that rose after a restart",
+			before:   "5",
+			after:    "2",
+			change:   func(docker *fakeDocker) { docker.restarts = 1 },
+			problems: []string{"node: restarted", "node: txpool_pending_discard rose by 2"},
 		},
-		{name: "a meter that rose", change: func(*fakeDocker) {}, discard: "3", problem: "node: txpool_pending_discard rose by 3"},
-		{name: "a meter that rose a million", change: func(*fakeDocker) {}, discard: "1000000", problem: "node: txpool_pending_discard rose by 1000000"},
 		{
-			name:    "a crash in the log",
-			change:  func(docker *fakeDocker) { docker.logs = "INFO [11-16] Imported\npanic: runtime error\n" },
-			discard: "0",
-			problem: "node: logged panic: runtime error",
+			name:     "a container with no state",
+			change:   func(docker *fakeDocker) { docker.stateless = true },
+			problems: []string{"node: has no state"},
+		},
+		{name: "a meter that rose", after: "3", problems: []string{"node: txpool_pending_discard rose by 3"}},
+		{name: "a meter that rose a million", after: "1000000", problems: []string{"node: txpool_pending_discard rose by 1000000"}},
+		{
+			name:     "a crash in the log",
+			change:   func(docker *fakeDocker) { docker.logs = "INFO [11-16] Imported\npanic: runtime error\n" },
+			problems: []string{"node: logged panic: runtime error"},
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			discard := "0"
+			discard := cmp.Or(test.before, "0")
 			var mutex sync.Mutex
 			server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
 				mutex.Lock()
@@ -130,18 +133,16 @@ func TestLedger(t *testing.T) {
 			require.NoError(t, err)
 			ledger := NewLedger(docker)
 			require.NoError(t, ledger.Watch(t.Context(), Container{Name: "node", MetricsURL: metrics}))
-			docker.update(test.change)
+			if test.change != nil {
+				docker.update(test.change)
+			}
 			mutex.Lock()
-			discard = test.discard
+			discard = cmp.Or(test.after, "0")
 			mutex.Unlock()
 
 			problems, err := ledger.Problems(t.Context())
 			require.NoError(t, err)
-			if test.problem == "" {
-				require.Empty(t, problems)
-				return
-			}
-			require.Equal(t, []string{test.problem}, problems)
+			require.Equal(t, test.problems, problems)
 		})
 	}
 }
@@ -164,25 +165,29 @@ func TestLedgerLogs(t *testing.T) {
 }
 
 func TestReadMeters(t *testing.T) {
-	page := "# TYPE chain_head gauge\nchain_head 7\nchain_inserts {quantile=\"0.5\"} 9\nnot_a_number x\n"
-	status := http.StatusOK
-	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
-		writer.WriteHeader(status)
-		_, _ = writer.Write([]byte(page))
-	}))
-	defer server.Close()
+	serve := func(t *testing.T, status int, page string) string {
+		server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+			writer.WriteHeader(status)
+			_, _ = writer.Write([]byte(page))
+		}))
+		t.Cleanup(server.Close)
+		return server.URL
+	}
 
-	meters, err := readMeters(t.Context(), server.URL)
-	require.NoError(t, err)
-	require.Equal(t, map[string]float64{"chain_head": 7}, meters, "comments, labelled and bad values are skipped")
-
-	page = "# nothing\n"
-	_, err = readMeters(t.Context(), server.URL)
-	require.ErrorContains(t, err, "has no values")
-
-	status = http.StatusServiceUnavailable
-	_, err = readMeters(t.Context(), server.URL)
-	require.ErrorContains(t, err, "503")
+	t.Run("skips comments, labelled and bad values", func(t *testing.T) {
+		page := "# TYPE chain_head gauge\nchain_head 7\nchain_inserts {quantile=\"0.5\"} 9\nnot_a_number x\n"
+		meters, err := readMeters(t.Context(), serve(t, http.StatusOK, page))
+		require.NoError(t, err)
+		require.Equal(t, map[string]float64{"chain_head": 7}, meters)
+	})
+	t.Run("an empty page", func(t *testing.T) {
+		_, err := readMeters(t.Context(), serve(t, http.StatusOK, "# nothing\n"))
+		require.ErrorContains(t, err, "has no values")
+	})
+	t.Run("a failed request", func(t *testing.T) {
+		_, err := readMeters(t.Context(), serve(t, http.StatusServiceUnavailable, ""))
+		require.ErrorContains(t, err, "503")
+	})
 }
 
 func TestParticipantContainers(t *testing.T) {
