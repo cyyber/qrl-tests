@@ -98,7 +98,7 @@ func newDocker(t *testing.T) (docker *sidecartest.Docker, addedPeers *[]string) 
 
 func TestStartScriptVariablesAreSet(t *testing.T) {
 	set := map[string]bool{}
-	for _, variable := range executionEnv("1337", "snap", 50) {
+	for _, variable := range executionEnv("1337", "snap") {
 		name, _, _ := strings.Cut(variable, "=")
 		set[name] = true
 	}
@@ -128,7 +128,6 @@ func TestStartLaunchesBothClients(t *testing.T) {
 	require.Equal(t, "gqrl:test", execution.Config.Image)
 	require.Contains(t, execution.Config.Env, "NETWORK_ID=1337")
 	require.Contains(t, execution.Config.Env, "SYNC_MODE=snap")
-	require.Contains(t, execution.Config.Env, "MAX_PEERS=50", "gqrl's default")
 	require.Equal(t, containertypes.NetworkMode("kt-devnet"), execution.HostConfig.NetworkMode)
 	require.Equal(t, []string{"qrl-tests-sync-node-execution"},
 		execution.NetworkingConfig.EndpointsConfig["kt-devnet"].Aliases)
@@ -171,12 +170,10 @@ func TestStartExecutionOnly(t *testing.T) {
 	config := testConfig()
 	config.ExecutionOnly = true
 	config.ConsensusImage = ""
-	config.MaxPeers = 2
 
 	node, err := start(t.Context(), config, docker, testSourceEndpoints)
 	require.NoError(t, err)
 	require.Len(t, docker.Created, 1, "only the execution client")
-	require.Contains(t, docker.Created[0].Config.Env, "MAX_PEERS=2")
 	require.NotNil(t, node.Execution)
 	require.NotNil(t, node.Engine)
 	require.Nil(t, node.Beacon)
@@ -220,11 +217,6 @@ func TestStartFailures(t *testing.T) {
 			name:    "bad beacon origin",
 			edit:    func(config *Config, _ *sidecartest.Docker) { config.BeaconOrigin = "backfill" },
 			wantErr: `beacon origin "backfill" is not genesis or checkpoint`,
-		},
-		{
-			name:    "negative max peers",
-			edit:    func(config *Config, _ *sidecartest.Docker) { config.MaxPeers = -1 },
-			wantErr: "max peers -1 is negative",
 		},
 		{
 			name:    "name is not a DNS label",
@@ -325,32 +317,16 @@ func TestEngineAuth(t *testing.T) {
 	require.ErrorIs(t, err, jwt.ErrSignatureInvalid)
 }
 
-func TestPeers(t *testing.T) {
-	const (
-		id          = "aabbccddeeff00112233445566778899aabbccddeeff00112233445566778899"
-		refusedPeer = "qnode://ef02@qrl-tests-refused-execution:30303"
-	)
-	var added []string
+func TestPeer(t *testing.T) {
+	const id = "aabbccddeeff00112233445566778899aabbccddeeff00112233445566778899"
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		var call struct {
-			ID     json.RawMessage `json:"id"`
-			Method string          `json:"method"`
-			Params []string        `json:"params"`
+			ID json.RawMessage `json:"id"`
 		}
 		assert.NoError(t, json.NewDecoder(request.Body).Decode(&call))
-		results := map[string]string{
-			"admin_nodeInfo": `{"id":"` + id + `","qnode":"qnode://abcd@127.0.0.1:30303?discport=30301"}`,
-			"admin_addPeer":  "true",
-			"admin_peers":    `[{"id":"` + id + `"}]`,
-		}
-		if call.Method == "admin_addPeer" {
-			added = append(added, call.Params...)
-			if call.Params[0] == refusedPeer {
-				results[call.Method] = "false"
-			}
-		}
+		nodeInfo := `{"id":"` + id + `","qnode":"qnode://abcd@127.0.0.1:30303?discport=30301"}`
 		writer.Header().Set("Content-Type", "application/json")
-		_, _ = writer.Write([]byte(`{"jsonrpc":"2.0","id":` + string(call.ID) + `,"result":` + results[call.Method] + `}`))
+		_, _ = writer.Write([]byte(`{"jsonrpc":"2.0","id":` + string(call.ID) + `,"result":` + nodeInfo + `}`))
 	}))
 	defer server.Close()
 	client, err := qrlclient.DialContext(t.Context(), server.URL)
@@ -362,12 +338,4 @@ func TestPeers(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "qnode://abcd@qrl-tests-capped-execution:30303", address)
 	require.Equal(t, qnode.HexID(id), nodeID)
-
-	require.NoError(t, node.AddPeer(t.Context(), "qnode://ef01@qrl-tests-other-execution:30303"))
-	require.Equal(t, []string{"qnode://ef01@qrl-tests-other-execution:30303"}, added)
-	require.ErrorContains(t, node.AddPeer(t.Context(), refusedPeer), "did not add peer")
-
-	peers, err := node.Peers(t.Context())
-	require.NoError(t, err)
-	require.Equal(t, []qnode.ID{qnode.HexID(id)}, peers)
 }
