@@ -44,9 +44,12 @@ func PublishedPort(ctx context.Context, docker ContainerReader, container string
 		return "", fmt.Errorf("inspect %s: %w", container, err)
 	}
 	published, _ := network.PortFrom(port, network.TCP)
-	settings := inspected.Container.NetworkSettings
-	if settings == nil || len(settings.Ports[published]) == 0 || settings.Ports[published][0].HostPort == "" {
+	var bindings []network.PortBinding
+	if settings := inspected.Container.NetworkSettings; settings != nil {
+		bindings = settings.Ports[published]
+	}
+	if len(bindings) == 0 || bindings[0].HostPort == "" {
 		return "", fmt.Errorf("port %d of %s is not published", port, container)
 	}
-	return settings.Ports[published][0].HostPort, nil
+	return bindings[0].HostPort, nil
 }
