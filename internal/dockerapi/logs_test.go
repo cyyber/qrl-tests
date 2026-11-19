@@ -12,8 +12,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// fakeLogs serves stdout then stderr, framed as Docker frames them, and
-// records the options it is called with.
 type fakeLogs struct {
 	stdout, stderr string
 	options        dockerclient.ContainerLogsOptions
