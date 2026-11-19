@@ -13,10 +13,11 @@ import (
 	"github.com/theQRL/go-qrl/rpc"
 )
 
-// fakeEngine is an execution client's engine API. It answers with status and
-// records what it is called with.
+// fakeEngine is an execution client's engine API. It answers newPayload with
+// payloadStatus and forkchoiceUpdated with headStatus, and records what it is
+// called with.
 type fakeEngine struct {
-	status string
+	payloadStatus, headStatus string
 
 	calls      []string
 	payload    map[string]json.RawMessage
@@ -26,26 +27,27 @@ type fakeEngine struct {
 func (engine *fakeEngine) NewPayloadV2(payload map[string]json.RawMessage) map[string]string {
 	engine.calls = append(engine.calls, "newPayload")
 	engine.payload = payload
-	return map[string]string{"status": engine.status}
+	return map[string]string{"status": engine.payloadStatus}
 }
 
 func (engine *fakeEngine) ForkchoiceUpdatedV2(forkchoice map[string]common.Hash, attributes *json.RawMessage) map[string]any {
 	engine.calls = append(engine.calls, "forkchoiceUpdated")
 	engine.forkchoice = forkchoice
-	return map[string]any{"payloadStatus": map[string]string{"status": engine.status}}
+	return map[string]any{"payloadStatus": map[string]string{"status": engine.headStatus}}
 }
 
-func dialAPI(t *testing.T, namespace string, service any) *rpc.Client {
+// engineNode returns a node whose engine API is engine.
+func engineNode(t *testing.T, engine *fakeEngine) *Node {
 	t.Helper()
 	api := rpc.NewServer()
 	t.Cleanup(api.Stop)
-	require.NoError(t, api.RegisterName(namespace, service))
+	require.NoError(t, api.RegisterName("engine", engine))
 	server := httptest.NewServer(api)
 	t.Cleanup(server.Close)
 	client, err := rpc.DialContext(t.Context(), server.URL)
 	require.NoError(t, err)
 	t.Cleanup(client.Close)
-	return client
+	return &Node{Engine: client}
 }
 
 func testBlock() *types.Block {
@@ -73,9 +75,9 @@ func testBlock() *types.Block {
 	})
 }
 
-func TestSyncToOffersTheBlockThenNamesItTheHead(t *testing.T) {
-	engine := &fakeEngine{status: "SYNCING"}
-	node := &Node{Engine: dialAPI(t, "engine", engine)}
+func TestSyncTo(t *testing.T) {
+	engine := &fakeEngine{payloadStatus: "SYNCING", headStatus: "SYNCING"}
+	node := engineNode(t, engine)
 	block := testBlock()
 
 	require.NoError(t, node.syncTo(t.Context(), block))
@@ -107,20 +109,23 @@ func TestSyncToOffersTheBlockThenNamesItTheHead(t *testing.T) {
 	}, engine.forkchoice)
 }
 
-func TestSyncToSendsNoWithdrawalsAsAnEmptyList(t *testing.T) {
-	engine := &fakeEngine{status: "SYNCING"}
-	node := &Node{Engine: dialAPI(t, "engine", engine)}
+func TestSyncToEmptyLists(t *testing.T) {
+	engine := &fakeEngine{payloadStatus: "SYNCING", headStatus: "SYNCING"}
+	node := engineNode(t, engine)
 
 	require.NoError(t, node.syncTo(t.Context(), types.NewBlockWithHeader(testBlock().Header())))
 	require.JSONEq(t, "[]", string(engine.payload["withdrawals"]))
 	require.JSONEq(t, "[]", string(engine.payload["transactions"]))
 }
 
-func TestSyncToFailsOnAnInvalidBlock(t *testing.T) {
-	engine := &fakeEngine{status: "INVALID"}
-	node := &Node{Engine: dialAPI(t, "engine", engine)}
-
-	err := node.syncTo(t.Context(), testBlock())
+func TestSyncToInvalidBlock(t *testing.T) {
+	engine := &fakeEngine{payloadStatus: "INVALID"}
+	err := engineNode(t, engine).syncTo(t.Context(), testBlock())
 	require.ErrorContains(t, err, "finds block 42 invalid")
 	require.Equal(t, []string{"newPayload"}, engine.calls, "an invalid block is not named the head")
+
+	engine = &fakeEngine{payloadStatus: "SYNCING", headStatus: "INVALID"}
+	err = engineNode(t, engine).syncTo(t.Context(), testBlock())
+	require.ErrorContains(t, err, "finds head block 42 invalid")
+	require.Equal(t, []string{"newPayload", "forkchoiceUpdated"}, engine.calls)
 }
