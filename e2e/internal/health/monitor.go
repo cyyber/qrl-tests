@@ -94,13 +94,15 @@ func (report Report) String() string {
 
 // Report returns what the monitor has seen.
 func (monitor *Monitor) Report(ctx context.Context, ownPeers ...qnode.ID) (Report, error) {
-	problems, err := monitor.containers.problems(ctx)
+	var problems []string
 	fail := func(err error) (Report, error) {
 		if len(problems) > 0 {
 			err = fmt.Errorf("%w; the containers had %q", err, problems)
 		}
 		return Report{}, err
 	}
+
+	problems, err := monitor.containers.problems(ctx)
 	if err != nil {
 		return fail(err)
 	}
