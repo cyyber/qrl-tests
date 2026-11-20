@@ -145,11 +145,11 @@ var _ = ginkgo.Describe(
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 			syncer = id
 			execution := health.Container{Name: node.Containers()[0], MetricsURL: node.ExecutionMetricsURL}
-			gomega.Expect(monitor.Add(ctx, execution)).To(gomega.Succeed())
+			gomega.Expect(monitor.AddContainers(ctx, execution)).To(gomega.Succeed())
 			ginkgo.DeferCleanup(func(ctx ginkgo.SpecContext) {
 				testsuite.ReportLogsOnFailure("execution-only node", node)
 				// Its problems stay in the monitor's report after it is gone.
-				gomega.Expect(monitor.Retire(ctx, execution.Name)).To(gomega.Succeed())
+				gomega.Expect(monitor.RetireContainer(ctx, execution.Name)).To(gomega.Succeed())
 				gomega.Expect(node.Close()).To(gomega.Succeed())
 			}, ginkgo.NodeTimeout(time.Minute))
 			watch := testsuite.MustSucceed(health.WatchPeers(ctx, node.ExecutionWSURL))
