@@ -2,8 +2,10 @@ package health
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/cyyber/qrl-tests/devnet"
@@ -85,11 +87,29 @@ type Report struct {
 	FinalityLag       uint64
 }
 
-const MaxFinalityLag = 3
+const maxFinalityLag = 3
 
 func (report Report) String() string {
 	return fmt.Sprintf("container problems: %d, peer drops: %d, missed slots: %d of %d, finality lag: %d epochs",
 		len(report.ContainerProblems), len(report.PeerDrops), len(report.MissedSlots), report.DueSlots, report.FinalityLag)
+}
+
+// Err returns what the report shows went wrong, or nil.
+func (report Report) Err() error {
+	problems := slices.Clone(report.ContainerProblems)
+	for _, drop := range report.PeerDrops {
+		problems = append(problems, fmt.Sprintf("dropped peer %s: %s", drop.Peer.TerminalString(), drop.Reason))
+	}
+	if len(report.MissedSlots) > 0 {
+		problems = append(problems, fmt.Sprintf("missed slots %v of %d", report.MissedSlots, report.DueSlots))
+	}
+	if report.FinalityLag > maxFinalityLag {
+		problems = append(problems, fmt.Sprintf("finality %d epochs behind", report.FinalityLag))
+	}
+	if len(problems) == 0 {
+		return nil
+	}
+	return errors.New(strings.Join(problems, "; "))
 }
 
 // Report returns what the monitor has seen.

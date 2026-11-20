@@ -73,6 +73,20 @@ func TestReport(t *testing.T) {
 	require.Equal(t, "container problems: 1, peer drops: 1, missed slots: 2 of 4, finality lag: 2 epochs", report.String())
 }
 
+func TestReportErr(t *testing.T) {
+	require.NoError(t, Report{DueSlots: 4, FinalityLag: 3}.Err())
+
+	report := Report{
+		ContainerProblems: []string{"node: restarted"},
+		PeerDrops:         []PeerDrop{{Peer: qnode.ID{2}, Reason: "useless peer"}},
+		MissedSlots:       []uint64{4, 6},
+		DueSlots:          4,
+		FinalityLag:       4,
+	}
+	require.EqualError(t, report.Err(), "node: restarted; dropped peer "+qnode.ID{2}.TerminalString()+
+		": useless peer; missed slots [4 6] of 4; finality 4 epochs behind")
+}
+
 func TestReportAheadOfClock(t *testing.T) {
 	monitor, _, _ := fakeMonitor(t)
 	monitor.chain.GenesisTime = time.Now().Add(time.Hour)
