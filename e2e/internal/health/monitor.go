@@ -111,6 +111,9 @@ func (monitor *Monitor) Report(ctx context.Context, ownPeers ...qnode.ID) (Repor
 	if err != nil {
 		return fail(err)
 	}
+	drops = slices.DeleteFunc(drops, func(drop PeerDrop) bool {
+		return slices.Contains(ownPeers, drop.Peer)
+	})
 
 	head, err := monitor.beacon.HeadSlot(ctx)
 	if err != nil {
@@ -136,15 +139,9 @@ func (monitor *Monitor) Report(ctx context.Context, ownPeers ...qnode.ID) (Repor
 	epoch := monitor.chain.EpochAt(now)
 	return Report{
 		ContainerProblems: problems,
-		PeerDrops:         dropsExcept(drops, ownPeers...),
+		PeerDrops:         drops,
 		MissedSlots:       missed,
 		DueSlots:          last - min(last, monitor.firstSlot),
 		FinalityLag:       epoch - min(epoch, checkpoints.Finalized.Epoch),
 	}, nil
-}
-
-func dropsExcept(drops []PeerDrop, peers ...qnode.ID) []PeerDrop {
-	return slices.DeleteFunc(slices.Clone(drops), func(drop PeerDrop) bool {
-		return slices.Contains(peers, drop.Peer)
-	})
 }

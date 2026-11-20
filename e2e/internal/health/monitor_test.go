@@ -14,13 +14,6 @@ import (
 	"github.com/theQRL/go-qrl/p2p/qnode"
 )
 
-func TestDropsExcept(t *testing.T) {
-	own, other := qnode.ID{1}, qnode.ID{2}
-	drops := []PeerDrop{{Peer: own}, {Peer: other}, {Peer: own}}
-	require.Equal(t, []PeerDrop{{Peer: other}}, dropsExcept(drops, own))
-	require.Len(t, drops, 3, "the drops passed in are not changed")
-}
-
 // fakeMonitor monitors a fake container, node and beacon chain. It started at
 // slot 2; the chain has blocks at 3 and 5, the clock is in slot 7 and epoch 3,
 // and epoch 1 is finalized.
