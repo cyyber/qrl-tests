@@ -56,7 +56,7 @@ const (
 	// ProfileSixSecondSlots is the single profile at six-second slots, for
 	// suites that fill blocks. qrysm's on-time window is a third of the slot
 	// in whole seconds: 1 s at five-second slots, less than a full block takes
-	// to import, so the next proposer orphans it. Six gives 2 s.
+	// to import, so the next proposer orphans it. Six-second slots give 2 s.
 	ProfileSixSecondSlots Profile = "six-second-slots"
 )
 
