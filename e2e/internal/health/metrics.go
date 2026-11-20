@@ -19,9 +19,9 @@ func metricsURL(ctx context.Context, docker ContainerReader, container string, p
 	return "http://127.0.0.1:" + hostPort + "/debug/metrics/prometheus", nil
 }
 
-// readMeters reads the unlabelled values of a metrics page in the Prometheus
-// text format, by name.
-func readMeters(ctx context.Context, url string) (map[string]float64, error) {
+// readMetrics returns the unlabelled values of a Prometheus metrics page, by
+// name.
+func readMetrics(ctx context.Context, url string) (map[string]float64, error) {
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err
