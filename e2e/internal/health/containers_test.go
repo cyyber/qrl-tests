@@ -11,7 +11,7 @@ import (
 	"net/http/httptest"
 	"strconv"
 	"strings"
-	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -120,13 +120,11 @@ func TestContainerStates(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			meter := cmp.Or(test.meter, "txpool_pending_discard")
-			value := cmp.Or(test.before, "0")
+			var value atomic.Pointer[string]
+			value.Store(new(cmp.Or(test.before, "0")))
 
-			var mutex sync.Mutex
 			server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
-				mutex.Lock()
-				defer mutex.Unlock()
-				_, _ = writer.Write([]byte(meter + " " + value + "\n"))
+				_, _ = writer.Write([]byte(meter + " " + *value.Load() + "\n"))
 			}))
 			defer server.Close()
 
@@ -137,9 +135,7 @@ func TestContainerStates(t *testing.T) {
 			if test.change != nil {
 				test.change(docker)
 			}
-			mutex.Lock()
-			value = cmp.Or(test.after, "0")
-			mutex.Unlock()
+			value.Store(new(cmp.Or(test.after, "0")))
 
 			problems, err := containers.problems(t.Context())
 			require.NoError(t, err)
