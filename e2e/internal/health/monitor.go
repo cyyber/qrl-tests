@@ -14,7 +14,7 @@ import (
 	"github.com/theQRL/go-qrl/p2p/qnode"
 )
 
-// Monitor watches a devnet participant for the length of a suite: its
+// Monitor follows a devnet participant for the length of a suite: its
 // containers, the peers its execution node drops, and its chain.
 type Monitor struct {
 	containers *containerStates
@@ -25,7 +25,7 @@ type Monitor struct {
 	firstSlot  uint64
 }
 
-// StartMonitor starts watching participant, whose beacon node is client.
+// StartMonitor starts monitoring participant, whose beacon node is client.
 func StartMonitor(ctx context.Context, participant devnet.Participant, client *beacon.Client, chain chaininfo.Info) (*Monitor, error) {
 	docker, err := dockerapi.New()
 	if err != nil {
@@ -79,14 +79,15 @@ func (monitor *Monitor) Close() {
 // Report is what a monitor has seen since it started.
 type Report struct {
 	// Problems are what went wrong in the containers: exits, restarts, dropped
-	// or refused work, crashes and size refusals in logs.
+	// or refused work, and trouble lines in logs.
 	Problems []string
 	// PeerDrops are the peers the execution node dropped.
 	PeerDrops []PeerDrop
-	// MissedSlots are the slots without a block, of Slots since the start.
+	// MissedSlots are the slots without a block, of the Slots due one since
+	// the start.
 	MissedSlots []uint64
 	Slots       uint64
-	// FinalityLag is how many epochs the finalized one is behind.
+	// FinalityLag is how many epochs the finalized one is behind the clock's.
 	FinalityLag uint64
 }
 
@@ -118,10 +119,12 @@ func (monitor *Monitor) Report(ctx context.Context, ownPeers ...qnode.ID) (Repor
 	if err != nil {
 		return fail(err)
 	}
+
 	head, err := monitor.beacon.HeadSlot(ctx)
 	if err != nil {
 		return fail(err)
 	}
+
 	// The clock's slot may still get its block; every slot before it is due one.
 	now := time.Now()
 	last := max(head+1, monitor.chain.SlotAt(now)) - 1
@@ -129,6 +132,7 @@ func (monitor *Monitor) Report(ctx context.Context, ownPeers ...qnode.ID) (Repor
 	if err != nil {
 		return fail(err)
 	}
+
 	checkpoints, err := monitor.beacon.FinalityCheckpoints(ctx)
 	if err != nil {
 		return fail(err)
