@@ -64,8 +64,6 @@ var droppingMeters = []string{
 
 var droppingMeterPrefixes = []string{"p2p_lost_"}
 
-// Log lines that mean a node crashed, refused a message for its size, or
-// fell behind on its database.
 var troubleSignatures = []string{
 	"panic:",
 	"fatal error:",
