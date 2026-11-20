@@ -9,7 +9,6 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"net/netip"
 	"strconv"
 	"strings"
 	"sync"
@@ -27,7 +26,6 @@ import (
 type fakeDocker struct {
 	state    containertypes.State
 	err      error
-	port     uint16
 	hostPort string
 	logs     string
 	since    string
@@ -37,11 +35,11 @@ func (docker *fakeDocker) ContainerInspect(context.Context, string, dockerclient
 	if docker.err != nil {
 		return dockerclient.ContainerInspectResult{}, docker.err
 	}
-	port, _ := network.PortFrom(docker.port, network.TCP)
+	port, _ := network.PortFrom(participantMetricsPort, network.TCP)
 	return dockerclient.ContainerInspectResult{Container: containertypes.InspectResponse{
 		State: new(docker.state),
 		NetworkSettings: &containertypes.NetworkSettings{
-			Ports: network.PortMap{port: {{HostIP: netip.IPv4Unspecified(), HostPort: docker.hostPort}}},
+			Ports: network.PortMap{port: {{HostPort: docker.hostPort}}},
 		},
 	}}, nil
 }
@@ -96,9 +94,16 @@ func TestContainerStates(t *testing.T) {
 	}{
 		{name: "a healthy node"},
 		{name: "a meter that rose", after: "3", problems: []string{"node: txpool_pending_discard rose by 3"}},
-		{name: "a meter that rose a million", after: "1000000", problems: []string{"node: txpool_pending_discard rose by 1000000"}},
+		{name: "a large rise, written without an exponent", after: "1000000", problems: []string{"node: txpool_pending_discard rose by 1000000"}},
+		{name: "a meter that fell", before: "5", after: "2"},
 		{
-			name:     "a request that expired without a reply",
+			name:     "an exited node, its meters unread",
+			after:    "3",
+			change:   func(docker *fakeDocker) { docker.state.Running = false },
+			problems: []string{"node: exited with code 0"},
+		},
+		{
+			name:     "a prefixed meter that rose",
 			meter:    "p2p_lost_qrl_68_0x03",
 			after:    "2",
 			problems: []string{"node: p2p_lost_qrl_68_0x03 rose by 2"},
@@ -119,6 +124,7 @@ func TestContainerStates(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			meter := cmp.Or(test.meter, "txpool_pending_discard")
 			value := cmp.Or(test.before, "0")
+
 			var mutex sync.Mutex
 			server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
 				mutex.Lock()
@@ -126,6 +132,7 @@ func TestContainerStates(t *testing.T) {
 				_, _ = writer.Write([]byte(meter + " " + value + "\n"))
 			}))
 			defer server.Close()
+
 			docker := &fakeDocker{state: containertypes.State{Running: true, StartedAt: "earlier"}}
 			containers := &containerStates{docker: docker}
 			require.NoError(t, containers.record(t.Context(), Container{Name: "node", MetricsURL: server.URL}))
@@ -149,6 +156,7 @@ func TestContainerStatesMetricsError(t *testing.T) {
 		_, _ = writer.Write([]byte("txpool_pending_discard 0\n"))
 	}))
 	defer server.Close()
+
 	docker := &fakeDocker{state: containertypes.State{Running: true, StartedAt: "earlier"}}
 	containers := &containerStates{docker: docker}
 	require.NoError(t, containers.record(t.Context(), Container{Name: "node", MetricsURL: server.URL}))
@@ -169,6 +177,7 @@ func TestContainerStatesRetire(t *testing.T) {
 	docker.state.StartedAt = "later"
 
 	require.NoError(t, containers.retire(t.Context(), "node"))
+
 	// Reading it again would fail.
 	docker.err = errors.New("no such container")
 	problems, err := containers.problems(t.Context())
@@ -201,8 +210,12 @@ func TestContainerStatesLogs(t *testing.T) {
 
 	problems, err := containers.problems(t.Context())
 	require.NoError(t, err)
-	require.Len(t, problems, 4, "at most three lines of each signature")
-	require.Equal(t, "node: logged CRIT [11-16] Failed", problems[3])
+	require.Equal(t, []string{
+		"node: logged panic: runtime error",
+		"node: logged panic: runtime error",
+		"node: logged panic: runtime error",
+		"node: logged CRIT [11-16] Failed",
+	}, problems, "at most three lines of each signature")
 
 	seconds, err := strconv.ParseFloat(docker.since, 64)
 	require.NoError(t, err)
@@ -237,7 +250,7 @@ func TestReadMetrics(t *testing.T) {
 }
 
 func TestParticipantContainers(t *testing.T) {
-	docker := &fakeDocker{port: participantMetricsPort, hostPort: "32000"}
+	docker := &fakeDocker{hostPort: "32000"}
 	participant := devnet.Participant{
 		Execution: devnet.ExecutionService{ServiceInfo: devnet.ServiceInfo{Name: "el-1", ID: "a"}},
 		Consensus: devnet.ConsensusService{ServiceInfo: devnet.ServiceInfo{Name: "cl-1", ID: "b"}},
