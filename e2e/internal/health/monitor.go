@@ -92,8 +92,7 @@ func (report Report) String() string {
 		len(report.ContainerProblems), len(report.PeerDrops), len(report.MissedSlots), report.DueSlots, report.FinalityLag)
 }
 
-// Report returns what the monitor has seen. It leaves out the drops of the
-// given peers, which the suite disconnects itself.
+// Report returns what the monitor has seen.
 func (monitor *Monitor) Report(ctx context.Context, ownPeers ...qnode.ID) (Report, error) {
 	// A node that is down fails the steps below, and its problems say why.
 	problems, err := monitor.containers.problems(ctx)
