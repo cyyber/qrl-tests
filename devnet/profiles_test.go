@@ -39,6 +39,10 @@ func TestParseProfile(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, ProfileMainnetSlotTime, profile)
 
+	profile, err = ParseProfile("six-second-slots")
+	require.NoError(t, err)
+	require.Equal(t, ProfileSixSecondSlots, profile)
+
 	_, err = ParseProfile("unknown")
 	require.ErrorContains(t, err, "unknown development-network profile")
 }
@@ -67,6 +71,8 @@ func TestParticipantValidators(t *testing.T) {
 	require.Empty(t, ProfileInactivityLeak.SpareValidators())
 	require.Len(t, ProfileMainnetSlotTime.ParticipantValidators(0), 256)
 	require.Empty(t, ProfileMainnetSlotTime.SpareValidators())
+	require.Len(t, ProfileSixSecondSlots.ParticipantValidators(0), 64)
+	require.Empty(t, ProfileSixSecondSlots.SpareValidators())
 	require.Len(t, ProfileSingle.ParticipantValidators(0), 64)
 	require.Empty(t, ProfileSingle.ParticipantValidators(1))
 	require.Empty(t, ProfileSingle.ParticipantValidators(-1))

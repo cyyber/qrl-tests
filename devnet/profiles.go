@@ -53,6 +53,11 @@ const (
 	// slots, and 256 validators for a full committee of 32 in every slot.
 	// Epochs keep the 8 slots of every profile, not mainnet's 128.
 	ProfileMainnetSlotTime Profile = "mainnet-slot-time"
+	// ProfileSixSecondSlots is the single profile at six-second slots, for
+	// suites that fill blocks. qrysm's on-time window is a third of the slot
+	// in whole seconds: 1 s at five-second slots, less than a full block takes
+	// to import, so the next proposer orphans it. Six-second slots give 2 s.
+	ProfileSixSecondSlots Profile = "six-second-slots"
 )
 
 const defaultSecondsPerSlot = 5
@@ -101,6 +106,10 @@ var profileSpecs = map[Profile]profileSpec{
 		participants:   []participantSpec{{validatorCount: 256}},
 		secondsPerSlot: 60,
 		startTimeout:   10 * time.Minute,
+	},
+	ProfileSixSecondSlots: {
+		participants:   []participantSpec{{validatorCount: 64}},
+		secondsPerSlot: 6,
 	},
 }
 
