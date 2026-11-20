@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/cyyber/qrl-tests/internal/dockerapi"
+	containertypes "github.com/moby/moby/api/types/container"
 	dockerclient "github.com/moby/moby/client"
 )
 
@@ -185,44 +186,60 @@ func (states *containerStates) inspect(ctx context.Context, entry *containerStat
 		return nil, err
 	}
 
-	var problems []string
-	baseline := entry.metrics
 	state := inspected.Container.State
+	problems, restarted := stateProblems(state, entry.startedAt)
+	if state != nil && state.Running && entry.MetricsURL != "" {
+		rises, err := meterRises(ctx, entry, restarted)
+		problems = append(problems, rises...)
+		if err != nil {
+			return problems, err
+		}
+	}
+
+	lines, err := states.troubleLines(ctx, entry)
+	for _, line := range lines {
+		problems = append(problems, "logged "+line)
+	}
+	return problems, err
+}
+
+// stateProblems returns what a container's state shows went wrong, and whether
+// it restarted.
+func stateProblems(state *containertypes.State, startedAt string) ([]string, bool) {
 	switch {
 	case state == nil:
-		problems = append(problems, "has no state")
+		return []string{"has no state"}, false
 	case !state.Running:
 		problem := fmt.Sprintf("exited with code %d", state.ExitCode)
 		if state.OOMKilled {
 			problem += ", out of memory"
 		}
-		problems = append(problems, problem)
-	case state.StartedAt != entry.startedAt:
-		problems = append(problems, "restarted")
-		// Its meters began again at zero.
+		return []string{problem}, false
+	case state.StartedAt != startedAt:
+		return []string{"restarted"}, true
+	}
+	return nil, false
+}
+
+// meterRises returns the dropping meters that rose since entry was recorded,
+// counted from zero after a restart.
+func meterRises(ctx context.Context, entry *containerState, restarted bool) ([]string, error) {
+	values, err := readMetrics(ctx, entry.MetricsURL)
+	if err != nil {
+		return nil, err
+	}
+
+	baseline := entry.metrics
+	if restarted {
 		baseline = nil
 	}
-
-	if entry.MetricsURL != "" && state != nil && state.Running {
-		values, err := readMetrics(ctx, entry.MetricsURL)
-		if err != nil {
-			return problems, err
-		}
-		for _, name := range droppingNames(values, baseline) {
-			if rise := values[name] - baseline[name]; rise > 0 {
-				problems = append(problems, name+" rose by "+strconv.FormatFloat(rise, 'f', -1, 64))
-			}
+	var rises []string
+	for _, name := range droppingNames(values, baseline) {
+		if rise := values[name] - baseline[name]; rise > 0 {
+			rises = append(rises, name+" rose by "+strconv.FormatFloat(rise, 'f', -1, 64))
 		}
 	}
-
-	lines, err := states.troubleLines(ctx, entry)
-	if err != nil {
-		return problems, err
-	}
-	for _, line := range lines {
-		problems = append(problems, "logged "+line)
-	}
-	return problems, nil
+	return rises, nil
 }
 
 // troubleLines returns the container's log lines since Watch that carry a
