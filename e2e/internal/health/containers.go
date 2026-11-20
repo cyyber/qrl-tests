@@ -106,10 +106,9 @@ var troubleSignatures = []string{
 // containerStates record containers' state, then report what went wrong since:
 // an exit or restart, dropped or refused work, or a trouble line in a log.
 type containerStates struct {
-	docker   ContainerReader
-	recorded []*containerState
-	// retired holds the problems of containers no longer inspected.
-	retired []string
+	docker          ContainerReader
+	recorded        []*containerState
+	retiredProblems []string
 }
 
 type containerState struct {
@@ -151,7 +150,7 @@ func (states *containerStates) retire(ctx context.Context, name string) error {
 
 	found, err := states.check(ctx, entry)
 	for _, problem := range found {
-		states.retired = append(states.retired, name+": "+problem)
+		states.retiredProblems = append(states.retiredProblems, name+": "+problem)
 	}
 	if err != nil {
 		return fmt.Errorf("%s: %w", name, err)
@@ -161,7 +160,7 @@ func (states *containerStates) retire(ctx context.Context, name string) error {
 
 // problems returns what has gone wrong since each container was recorded.
 func (states *containerStates) problems(ctx context.Context) ([]string, error) {
-	problems := slices.Clone(states.retired)
+	problems := slices.Clone(states.retiredProblems)
 	for _, entry := range states.recorded {
 		found, err := states.check(ctx, entry)
 		for _, problem := range found {
