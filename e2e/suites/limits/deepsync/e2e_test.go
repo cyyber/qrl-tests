@@ -18,7 +18,6 @@ import (
 	"github.com/cyyber/qrl-tests/e2e/internal/load"
 	"github.com/cyyber/qrl-tests/e2e/internal/sidecar/syncnode"
 	"github.com/cyyber/qrl-tests/e2e/internal/testsuite"
-	"github.com/cyyber/qrl-tests/internal/dockerapi"
 	"github.com/gorilla/websocket"
 	ginkgo "github.com/onsi/ginkgo/v2"
 	gomega "github.com/onsi/gomega"
@@ -145,17 +144,16 @@ var _ = ginkgo.Describe(
 			_, id, err := node.Peer(ctx)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 			syncer = id
-			ginkgo.DeferCleanup(func() {
+			execution := health.Container{Name: node.Containers()[0], MetricsURL: node.ExecutionMetricsURL}
+			gomega.Expect(monitor.Add(ctx, execution)).To(gomega.Succeed())
+			ginkgo.DeferCleanup(func(ctx ginkgo.SpecContext) {
 				testsuite.ReportLogsOnFailure("execution-only node", node)
+				// Its problems stay in the monitor's report after it is gone.
+				gomega.Expect(monitor.Retire(ctx, execution.Name)).To(gomega.Succeed())
 				gomega.Expect(node.Close()).To(gomega.Succeed())
-			})
+			}, ginkgo.NodeTimeout(time.Minute))
 			watch := testsuite.MustSucceed(health.WatchPeers(ctx, node.ExecutionWSURL))
 			defer watch.Close()
-			// The node's own container watch: it is gone when the suite's report is read.
-			docker := testsuite.MustSucceed(dockerapi.New())
-			defer docker.Close()
-			containers := health.NewContainerWatch(docker)
-			gomega.Expect(containers.Watch(ctx, health.Container{Name: node.Containers()[0], MetricsURL: node.ExecutionMetricsURL})).To(gomega.Succeed())
 
 			started := time.Now()
 			head := testsuite.MustSucceed(node.SyncToHead(ctx, source.Execution))
@@ -169,10 +167,8 @@ var _ = ginkgo.Describe(
 			gomega.Expect(synced.Hash()).To(gomega.Equal(last.Hash))
 
 			drops := testsuite.MustSucceed(watch.Drops(ctx))
-			problems := testsuite.MustSucceed(containers.Problems(ctx))
-			ginkgo.AddReportEntry("sync", fmt.Sprintf("%d blocks in %s, %d peer drops, %d problems", head.Number, time.Since(started).Round(time.Second), len(drops), len(problems)))
+			ginkgo.AddReportEntry("sync", fmt.Sprintf("%d blocks in %s, %d peer drops", head.Number, time.Since(started).Round(time.Second), len(drops)))
 			gomega.Expect(drops).To(gomega.BeEmpty(), "the node dropped its peer while it synced")
-			gomega.Expect(problems).To(gomega.BeEmpty(), "the syncing node had trouble")
 		}, ginkgo.SpecTimeout(20*time.Minute))
 
 		ginkgo.It("leaves the network healthy", func(ctx ginkgo.SpecContext) {
@@ -183,7 +179,7 @@ var _ = ginkgo.Describe(
 			gomega.Expect(report.Problems).To(gomega.BeEmpty(), "a node or container had trouble")
 			gomega.Expect(report.PeerDrops).To(gomega.BeEmpty(), "the source dropped a peer")
 			// Missed slots are reported, not held against the node: full blocks
-			// every five seconds are far more than mainnet's slots ask of it.
+			// every six seconds are far more than mainnet's slots ask of it.
 			gomega.Expect(report.FinalityLag).To(gomega.BeNumerically("<=", health.MaxFinalityLag), "finality fell behind")
 		}, ginkgo.SpecTimeout(5*time.Minute))
 	},
