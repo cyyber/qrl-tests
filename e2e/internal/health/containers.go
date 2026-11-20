@@ -115,7 +115,6 @@ type watched struct {
 	Container
 	since     time.Time
 	startedAt string
-	restarts  int
 	metrics   map[string]float64
 }
 
@@ -130,7 +129,7 @@ func (watch *ContainerWatch) Watch(ctx context.Context, containers ...Container)
 		if err != nil {
 			return fmt.Errorf("inspect %s: %w", container.Name, err)
 		}
-		entry := &watched{Container: container, since: time.Now(), restarts: inspected.Container.RestartCount}
+		entry := &watched{Container: container, since: time.Now()}
 		if state := inspected.Container.State; state != nil {
 			entry.startedAt = state.StartedAt
 		}
@@ -177,7 +176,7 @@ func (watch *ContainerWatch) problems(ctx context.Context, entry *watched) ([]st
 			problem += ", out of memory"
 		}
 		problems = append(problems, problem)
-	case state.StartedAt != entry.startedAt || inspected.Container.RestartCount != entry.restarts:
+	case state.StartedAt != entry.startedAt:
 		problems = append(problems, "restarted")
 		// Its meters began again at zero.
 		baseline = nil
