@@ -14,13 +14,6 @@ import (
 	"github.com/theQRL/go-qrl/p2p/qnode"
 )
 
-func TestExcept(t *testing.T) {
-	own, other := qnode.ID{1}, qnode.ID{2}
-	drops := []PeerDrop{{Peer: own}, {Peer: other}, {Peer: own}}
-	require.Equal(t, []PeerDrop{{Peer: other}}, except(drops, own))
-	require.Len(t, drops, 3, "the drops passed in are not changed")
-}
-
 // fakeMonitor monitors a fake container, node and beacon chain. It started at
 // slot 2; the chain has blocks at 3 and 5, the clock is in slot 7 and epoch 3,
 // and epoch 1 is finalized.
@@ -77,7 +70,21 @@ func TestReport(t *testing.T) {
 	require.Equal(t, []uint64{4, 6}, report.MissedSlots, "up to the slot before the clock's")
 	require.Equal(t, uint64(4), report.DueSlots)
 	require.Equal(t, uint64(2), report.FinalityLag)
-	require.Equal(t, "1 problems, 1 peer drops, 2 missed slots of 4, finality 2 epochs behind", report.String())
+	require.Equal(t, "container problems: 1, peer drops: 1, missed slots: 2 of 4, finality lag: 2 epochs", report.String())
+}
+
+func TestReportErr(t *testing.T) {
+	require.NoError(t, Report{DueSlots: 4, FinalityLag: 3}.Err())
+
+	report := Report{
+		ContainerProblems: []string{"node: restarted"},
+		PeerDrops:         []PeerDrop{{Peer: qnode.ID{2}, Reason: "useless peer"}},
+		MissedSlots:       []uint64{4, 6},
+		DueSlots:          4,
+		FinalityLag:       4,
+	}
+	require.EqualError(t, report.Err(), "node: restarted; dropped peer "+qnode.ID{2}.TerminalString()+
+		": useless peer; missed slots [4 6] of 4; finality 4 epochs behind")
 }
 
 func TestReportAheadOfClock(t *testing.T) {

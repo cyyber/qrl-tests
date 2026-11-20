@@ -2,8 +2,10 @@ package health
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/cyyber/qrl-tests/devnet"
@@ -85,26 +87,42 @@ type Report struct {
 	FinalityLag       uint64
 }
 
-// MaxFinalityLag is the most a healthy chain lags: it finalizes the epoch
-// before the previous one, and the current one may have just begun.
-const MaxFinalityLag = 3
+const maxFinalityLag = 3
 
 func (report Report) String() string {
-	return fmt.Sprintf("%d problems, %d peer drops, %d missed slots of %d, finality %d epochs behind",
+	return fmt.Sprintf("container problems: %d, peer drops: %d, missed slots: %d of %d, finality lag: %d epochs",
 		len(report.ContainerProblems), len(report.PeerDrops), len(report.MissedSlots), report.DueSlots, report.FinalityLag)
 }
 
-// Report returns what the monitor has seen. It leaves out the drops of the
-// given peers, which the suite disconnects itself.
+// Err returns what the report shows went wrong, or nil.
+func (report Report) Err() error {
+	problems := slices.Clone(report.ContainerProblems)
+	for _, drop := range report.PeerDrops {
+		problems = append(problems, fmt.Sprintf("dropped peer %s: %s", drop.Peer.TerminalString(), drop.Reason))
+	}
+	if len(report.MissedSlots) > 0 {
+		problems = append(problems, fmt.Sprintf("missed slots %v of %d", report.MissedSlots, report.DueSlots))
+	}
+	if report.FinalityLag > maxFinalityLag {
+		problems = append(problems, fmt.Sprintf("finality %d epochs behind", report.FinalityLag))
+	}
+	if len(problems) == 0 {
+		return nil
+	}
+	return errors.New(strings.Join(problems, "; "))
+}
+
+// Report returns what the monitor has seen.
 func (monitor *Monitor) Report(ctx context.Context, ownPeers ...qnode.ID) (Report, error) {
-	// A node that is down fails the steps below, and its problems say why.
-	problems, err := monitor.containers.problems(ctx)
+	var problems []string
 	fail := func(err error) (Report, error) {
 		if len(problems) > 0 {
 			err = fmt.Errorf("%w; the containers had %q", err, problems)
 		}
 		return Report{}, err
 	}
+
+	problems, err := monitor.containers.problems(ctx)
 	if err != nil {
 		return fail(err)
 	}
@@ -113,15 +131,21 @@ func (monitor *Monitor) Report(ctx context.Context, ownPeers ...qnode.ID) (Repor
 	if err != nil {
 		return fail(err)
 	}
+	drops = slices.DeleteFunc(drops, func(drop PeerDrop) bool {
+		return slices.Contains(ownPeers, drop.Peer)
+	})
 
 	head, err := monitor.beacon.HeadSlot(ctx)
 	if err != nil {
 		return fail(err)
 	}
 
-	// The clock's slot may still get its block; every slot before it is due one.
+	// Every slot before the clock's is due a block; the clock's may still get one.
 	now := time.Now()
-	last := max(head+1, monitor.chain.SlotAt(now)) - 1
+	last := head
+	if slot := monitor.chain.SlotAt(now); slot > head {
+		last = slot - 1
+	}
 	missed, err := MissedSlots(ctx, monitor.beacon, monitor.firstSlot+1, last)
 	if err != nil {
 		return fail(err)
@@ -135,16 +159,9 @@ func (monitor *Monitor) Report(ctx context.Context, ownPeers ...qnode.ID) (Repor
 	epoch := monitor.chain.EpochAt(now)
 	return Report{
 		ContainerProblems: problems,
-		PeerDrops:         except(drops, ownPeers...),
+		PeerDrops:         drops,
 		MissedSlots:       missed,
 		DueSlots:          last - min(last, monitor.firstSlot),
 		FinalityLag:       epoch - min(epoch, checkpoints.Finalized.Epoch),
 	}, nil
-}
-
-// except returns the drops of peers other than the given ones.
-func except(drops []PeerDrop, peers ...qnode.ID) []PeerDrop {
-	return slices.DeleteFunc(slices.Clone(drops), func(drop PeerDrop) bool {
-		return slices.Contains(peers, drop.Peer)
-	})
 }
