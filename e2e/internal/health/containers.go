@@ -241,8 +241,7 @@ func meterRises(ctx context.Context, entry *containerState, restarted bool) ([]s
 	return rises, nil
 }
 
-// troubleLines returns the container's log lines since Watch that carry a
-// trouble signature, at most a few of each.
+// troubleLines returns the trouble lines logged since entry was recorded.
 func (states *containerStates) troubleLines(ctx context.Context, entry *containerState) ([]string, error) {
 	output, err := dockerapi.Logs(ctx, states.docker, entry.Name, dockerclient.ContainerLogsOptions{
 		Since: fmt.Sprintf("%d.%09d", entry.since.Unix(), entry.since.Nanosecond()),
