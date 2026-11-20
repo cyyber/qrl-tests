@@ -24,8 +24,8 @@ type Container struct {
 	MetricsURL string
 }
 
-// Meters whose rise means a node dropped or refused work: go-qrl's transaction
-// pool, transaction fetcher, downloader and chain.
+// droppingMeters are go-qrl meters whose rise means a node dropped or refused
+// work.
 var droppingMeters = []string{
 	"chain_reorg_drop",
 	"qrl_downloader_bodies_drop",
