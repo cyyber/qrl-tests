@@ -74,16 +74,17 @@ func TestReport(t *testing.T) {
 }
 
 func TestReportErr(t *testing.T) {
-	require.NoError(t, Report{DueSlots: 4, FinalityLag: 3}.Err())
+	require.NoError(t, Report{DueSlots: 4, FinalityLag: maxFinalityLag}.Err())
 
+	peer := qnode.ID{2}
 	report := Report{
 		ContainerProblems: []string{"node: restarted"},
-		PeerDrops:         []PeerDrop{{Peer: qnode.ID{2}, Reason: "useless peer"}},
+		PeerDrops:         []PeerDrop{{Peer: peer, Reason: "useless peer"}},
 		MissedSlots:       []uint64{4, 6},
 		DueSlots:          4,
-		FinalityLag:       4,
+		FinalityLag:       maxFinalityLag + 1,
 	}
-	require.EqualError(t, report.Err(), "node: restarted; dropped peer "+qnode.ID{2}.TerminalString()+
+	require.EqualError(t, report.Err(), "node: restarted; dropped peer "+peer.TerminalString()+
 		": useless peer; missed slots [4 6] of 4; finality 4 epochs behind")
 }
 
@@ -100,15 +101,21 @@ func TestReportAheadOfClock(t *testing.T) {
 }
 
 func TestReportFailure(t *testing.T) {
-	monitor, docker, _ := fakeMonitor(t)
-	docker.state.Running = false
-	monitor.beacon, _ = beacon.New("http://127.0.0.1:1")
+	t.Run("a down node", func(t *testing.T) {
+		monitor, docker, _ := fakeMonitor(t)
+		docker.state.Running = false
+		monitor.beacon, _ = beacon.New("http://127.0.0.1:1")
 
-	_, err := monitor.Report(t.Context())
-	require.ErrorContains(t, err, `the containers had ["node: exited with code 0"]`)
+		_, err := monitor.Report(t.Context())
+		require.ErrorContains(t, err, `the containers had ["node: exited with code 0"]`)
+	})
 
-	docker.err = errors.New("gone")
-	_, err = monitor.Report(t.Context())
-	require.ErrorContains(t, err, "node: gone")
-	require.NotContains(t, err.Error(), "the containers had")
+	t.Run("an uninspectable container", func(t *testing.T) {
+		monitor, docker, _ := fakeMonitor(t)
+		docker.err = errors.New("gone")
+
+		_, err := monitor.Report(t.Context())
+		require.ErrorContains(t, err, "node: gone")
+		require.NotContains(t, err.Error(), "the containers had")
+	})
 }
