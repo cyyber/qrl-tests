@@ -167,7 +167,7 @@ func (states *containerStates) problems(ctx context.Context) ([]string, error) {
 	return problems, nil
 }
 
-// check is inspect with the container's name on each problem and error.
+// check inspects a container and prefixes its problems and error with its name.
 func (states *containerStates) check(ctx context.Context, entry *containerState) ([]string, error) {
 	found, err := states.inspect(ctx, entry)
 	for index, problem := range found {
