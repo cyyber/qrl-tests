@@ -28,6 +28,9 @@ type Container struct {
 // work.
 var droppingMeters = []string{
 	"chain_reorg_drop",
+	"pathdb_clean_false",
+	"pathdb_dirty_false",
+	"pathdb_disk_false",
 	"qrl_downloader_bodies_drop",
 	"qrl_downloader_bodies_timeout",
 	"qrl_downloader_headers_drop",
@@ -36,6 +39,7 @@ var droppingMeters = []string{
 	"qrl_downloader_receipts_timeout",
 	"qrl_fetcher_transaction_broadcasts_otherreject",
 	"qrl_fetcher_transaction_replies_otherreject",
+	"qrl_fetcher_transaction_request_fail",
 	"qrl_fetcher_transaction_request_timeout",
 	"txpool_invalid",
 	"txpool_overflowed",
@@ -46,7 +50,13 @@ var droppingMeters = []string{
 	"txpool_queued_eviction",
 	"txpool_queued_nofunds",
 	"txpool_queued_ratelimit",
+	"txpool_throttle",
 }
+
+// droppingMeterPrefixes name families of dropping meters that go-qrl registers
+// per protocol and message, such as p2p_lost_qrl_68_0x03 for a request that
+// expired without a reply.
+var droppingMeterPrefixes = []string{"p2p_lost_"}
 
 // Log lines that mean a node crashed, refused a message for its size, or
 // fell behind on its database.
@@ -146,7 +156,7 @@ func (watch *ContainerWatch) problems(ctx context.Context, entry *watched) ([]st
 		if err != nil {
 			return problems, err
 		}
-		for _, name := range droppingMeters {
+		for _, name := range droppingNames(meters, baseline) {
 			if rise := meters[name] - baseline[name]; rise > 0 {
 				problems = append(problems, name+" rose by "+strconv.FormatFloat(rise, 'f', -1, 64))
 			}
@@ -189,4 +199,21 @@ func (watch *ContainerWatch) troubleLines(ctx context.Context, entry *watched) (
 		}
 	}
 	return lines, nil
+}
+
+// droppingNames returns the dropping meters to compare, those of the prefixed
+// families included, in order.
+func droppingNames(meters ...map[string]float64) []string {
+	names := slices.Clone(droppingMeters)
+	for _, values := range meters {
+		for name := range values {
+			if slices.ContainsFunc(droppingMeterPrefixes, func(prefix string) bool {
+				return strings.HasPrefix(name, prefix)
+			}) {
+				names = append(names, name)
+			}
+		}
+	}
+	slices.Sort(names)
+	return slices.Compact(names)
 }

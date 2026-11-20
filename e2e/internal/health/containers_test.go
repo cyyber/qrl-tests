@@ -71,11 +71,12 @@ func (docker *fakeDocker) update(change func(*fakeDocker)) {
 func TestContainerWatch(t *testing.T) {
 	for _, test := range []struct {
 		name string
-		// before and after are a dropping meter's value at Watch and at
-		// Problems, "0" when empty.
-		before, after string
-		change        func(*fakeDocker)
-		problems      []string
+		// meter is the dropping meter the page serves, txpool_pending_discard
+		// when empty, and before and after its value at Watch and at Problems,
+		// "0" when empty.
+		meter, before, after string
+		change               func(*fakeDocker)
+		problems             []string
 	}{
 		{name: "a healthy node"},
 		{
@@ -110,18 +111,25 @@ func TestContainerWatch(t *testing.T) {
 		{name: "a meter that rose", after: "3", problems: []string{"node: txpool_pending_discard rose by 3"}},
 		{name: "a meter that rose a million", after: "1000000", problems: []string{"node: txpool_pending_discard rose by 1000000"}},
 		{
+			name:     "a request that expired without a reply",
+			meter:    "p2p_lost_qrl_68_0x03",
+			after:    "2",
+			problems: []string{"node: p2p_lost_qrl_68_0x03 rose by 2"},
+		},
+		{
 			name:     "a crash in the log",
 			change:   func(docker *fakeDocker) { docker.logs = "INFO [11-16] Imported\npanic: runtime error\n" },
 			problems: []string{"node: logged panic: runtime error"},
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
+			meter := cmp.Or(test.meter, "txpool_pending_discard")
 			discard := cmp.Or(test.before, "0")
 			var mutex sync.Mutex
 			server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
 				mutex.Lock()
 				defer mutex.Unlock()
-				_, _ = writer.Write([]byte("# TYPE txpool_pending_discard gauge\ntxpool_pending_discard " + discard + "\n"))
+				_, _ = writer.Write([]byte("# TYPE " + meter + " gauge\n" + meter + " " + discard + "\n"))
 			}))
 			defer server.Close()
 			docker := &fakeDocker{
