@@ -77,7 +77,7 @@ func TestReport(t *testing.T) {
 	require.Equal(t, []uint64{4, 6}, report.MissedSlots, "up to the slot before the clock's")
 	require.Equal(t, uint64(4), report.DueSlots)
 	require.Equal(t, uint64(2), report.FinalityLag)
-	require.Equal(t, "1 problems, 1 peer drops, 2 missed slots of 4, finality 2 epochs behind", report.String())
+	require.Equal(t, "container problems: 1, peer drops: 1, missed slots: 2 of 4, finality lag: 2 epochs", report.String())
 }
 
 func TestReportAheadOfClock(t *testing.T) {

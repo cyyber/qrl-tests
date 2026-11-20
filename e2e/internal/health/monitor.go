@@ -88,7 +88,7 @@ type Report struct {
 const MaxFinalityLag = 3
 
 func (report Report) String() string {
-	return fmt.Sprintf("%d problems, %d peer drops, %d missed slots of %d, finality %d epochs behind",
+	return fmt.Sprintf("container problems: %d, peer drops: %d, missed slots: %d of %d, finality lag: %d epochs",
 		len(report.ContainerProblems), len(report.PeerDrops), len(report.MissedSlots), report.DueSlots, report.FinalityLag)
 }
 
