@@ -18,7 +18,7 @@ type ContainerReader interface {
 	ContainerInspect(context.Context, string, dockerclient.ContainerInspectOptions) (dockerclient.ContainerInspectResult, error)
 }
 
-// Container is a container to watch, with its go-qrl metrics page if any.
+// Container is a container to monitor, with its go-qrl metrics page if any.
 type Container struct {
 	Name       string
 	MetricsURL string
@@ -103,33 +103,29 @@ var troubleSignatures = []string{
 	"Failed to sign block",
 }
 
-// ContainerWatch records containers' state, then reports what went wrong
-// since: an exit or restart, dropped or refused work, or a trouble line in a
-// log.
-type ContainerWatch struct {
-	docker  ContainerReader
-	watched []*watched
+// baselines record containers' state, then report what went wrong since: an
+// exit or restart, dropped or refused work, or a trouble line in a log.
+type baselines struct {
+	docker   ContainerReader
+	recorded []*baseline
+	// retired holds the problems of containers no longer inspected.
+	retired []string
 }
 
-type watched struct {
+type baseline struct {
 	Container
 	since     time.Time
 	startedAt string
 	metrics   map[string]float64
 }
 
-func NewContainerWatch(docker ContainerReader) *ContainerWatch {
-	return &ContainerWatch{docker: docker}
-}
-
-// Watch starts watching containers.
-func (watch *ContainerWatch) Watch(ctx context.Context, containers ...Container) error {
+func (baselines *baselines) record(ctx context.Context, containers ...Container) error {
 	for _, container := range containers {
-		inspected, err := watch.docker.ContainerInspect(ctx, container.Name, dockerclient.ContainerInspectOptions{})
+		inspected, err := baselines.docker.ContainerInspect(ctx, container.Name, dockerclient.ContainerInspectOptions{})
 		if err != nil {
 			return fmt.Errorf("inspect %s: %w", container.Name, err)
 		}
-		entry := &watched{Container: container, since: time.Now()}
+		entry := &baseline{Container: container, since: time.Now()}
 		if state := inspected.Container.State; state != nil {
 			entry.startedAt = state.StartedAt
 		}
@@ -138,16 +134,36 @@ func (watch *ContainerWatch) Watch(ctx context.Context, containers ...Container)
 				return fmt.Errorf("%s: %w", container.Name, err)
 			}
 		}
-		watch.watched = append(watch.watched, entry)
+		baselines.recorded = append(baselines.recorded, entry)
 	}
 	return nil
 }
 
-// Problems returns what has gone wrong in the watched containers since Watch.
-func (watch *ContainerWatch) Problems(ctx context.Context) ([]string, error) {
-	var problems []string
-	for _, entry := range watch.watched {
-		found, err := watch.problems(ctx, entry)
+// retire takes a container's final reading, keeps its problems and stops
+// inspecting it.
+func (baselines *baselines) retire(ctx context.Context, name string) error {
+	index := slices.IndexFunc(baselines.recorded, func(entry *baseline) bool { return entry.Name == name })
+	if index < 0 {
+		return fmt.Errorf("%s is not monitored", name)
+	}
+	entry := baselines.recorded[index]
+	baselines.recorded = slices.Delete(baselines.recorded, index, index+1)
+
+	found, err := baselines.check(ctx, entry)
+	for _, problem := range found {
+		baselines.retired = append(baselines.retired, name+": "+problem)
+	}
+	if err != nil {
+		return fmt.Errorf("%s: %w", name, err)
+	}
+	return nil
+}
+
+// problems returns what has gone wrong since each container was recorded.
+func (baselines *baselines) problems(ctx context.Context) ([]string, error) {
+	problems := slices.Clone(baselines.retired)
+	for _, entry := range baselines.recorded {
+		found, err := baselines.check(ctx, entry)
 		for _, problem := range found {
 			problems = append(problems, entry.Name+": "+problem)
 		}
@@ -158,8 +174,8 @@ func (watch *ContainerWatch) Problems(ctx context.Context) ([]string, error) {
 	return problems, nil
 }
 
-func (watch *ContainerWatch) problems(ctx context.Context, entry *watched) ([]string, error) {
-	inspected, err := watch.docker.ContainerInspect(ctx, entry.Name, dockerclient.ContainerInspectOptions{})
+func (baselines *baselines) check(ctx context.Context, entry *baseline) ([]string, error) {
+	inspected, err := baselines.docker.ContainerInspect(ctx, entry.Name, dockerclient.ContainerInspectOptions{})
 	if err != nil {
 		return nil, err
 	}
@@ -194,7 +210,7 @@ func (watch *ContainerWatch) problems(ctx context.Context, entry *watched) ([]st
 		}
 	}
 
-	lines, err := watch.troubleLines(ctx, entry)
+	lines, err := baselines.troubleLines(ctx, entry)
 	if err != nil {
 		return problems, err
 	}
@@ -206,8 +222,8 @@ func (watch *ContainerWatch) problems(ctx context.Context, entry *watched) ([]st
 
 // troubleLines returns the container's log lines since Watch that carry a
 // trouble signature, at most a few of each.
-func (watch *ContainerWatch) troubleLines(ctx context.Context, entry *watched) ([]string, error) {
-	output, err := dockerapi.Logs(ctx, watch.docker, entry.Name, dockerclient.ContainerLogsOptions{
+func (baselines *baselines) troubleLines(ctx context.Context, entry *baseline) ([]string, error) {
+	output, err := dockerapi.Logs(ctx, baselines.docker, entry.Name, dockerclient.ContainerLogsOptions{
 		Since: fmt.Sprintf("%d.%09d", entry.since.Unix(), entry.since.Nanosecond()),
 	})
 	if err != nil {

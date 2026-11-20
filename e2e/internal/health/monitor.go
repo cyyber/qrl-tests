@@ -17,13 +17,12 @@ import (
 // Monitor watches a devnet participant for the length of a suite: its
 // containers, the peers its execution node drops, and its chain.
 type Monitor struct {
-	Containers *ContainerWatch
-
-	docker    dockerclient.APIClient
-	peers     *PeerWatch
-	beacon    *beacon.Client
-	chain     chaininfo.Info
-	firstSlot uint64
+	containers *baselines
+	docker     dockerclient.APIClient
+	peers      *PeerWatch
+	beacon     *beacon.Client
+	chain      chaininfo.Info
+	firstSlot  uint64
 }
 
 // StartMonitor starts watching participant, whose beacon node is client.
@@ -33,7 +32,7 @@ func StartMonitor(ctx context.Context, participant devnet.Participant, client *b
 		return nil, fmt.Errorf("create Docker client: %w", err)
 	}
 
-	monitor := &Monitor{Containers: NewContainerWatch(docker), docker: docker, beacon: client, chain: chain}
+	monitor := &Monitor{containers: &baselines{docker: docker}, docker: docker, beacon: client, chain: chain}
 	if err := monitor.start(ctx, participant); err != nil {
 		monitor.Close()
 		return nil, err
@@ -46,7 +45,7 @@ func (monitor *Monitor) start(ctx context.Context, participant devnet.Participan
 	if err != nil {
 		return err
 	}
-	if err := monitor.Containers.Watch(ctx, containers...); err != nil {
+	if err := monitor.containers.record(ctx, containers...); err != nil {
 		return err
 	}
 
@@ -56,6 +55,17 @@ func (monitor *Monitor) start(ctx context.Context, participant devnet.Participan
 
 	monitor.firstSlot, err = monitor.beacon.HeadSlot(ctx)
 	return err
+}
+
+// Add monitors containers started after the monitor, such as a sync node.
+func (monitor *Monitor) Add(ctx context.Context, containers ...Container) error {
+	return monitor.containers.record(ctx, containers...)
+}
+
+// Retire takes a container's final reading before the suite removes it. Its
+// problems stay in the report.
+func (monitor *Monitor) Retire(ctx context.Context, name string) error {
+	return monitor.containers.retire(ctx, name)
 }
 
 // Close stops the monitor.
@@ -93,7 +103,7 @@ func (report Report) String() string {
 // given peers, which the suite disconnects itself.
 func (monitor *Monitor) Report(ctx context.Context, ownPeers ...qnode.ID) (Report, error) {
 	// A node that is down fails the steps below, and its problems say why.
-	problems, err := monitor.Containers.Problems(ctx)
+	problems, err := monitor.containers.problems(ctx)
 	fail := func(err error) (Report, error) {
 		if len(problems) > 0 {
 			err = fmt.Errorf("%w; the containers had %q", err, problems)

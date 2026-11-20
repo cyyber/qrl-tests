@@ -66,7 +66,7 @@ func (docker *fakeDocker) update(change func(*fakeDocker)) {
 	change(docker)
 }
 
-func TestContainerWatch(t *testing.T) {
+func TestBaselines(t *testing.T) {
 	for _, test := range []struct {
 		name string
 		// meter is the dropping meter the page serves, txpool_pending_discard
@@ -132,8 +132,8 @@ func TestContainerWatch(t *testing.T) {
 
 			metrics, err := metricsURL(t.Context(), docker, "node", 6060)
 			require.NoError(t, err)
-			watch := NewContainerWatch(docker)
-			require.NoError(t, watch.Watch(t.Context(), Container{Name: "node", MetricsURL: metrics}))
+			containers := &baselines{docker: docker}
+			require.NoError(t, containers.record(t.Context(), Container{Name: "node", MetricsURL: metrics}))
 			if test.change != nil {
 				docker.update(test.change)
 			}
@@ -141,14 +141,14 @@ func TestContainerWatch(t *testing.T) {
 			discard = cmp.Or(test.after, "0")
 			mutex.Unlock()
 
-			problems, err := watch.Problems(t.Context())
+			problems, err := containers.problems(t.Context())
 			require.NoError(t, err)
 			require.Equal(t, test.problems, problems)
 		})
 	}
 }
 
-func TestContainerWatchError(t *testing.T) {
+func TestBaselinesError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
 		_, _ = writer.Write([]byte("txpool_pending_discard 0\n"))
 	}))
@@ -159,28 +159,44 @@ func TestContainerWatchError(t *testing.T) {
 	}
 	metrics, err := metricsURL(t.Context(), docker, "node", 6060)
 	require.NoError(t, err)
-	watch := NewContainerWatch(docker)
-	require.NoError(t, watch.Watch(t.Context(), Container{Name: "node", MetricsURL: metrics}))
+	containers := &baselines{docker: docker}
+	require.NoError(t, containers.record(t.Context(), Container{Name: "node", MetricsURL: metrics}))
 
 	// A restarted node that does not serve its metrics yet.
 	docker.update(func(docker *fakeDocker) { docker.state.StartedAt = "later" })
 	server.Close()
 
-	problems, err := watch.Problems(t.Context())
+	problems, err := containers.problems(t.Context())
 	require.Error(t, err)
 	require.Equal(t, []string{"node: restarted"}, problems)
 }
 
-func TestContainerWatchLogs(t *testing.T) {
+func TestBaselinesRetire(t *testing.T) {
+	docker := &fakeDocker{state: containertypes.State{Running: true, StartedAt: "earlier"}}
+	containers := &baselines{docker: docker}
+	require.NoError(t, containers.record(t.Context(), Container{Name: "node"}))
+	docker.update(func(docker *fakeDocker) { docker.state.StartedAt = "later" })
+
+	require.NoError(t, containers.retire(t.Context(), "node"))
+	// A container read again would have no state.
+	docker.update(func(docker *fakeDocker) { docker.stateless = true })
+	problems, err := containers.problems(t.Context())
+	require.NoError(t, err)
+	require.Equal(t, []string{"node: restarted"}, problems, "the retired container's problems, read once")
+
+	require.ErrorContains(t, containers.retire(t.Context(), "node"), "node is not monitored")
+}
+
+func TestBaselinesLogs(t *testing.T) {
 	docker := &fakeDocker{state: containertypes.State{Running: true}}
-	watch := NewContainerWatch(docker)
+	containers := &baselines{docker: docker}
 	before := time.Now()
-	require.NoError(t, watch.Watch(t.Context(), Container{Name: "node"}))
+	require.NoError(t, containers.record(t.Context(), Container{Name: "node"}))
 	docker.update(func(docker *fakeDocker) {
 		docker.logs = strings.Repeat("panic: runtime error\n", 5) + "CRIT [11-16] Failed\n"
 	})
 
-	problems, err := watch.Problems(t.Context())
+	problems, err := containers.problems(t.Context())
 	require.NoError(t, err)
 	require.Len(t, problems, 4, "at most three lines of each signature")
 	require.Equal(t, "node: logged CRIT [11-16] Failed", problems[3])
