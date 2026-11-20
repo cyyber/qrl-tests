@@ -5,6 +5,7 @@ import (
 	"cmp"
 	"context"
 	"encoding/binary"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -22,27 +23,23 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// fakeDocker is one container; port defaults to 6060.
+// fakeDocker is one container.
 type fakeDocker struct {
-	mutex     sync.Mutex
-	state     containertypes.State
-	stateless bool
-	port      uint16
-	hostPort  string
-	logs      string
-	since     string
+	state    containertypes.State
+	err      error
+	port     uint16
+	hostPort string
+	logs     string
+	since    string
 }
 
 func (docker *fakeDocker) ContainerInspect(context.Context, string, dockerclient.ContainerInspectOptions) (dockerclient.ContainerInspectResult, error) {
-	docker.mutex.Lock()
-	defer docker.mutex.Unlock()
-	var state *containertypes.State
-	if !docker.stateless {
-		state = new(docker.state)
+	if docker.err != nil {
+		return dockerclient.ContainerInspectResult{}, docker.err
 	}
-	port, _ := network.PortFrom(cmp.Or(docker.port, 6060), network.TCP)
+	port, _ := network.PortFrom(docker.port, network.TCP)
 	return dockerclient.ContainerInspectResult{Container: containertypes.InspectResponse{
-		State: state,
+		State: new(docker.state),
 		NetworkSettings: &containertypes.NetworkSettings{
 			Ports: network.PortMap{port: {{HostIP: netip.IPv4Unspecified(), HostPort: docker.hostPort}}},
 		},
@@ -50,8 +47,6 @@ func (docker *fakeDocker) ContainerInspect(context.Context, string, dockerclient
 }
 
 func (docker *fakeDocker) ContainerLogs(_ context.Context, _ string, options dockerclient.ContainerLogsOptions) (dockerclient.ContainerLogsResult, error) {
-	docker.mutex.Lock()
-	defer docker.mutex.Unlock()
 	docker.since = options.Since
 	// Docker frames each write with its stream and length.
 	frame := make([]byte, 8, 8+len(docker.logs))
@@ -60,47 +55,46 @@ func (docker *fakeDocker) ContainerLogs(_ context.Context, _ string, options doc
 	return io.NopCloser(bytes.NewReader(append(frame, docker.logs...))), nil
 }
 
-func (docker *fakeDocker) update(change func(*fakeDocker)) {
-	docker.mutex.Lock()
-	defer docker.mutex.Unlock()
-	change(docker)
+func TestStateProblems(t *testing.T) {
+	for _, test := range []struct {
+		name      string
+		state     *containertypes.State
+		problems  []string
+		restarted bool
+	}{
+		{name: "running", state: &containertypes.State{Running: true, StartedAt: "earlier"}},
+		{name: "no state", problems: []string{"has no state"}},
+		{
+			name:     "exited",
+			state:    &containertypes.State{ExitCode: 137, OOMKilled: true},
+			problems: []string{"exited with code 137, out of memory"},
+		},
+		{
+			name:      "restarted",
+			state:     &containertypes.State{Running: true, StartedAt: "later"},
+			problems:  []string{"restarted"},
+			restarted: true,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			problems, restarted := stateProblems(test.state, "earlier")
+			require.Equal(t, test.problems, problems)
+			require.Equal(t, test.restarted, restarted)
+		})
+	}
 }
 
 func TestContainerStates(t *testing.T) {
 	for _, test := range []struct {
 		name string
-		// meter is the trouble meter the page serves, txpool_pending_discard
-		// when empty, and before and after its value at Watch and at Problems,
-		// "0" when empty.
+		// meter is the trouble meter served, txpool_pending_discard when empty;
+		// before and after are its values at record and at problems, "0" when
+		// empty.
 		meter, before, after string
 		change               func(*fakeDocker)
 		problems             []string
 	}{
 		{name: "a healthy node"},
-		{
-			name: "a container that exited",
-			change: func(docker *fakeDocker) {
-				docker.state.Running, docker.state.ExitCode, docker.state.OOMKilled = false, 137, true
-			},
-			problems: []string{"node: exited with code 137, out of memory"},
-		},
-		{
-			name:     "a container that restarted",
-			change:   func(docker *fakeDocker) { docker.state.StartedAt = "later" },
-			problems: []string{"node: restarted"},
-		},
-		{
-			name:     "a meter that rose after a restart",
-			before:   "5",
-			after:    "2",
-			change:   func(docker *fakeDocker) { docker.state.StartedAt = "later" },
-			problems: []string{"node: restarted", "node: txpool_pending_discard rose by 2"},
-		},
-		{
-			name:     "a container with no state",
-			change:   func(docker *fakeDocker) { docker.stateless = true },
-			problems: []string{"node: has no state"},
-		},
 		{name: "a meter that rose", after: "3", problems: []string{"node: txpool_pending_discard rose by 3"}},
 		{name: "a meter that rose a million", after: "1000000", problems: []string{"node: txpool_pending_discard rose by 1000000"}},
 		{
@@ -110,6 +104,13 @@ func TestContainerStates(t *testing.T) {
 			problems: []string{"node: p2p_lost_qrl_68_0x03 rose by 2"},
 		},
 		{
+			name:     "a meter that rose after a restart",
+			before:   "5",
+			after:    "2",
+			change:   func(docker *fakeDocker) { docker.state.StartedAt = "later" },
+			problems: []string{"node: restarted", "node: txpool_pending_discard rose by 2"},
+		},
+		{
 			name:     "a crash in the log",
 			change:   func(docker *fakeDocker) { docker.logs = "INFO [11-16] Imported\npanic: runtime error\n" },
 			problems: []string{"node: logged panic: runtime error"},
@@ -117,28 +118,23 @@ func TestContainerStates(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			meter := cmp.Or(test.meter, "txpool_pending_discard")
-			discard := cmp.Or(test.before, "0")
+			value := cmp.Or(test.before, "0")
 			var mutex sync.Mutex
 			server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
 				mutex.Lock()
 				defer mutex.Unlock()
-				_, _ = writer.Write([]byte("# TYPE " + meter + " gauge\n" + meter + " " + discard + "\n"))
+				_, _ = writer.Write([]byte(meter + " " + value + "\n"))
 			}))
 			defer server.Close()
-			docker := &fakeDocker{
-				state:    containertypes.State{Running: true, StartedAt: "earlier"},
-				hostPort: server.URL[strings.LastIndex(server.URL, ":")+1:],
-			}
-
-			metrics, err := metricsURL(t.Context(), docker, "node", 6060)
-			require.NoError(t, err)
+			docker := &fakeDocker{state: containertypes.State{Running: true, StartedAt: "earlier"}}
 			containers := &containerStates{docker: docker}
-			require.NoError(t, containers.record(t.Context(), Container{Name: "node", MetricsURL: metrics}))
+			require.NoError(t, containers.record(t.Context(), Container{Name: "node", MetricsURL: server.URL}))
+
 			if test.change != nil {
-				docker.update(test.change)
+				test.change(docker)
 			}
 			mutex.Lock()
-			discard = cmp.Or(test.after, "0")
+			value = cmp.Or(test.after, "0")
 			mutex.Unlock()
 
 			problems, err := containers.problems(t.Context())
@@ -148,26 +144,21 @@ func TestContainerStates(t *testing.T) {
 	}
 }
 
-func TestContainerStatesError(t *testing.T) {
+func TestContainerStatesMetricsError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
 		_, _ = writer.Write([]byte("txpool_pending_discard 0\n"))
 	}))
-	t.Cleanup(server.Close)
-	docker := &fakeDocker{
-		state:    containertypes.State{Running: true, StartedAt: "earlier"},
-		hostPort: server.URL[strings.LastIndex(server.URL, ":")+1:],
-	}
-	metrics, err := metricsURL(t.Context(), docker, "node", 6060)
-	require.NoError(t, err)
+	defer server.Close()
+	docker := &fakeDocker{state: containertypes.State{Running: true, StartedAt: "earlier"}}
 	containers := &containerStates{docker: docker}
-	require.NoError(t, containers.record(t.Context(), Container{Name: "node", MetricsURL: metrics}))
+	require.NoError(t, containers.record(t.Context(), Container{Name: "node", MetricsURL: server.URL}))
 
 	// A restarted node that does not serve its metrics yet.
-	docker.update(func(docker *fakeDocker) { docker.state.StartedAt = "later" })
+	docker.state.StartedAt = "later"
 	server.Close()
 
 	problems, err := containers.problems(t.Context())
-	require.Error(t, err)
+	require.ErrorContains(t, err, "node: ")
 	require.Equal(t, []string{"node: restarted"}, problems)
 }
 
@@ -175,16 +166,30 @@ func TestContainerStatesRetire(t *testing.T) {
 	docker := &fakeDocker{state: containertypes.State{Running: true, StartedAt: "earlier"}}
 	containers := &containerStates{docker: docker}
 	require.NoError(t, containers.record(t.Context(), Container{Name: "node"}))
-	docker.update(func(docker *fakeDocker) { docker.state.StartedAt = "later" })
+	docker.state.StartedAt = "later"
 
 	require.NoError(t, containers.retire(t.Context(), "node"))
-	// A container read again would have no state.
-	docker.update(func(docker *fakeDocker) { docker.stateless = true })
+	// Reading it again would fail.
+	docker.err = errors.New("no such container")
 	problems, err := containers.problems(t.Context())
 	require.NoError(t, err)
-	require.Equal(t, []string{"node: restarted"}, problems, "the retired container's problems, read once")
+	require.Equal(t, []string{"node: restarted"}, problems)
 
 	require.ErrorContains(t, containers.retire(t.Context(), "node"), "node is not monitored")
+}
+
+func TestContainerStatesInspectError(t *testing.T) {
+	docker := &fakeDocker{state: containertypes.State{Running: true}}
+	containers := &containerStates{docker: docker}
+	require.NoError(t, containers.record(t.Context(), Container{Name: "node"}))
+
+	docker.err = errors.New("gone")
+	require.ErrorContains(t, containers.retire(t.Context(), "node"), "node: gone")
+	problems, err := containers.problems(t.Context())
+	require.NoError(t, err, "a retired container is not read again")
+	require.Empty(t, problems)
+
+	require.ErrorContains(t, containers.record(t.Context(), Container{Name: "other"}), "inspect other: gone")
 }
 
 func TestContainerStatesLogs(t *testing.T) {
@@ -192,9 +197,7 @@ func TestContainerStatesLogs(t *testing.T) {
 	containers := &containerStates{docker: docker}
 	before := time.Now()
 	require.NoError(t, containers.record(t.Context(), Container{Name: "node"}))
-	docker.update(func(docker *fakeDocker) {
-		docker.logs = strings.Repeat("panic: runtime error\n", 5) + "CRIT [11-16] Failed\n"
-	})
+	docker.logs = strings.Repeat("panic: runtime error\n", 5) + "CRIT [11-16] Failed\n"
 
 	problems, err := containers.problems(t.Context())
 	require.NoError(t, err)
@@ -203,7 +206,7 @@ func TestContainerStatesLogs(t *testing.T) {
 
 	seconds, err := strconv.ParseFloat(docker.since, 64)
 	require.NoError(t, err)
-	require.InDelta(t, float64(before.UnixNano())/1e9, seconds, 1, "the logs since Watch")
+	require.InDelta(t, float64(before.UnixNano())/1e9, seconds, 1, "the logs since record")
 	require.Regexp(t, `^[0-9]+\.[0-9]{9}$`, docker.since, "to the nanosecond")
 }
 
@@ -219,9 +222,9 @@ func TestReadMetrics(t *testing.T) {
 
 	t.Run("skips comments, labelled and bad values", func(t *testing.T) {
 		page := "# TYPE chain_head gauge\nchain_head 7\nchain_inserts {quantile=\"0.5\"} 9\nnot_a_number x\n"
-		meters, err := readMetrics(t.Context(), serve(t, http.StatusOK, page))
+		values, err := readMetrics(t.Context(), serve(t, http.StatusOK, page))
 		require.NoError(t, err)
-		require.Equal(t, map[string]float64{"chain_head": 7}, meters)
+		require.Equal(t, map[string]float64{"chain_head": 7}, values)
 	})
 	t.Run("an empty page", func(t *testing.T) {
 		_, err := readMetrics(t.Context(), serve(t, http.StatusOK, "# nothing\n"))
