@@ -84,9 +84,7 @@ func TestStateProblems(t *testing.T) {
 func TestContainerStates(t *testing.T) {
 	for _, test := range []struct {
 		name string
-		// meter is the trouble meter served, txpool_pending_discard when empty;
-		// before and after are its values at record and at problems, "0" when
-		// empty.
+		// meter defaults to txpool_pending_discard, before and after to "0".
 		meter, before, after string
 		change               func(*fakeDocker)
 		problems             []string
