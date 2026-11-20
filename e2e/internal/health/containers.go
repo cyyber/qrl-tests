@@ -62,6 +62,7 @@ var droppingMeters = []string{
 	"txpool_queued_nofunds",
 	"txpool_queued_ratelimit",
 	"txpool_throttle",
+	"txpool_underpriced",
 }
 
 // droppingMeterPrefixes name families of dropping meters that go-qrl registers
