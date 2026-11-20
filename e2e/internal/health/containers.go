@@ -149,13 +149,8 @@ func (states *containerStates) retire(ctx context.Context, name string) error {
 	states.recorded = slices.Delete(states.recorded, index, index+1)
 
 	found, err := states.check(ctx, entry)
-	for _, problem := range found {
-		states.retiredProblems = append(states.retiredProblems, name+": "+problem)
-	}
-	if err != nil {
-		return fmt.Errorf("%s: %w", name, err)
-	}
-	return nil
+	states.retiredProblems = append(states.retiredProblems, found...)
+	return err
 }
 
 // problems returns what has gone wrong since each container was recorded.
@@ -163,17 +158,28 @@ func (states *containerStates) problems(ctx context.Context) ([]string, error) {
 	problems := slices.Clone(states.retiredProblems)
 	for _, entry := range states.recorded {
 		found, err := states.check(ctx, entry)
-		for _, problem := range found {
-			problems = append(problems, entry.Name+": "+problem)
-		}
+		problems = append(problems, found...)
 		if err != nil {
-			return problems, fmt.Errorf("%s: %w", entry.Name, err)
+			return problems, err
 		}
 	}
 	return problems, nil
 }
 
+// check returns a container's problems, and any error reading it, each led by
+// the container's name.
 func (states *containerStates) check(ctx context.Context, entry *containerState) ([]string, error) {
+	found, err := states.inspect(ctx, entry)
+	for index, problem := range found {
+		found[index] = entry.Name + ": " + problem
+	}
+	if err != nil {
+		return found, fmt.Errorf("%s: %w", entry.Name, err)
+	}
+	return found, nil
+}
+
+func (states *containerStates) inspect(ctx context.Context, entry *containerState) ([]string, error) {
 	inspected, err := states.docker.ContainerInspect(ctx, entry.Name, dockerclient.ContainerInspectOptions{})
 	if err != nil {
 		return nil, err
