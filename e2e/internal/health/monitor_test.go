@@ -21,10 +21,10 @@ func TestExcept(t *testing.T) {
 	require.Len(t, drops, 3, "the drops passed in are not changed")
 }
 
-// startMonitor monitors a fake container, node and beacon chain. The chain
-// started at slot 2, has blocks up to slot 5 but none at 4, the clock is in
-// slot 7 and epoch 1 is finalized.
-func startMonitor(t *testing.T) (*Monitor, *fakeDocker, *fakeAdmin) {
+// fakeMonitor monitors a fake container, node and beacon chain. It started at
+// slot 2; the chain has blocks at 3 and 5, the clock is in slot 7 and epoch 3,
+// and epoch 1 is finalized.
+func fakeMonitor(t *testing.T) (*Monitor, *fakeDocker, *fakeAdmin) {
 	t.Helper()
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		switch request.URL.Path {
@@ -62,7 +62,7 @@ func startMonitor(t *testing.T) (*Monitor, *fakeDocker, *fakeAdmin) {
 }
 
 func TestReport(t *testing.T) {
-	monitor, docker, admin := startMonitor(t)
+	monitor, docker, admin := fakeMonitor(t)
 	own, other := qnode.ID{1}, qnode.ID{2}
 	admin.emit(t, dropped(own, "requested"))
 	admin.emit(t, dropped(other, "useless peer"))
@@ -80,8 +80,20 @@ func TestReport(t *testing.T) {
 	require.Equal(t, "1 problems, 1 peer drops, 2 missed slots of 4, finality 2 epochs behind", report.String())
 }
 
+func TestReportAheadOfClock(t *testing.T) {
+	monitor, _, _ := fakeMonitor(t)
+	monitor.chain.GenesisTime = time.Now().Add(time.Hour)
+
+	report, err := monitor.Report(t.Context())
+	require.NoError(t, err)
+	require.Empty(t, report.Problems)
+	require.Equal(t, []uint64{4}, report.MissedSlots, "up to the head")
+	require.Equal(t, uint64(3), report.Slots)
+	require.Zero(t, report.FinalityLag)
+}
+
 func TestReportFailure(t *testing.T) {
-	monitor, docker, _ := startMonitor(t)
+	monitor, docker, _ := fakeMonitor(t)
 	docker.state.Running = false
 	monitor.beacon, _ = beacon.New("http://127.0.0.1:1")
 
