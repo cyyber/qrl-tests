@@ -88,7 +88,7 @@ func TestReportErr(t *testing.T) {
 		": useless peer; missed slots [4 6] of 4; finality 4 epochs behind")
 }
 
-func TestReportAheadOfClock(t *testing.T) {
+func TestReportHeadAheadOfClock(t *testing.T) {
 	monitor, _, _ := fakeMonitor(t)
 	monitor.chain.GenesisTime = time.Now().Add(time.Hour)
 
@@ -101,12 +101,16 @@ func TestReportAheadOfClock(t *testing.T) {
 }
 
 func TestReportFailure(t *testing.T) {
-	t.Run("a down node", func(t *testing.T) {
+	t.Run("a down node and beacon node", func(t *testing.T) {
 		monitor, docker, _ := fakeMonitor(t)
 		docker.state.Running = false
-		monitor.beacon, _ = beacon.New("http://127.0.0.1:1")
+		server := httptest.NewServer(http.NotFoundHandler())
+		server.Close()
+		var err error
+		monitor.beacon, err = beacon.New(server.URL)
+		require.NoError(t, err)
 
-		_, err := monitor.Report(t.Context())
+		_, err = monitor.Report(t.Context())
 		require.ErrorContains(t, err, `the containers had ["node: exited with code 0"]`)
 	})
 
