@@ -186,7 +186,7 @@ func TestContainerWatchLogs(t *testing.T) {
 	require.Regexp(t, `^[0-9]+\.[0-9]{9}$`, docker.since, "to the nanosecond")
 }
 
-func TestReadMeters(t *testing.T) {
+func TestReadMetrics(t *testing.T) {
 	serve := func(t *testing.T, status int, page string) string {
 		server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
 			writer.WriteHeader(status)
@@ -198,16 +198,16 @@ func TestReadMeters(t *testing.T) {
 
 	t.Run("skips comments, labelled and bad values", func(t *testing.T) {
 		page := "# TYPE chain_head gauge\nchain_head 7\nchain_inserts {quantile=\"0.5\"} 9\nnot_a_number x\n"
-		meters, err := readMeters(t.Context(), serve(t, http.StatusOK, page))
+		meters, err := readMetrics(t.Context(), serve(t, http.StatusOK, page))
 		require.NoError(t, err)
 		require.Equal(t, map[string]float64{"chain_head": 7}, meters)
 	})
 	t.Run("an empty page", func(t *testing.T) {
-		_, err := readMeters(t.Context(), serve(t, http.StatusOK, "# nothing\n"))
+		_, err := readMetrics(t.Context(), serve(t, http.StatusOK, "# nothing\n"))
 		require.ErrorContains(t, err, "has no values")
 	})
 	t.Run("a failed request", func(t *testing.T) {
-		_, err := readMeters(t.Context(), serve(t, http.StatusServiceUnavailable, ""))
+		_, err := readMetrics(t.Context(), serve(t, http.StatusServiceUnavailable, ""))
 		require.ErrorContains(t, err, "503")
 	})
 }

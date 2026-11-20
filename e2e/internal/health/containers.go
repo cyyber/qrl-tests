@@ -95,7 +95,7 @@ func (watch *ContainerWatch) Watch(ctx context.Context, containers ...Container)
 			entry.startedAt = state.StartedAt
 		}
 		if container.MetricsURL != "" {
-			if entry.meters, err = readMeters(ctx, container.MetricsURL); err != nil {
+			if entry.meters, err = readMetrics(ctx, container.MetricsURL); err != nil {
 				return fmt.Errorf("%s: %w", container.Name, err)
 			}
 		}
@@ -143,7 +143,7 @@ func (watch *ContainerWatch) problems(ctx context.Context, entry *watched) ([]st
 	}
 
 	if entry.MetricsURL != "" && state != nil && state.Running {
-		meters, err := readMeters(ctx, entry.MetricsURL)
+		meters, err := readMetrics(ctx, entry.MetricsURL)
 		if err != nil {
 			return problems, err
 		}
