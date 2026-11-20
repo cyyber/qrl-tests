@@ -123,7 +123,7 @@ func NewContainerWatch(docker ContainerReader) *ContainerWatch {
 	return &ContainerWatch{docker: docker}
 }
 
-// Watch records the containers' state as the baseline for Problems.
+// Watch starts watching containers; Problems reports what changes after.
 func (watch *ContainerWatch) Watch(ctx context.Context, containers ...Container) error {
 	for _, container := range containers {
 		inspected, err := watch.docker.ContainerInspect(ctx, container.Name, dockerclient.ContainerInspectOptions{})
