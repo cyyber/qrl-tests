@@ -36,8 +36,10 @@ func fakeMonitor(t *testing.T) (*Monitor, *fakeDocker, *fakeAdmin) {
 	require.NoError(t, err)
 
 	docker := &fakeDocker{state: containertypes.State{Running: true, StartedAt: "earlier"}}
+
 	admin, watch := startPeerWatch(t)
 	t.Cleanup(watch.Close)
+
 	monitor := &Monitor{
 		containers: &containerStates{docker: docker},
 		peers:      watch,
