@@ -147,7 +147,7 @@ func TestContainerWatch(t *testing.T) {
 	}
 }
 
-func TestContainerWatchKeepsProblemsOnError(t *testing.T) {
+func TestContainerWatchError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
 		_, _ = writer.Write([]byte("txpool_pending_discard 0\n"))
 	}))
