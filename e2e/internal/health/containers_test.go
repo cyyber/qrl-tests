@@ -173,18 +173,15 @@ func TestContainerStatesMetricsError(t *testing.T) {
 func TestContainerStatesRetire(t *testing.T) {
 	docker := &fakeDocker{state: containertypes.State{Running: true, StartedAt: "earlier"}}
 	containers := &containerStates{docker: docker}
-	require.NoError(t, containers.record(t.Context(), Container{Name: "node"}))
+	require.NoError(t, containers.record(t.Context(), Container{Name: "node"}, Container{Name: "other"}))
 	docker.state.StartedAt = "later"
 
-	require.NoError(t, containers.retire(t.Context(), "node"))
-
-	// Reading it again would fail.
-	docker.err = errors.New("no such container")
+	require.NoError(t, containers.retire(t.Context(), "other"))
 	problems, err := containers.problems(t.Context())
 	require.NoError(t, err)
-	require.Equal(t, []string{"node: restarted"}, problems)
+	require.Equal(t, []string{"other: restarted", "node: restarted"}, problems, "retired problems first")
 
-	require.ErrorContains(t, containers.retire(t.Context(), "node"), "node is not monitored")
+	require.ErrorContains(t, containers.retire(t.Context(), "other"), "other is not monitored")
 }
 
 func TestContainerStatesInspectError(t *testing.T) {
