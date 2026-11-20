@@ -67,7 +67,7 @@ func (monitor *Monitor) Retire(ctx context.Context, name string) error {
 	return monitor.containers.retire(ctx, name)
 }
 
-// Close stops the monitor.
+// Close releases the monitor's Docker client and peer watch.
 func (monitor *Monitor) Close() {
 	if monitor.peers != nil {
 		monitor.peers.Close()
