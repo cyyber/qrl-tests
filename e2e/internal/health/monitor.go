@@ -56,7 +56,8 @@ func (monitor *Monitor) start(ctx context.Context, participant devnet.Participan
 	return err
 }
 
-// Add adds containers started after the monitor, such as a sync node.
+// Add records the state of containers started after the monitor, such as a
+// sync node, so that the report covers them from then on.
 func (monitor *Monitor) Add(ctx context.Context, containers ...Container) error {
 	return monitor.containers.record(ctx, containers...)
 }
