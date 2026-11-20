@@ -12,10 +12,10 @@ import (
 	dockerclient "github.com/moby/moby/client"
 )
 
-// ContainerReader is the part of the Docker client a ContainerWatch uses.
+// ContainerReader inspects a container and reads its logs.
 type ContainerReader interface {
+	dockerapi.LogReader
 	ContainerInspect(context.Context, string, dockerclient.ContainerInspectOptions) (dockerclient.ContainerInspectResult, error)
-	ContainerLogs(context.Context, string, dockerclient.ContainerLogsOptions) (dockerclient.ContainerLogsResult, error)
 }
 
 // Container is a node's container to watch, by its Docker name or ID, with
@@ -124,6 +124,7 @@ func (watch *ContainerWatch) problems(ctx context.Context, entry *watched) ([]st
 	if err != nil {
 		return nil, err
 	}
+
 	var problems []string
 	baseline := entry.meters
 	state := inspected.Container.State
