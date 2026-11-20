@@ -27,7 +27,6 @@ type fakeDocker struct {
 	mutex     sync.Mutex
 	state     containertypes.State
 	stateless bool
-	restarts  int
 	port      uint16
 	hostPort  string
 	logs      string
@@ -43,8 +42,7 @@ func (docker *fakeDocker) ContainerInspect(context.Context, string, dockerclient
 	}
 	port, _ := network.PortFrom(cmp.Or(docker.port, 6060), network.TCP)
 	return dockerclient.ContainerInspectResult{Container: containertypes.InspectResponse{
-		State:        state,
-		RestartCount: docker.restarts,
+		State: state,
 		NetworkSettings: &containertypes.NetworkSettings{
 			Ports: network.PortMap{port: {{HostIP: netip.IPv4Unspecified(), HostPort: docker.hostPort}}},
 		},
@@ -92,15 +90,10 @@ func TestContainerWatch(t *testing.T) {
 			problems: []string{"node: restarted"},
 		},
 		{
-			name:     "a container that Docker restarted",
-			change:   func(docker *fakeDocker) { docker.restarts = 1 },
-			problems: []string{"node: restarted"},
-		},
-		{
 			name:     "a meter that rose after a restart",
 			before:   "5",
 			after:    "2",
-			change:   func(docker *fakeDocker) { docker.restarts = 1 },
+			change:   func(docker *fakeDocker) { docker.state.StartedAt = "later" },
 			problems: []string{"node: restarted", "node: txpool_pending_discard rose by 2"},
 		},
 		{
@@ -170,7 +163,7 @@ func TestContainerWatchError(t *testing.T) {
 	require.NoError(t, watch.Watch(t.Context(), Container{Name: "node", MetricsURL: metrics}))
 
 	// A restarted node that does not serve its metrics yet.
-	docker.update(func(docker *fakeDocker) { docker.restarts = 1 })
+	docker.update(func(docker *fakeDocker) { docker.state.StartedAt = "later" })
 	server.Close()
 
 	problems, err := watch.Problems(t.Context())
