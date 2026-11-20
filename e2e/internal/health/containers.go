@@ -62,9 +62,6 @@ var droppingMeters = []string{
 	"txpool_underpriced",
 }
 
-// droppingMeterPrefixes name families of dropping meters that go-qrl registers
-// per protocol and message, such as p2p_lost_qrl_68_0x03 for a request that
-// expired without a reply.
 var droppingMeterPrefixes = []string{"p2p_lost_"}
 
 // Log lines that mean a node crashed, refused a message for its size, or
