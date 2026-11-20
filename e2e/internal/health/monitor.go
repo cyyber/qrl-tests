@@ -56,13 +56,15 @@ func (monitor *Monitor) start(ctx context.Context, participant devnet.Participan
 	return err
 }
 
-// Add records containers started later, such as a sync node, for the report.
-func (monitor *Monitor) Add(ctx context.Context, containers ...Container) error {
+// AddContainers records containers started later, such as a sync node, for
+// the report.
+func (monitor *Monitor) AddContainers(ctx context.Context, containers ...Container) error {
 	return monitor.containers.record(ctx, containers...)
 }
 
-// Retire takes a container's last reading, for the report, before it is removed.
-func (monitor *Monitor) Retire(ctx context.Context, name string) error {
+// RetireContainer takes a container's last reading, for the report, before it
+// is removed.
+func (monitor *Monitor) RetireContainer(ctx context.Context, name string) error {
 	return monitor.containers.retire(ctx, name)
 }
 

@@ -57,7 +57,7 @@ func fakeMonitor(t *testing.T) (*Monitor, *fakeDocker, *fakeAdmin) {
 		},
 		firstSlot: 2,
 	}
-	require.NoError(t, monitor.Add(t.Context(), Container{Name: "node"}))
+	require.NoError(t, monitor.AddContainers(t.Context(), Container{Name: "node"}))
 	return monitor, docker, admin
 }
 
