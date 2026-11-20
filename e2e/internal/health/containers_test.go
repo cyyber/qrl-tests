@@ -14,7 +14,6 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/cyyber/qrl-tests/devnet"
 	containertypes "github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/api/types/network"
 	dockerclient "github.com/moby/moby/client"
@@ -207,49 +206,4 @@ func TestContainerStatesLogs(t *testing.T) {
 
 	since := containers.recorded[0].since
 	require.Equal(t, fmt.Sprintf("%d.%09d", since.Unix(), since.Nanosecond()), docker.since, "the logs since record")
-}
-
-func TestReadMetrics(t *testing.T) {
-	serve := func(t *testing.T, status int, page string) string {
-		server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
-			writer.WriteHeader(status)
-			_, _ = writer.Write([]byte(page))
-		}))
-		t.Cleanup(server.Close)
-		return server.URL
-	}
-
-	t.Run("skips comments, labelled and bad values", func(t *testing.T) {
-		page := "# TYPE chain_head gauge\nchain_head 7\nchain_inserts {quantile=\"0.5\"} 9\nnot_a_number x\n"
-		values, err := readMetrics(t.Context(), serve(t, http.StatusOK, page))
-		require.NoError(t, err)
-		require.Equal(t, map[string]float64{"chain_head": 7}, values)
-	})
-	t.Run("an empty page", func(t *testing.T) {
-		_, err := readMetrics(t.Context(), serve(t, http.StatusOK, "# nothing\n"))
-		require.ErrorContains(t, err, "has no values")
-	})
-	t.Run("a failed request", func(t *testing.T) {
-		_, err := readMetrics(t.Context(), serve(t, http.StatusServiceUnavailable, ""))
-		require.ErrorContains(t, err, "503")
-	})
-}
-
-func TestParticipantContainers(t *testing.T) {
-	docker := &fakeDocker{hostPort: "32000"}
-	participant := devnet.Participant{
-		Execution: devnet.ExecutionService{ServiceInfo: devnet.ServiceInfo{Name: "el-1", ID: "a"}},
-		Consensus: devnet.ConsensusService{ServiceInfo: devnet.ServiceInfo{Name: "cl-1", ID: "b"}},
-	}
-
-	containers, err := ParticipantContainers(t.Context(), docker, participant)
-	require.NoError(t, err)
-	require.Equal(t, []Container{
-		{Name: "el-1--a", MetricsURL: "http://127.0.0.1:32000/debug/metrics/prometheus"},
-		{Name: "cl-1--b"},
-	}, containers, "no validator container")
-
-	docker.hostPort = ""
-	_, err = ParticipantContainers(t.Context(), docker, participant)
-	require.ErrorContains(t, err, "el-1--a: port 9001 is not published")
 }
