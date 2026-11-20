@@ -22,7 +22,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// fakeDocker is one container.
 type fakeDocker struct {
 	state    containertypes.State
 	err      error
