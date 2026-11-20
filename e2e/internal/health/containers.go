@@ -18,8 +18,7 @@ type ContainerReader interface {
 	ContainerInspect(context.Context, string, dockerclient.ContainerInspectOptions) (dockerclient.ContainerInspectResult, error)
 }
 
-// Container is a node's container to watch, by its Docker name or ID, with
-// the URL of its go-qrl metrics page if it has one.
+// Container is a container to watch, with its go-qrl metrics page if any.
 type Container struct {
 	Name       string
 	MetricsURL string
