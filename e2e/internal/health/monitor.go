@@ -61,8 +61,7 @@ func (monitor *Monitor) Add(ctx context.Context, containers ...Container) error 
 	return monitor.containers.record(ctx, containers...)
 }
 
-// Retire takes a container's final reading before the suite removes it. Its
-// problems stay in the report.
+// Retire takes a container's last reading, for the report, before it is removed.
 func (monitor *Monitor) Retire(ctx context.Context, name string) error {
 	return monitor.containers.retire(ctx, name)
 }
