@@ -136,15 +136,14 @@ func (monitor *Monitor) Report(ctx context.Context, ownPeers ...qnode.ID) (Repor
 	epoch := monitor.chain.EpochAt(now)
 	return Report{
 		ContainerProblems: problems,
-		PeerDrops:         except(drops, ownPeers...),
+		PeerDrops:         dropsExcept(drops, ownPeers...),
 		MissedSlots:       missed,
 		DueSlots:          last - min(last, monitor.firstSlot),
 		FinalityLag:       epoch - min(epoch, checkpoints.Finalized.Epoch),
 	}, nil
 }
 
-// except returns the drops of peers other than the given ones.
-func except(drops []PeerDrop, peers ...qnode.ID) []PeerDrop {
+func dropsExcept(drops []PeerDrop, peers ...qnode.ID) []PeerDrop {
 	return slices.DeleteFunc(slices.Clone(drops), func(drop PeerDrop) bool {
 		return slices.Contains(peers, drop.Peer)
 	})
