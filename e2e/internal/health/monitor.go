@@ -85,8 +85,6 @@ type Report struct {
 	FinalityLag       uint64
 }
 
-// MaxFinalityLag is the most a healthy chain lags: it finalizes the epoch
-// before the previous one, and the current one may have just begun.
 const MaxFinalityLag = 3
 
 func (report Report) String() string {
