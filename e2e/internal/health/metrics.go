@@ -10,8 +10,7 @@ import (
 	"strings"
 )
 
-// metricsURL returns the URL of the go-qrl metrics page that a container
-// serves on port, published to the host.
+// metricsURL returns the host URL of a container's go-qrl metrics page.
 func metricsURL(ctx context.Context, docker ContainerReader, container string, port uint16) (string, error) {
 	hostPort, err := PublishedPort(ctx, docker, container, port)
 	if err != nil {
