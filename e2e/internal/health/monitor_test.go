@@ -71,11 +71,11 @@ func TestReport(t *testing.T) {
 
 	report, err := monitor.Report(t.Context(), own)
 	require.NoError(t, err)
-	require.Equal(t, []string{"node: restarted"}, report.Problems)
+	require.Equal(t, []string{"node: restarted"}, report.ContainerProblems)
 	require.Len(t, report.PeerDrops, 1)
 	require.Equal(t, other, report.PeerDrops[0].Peer)
 	require.Equal(t, []uint64{4, 6}, report.MissedSlots, "up to the slot before the clock's")
-	require.Equal(t, uint64(4), report.Slots)
+	require.Equal(t, uint64(4), report.DueSlots)
 	require.Equal(t, uint64(2), report.FinalityLag)
 	require.Equal(t, "1 problems, 1 peer drops, 2 missed slots of 4, finality 2 epochs behind", report.String())
 }
@@ -86,9 +86,9 @@ func TestReportAheadOfClock(t *testing.T) {
 
 	report, err := monitor.Report(t.Context())
 	require.NoError(t, err)
-	require.Empty(t, report.Problems)
+	require.Empty(t, report.ContainerProblems)
 	require.Equal(t, []uint64{4}, report.MissedSlots, "up to the head")
-	require.Equal(t, uint64(3), report.Slots)
+	require.Equal(t, uint64(3), report.DueSlots)
 	require.Zero(t, report.FinalityLag)
 }
 

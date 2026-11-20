@@ -78,17 +78,11 @@ func (monitor *Monitor) Close() {
 
 // Report is what a monitor has seen since it started.
 type Report struct {
-	// Problems are what went wrong in the containers: exits, restarts, dropped
-	// or refused work, and trouble lines in logs.
-	Problems []string
-	// PeerDrops are the peers the execution node dropped.
-	PeerDrops []PeerDrop
-	// MissedSlots are the slots without a block, of the Slots due one since
-	// the start.
-	MissedSlots []uint64
-	Slots       uint64
-	// FinalityLag is how many epochs the finalized one is behind the clock's.
-	FinalityLag uint64
+	ContainerProblems []string
+	PeerDrops         []PeerDrop
+	MissedSlots       []uint64
+	DueSlots          uint64
+	FinalityLag       uint64
 }
 
 // MaxFinalityLag is the most a healthy chain lags: it finalizes the epoch
@@ -97,7 +91,7 @@ const MaxFinalityLag = 3
 
 func (report Report) String() string {
 	return fmt.Sprintf("%d problems, %d peer drops, %d missed slots of %d, finality %d epochs behind",
-		len(report.Problems), len(report.PeerDrops), len(report.MissedSlots), report.Slots, report.FinalityLag)
+		len(report.ContainerProblems), len(report.PeerDrops), len(report.MissedSlots), report.DueSlots, report.FinalityLag)
 }
 
 // Report returns what the monitor has seen. It leaves out the drops of the
@@ -140,11 +134,11 @@ func (monitor *Monitor) Report(ctx context.Context, ownPeers ...qnode.ID) (Repor
 
 	epoch := monitor.chain.EpochAt(now)
 	return Report{
-		Problems:    problems,
-		PeerDrops:   except(drops, ownPeers...),
-		MissedSlots: missed,
-		Slots:       last - min(last, monitor.firstSlot),
-		FinalityLag: epoch - min(epoch, checkpoints.Finalized.Epoch),
+		ContainerProblems: problems,
+		PeerDrops:         except(drops, ownPeers...),
+		MissedSlots:       missed,
+		DueSlots:          last - min(last, monitor.firstSlot),
+		FinalityLag:       epoch - min(epoch, checkpoints.Finalized.Epoch),
 	}, nil
 }
 
