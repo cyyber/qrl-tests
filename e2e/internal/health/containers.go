@@ -50,6 +50,8 @@ var droppingMeters = []string{
 	"qrl_protocols_qrl_ingress_handshake_error_genesis",
 	"qrl_protocols_qrl_ingress_handshake_error_network",
 	"qrl_protocols_qrl_ingress_handshake_error_version",
+	"qrl_protocols_snap_egress_registration_error",
+	"qrl_protocols_snap_ingress_registration_error",
 	"txpool_invalid",
 	"txpool_overflowed",
 	"txpool_pending_discard",
