@@ -35,7 +35,7 @@ func readMetrics(ctx context.Context, url string) (map[string]float64, error) {
 		return nil, fmt.Errorf("GET %s returned %s", url, response.Status)
 	}
 
-	meters := make(map[string]float64)
+	values := make(map[string]float64)
 	scanner := bufio.NewScanner(response.Body)
 	for scanner.Scan() {
 		// go-qrl writes a labelled value as "name {labels} value", so the
@@ -45,15 +45,15 @@ func readMetrics(ctx context.Context, url string) (map[string]float64, error) {
 			continue
 		}
 		if number, err := strconv.ParseFloat(value, 64); err == nil {
-			meters[name] = number
+			values[name] = number
 		}
 	}
 	if err := scanner.Err(); err != nil {
 		return nil, err
 	}
 
-	if len(meters) == 0 {
+	if len(values) == 0 {
 		return nil, errors.New("the metrics page has no values")
 	}
-	return meters, nil
+	return values, nil
 }
