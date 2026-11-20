@@ -151,6 +151,7 @@ func TestContainerWatchKeepsProblemsOnError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
 		_, _ = writer.Write([]byte("txpool_pending_discard 0\n"))
 	}))
+	t.Cleanup(server.Close)
 	docker := &fakeDocker{
 		state:    containertypes.State{Running: true, StartedAt: "earlier"},
 		hostPort: server.URL[strings.LastIndex(server.URL, ":")+1:],
@@ -174,11 +175,14 @@ func TestContainerWatchLogs(t *testing.T) {
 	watch := NewContainerWatch(docker)
 	before := time.Now()
 	require.NoError(t, watch.Watch(t.Context(), Container{Name: "node"}))
-	docker.update(func(docker *fakeDocker) { docker.logs = strings.Repeat("panic: runtime error\n", 5) })
+	docker.update(func(docker *fakeDocker) {
+		docker.logs = strings.Repeat("panic: runtime error\n", 5) + "CRIT [11-16] Failed\n"
+	})
 
 	problems, err := watch.Problems(t.Context())
 	require.NoError(t, err)
-	require.Len(t, problems, 3, "at most three lines of each signature")
+	require.Len(t, problems, 4, "at most three lines of each signature")
+	require.Equal(t, "node: logged CRIT [11-16] Failed", problems[3])
 
 	seconds, err := strconv.ParseFloat(docker.since, 64)
 	require.NoError(t, err)
