@@ -34,9 +34,12 @@ func readMeters(ctx context.Context, url string) (map[string]float64, error) {
 	if response.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("GET %s returned %s", url, response.Status)
 	}
+
 	meters := make(map[string]float64)
 	scanner := bufio.NewScanner(response.Body)
 	for scanner.Scan() {
+		// go-qrl writes a labelled value as "name {labels} value", so the
+		// value after the first space has another space in it.
 		name, value, found := strings.Cut(scanner.Text(), " ")
 		if !found || strings.HasPrefix(name, "#") || strings.Contains(value, " ") {
 			continue
@@ -48,6 +51,7 @@ func readMeters(ctx context.Context, url string) (map[string]float64, error) {
 	if err := scanner.Err(); err != nil {
 		return nil, err
 	}
+
 	if len(meters) == 0 {
 		return nil, errors.New("the metrics page has no values")
 	}
