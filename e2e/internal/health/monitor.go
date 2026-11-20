@@ -14,8 +14,7 @@ import (
 	"github.com/theQRL/go-qrl/p2p/qnode"
 )
 
-// Monitor follows a devnet participant for the length of a suite: its
-// containers, the peers its execution node drops, and its chain.
+// Monitor follows a participant's containers, peers and chain during a suite.
 type Monitor struct {
 	containers *containerStates
 	docker     dockerclient.APIClient
