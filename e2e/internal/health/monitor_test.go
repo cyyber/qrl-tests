@@ -109,7 +109,6 @@ func TestReportFailure(t *testing.T) {
 		docker.err = errors.New("gone")
 
 		_, err := monitor.Report(t.Context())
-		require.ErrorContains(t, err, "node: gone")
-		require.NotContains(t, err.Error(), "the containers had")
+		require.EqualError(t, err, "node: gone")
 	})
 }
