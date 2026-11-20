@@ -73,6 +73,18 @@ var troubleSignatures = []string{
 	"message too long",
 	"read limit exceeded",
 	"degraded performance",
+	"BAD BLOCK",
+	"invalid merkle root",
+	"crashed: ",
+	"Impossible reorg",
+	"Truncating ancient chain",
+	"Head state missing, repairing",
+	"Low disk space",
+	"Got a validation error in",
+	"Pruned invalid blocks",
+	"Rolling back insertion of block",
+	"could not validate state root",
+	"slashing protection check",
 }
 
 // ContainerWatch records containers' state, then reports what went wrong
