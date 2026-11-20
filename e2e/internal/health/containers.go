@@ -116,7 +116,7 @@ type watched struct {
 	since     time.Time
 	startedAt string
 	restarts  int
-	meters    map[string]float64
+	metrics   map[string]float64
 }
 
 func NewContainerWatch(docker ContainerReader) *ContainerWatch {
@@ -135,7 +135,7 @@ func (watch *ContainerWatch) Watch(ctx context.Context, containers ...Container)
 			entry.startedAt = state.StartedAt
 		}
 		if container.MetricsURL != "" {
-			if entry.meters, err = readMetrics(ctx, container.MetricsURL); err != nil {
+			if entry.metrics, err = readMetrics(ctx, container.MetricsURL); err != nil {
 				return fmt.Errorf("%s: %w", container.Name, err)
 			}
 		}
@@ -166,7 +166,7 @@ func (watch *ContainerWatch) problems(ctx context.Context, entry *watched) ([]st
 	}
 
 	var problems []string
-	baseline := entry.meters
+	baseline := entry.metrics
 	state := inspected.Container.State
 	switch {
 	case state == nil:
@@ -184,12 +184,12 @@ func (watch *ContainerWatch) problems(ctx context.Context, entry *watched) ([]st
 	}
 
 	if entry.MetricsURL != "" && state != nil && state.Running {
-		meters, err := readMetrics(ctx, entry.MetricsURL)
+		values, err := readMetrics(ctx, entry.MetricsURL)
 		if err != nil {
 			return problems, err
 		}
-		for _, name := range droppingNames(meters, baseline) {
-			if rise := meters[name] - baseline[name]; rise > 0 {
+		for _, name := range droppingNames(values, baseline) {
+			if rise := values[name] - baseline[name]; rise > 0 {
 				problems = append(problems, name+" rose by "+strconv.FormatFloat(rise, 'f', -1, 64))
 			}
 		}
@@ -235,9 +235,9 @@ func (watch *ContainerWatch) troubleLines(ctx context.Context, entry *watched) (
 
 // droppingNames returns the dropping meters to compare, those of the prefixed
 // families included, in order.
-func droppingNames(meters ...map[string]float64) []string {
+func droppingNames(readings ...map[string]float64) []string {
 	names := slices.Clone(droppingMeters)
-	for _, values := range meters {
+	for _, values := range readings {
 		for name := range values {
 			if slices.ContainsFunc(droppingMeterPrefixes, func(prefix string) bool {
 				return strings.HasPrefix(name, prefix)
