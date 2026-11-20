@@ -103,29 +103,29 @@ var troubleSignatures = []string{
 	"Failed to sign block",
 }
 
-// baselines record containers' state, then report what went wrong since: an
-// exit or restart, dropped or refused work, or a trouble line in a log.
-type baselines struct {
+// containerStates record containers' state, then report what went wrong since:
+// an exit or restart, dropped or refused work, or a trouble line in a log.
+type containerStates struct {
 	docker   ContainerReader
-	recorded []*baseline
+	recorded []*containerState
 	// retired holds the problems of containers no longer inspected.
 	retired []string
 }
 
-type baseline struct {
+type containerState struct {
 	Container
 	since     time.Time
 	startedAt string
 	metrics   map[string]float64
 }
 
-func (baselines *baselines) record(ctx context.Context, containers ...Container) error {
+func (states *containerStates) record(ctx context.Context, containers ...Container) error {
 	for _, container := range containers {
-		inspected, err := baselines.docker.ContainerInspect(ctx, container.Name, dockerclient.ContainerInspectOptions{})
+		inspected, err := states.docker.ContainerInspect(ctx, container.Name, dockerclient.ContainerInspectOptions{})
 		if err != nil {
 			return fmt.Errorf("inspect %s: %w", container.Name, err)
 		}
-		entry := &baseline{Container: container, since: time.Now()}
+		entry := &containerState{Container: container, since: time.Now()}
 		if state := inspected.Container.State; state != nil {
 			entry.startedAt = state.StartedAt
 		}
@@ -134,24 +134,24 @@ func (baselines *baselines) record(ctx context.Context, containers ...Container)
 				return fmt.Errorf("%s: %w", container.Name, err)
 			}
 		}
-		baselines.recorded = append(baselines.recorded, entry)
+		states.recorded = append(states.recorded, entry)
 	}
 	return nil
 }
 
 // retire takes a container's final reading, keeps its problems and stops
 // inspecting it.
-func (baselines *baselines) retire(ctx context.Context, name string) error {
-	index := slices.IndexFunc(baselines.recorded, func(entry *baseline) bool { return entry.Name == name })
+func (states *containerStates) retire(ctx context.Context, name string) error {
+	index := slices.IndexFunc(states.recorded, func(entry *containerState) bool { return entry.Name == name })
 	if index < 0 {
 		return fmt.Errorf("%s is not monitored", name)
 	}
-	entry := baselines.recorded[index]
-	baselines.recorded = slices.Delete(baselines.recorded, index, index+1)
+	entry := states.recorded[index]
+	states.recorded = slices.Delete(states.recorded, index, index+1)
 
-	found, err := baselines.check(ctx, entry)
+	found, err := states.check(ctx, entry)
 	for _, problem := range found {
-		baselines.retired = append(baselines.retired, name+": "+problem)
+		states.retired = append(states.retired, name+": "+problem)
 	}
 	if err != nil {
 		return fmt.Errorf("%s: %w", name, err)
@@ -160,10 +160,10 @@ func (baselines *baselines) retire(ctx context.Context, name string) error {
 }
 
 // problems returns what has gone wrong since each container was recorded.
-func (baselines *baselines) problems(ctx context.Context) ([]string, error) {
-	problems := slices.Clone(baselines.retired)
-	for _, entry := range baselines.recorded {
-		found, err := baselines.check(ctx, entry)
+func (states *containerStates) problems(ctx context.Context) ([]string, error) {
+	problems := slices.Clone(states.retired)
+	for _, entry := range states.recorded {
+		found, err := states.check(ctx, entry)
 		for _, problem := range found {
 			problems = append(problems, entry.Name+": "+problem)
 		}
@@ -174,8 +174,8 @@ func (baselines *baselines) problems(ctx context.Context) ([]string, error) {
 	return problems, nil
 }
 
-func (baselines *baselines) check(ctx context.Context, entry *baseline) ([]string, error) {
-	inspected, err := baselines.docker.ContainerInspect(ctx, entry.Name, dockerclient.ContainerInspectOptions{})
+func (states *containerStates) check(ctx context.Context, entry *containerState) ([]string, error) {
+	inspected, err := states.docker.ContainerInspect(ctx, entry.Name, dockerclient.ContainerInspectOptions{})
 	if err != nil {
 		return nil, err
 	}
@@ -210,7 +210,7 @@ func (baselines *baselines) check(ctx context.Context, entry *baseline) ([]strin
 		}
 	}
 
-	lines, err := baselines.troubleLines(ctx, entry)
+	lines, err := states.troubleLines(ctx, entry)
 	if err != nil {
 		return problems, err
 	}
@@ -222,8 +222,8 @@ func (baselines *baselines) check(ctx context.Context, entry *baseline) ([]strin
 
 // troubleLines returns the container's log lines since Watch that carry a
 // trouble signature, at most a few of each.
-func (baselines *baselines) troubleLines(ctx context.Context, entry *baseline) ([]string, error) {
-	output, err := dockerapi.Logs(ctx, baselines.docker, entry.Name, dockerclient.ContainerLogsOptions{
+func (states *containerStates) troubleLines(ctx context.Context, entry *containerState) ([]string, error) {
+	output, err := dockerapi.Logs(ctx, states.docker, entry.Name, dockerclient.ContainerLogsOptions{
 		Since: fmt.Sprintf("%d.%09d", entry.since.Unix(), entry.since.Nanosecond()),
 	})
 	if err != nil {

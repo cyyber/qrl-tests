@@ -17,7 +17,7 @@ import (
 // Monitor watches a devnet participant for the length of a suite: its
 // containers, the peers its execution node drops, and its chain.
 type Monitor struct {
-	containers *baselines
+	containers *containerStates
 	docker     dockerclient.APIClient
 	peers      *PeerWatch
 	beacon     *beacon.Client
@@ -32,7 +32,7 @@ func StartMonitor(ctx context.Context, participant devnet.Participant, client *b
 		return nil, fmt.Errorf("create Docker client: %w", err)
 	}
 
-	monitor := &Monitor{containers: &baselines{docker: docker}, docker: docker, beacon: client, chain: chain}
+	monitor := &Monitor{containers: &containerStates{docker: docker}, docker: docker, beacon: client, chain: chain}
 	if err := monitor.start(ctx, participant); err != nil {
 		monitor.Close()
 		return nil, err

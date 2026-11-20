@@ -66,7 +66,7 @@ func (docker *fakeDocker) update(change func(*fakeDocker)) {
 	change(docker)
 }
 
-func TestBaselines(t *testing.T) {
+func TestContainerStates(t *testing.T) {
 	for _, test := range []struct {
 		name string
 		// meter is the dropping meter the page serves, txpool_pending_discard
@@ -132,7 +132,7 @@ func TestBaselines(t *testing.T) {
 
 			metrics, err := metricsURL(t.Context(), docker, "node", 6060)
 			require.NoError(t, err)
-			containers := &baselines{docker: docker}
+			containers := &containerStates{docker: docker}
 			require.NoError(t, containers.record(t.Context(), Container{Name: "node", MetricsURL: metrics}))
 			if test.change != nil {
 				docker.update(test.change)
@@ -148,7 +148,7 @@ func TestBaselines(t *testing.T) {
 	}
 }
 
-func TestBaselinesError(t *testing.T) {
+func TestContainerStatesError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
 		_, _ = writer.Write([]byte("txpool_pending_discard 0\n"))
 	}))
@@ -159,7 +159,7 @@ func TestBaselinesError(t *testing.T) {
 	}
 	metrics, err := metricsURL(t.Context(), docker, "node", 6060)
 	require.NoError(t, err)
-	containers := &baselines{docker: docker}
+	containers := &containerStates{docker: docker}
 	require.NoError(t, containers.record(t.Context(), Container{Name: "node", MetricsURL: metrics}))
 
 	// A restarted node that does not serve its metrics yet.
@@ -171,9 +171,9 @@ func TestBaselinesError(t *testing.T) {
 	require.Equal(t, []string{"node: restarted"}, problems)
 }
 
-func TestBaselinesRetire(t *testing.T) {
+func TestContainerStatesRetire(t *testing.T) {
 	docker := &fakeDocker{state: containertypes.State{Running: true, StartedAt: "earlier"}}
-	containers := &baselines{docker: docker}
+	containers := &containerStates{docker: docker}
 	require.NoError(t, containers.record(t.Context(), Container{Name: "node"}))
 	docker.update(func(docker *fakeDocker) { docker.state.StartedAt = "later" })
 
@@ -187,9 +187,9 @@ func TestBaselinesRetire(t *testing.T) {
 	require.ErrorContains(t, containers.retire(t.Context(), "node"), "node is not monitored")
 }
 
-func TestBaselinesLogs(t *testing.T) {
+func TestContainerStatesLogs(t *testing.T) {
 	docker := &fakeDocker{state: containertypes.State{Running: true}}
-	containers := &baselines{docker: docker}
+	containers := &containerStates{docker: docker}
 	before := time.Now()
 	require.NoError(t, containers.record(t.Context(), Container{Name: "node"}))
 	docker.update(func(docker *fakeDocker) {
