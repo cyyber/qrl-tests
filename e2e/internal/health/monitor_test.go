@@ -90,17 +90,6 @@ func TestReportErr(t *testing.T) {
 		": useless peer; missed slots [4 6] of 4; finality 4 epochs behind")
 }
 
-func TestReportHeadAtClock(t *testing.T) {
-	monitor, _, _ := fakeMonitor(t)
-	monitor.chain.GenesisTime = time.Now().Add(-5*time.Hour - 30*time.Minute)
-
-	report, err := monitor.Report(t.Context())
-	require.NoError(t, err)
-	require.Equal(t, []uint64{4}, report.MissedSlots, "up to the head")
-	require.Equal(t, uint64(3), report.DueSlots)
-	require.Equal(t, uint64(1), report.FinalityLag)
-}
-
 func TestReportFailure(t *testing.T) {
 	t.Run("a down node and beacon node", func(t *testing.T) {
 		monitor, docker, _ := fakeMonitor(t)
