@@ -6,14 +6,13 @@ import (
 	"context"
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
-	"time"
 
 	"github.com/cyyber/qrl-tests/devnet"
 	containertypes "github.com/moby/moby/api/types/container"
@@ -194,7 +193,6 @@ func TestContainerStatesInspectError(t *testing.T) {
 func TestContainerStatesLogs(t *testing.T) {
 	docker := &fakeDocker{state: containertypes.State{Running: true}}
 	containers := &containerStates{docker: docker}
-	before := time.Now()
 	require.NoError(t, containers.record(t.Context(), Container{Name: "node"}))
 	docker.logs = strings.Repeat("panic: runtime error\n", 5) + "CRIT [11-16] Failed\n"
 
@@ -207,10 +205,8 @@ func TestContainerStatesLogs(t *testing.T) {
 		"node: logged CRIT [11-16] Failed",
 	}, problems, "at most three lines of each signature")
 
-	seconds, err := strconv.ParseFloat(docker.since, 64)
-	require.NoError(t, err)
-	require.InDelta(t, float64(before.UnixNano())/1e9, seconds, 1, "the logs since record")
-	require.Regexp(t, `^[0-9]+\.[0-9]{9}$`, docker.since, "to the nanosecond")
+	since := containers.recorded[0].since
+	require.Equal(t, fmt.Sprintf("%d.%09d", since.Unix(), since.Nanosecond()), docker.since, "the logs since record")
 }
 
 func TestReadMetrics(t *testing.T) {
