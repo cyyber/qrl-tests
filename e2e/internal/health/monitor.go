@@ -56,7 +56,7 @@ func (monitor *Monitor) start(ctx context.Context, participant devnet.Participan
 	return err
 }
 
-// Add monitors containers started after the monitor, such as a sync node.
+// Add adds containers started after the monitor, such as a sync node.
 func (monitor *Monitor) Add(ctx context.Context, containers ...Container) error {
 	return monitor.containers.record(ctx, containers...)
 }
