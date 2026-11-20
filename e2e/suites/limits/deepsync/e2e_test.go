@@ -176,7 +176,7 @@ var _ = ginkgo.Describe(
 			// a drop.
 			report := testsuite.MustSucceed(monitor.Report(ctx, syncer))
 			ginkgo.AddReportEntry("network health", report.String())
-			gomega.Expect(report.Problems).To(gomega.BeEmpty(), "a node or container had trouble")
+			gomega.Expect(report.ContainerProblems).To(gomega.BeEmpty(), "a node or container had trouble")
 			gomega.Expect(report.PeerDrops).To(gomega.BeEmpty(), "the source dropped a peer")
 			// Missed slots are reported, not held against the node: full blocks
 			// every six seconds are far more than mainnet's slots ask of it.
