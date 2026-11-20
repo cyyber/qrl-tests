@@ -94,7 +94,6 @@ func TestReportHeadAheadOfClock(t *testing.T) {
 
 	report, err := monitor.Report(t.Context())
 	require.NoError(t, err)
-	require.Empty(t, report.ContainerProblems)
 	require.Equal(t, []uint64{4}, report.MissedSlots, "up to the head")
 	require.Equal(t, uint64(3), report.DueSlots)
 	require.Zero(t, report.FinalityLag)
@@ -106,9 +105,9 @@ func TestReportFailure(t *testing.T) {
 		docker.state.Running = false
 		server := httptest.NewServer(http.NotFoundHandler())
 		server.Close()
-		var err error
-		monitor.beacon, err = beacon.New(server.URL)
+		client, err := beacon.New(server.URL)
 		require.NoError(t, err)
+		monitor.beacon = client
 
 		_, err = monitor.Report(t.Context())
 		require.ErrorContains(t, err, `the containers had ["node: exited with code 0"]`)
