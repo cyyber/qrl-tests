@@ -62,10 +62,9 @@ var troubleSignatures = []string{
 	"degraded performance",
 }
 
-// ContainerWatch records the state of a network's containers when a suite
-// starts loading them, and reports what has gone wrong since: a container that
-// exited or restarted, a node that dropped or refused work, a trouble line in
-// a log.
+// ContainerWatch records containers' state, then reports what went wrong
+// since: an exit or restart, dropped or refused work, or a trouble line in a
+// log.
 type ContainerWatch struct {
 	docker  ContainerReader
 	watched []*watched
