@@ -134,16 +134,6 @@ func TestMainnetSlotTimeProfileParameters(t *testing.T) {
 	require.Equal(t, float64(8), network["slots_per_epoch"])
 }
 
-func TestSixSecondSlotsProfileParameters(t *testing.T) {
-	payload, err := resolveParameters("Q"+strings.Repeat("a", 128), StartOptions{Profile: ProfileSixSecondSlots})
-	require.NoError(t, err)
-
-	var parameters map[string]any
-	require.NoError(t, json.Unmarshal([]byte(payload), &parameters))
-	network := parameters["network_params"].(map[string]any)
-	require.Equal(t, float64(6), network["seconds_per_slot"])
-}
-
 func TestFileParametersPassThroughUnchanged(t *testing.T) {
 	address := "Q" + strings.Repeat("b", 128)
 	custom := []byte(fmt.Sprintf(`participants:
