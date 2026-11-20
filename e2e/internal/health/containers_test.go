@@ -69,7 +69,7 @@ func (docker *fakeDocker) update(change func(*fakeDocker)) {
 func TestContainerStates(t *testing.T) {
 	for _, test := range []struct {
 		name string
-		// meter is the dropping meter the page serves, txpool_pending_discard
+		// meter is the trouble meter the page serves, txpool_pending_discard
 		// when empty, and before and after its value at Watch and at Problems,
 		// "0" when empty.
 		meter, before, after string

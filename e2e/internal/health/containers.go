@@ -25,9 +25,9 @@ type Container struct {
 	MetricsURL string
 }
 
-// droppingMeters are go-qrl meters whose rise means a node dropped or refused
-// work.
-var droppingMeters = []string{
+// troubleMeters are go-qrl meters whose rise means trouble: dropped, refused
+// or lost work, corrupt state, or a mismatched peer.
+var troubleMeters = []string{
 	"chain_reorg_drop",
 	"pathdb_clean_false",
 	"pathdb_dirty_false",
@@ -63,7 +63,7 @@ var droppingMeters = []string{
 	"txpool_underpriced",
 }
 
-var droppingMeterPrefixes = []string{"p2p_lost_"}
+var troubleMeterPrefixes = []string{"p2p_lost_"}
 
 var troubleSignatures = []string{
 	"panic:",
@@ -220,7 +220,7 @@ func stateProblems(state *containertypes.State, startedAt string) ([]string, boo
 	return nil, false
 }
 
-// meterRises returns the dropping meters that rose since entry was recorded,
+// meterRises returns the trouble meters that rose since entry was recorded,
 // counted from zero after a restart.
 func meterRises(ctx context.Context, entry *containerState, restarted bool) ([]string, error) {
 	values, err := readMetrics(ctx, entry.MetricsURL)
@@ -233,7 +233,7 @@ func meterRises(ctx context.Context, entry *containerState, restarted bool) ([]s
 		baseline = nil
 	}
 	var rises []string
-	for _, name := range droppingNames(values, baseline) {
+	for _, name := range troubleMeterNames(values, baseline) {
 		if rise := values[name] - baseline[name]; rise > 0 {
 			rises = append(rises, name+" rose by "+strconv.FormatFloat(rise, 'f', -1, 64))
 		}
@@ -269,13 +269,13 @@ func (states *containerStates) troubleLines(ctx context.Context, entry *containe
 	return lines, nil
 }
 
-// droppingNames returns the dropping meters to compare, those of the prefixed
+// troubleMeterNames returns the trouble meters to compare, those of the prefixed
 // families included, in order.
-func droppingNames(readings ...map[string]float64) []string {
-	names := slices.Clone(droppingMeters)
+func troubleMeterNames(readings ...map[string]float64) []string {
+	names := slices.Clone(troubleMeters)
 	for _, values := range readings {
 		for name := range values {
-			if slices.ContainsFunc(droppingMeterPrefixes, func(prefix string) bool {
+			if slices.ContainsFunc(troubleMeterPrefixes, func(prefix string) bool {
 				return strings.HasPrefix(name, prefix)
 			}) {
 				names = append(names, name)
