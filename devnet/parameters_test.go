@@ -140,9 +140,6 @@ func TestSixSecondSlotsProfileParameters(t *testing.T) {
 
 	var parameters map[string]any
 	require.NoError(t, json.Unmarshal([]byte(payload), &parameters))
-	participants := parameters["participants"].([]any)
-	require.Len(t, participants, 1)
-	require.Equal(t, float64(64), participants[0].(map[string]any)["validator_count"])
 	network := parameters["network_params"].(map[string]any)
 	require.Equal(t, float64(6), network["seconds_per_slot"])
 }

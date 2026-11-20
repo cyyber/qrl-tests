@@ -54,18 +54,13 @@ const (
 	// Epochs keep the 8 slots of every profile, not mainnet's 128.
 	ProfileMainnetSlotTime Profile = "mainnet-slot-time"
 	// ProfileSixSecondSlots is the single profile at six-second slots, for
-	// suites that fill blocks.
+	// suites that fill blocks. qrysm's on-time window is a third of the slot
+	// in whole seconds: 1 s at five-second slots, less than a full block takes
+	// to import, so the next proposer orphans it. Six gives 2 s.
 	ProfileSixSecondSlots Profile = "six-second-slots"
 )
 
 const defaultSecondsPerSlot = 5
-
-// fullBlockSecondsPerSlot is the slot time of the profiles for full blocks.
-// A third of a slot is the window for a block to count as on time, and qrysm
-// counts it in whole seconds: five-second slots give one second, less than a
-// full block takes to import, so the next proposer builds on its parent and
-// one of the two blocks is orphaned. Six seconds gives two.
-const fullBlockSecondsPerSlot = 6
 
 type profileSpec struct {
 	participants            []participantSpec
@@ -114,7 +109,7 @@ var profileSpecs = map[Profile]profileSpec{
 	},
 	ProfileSixSecondSlots: {
 		participants:   []participantSpec{{validatorCount: 64}},
-		secondsPerSlot: fullBlockSecondsPerSlot,
+		secondsPerSlot: 6,
 	},
 }
 
