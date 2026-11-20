@@ -233,7 +233,7 @@ func meterRises(ctx context.Context, entry *containerState, restarted bool) ([]s
 		baseline = nil
 	}
 	var rises []string
-	for _, name := range troubleMeterNames(values, baseline) {
+	for _, name := range troubleMetersIn(values, baseline) {
 		if rise := values[name] - baseline[name]; rise > 0 {
 			rises = append(rises, name+" rose by "+strconv.FormatFloat(rise, 'f', -1, 64))
 		}
@@ -268,9 +268,9 @@ func (states *containerStates) troubleLines(ctx context.Context, entry *containe
 	return lines, nil
 }
 
-// troubleMeterNames returns the trouble meters to compare, those of the prefixed
-// families included, in order.
-func troubleMeterNames(readings ...map[string]float64) []string {
+// troubleMetersIn returns the trouble meters in readings, prefixed families
+// included, sorted.
+func troubleMetersIn(readings ...map[string]float64) []string {
 	names := slices.Clone(troubleMeters)
 	for _, values := range readings {
 		for name := range values {
