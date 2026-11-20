@@ -24,7 +24,7 @@ type Monitor struct {
 	firstSlot  uint64
 }
 
-// StartMonitor starts monitoring participant, whose beacon node is client.
+// StartMonitor starts monitoring participant.
 func StartMonitor(ctx context.Context, participant devnet.Participant, client *beacon.Client, chain chaininfo.Info) (*Monitor, error) {
 	docker, err := dockerapi.New()
 	if err != nil {
