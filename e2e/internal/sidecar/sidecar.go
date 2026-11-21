@@ -42,11 +42,11 @@ var loopback = netip.MustParseAddr("127.0.0.1")
 
 // Client is the part of the Docker client that sidecars use.
 type Client interface {
+	dockerapi.LogReader
 	ContainerAttach(context.Context, string, dockerclient.ContainerAttachOptions) (dockerclient.ContainerAttachResult, error)
 	ContainerCreate(context.Context, dockerclient.ContainerCreateOptions) (dockerclient.ContainerCreateResult, error)
 	ContainerInspect(context.Context, string, dockerclient.ContainerInspectOptions) (dockerclient.ContainerInspectResult, error)
 	ContainerList(context.Context, dockerclient.ContainerListOptions) (dockerclient.ContainerListResult, error)
-	ContainerLogs(context.Context, string, dockerclient.ContainerLogsOptions) (dockerclient.ContainerLogsResult, error)
 	ContainerRemove(context.Context, string, dockerclient.ContainerRemoveOptions) (dockerclient.ContainerRemoveResult, error)
 	ContainerStart(context.Context, string, dockerclient.ContainerStartOptions) (dockerclient.ContainerStartResult, error)
 	ContainerStop(context.Context, string, dockerclient.ContainerStopOptions) (dockerclient.ContainerStopResult, error)
@@ -421,22 +421,11 @@ func (container *Container) PublishedAddress(ctx context.Context, port uint16) (
 		}
 		return "", container.WithLogs(&ExitError{name: container.name, status: status})
 	}
-	hostPort, err := publishedHostPort(inspected.Container, published)
+	hostPort, err := dockerapi.HostPort(inspected.Container, port)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("%s: %w", container.name, err)
 	}
 	return net.JoinHostPort(loopback.String(), hostPort), nil
-}
-
-func publishedHostPort(inspected containertypes.InspectResponse, port network.Port) (string, error) {
-	if inspected.NetworkSettings == nil {
-		return "", errors.New("container has no network settings")
-	}
-	bindings := inspected.NetworkSettings.Ports[port]
-	if len(bindings) == 0 || bindings[0].HostPort == "" {
-		return "", fmt.Errorf("container port %s is not published", port)
-	}
-	return bindings[0].HostPort, nil
 }
 
 // ReadFile copies one file out of the container.
@@ -474,21 +463,11 @@ func (container *Container) Logs(lines int) (string, error) {
 	if lines > 0 {
 		tail = strconv.Itoa(lines)
 	}
-	logs, err := container.client.ContainerLogs(ctx, container.id, dockerclient.ContainerLogsOptions{
-		ShowStdout: true,
-		ShowStderr: true,
-		Tail:       tail,
-	})
+	logs, err := dockerapi.Logs(ctx, container.client, container.id, dockerclient.ContainerLogsOptions{Tail: tail})
 	if err != nil {
 		return "", err
 	}
-	defer logs.Close()
-
-	var output bytes.Buffer
-	if _, err := stdcopy.StdCopy(&output, &output, logs); err != nil {
-		return "", err
-	}
-	return strings.TrimSpace(output.String()), nil
+	return strings.TrimSpace(logs), nil
 }
 
 // Exec runs command inside the container and returns its combined output. A
