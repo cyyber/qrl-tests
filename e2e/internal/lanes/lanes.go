@@ -35,7 +35,7 @@ const (
 	suiteResilienceNetworkRestart        SuiteID = "resilience-network-restart"
 	suiteSyncGenesis                     SuiteID = "sync-genesis"
 	suiteSyncCheckpoint                  SuiteID = "sync-checkpoint"
-	suiteLimitsDeepSync                  SuiteID = "limits-deep-sync"
+	suiteLimitsFullBlocks                SuiteID = "limits-full-blocks"
 )
 
 var suitePackages = map[SuiteID]string{
@@ -51,7 +51,7 @@ var suitePackages = map[SuiteID]string{
 	suiteResilienceNetworkRestart:        "./e2e/suites/resilience/networkrestart",
 	suiteSyncGenesis:                     "./e2e/suites/sync/genesis",
 	suiteSyncCheckpoint:                  "./e2e/suites/sync/checkpoint",
-	suiteLimitsDeepSync:                  "./e2e/suites/limits/deepsync",
+	suiteLimitsFullBlocks:                "./e2e/suites/limits/fullblocks",
 }
 
 var registry = []Lane{
@@ -120,9 +120,9 @@ var registry = []Lane{
 	{
 		// A long run of full blocks, on slots long enough for a full block to
 		// count as on time.
-		Name:    "limits-deep-sync",
+		Name:    "limits-full-blocks",
 		Profile: devnet.ProfileSixSecondSlots,
-		Suites:  []SuiteID{suiteLimitsDeepSync},
+		Suites:  []SuiteID{suiteLimitsFullBlocks},
 		Timeout: 30 * time.Minute,
 	},
 }
@@ -179,7 +179,7 @@ func (lane Lane) NeedsExecutionImage() bool {
 	return slices.Contains(lane.Suites, suiteExecutionConsole) ||
 		slices.Contains(lane.Suites, suiteSyncGenesis) ||
 		slices.Contains(lane.Suites, suiteSyncCheckpoint) ||
-		slices.Contains(lane.Suites, suiteLimitsDeepSync)
+		slices.Contains(lane.Suites, suiteLimitsFullBlocks)
 }
 
 func (lane Lane) NeedsConsensusImage() bool {

@@ -1,6 +1,6 @@
 //go:build e2e
 
-package deepsync
+package fullblocks
 
 import (
 	"bytes"
@@ -36,7 +36,7 @@ const (
 )
 
 func TestE2E(t *testing.T) {
-	testsuite.Run(t, "Deep sync E2E suite")
+	testsuite.Run(t, "Full blocks E2E suite")
 }
 
 var _ = ginkgo.Describe(
@@ -44,7 +44,7 @@ var _ = ginkgo.Describe(
 	ginkgo.Serial,
 	ginkgo.Ordered,
 	ginkgo.ContinueOnFailure,
-	ginkgo.Label("e2e", "limits", "deep-sync"),
+	ginkgo.Label("e2e", "limits", "full-blocks"),
 	func() {
 		var (
 			runtime *live.Runtime
@@ -135,7 +135,7 @@ var _ = ginkgo.Describe(
 		ginkgo.It("is synced by a new node without it dropping its peer", func(ctx ginkgo.SpecContext) {
 			gomega.Expect(dense).NotTo(gomega.BeEmpty(), "there are no full blocks to sync")
 			node := testsuite.MustSucceed(syncnode.Start(ctx, syncnode.Config{
-				Name:           "limits-deep-sync",
+				Name:           "limits-full-blocks-sync",
 				ExecutionImage: runtime.ExecutionImage,
 				SyncMode:       "full",
 				Source:         source.Participant,
