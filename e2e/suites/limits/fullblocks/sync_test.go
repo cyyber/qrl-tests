@@ -48,7 +48,7 @@ func (suite *fullBlocksSuite) isSyncedByNewNode(ctx ginkgo.SpecContext) {
 		synced, err := node.Execution.HeaderByNumber(ctx, head.Number)
 		g.Expect(err).NotTo(gomega.HaveOccurred())
 		g.Expect(synced.Hash()).To(gomega.Equal(head.Hash()))
-	}).WithContext(ctx).WithTimeout(15 * time.Minute).WithPolling(time.Second).Should(gomega.Succeed())
+	}).WithContext(ctx).WithTimeout(5 * time.Minute).WithPolling(time.Second).Should(gomega.Succeed())
 
 	drops := testsuite.MustSucceed(watch.Drops(ctx))
 	ginkgo.AddReportEntry("sync", fmt.Sprintf("to block %d in %s, %d peer drops", head.Number, time.Since(started).Round(time.Second), len(drops)))

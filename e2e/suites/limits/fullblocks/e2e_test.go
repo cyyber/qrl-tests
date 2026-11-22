@@ -26,9 +26,9 @@ var _ = ginkgo.Describe(
 		ginkgo.BeforeAll(suite.setUp, ginkgo.NodeTimeout(time.Minute))
 
 		ginkgo.It("has the full blocks",
-			suite.hasFullBlocks, ginkgo.SpecTimeout(10*time.Minute))
+			suite.hasFullBlocks, ginkgo.SpecTimeout(5*time.Minute))
 		ginkgo.It("is synced by a new node without it dropping its peer",
-			suite.isSyncedByNewNode, ginkgo.SpecTimeout(20*time.Minute))
+			suite.isSyncedByNewNode, ginkgo.SpecTimeout(10*time.Minute))
 		ginkgo.It("leaves the network healthy",
 			suite.leavesNetworkHealthy, ginkgo.SpecTimeout(5*time.Minute))
 	},
