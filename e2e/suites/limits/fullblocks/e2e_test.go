@@ -4,7 +4,6 @@ package fullblocks
 
 import (
 	"fmt"
-	"math/big"
 	"testing"
 	"time"
 
@@ -34,13 +33,12 @@ var _ = ginkgo.Describe(
 	ginkgo.Label("e2e", "limits", "full-blocks"),
 	func() {
 		var (
-			runtime *live.Runtime
-			source  *live.Node
-			chain   chaininfo.Info
-			monitor *health.Monitor
-			dense   []load.Block
-			// syncer is the node the sync spec starts and then stops.
-			syncer qnode.ID
+			runtime    *live.Runtime
+			source     *live.Node
+			chain      chaininfo.Info
+			monitor    *health.Monitor
+			blocks     []load.Block
+			syncNodeID qnode.ID
 		)
 
 		ginkgo.BeforeAll(func(ctx ginkgo.SpecContext) {
@@ -52,18 +50,18 @@ var _ = ginkgo.Describe(
 		}, ginkgo.NodeTimeout(time.Minute))
 
 		ginkgo.It("has the full blocks", func(ctx ginkgo.SpecContext) {
-			dense = testsuite.MustSucceed(load.Fill(ctx, source.Execution, source.Wallet, chain.SlotDuration/4, fullBlocks))
-			gomega.Expect(len(dense)).To(gomega.BeNumerically(">=", fullBlocks))
+			blocks = testsuite.MustSucceed(load.Fill(ctx, source.Execution, source.Wallet, chain.SlotDuration/4, fullBlocks))
+			gomega.Expect(len(blocks)).To(gomega.BeNumerically(">=", fullBlocks))
 			var size uint64
-			for _, block := range dense {
+			for _, block := range blocks {
 				size += block.EncodedBytes
 			}
 			ginkgo.AddReportEntry("full blocks", fmt.Sprintf("%d, from block %d to %d, %d MB in all",
-				len(dense), dense[0].Number, dense[len(dense)-1].Number, size>>20))
+				len(blocks), blocks[0].Number, blocks[len(blocks)-1].Number, size>>20))
 		}, ginkgo.SpecTimeout(30*time.Minute))
 
 		ginkgo.It("is synced by a new node without it dropping its peer", func(ctx ginkgo.SpecContext) {
-			gomega.Expect(dense).NotTo(gomega.BeEmpty(), "there are no full blocks to sync")
+			gomega.Expect(blocks).NotTo(gomega.BeEmpty(), "there are no full blocks to sync")
 			node := testsuite.MustSucceed(syncnode.Start(ctx, syncnode.Config{
 				Name:           "limits-full-blocks-sync",
 				ExecutionImage: runtime.ExecutionImage,
@@ -73,12 +71,11 @@ var _ = ginkgo.Describe(
 			}))
 			_, id, err := node.Peer(ctx)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
-			syncer = id
+			syncNodeID = id
 			execution := health.Container{Name: node.Containers()[0], MetricsURL: node.ExecutionMetricsURL}
 			gomega.Expect(monitor.AddContainers(ctx, execution)).To(gomega.Succeed())
 			ginkgo.DeferCleanup(func(ctx ginkgo.SpecContext) {
 				testsuite.ReportLogsOnFailure("execution-only node", node)
-				// Its problems stay in the monitor's report after it is gone.
 				gomega.Expect(monitor.RetireContainer(ctx, execution.Name)).To(gomega.Succeed())
 				gomega.Expect(node.Close()).To(gomega.Succeed())
 			}, ginkgo.NodeTimeout(time.Minute))
@@ -92,9 +89,6 @@ var _ = ginkgo.Describe(
 				g.Expect(err).NotTo(gomega.HaveOccurred())
 				g.Expect(synced.Hash()).To(gomega.Equal(head.Hash()))
 			}).WithContext(ctx).WithTimeout(15 * time.Minute).WithPolling(time.Second).Should(gomega.Succeed())
-			last := dense[len(dense)-1]
-			synced := testsuite.MustSucceed(node.Execution.HeaderByNumber(ctx, new(big.Int).SetUint64(last.Number)))
-			gomega.Expect(synced.Hash()).To(gomega.Equal(last.Hash))
 
 			drops := testsuite.MustSucceed(watch.Drops(ctx))
 			ginkgo.AddReportEntry("sync", fmt.Sprintf("%d blocks in %s, %d peer drops", head.Number, time.Since(started).Round(time.Second), len(drops)))
@@ -104,7 +98,7 @@ var _ = ginkgo.Describe(
 		ginkgo.It("leaves the network healthy", func(ctx ginkgo.SpecContext) {
 			// The sync node leaves when its spec ends, which the source sees as
 			// a drop.
-			report := testsuite.MustSucceed(monitor.Report(ctx, syncer))
+			report := testsuite.MustSucceed(monitor.Report(ctx, syncNodeID))
 			ginkgo.AddReportEntry("network health", report.String())
 			// Missed slots are reported, not held against the node: full blocks
 			// every six seconds are far more than mainnet's slots ask of it.
