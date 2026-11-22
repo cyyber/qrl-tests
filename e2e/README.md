@@ -17,7 +17,7 @@ endpoints; suites do not provision infrastructure.
 | `consensus-inactivity-leak` | `inactivity-leak` | Finality stalling and the inactivity leak with just over a third of the stake offline, and finality's recovery with one validator back, then by the leak alone |
 | `resilience-network-restart` | `anchored` | Recovery from a full outage: proposing and finalizing after every node stops at once |
 | `sync` | `single` | A new full-mode node syncs from genesis or from a checkpoint, then catches up after a stop |
-| `limits-deep-sync` | `six-second-slots` | A long run of full blocks: a subscriber that stops reading, a GraphQL query for full blocks, and a new execution-only node that syncs them from its peer without dropping it |
+| `limits-deep-sync` | `six-second-slots` | A long run of full blocks: a subscriber that stops reading, a GraphQL query for them, and an execution-only node that syncs them without dropping its peer |
 
 Run one lane with a fresh network:
 
