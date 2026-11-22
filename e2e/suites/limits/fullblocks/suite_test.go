@@ -15,8 +15,6 @@ import (
 	"github.com/theQRL/go-qrl/p2p/qnode"
 )
 
-// Enough full blocks for one bodies request to ask for more than the 10 MB a
-// message may carry.
 const fullBlocks = 4
 
 type fullBlocksSuite struct {
