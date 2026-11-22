@@ -45,7 +45,7 @@ func (suite *fullBlocksSuite) hasFullBlocks(ctx ginkgo.SpecContext) {
 }
 
 func (suite *fullBlocksSuite) leavesNetworkHealthy(ctx ginkgo.SpecContext) {
-	// The source drops the sync node when the sync spec closes it.
+	// Leave out the sync node: the source drops it when the sync spec closes it.
 	report := testsuite.MustSucceed(suite.monitor.Report(ctx, suite.syncNodeID))
 	ginkgo.AddReportEntry("network health", report.String())
 	gomega.Expect(report.Err()).To(gomega.Succeed(), "the network had trouble")
