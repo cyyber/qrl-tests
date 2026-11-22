@@ -15,6 +15,7 @@ import (
 
 func (suite *fullBlocksSuite) syncsNewNode(ctx ginkgo.SpecContext) {
 	gomega.Expect(suite.blocks).NotTo(gomega.BeEmpty(), "there are no full blocks to sync")
+
 	node := testsuite.MustSucceed(syncnode.Start(ctx, syncnode.Config{
 		Name:           "limits-full-blocks-sync",
 		ExecutionImage: suite.source.ExecutionImage,
@@ -26,12 +27,15 @@ func (suite *fullBlocksSuite) syncsNewNode(ctx ginkgo.SpecContext) {
 		testsuite.ReportLogsOnFailure("execution-only node", node)
 		gomega.Expect(node.Close()).To(gomega.Succeed())
 	})
+
 	execution := health.Container{Name: node.Containers()[0], MetricsURL: node.ExecutionMetricsURL}
 	gomega.Expect(suite.monitor.AddContainers(ctx, execution)).To(gomega.Succeed())
 	ginkgo.DeferCleanup(suite.monitor.RetireContainer, execution.Name, ginkgo.NodeTimeout(time.Minute))
+
 	_, id, err := node.Peer(ctx)
 	gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	suite.syncNodeID = id
+
 	watch := testsuite.MustSucceed(health.WatchPeers(ctx, node.ExecutionWSURL))
 	defer watch.Close()
 
@@ -45,6 +49,7 @@ func (suite *fullBlocksSuite) syncsNewNode(ctx ginkgo.SpecContext) {
 		if len(drops) > 0 {
 			gomega.StopTrying(fmt.Sprintf("the node dropped its peer while it synced: %+v", drops)).Now()
 		}
+
 		synced, err := node.Execution.HeaderByNumber(ctx, head.Number)
 		g.Expect(err).NotTo(gomega.HaveOccurred())
 		g.Expect(synced.Hash()).To(gomega.Equal(head.Hash()))
