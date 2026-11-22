@@ -15,7 +15,7 @@ func TestE2E(t *testing.T) {
 }
 
 var _ = ginkgo.Describe(
-	"A node with a long run of full blocks",
+	"A node with full blocks",
 	ginkgo.Serial,
 	ginkgo.Ordered,
 	ginkgo.ContinueOnFailure,

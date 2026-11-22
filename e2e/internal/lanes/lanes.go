@@ -118,8 +118,8 @@ var registry = []Lane{
 		Timeout: 60 * time.Minute,
 	},
 	{
-		// A long run of full blocks, on slots long enough for a full block to
-		// count as on time.
+		// Full blocks, on slots long enough for a full block to count as on
+		// time.
 		Name:    "limits-full-blocks",
 		Profile: devnet.ProfileSixSecondSlots,
 		Suites:  []SuiteID{suiteLimitsFullBlocks},

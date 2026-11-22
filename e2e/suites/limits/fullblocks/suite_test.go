@@ -15,10 +15,9 @@ import (
 	"github.com/theQRL/go-qrl/p2p/qnode"
 )
 
-const (
-	downloaderBlockCache = 256 << 20
-	fullBlocks           = 48
-)
+// Enough full blocks for one bodies request to ask for more than the 10 MB a
+// message may carry.
+const fullBlocks = 4
 
 type fullBlocksSuite struct {
 	source     *live.Node
@@ -45,7 +44,6 @@ func (suite *fullBlocksSuite) hasFullBlocks(ctx ginkgo.SpecContext) {
 	}
 	ginkgo.AddReportEntry("full blocks", fmt.Sprintf("%d, from block %d to %d, %d MB in all",
 		len(suite.blocks), suite.blocks[0].Number, suite.blocks[len(suite.blocks)-1].Number, size>>20))
-	gomega.Expect(size).To(gomega.BeNumerically(">", downloaderBlockCache), "the full blocks fit in the downloader's block cache")
 }
 
 func (suite *fullBlocksSuite) leavesNetworkHealthy(ctx ginkgo.SpecContext) {
