@@ -3,7 +3,6 @@
 package fullblocks
 
 import (
-	"errors"
 	"fmt"
 	"testing"
 	"time"
@@ -23,7 +22,7 @@ const (
 	// A syncing node keeps up to 256 MB of downloaded blocks; the full blocks
 	// must be more.
 	keptBlockBytes = 256 << 20
-	fullBlocks     = 40
+	fullBlocks     = 48
 )
 
 func TestE2E(t *testing.T) {
@@ -75,11 +74,12 @@ var _ = ginkgo.Describe(
 				ExecutionOnly:  true,
 			}))
 			execution := health.Container{Name: node.Containers()[0], MetricsURL: node.ExecutionMetricsURL}
-			ginkgo.DeferCleanup(func(ctx ginkgo.SpecContext) {
+			ginkgo.DeferCleanup(func() {
 				testsuite.ReportLogsOnFailure("execution-only node", node)
-				gomega.Expect(errors.Join(monitor.RetireContainer(ctx, execution.Name), node.Close())).To(gomega.Succeed())
-			}, ginkgo.NodeTimeout(time.Minute))
+				gomega.Expect(node.Close()).To(gomega.Succeed())
+			})
 			gomega.Expect(monitor.AddContainers(ctx, execution)).To(gomega.Succeed())
+			ginkgo.DeferCleanup(monitor.RetireContainer, execution.Name, ginkgo.NodeTimeout(time.Minute))
 			_, id, err := node.Peer(ctx)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 			syncNodeID = id
