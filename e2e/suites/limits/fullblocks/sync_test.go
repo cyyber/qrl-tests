@@ -13,7 +13,7 @@ import (
 	gomega "github.com/onsi/gomega"
 )
 
-func (suite *fullBlocksSuite) isSyncedByNewNode(ctx ginkgo.SpecContext) {
+func (suite *fullBlocksSuite) syncsNewNode(ctx ginkgo.SpecContext) {
 	gomega.Expect(suite.blocks).NotTo(gomega.BeEmpty(), "there are no full blocks to sync")
 	node := testsuite.MustSucceed(syncnode.Start(ctx, syncnode.Config{
 		Name:           "limits-full-blocks-sync",
