@@ -17,7 +17,7 @@ func (suite *fullBlocksSuite) isSyncedByNewNode(ctx ginkgo.SpecContext) {
 	gomega.Expect(suite.blocks).NotTo(gomega.BeEmpty(), "there are no full blocks to sync")
 	node := testsuite.MustSucceed(syncnode.Start(ctx, syncnode.Config{
 		Name:           "limits-full-blocks-sync",
-		ExecutionImage: suite.runtime.ExecutionImage,
+		ExecutionImage: suite.source.ExecutionImage,
 		SyncMode:       "full",
 		Source:         suite.source.Participant,
 		ExecutionOnly:  true,

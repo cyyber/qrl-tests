@@ -23,7 +23,6 @@ const (
 )
 
 type fullBlocksSuite struct {
-	runtime    *live.Runtime
 	source     *live.Node
 	chain      chaininfo.Info
 	monitor    *health.Monitor
@@ -32,8 +31,8 @@ type fullBlocksSuite struct {
 }
 
 func (suite *fullBlocksSuite) setUp(ctx ginkgo.SpecContext) {
-	suite.runtime = testsuite.LoadRuntime()
-	suite.source = testsuite.MustSucceed(suite.runtime.PrimaryNode(ctx))
+	runtime := testsuite.LoadRuntime()
+	suite.source = testsuite.MustSucceed(runtime.PrimaryNode(ctx))
 	suite.chain = testsuite.MustSucceed(chaininfo.Load(ctx, suite.source.Beacon))
 	suite.monitor = testsuite.MustSucceed(health.StartMonitor(ctx, suite.source.Participant, suite.source.Beacon, suite.chain))
 	ginkgo.DeferCleanup(suite.monitor.Close)
