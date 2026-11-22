@@ -45,11 +45,8 @@ func (suite *fullBlocksSuite) hasFullBlocks(ctx ginkgo.SpecContext) {
 }
 
 func (suite *fullBlocksSuite) leavesNetworkHealthy(ctx ginkgo.SpecContext) {
-	// The sync node leaves when its spec ends, which the source sees as a drop.
+	// The source drops the sync node when the sync spec closes it.
 	report := testsuite.MustSucceed(suite.monitor.Report(ctx, suite.syncNodeID))
 	ginkgo.AddReportEntry("network health", report.String())
-	// Missed slots are reported, not held against the node: full blocks every
-	// six seconds are far more than mainnet's slots ask of it.
-	report.MissedSlots = nil
 	gomega.Expect(report.Err()).To(gomega.Succeed(), "the network had trouble")
 }
