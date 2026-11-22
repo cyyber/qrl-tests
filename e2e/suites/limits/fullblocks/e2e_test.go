@@ -3,6 +3,7 @@
 package fullblocks
 
 import (
+	"errors"
 	"fmt"
 	"testing"
 	"time"
@@ -18,8 +19,12 @@ import (
 	"github.com/theQRL/go-qrl/p2p/qnode"
 )
 
-// More full blocks than the 256 MB a syncing node keeps of downloaded blocks.
-const fullBlocks = 40
+const (
+	// A syncing node keeps up to 256 MB of downloaded blocks; the full blocks
+	// must be more.
+	keptBlockBytes = 256 << 20
+	fullBlocks     = 40
+)
 
 func TestE2E(t *testing.T) {
 	testsuite.Run(t, "Full blocks E2E suite")
@@ -51,14 +56,14 @@ var _ = ginkgo.Describe(
 
 		ginkgo.It("has the full blocks", func(ctx ginkgo.SpecContext) {
 			blocks = testsuite.MustSucceed(load.Fill(ctx, source.Execution, source.Wallet, chain.SlotDuration/4, fullBlocks))
-			gomega.Expect(len(blocks)).To(gomega.BeNumerically(">=", fullBlocks))
 			var size uint64
 			for _, block := range blocks {
 				size += block.EncodedBytes
 			}
 			ginkgo.AddReportEntry("full blocks", fmt.Sprintf("%d, from block %d to %d, %d MB in all",
 				len(blocks), blocks[0].Number, blocks[len(blocks)-1].Number, size>>20))
-		}, ginkgo.SpecTimeout(30*time.Minute))
+			gomega.Expect(size).To(gomega.BeNumerically(">", keptBlockBytes), "the full blocks fit in what a syncing node keeps")
+		}, ginkgo.SpecTimeout(10*time.Minute))
 
 		ginkgo.It("is synced by a new node without it dropping its peer", func(ctx ginkgo.SpecContext) {
 			gomega.Expect(blocks).NotTo(gomega.BeEmpty(), "there are no full blocks to sync")
@@ -69,29 +74,35 @@ var _ = ginkgo.Describe(
 				Source:         source.Participant,
 				ExecutionOnly:  true,
 			}))
+			execution := health.Container{Name: node.Containers()[0], MetricsURL: node.ExecutionMetricsURL}
+			ginkgo.DeferCleanup(func(ctx ginkgo.SpecContext) {
+				testsuite.ReportLogsOnFailure("execution-only node", node)
+				gomega.Expect(errors.Join(monitor.RetireContainer(ctx, execution.Name), node.Close())).To(gomega.Succeed())
+			}, ginkgo.NodeTimeout(time.Minute))
+			gomega.Expect(monitor.AddContainers(ctx, execution)).To(gomega.Succeed())
 			_, id, err := node.Peer(ctx)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 			syncNodeID = id
-			execution := health.Container{Name: node.Containers()[0], MetricsURL: node.ExecutionMetricsURL}
-			gomega.Expect(monitor.AddContainers(ctx, execution)).To(gomega.Succeed())
-			ginkgo.DeferCleanup(func(ctx ginkgo.SpecContext) {
-				testsuite.ReportLogsOnFailure("execution-only node", node)
-				gomega.Expect(monitor.RetireContainer(ctx, execution.Name)).To(gomega.Succeed())
-				gomega.Expect(node.Close()).To(gomega.Succeed())
-			}, ginkgo.NodeTimeout(time.Minute))
 			watch := testsuite.MustSucceed(health.WatchPeers(ctx, node.ExecutionWSURL))
 			defer watch.Close()
 
 			started := time.Now()
 			head := testsuite.MustSucceed(node.SyncToHead(ctx, source.Execution))
 			gomega.Eventually(func(g gomega.Gomega) {
+				drops, err := watch.Drops(ctx)
+				if err != nil {
+					gomega.StopTrying("read the sync node's peer drops").Wrap(err).Now()
+				}
+				if len(drops) > 0 {
+					gomega.StopTrying(fmt.Sprintf("the node dropped its peer while it synced: %+v", drops)).Now()
+				}
 				synced, err := node.Execution.HeaderByNumber(ctx, head.Number)
 				g.Expect(err).NotTo(gomega.HaveOccurred())
 				g.Expect(synced.Hash()).To(gomega.Equal(head.Hash()))
 			}).WithContext(ctx).WithTimeout(15 * time.Minute).WithPolling(time.Second).Should(gomega.Succeed())
 
 			drops := testsuite.MustSucceed(watch.Drops(ctx))
-			ginkgo.AddReportEntry("sync", fmt.Sprintf("%d blocks in %s, %d peer drops", head.Number, time.Since(started).Round(time.Second), len(drops)))
+			ginkgo.AddReportEntry("sync", fmt.Sprintf("to block %d in %s, %d peer drops", head.Number, time.Since(started).Round(time.Second), len(drops)))
 			gomega.Expect(drops).To(gomega.BeEmpty(), "the node dropped its peer while it synced")
 		}, ginkgo.SpecTimeout(20*time.Minute))
 

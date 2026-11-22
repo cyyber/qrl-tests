@@ -123,7 +123,7 @@ var registry = []Lane{
 		Name:    "limits-full-blocks",
 		Profile: devnet.ProfileSixSecondSlots,
 		Suites:  []SuiteID{suiteLimitsFullBlocks},
-		Timeout: 30 * time.Minute,
+		Timeout: 40 * time.Minute,
 	},
 }
 
