@@ -171,7 +171,7 @@ var _ = ginkgo.Describe(
 			before := testsuite.MustSucceed(val.BalanceAtEpochStart(ctx, next+1))
 			after := testsuite.MustSucceed(val.BalanceAtEpochStart(ctx, next+2))
 			blocks := testsuite.MustSucceed(val.BlockBalanceChanges(ctx, next+1))
-			earned := reward.Head + reward.Source + reward.Target
+			earned := reward.Head + reward.Source + reward.Target + reward.Inactivity
 			want := int64(before) + earned + blocks
 			gomega.Expect(int64(after)).To(gomega.Equal(want),
 				"balance went from %d to %d over epoch %d: the %d shor reward of epoch %d and %d shor from blocks make %d",

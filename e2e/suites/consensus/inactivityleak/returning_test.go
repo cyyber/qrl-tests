@@ -114,12 +114,14 @@ func (suite *leakSuite) bringsReturnedScoreToZero(ctx ginkgo.SpecContext) {
 		reward := testsuite.MustSucceed(offline.AttestationReward(ctx, epoch))
 		amounts := testsuite.MustSucceed(offline.LeakVoteAmounts(ctx, epoch))
 		timely := reward.Target >= 0
-		wantTarget := amounts.Timely.Target
+		wantTarget, wantInactivity := amounts.Timely.Target, int64(0)
 		if !timely {
-			wantTarget = -int64(amounts.MissedTarget + amounts.InactivityPenalty)
+			wantTarget, wantInactivity = -int64(amounts.MissedTarget), -int64(amounts.InactivityPenalty)
 		}
 		gomega.Expect(reward.Target).To(gomega.Equal(wantTarget),
-			"target figure of epoch %d, whose target vote was timely: %t, at score %d", epoch, timely, amounts.ScoreAfter)
+			"target figure of epoch %d, whose target vote was timely: %t", epoch, timely)
+		gomega.Expect(reward.Inactivity).To(gomega.Equal(wantInactivity),
+			"inactivity figure of epoch %d, whose target vote was timely: %t, at score %d", epoch, timely, amounts.ScoreAfter)
 		expectScores(offline, epoch, amounts, outage.offlineScore, timely)
 		outage.offlineScore = amounts.ScoreAfter
 		if timely && outage.offlineScore == 0 {
@@ -159,8 +161,9 @@ func expectMissedEpoch(ctx context.Context, val rewards.Validator, epoch, score 
 	gomega.Expect(reward).To(gomega.Equal(beacon.AttestationReward{
 		ValidatorIndex: val.Index,
 		Source:         -int64(amounts.MissedSource),
-		Target:         -int64(amounts.MissedTarget + amounts.InactivityPenalty),
-	}), "attestation rewards of epoch %d: the target figure is the %d shor missed-target penalty plus the %d shor inactivity penalty at score %d",
+		Target:         -int64(amounts.MissedTarget),
+		Inactivity:     -int64(amounts.InactivityPenalty),
+	}), "attestation rewards of epoch %d: a %d shor missed-target penalty and a %d shor inactivity penalty at score %d, which Qrysm reports apart since cyyber/qrysm#123",
 		epoch, amounts.MissedTarget, amounts.InactivityPenalty, amounts.ScoreAfter)
 	expectBalanceChange(ctx, val, epoch, reward)
 	return amounts
@@ -207,7 +210,7 @@ func expectBalanceChange(ctx context.Context, val rewards.Validator, epoch uint6
 	before := testsuite.MustSucceed(val.BalanceAtEpochStart(ctx, epoch+1))
 	after := testsuite.MustSucceed(val.BalanceAtEpochStart(ctx, epoch+2))
 	blocks := testsuite.MustSucceed(val.BlockBalanceChanges(ctx, epoch+1))
-	attestation := reward.Head + reward.Source + reward.Target
+	attestation := reward.Head + reward.Source + reward.Target + reward.Inactivity
 	want := int64(before) + attestation + blocks
 	gomega.Expect(int64(after)).To(gomega.Equal(want),
 		"balance went from %d to %d over epoch %d: the %d shor attestation figure of epoch %d and %d shor from blocks make %d",

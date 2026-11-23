@@ -34,7 +34,7 @@ func ExpectSlashedInBlock(
 	var epochChange int64
 	if slot%val.Chain.SlotsPerEpoch == 0 {
 		reward := testsuite.MustSucceed(val.AttestationReward(ctx, epoch-2))
-		epochChange = reward.Head + reward.Source + reward.Target
+		epochChange = reward.Head + reward.Source + reward.Target + reward.Inactivity
 	}
 	want := int64(before.Balance) - int64(penalty) + blockChange + epochChange
 	gomega.Expect(int64(on.Balance)).To(gomega.Equal(want),

@@ -176,6 +176,7 @@ type AttestationReward struct {
 	Head           int64  `json:"head,string"`
 	Target         int64  `json:"target,string"`
 	Source         int64  `json:"source,string"`
+	Inactivity     int64  `json:"inactivity,string"`
 }
 
 type SyncCommitteeReward struct {
@@ -188,6 +189,7 @@ type IdealAttestationReward struct {
 	Head             int64  `json:"head,string"`
 	Target           int64  `json:"target,string"`
 	Source           int64  `json:"source,string"`
+	Inactivity       int64  `json:"inactivity,string"`
 }
 
 type BlockRewards struct {
