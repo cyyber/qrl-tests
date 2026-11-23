@@ -573,14 +573,15 @@ func TestRunAllProvisionsPerLane(t *testing.T) {
 
 	require.NoError(t, runner.RunAll(t.Context()))
 	// Every registered lane provisions its own enclave and runs its own suites.
-	require.Equal(t, "qrl-tests-sync", networks.started.EnclaveName)
-	require.Equal(t, devnet.ProfileSingle, networks.started.Profile)
+	require.Equal(t, "qrl-tests-limits-full-blocks", networks.started.EnclaveName)
+	require.Equal(t, devnet.ProfileSixSecondSlots, networks.started.Profile)
 	require.Equal(t, []string{
 		"qrl-tests-execution", "qrl-tests-consensus-staking-automated", "qrl-tests-consensus-staking-operator",
 		"qrl-tests-consensus-penalties", "qrl-tests-consensus-slashing-double-vote", "qrl-tests-consensus-slashing-double-proposal",
 		"qrl-tests-consensus-inactivity-leak", "qrl-tests-resilience-network-restart", "qrl-tests-sync",
+		"qrl-tests-limits-full-blocks",
 	}, networks.stopped)
-	require.Len(t, commands, 9)
+	require.Len(t, commands, 10)
 	require.Contains(t, commands[0].Args, "./e2e/suites/execution/abi")
 	require.Contains(t, commands[1].Args, "./e2e/suites/consensus/staking/automated")
 	require.Contains(t, commands[2].Args, "./e2e/suites/consensus/staking/operator")
@@ -591,6 +592,7 @@ func TestRunAllProvisionsPerLane(t *testing.T) {
 	require.Contains(t, commands[7].Args, "./e2e/suites/resilience/networkrestart")
 	require.Contains(t, commands[8].Args, "./e2e/suites/sync/genesis")
 	require.Contains(t, commands[8].Args, "./e2e/suites/sync/checkpoint")
+	require.Contains(t, commands[9].Args, "./e2e/suites/limits/fullblocks")
 	record := testutil.ReadJSON[runmanifest.Manifest](t, filepath.Join(reports, runmanifest.FileName))
 	require.Equal(t, "qrl-tests-execution", record.Lanes[0].Enclave)
 	require.Equal(t, "qrl-tests-consensus-staking-automated", record.Lanes[1].Enclave)
@@ -601,6 +603,7 @@ func TestRunAllProvisionsPerLane(t *testing.T) {
 	require.Equal(t, "qrl-tests-consensus-inactivity-leak", record.Lanes[6].Enclave)
 	require.Equal(t, "qrl-tests-resilience-network-restart", record.Lanes[7].Enclave)
 	require.Equal(t, "qrl-tests-sync", record.Lanes[8].Enclave)
+	require.Equal(t, "qrl-tests-limits-full-blocks", record.Lanes[9].Enclave)
 }
 
 func TestRunReturnsCleanupFailure(t *testing.T) {

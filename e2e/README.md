@@ -17,6 +17,7 @@ endpoints; suites do not provision infrastructure.
 | `consensus-inactivity-leak` | `inactivity-leak` | Finality stalling and the inactivity leak with just over a third of the stake offline, and finality's recovery with one validator back, then by the leak alone |
 | `resilience-network-restart` | `anchored` | Recovery from a full outage: proposing and finalizing after every node stops at once |
 | `sync` | `single` | A new full-mode node syncs from genesis or from a checkpoint, then catches up after a stop |
+| `limits-full-blocks` | `six-second-slots` | Full blocks, which a new execution-only node syncs without dropping its peer |
 
 Run one lane with a fresh network:
 

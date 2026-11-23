@@ -122,6 +122,14 @@ func TestLaneWithSuites(t *testing.T) {
 	require.True(t, sync.NeedsConsensusImage())
 	require.False(t, sync.NeedsValidatorImage())
 
+	fullBlocks, err := Named("limits-full-blocks")
+	require.NoError(t, err)
+	require.Equal(t, devnet.ProfileSixSecondSlots, fullBlocks.Profile)
+	require.Equal(t, []string{"./e2e/suites/limits/fullblocks"}, fullBlocks.Packages())
+	require.True(t, fullBlocks.NeedsExecutionImage())
+	require.False(t, fullBlocks.NeedsConsensusImage())
+	require.False(t, fullBlocks.NeedsValidatorImage())
+
 	_, err = execution.WithSuites([]string{"unknown"})
 	require.ErrorContains(t, err, "unknown E2E suite")
 }
