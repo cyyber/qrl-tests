@@ -35,6 +35,6 @@ func fillCalldata(start, count uint64) ([]byte, error) {
 	return parsed.Pack("fill", new(big.Int).SetUint64(start), new(big.Int).SetUint64(count))
 }
 
-func slotKey(slot uint64) common.Hash {
-	return common.BigToHash(new(big.Int).SetUint64(slot))
+func slotKey(slot uint64) common.StorageKey {
+	return common.BigToHash512(new(big.Int).SetUint64(slot))
 }

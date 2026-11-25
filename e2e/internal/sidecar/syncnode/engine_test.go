@@ -54,8 +54,8 @@ func testBlock() *types.Block {
 	header := &types.Header{
 		ParentHash:  common.Hash{1},
 		Coinbase:    common.Address{2},
-		Root:        common.Hash{3},
-		ReceiptHash: common.Hash{4},
+		Root:        common.Hash512{3},
+		ReceiptHash: common.Hash512{4},
 		Number:      big.NewInt(42),
 		GasLimit:    20_000_000,
 		GasUsed:     21_000,

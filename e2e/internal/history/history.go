@@ -34,7 +34,7 @@ type Plan struct {
 type History struct {
 	Recipients []common.Address
 	Contract   common.Address
-	Slots      []common.Hash
+	Slots      []common.StorageKey
 	// Transactions are in nonce order; all were included and succeeded.
 	Transactions []common.Hash
 }
@@ -57,7 +57,7 @@ func Write(ctx context.Context, client *qrlclient.Client, wallet qrlwallet.Walle
 	}
 	feeCap := new(big.Int).Add(new(big.Int).Mul(head.BaseFee, big.NewInt(2)), tip)
 
-	signer := types.LatestSignerForChainID(chainID)
+	signer := types.NewZondSigner(chainID)
 	var history History
 	var sent []*types.Transaction
 	send := func(to *common.Address, value *big.Int, gas uint64, data []byte) error {
