@@ -59,15 +59,15 @@ func TestClientDecodesQrysmResponses(t *testing.T) {
 			_, _ = writer.Write([]byte(`{"dependent_root":"0x00","execution_optimistic":false,"data":[{"pubkey":"0xab","validator_index":"64","committee_index":"0","committee_length":"8","committees_at_slot":"1","validator_committee_index":"3","slot":"17"}]}`))
 		case "/qrl/v1/beacon/rewards/attestations/2":
 			assertIndices(t, request, "64")
-			_, _ = writer.Write([]byte(`{"data":{"total_rewards":[{"validator_index":"64","head":"12","target":"34","source":"56"}]}}`))
+			_, _ = writer.Write([]byte(`{"data":{"total_rewards":[{"validator_index":"64","head":"12","target":"34","source":"56","inactivity":"0"}]}}`))
 		case "/qrl/v1/beacon/rewards/attestations/4":
 			assertIndices(t, request, "64")
-			_, _ = writer.Write([]byte(`{"data":{"ideal_rewards":[{"effective_balance":"39998000000000","head":"376","target":"698","source":"376"}],"total_rewards":[]}}`))
+			_, _ = writer.Write([]byte(`{"data":{"ideal_rewards":[{"effective_balance":"39998000000000","head":"376","target":"698","source":"376","inactivity":"-7"}],"total_rewards":[]}}`))
 		case "/qrl/v1/beacon/rewards/blocks/9":
 			_, _ = writer.Write([]byte(`{"data":{"proposer_index":"12","total":"123","attestations":"100","sync_aggregate":"23","proposer_slashings":"0","attester_slashings":"0"}}`))
 		case "/qrl/v1/beacon/rewards/attestations/3":
 			assertIndices(t, request, "64")
-			_, _ = writer.Write([]byte(`{"data":{"total_rewards":[{"validator_index":"64","head":"0","target":"-650","source":"-350"}]}}`))
+			_, _ = writer.Write([]byte(`{"data":{"total_rewards":[{"validator_index":"64","head":"0","target":"-650","source":"-350","inactivity":"-120"}]}}`))
 		case "/qrl/v1/beacon/rewards/sync_committee/9":
 			assertIndices(t, request, "64")
 			_, _ = writer.Write([]byte(`{"execution_optimistic":false,"finalized":false,"data":[{"validator_index":"64","reward":"-2964"}]}`))
@@ -177,14 +177,15 @@ func TestClientDecodesQrysmResponses(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, []AttestationReward{{ValidatorIndex: 64, Head: 12, Target: 34, Source: 56}}, rewards)
 
-	// A missed source or target vote is reported as a negative score.
+	// A missed source or target vote and the inactivity penalty are reported
+	// as negative scores.
 	rewards, err = client.AttestationRewards(t.Context(), 3, []uint64{64})
 	require.NoError(t, err)
-	require.Equal(t, []AttestationReward{{ValidatorIndex: 64, Target: -650, Source: -350}}, rewards)
+	require.Equal(t, []AttestationReward{{ValidatorIndex: 64, Target: -650, Source: -350, Inactivity: -120}}, rewards)
 
 	ideal, err := client.IdealAttestationRewards(t.Context(), 4, []uint64{64})
 	require.NoError(t, err)
-	require.Equal(t, []IdealAttestationReward{{EffectiveBalance: 39998000000000, Head: 376, Target: 698, Source: 376}}, ideal)
+	require.Equal(t, []IdealAttestationReward{{EffectiveBalance: 39998000000000, Head: 376, Target: 698, Source: 376, Inactivity: -7}}, ideal)
 
 	blockRewards, err := client.BlockRewards(t.Context(), "9")
 	require.NoError(t, err)
